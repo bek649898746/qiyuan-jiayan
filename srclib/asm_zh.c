@@ -186,6 +186,20 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         if(!strcmp(mn,"压栈")){int r=RG;if(r>=0)push_r(r);}
         else if(!strcmp(mn,"弹栈")){int r=RG;if(r>=0)pop_r(r);}
         else if(!strcmp(mn,"返回")){ret();}
+        else if(!strcmp(mn,"扩字")){rex(1,0,0,0);b(0x98);} /* cdqe (fix 2026-08-05) */
+        else if(!strcmp(mn,"扩八字")){rex(1,0,0,0);b(0x99);} /* cqo (fix 2026-08-05) */
+        else if(!strcmp(mn,"串拷")){b(0xF3);b(0xA4);} /* rep movsb (fix 2026-08-05) */
+        else if(!strcmp(mn,"交还")){SK;int m=RG;SK;if(*p==',')p++;SK;int r=RG;if(m>=0&&r>=0){b(0x0F);b(0xB1);modrm(3,r&7,m&7);}} /* cmpxchg r/m32,r32 (fix 2026-08-05) */
+        else if(!strcmp(mn,"条移等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x44);modrm(3,d&7,s&7);}} /* cmove (fix 2026-08-05) */
+        else if(!strcmp(mn,"条移不等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x45);modrm(3,d&7,s&7);}} /* cmovne */
+        else if(!strcmp(mn,"条移低")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x42);modrm(3,d&7,s&7);}} /* cmovb */
+        else if(!strcmp(mn,"条移低等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x46);modrm(3,d&7,s&7);}} /* cmovbe */
+        else if(!strcmp(mn,"条移高")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x47);modrm(3,d&7,s&7);}} /* cmova */
+        else if(!strcmp(mn,"条移高等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x43);modrm(3,d&7,s&7);}} /* cmovae */
+        else if(!strcmp(mn,"条移小")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4C);modrm(3,d&7,s&7);}} /* cmovl */
+        else if(!strcmp(mn,"条移小等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4E);modrm(3,d&7,s&7);}} /* cmovle */
+        else if(!strcmp(mn,"条移大")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4F);modrm(3,d&7,s&7);}} /* cmovg */
+        else if(!strcmp(mn,"条移大等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4D);modrm(3,d&7,s&7);}} /* cmovge */
         else if(!strcmp(mn,"移动")){SK;int r=RG;SK;if(*p==',')p++;SK;if(!strncmp(p,"STR",3)){p+=3;int si=atoi(p);if(r>=0&&spn2<2048){mov_r_imm(r,0);str_patches2[spn2].at=cp-4;str_patches2[spn2].idx=si;spn2++;}}else if(!strncmp(p,"FN:",3)){p+=3;int li=LR;if(r>=0&&fnpn2<2048&&li>=0){mov_r_imm(r,0);fn_patches2[fnpn2].at=cp-4;fn_patches2[fnpn2].label=li;fnpn2++;}}else{int v=NUM;if(r>=0)mov_r_imm(r,v);}}
         else if(!strcmp(mn,"移64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)mov_rr64(d,s);}
         else if(!strcmp(mn,"移32")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)mov_rr(d,s);}
