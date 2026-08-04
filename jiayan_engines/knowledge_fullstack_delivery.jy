@@ -15,7 +15,7 @@
 整 主(空) {
     输出(";========================================\n");
     输出(";  Full-Stack Agent Delivery Manual\n");
-    输出(";  MockLLM鈫扵oolRegistry鈫扲eAct鈫扐PI鈫掑墠绔啋閮ㄧ讲\n");
+    输出(";  MockLLM→ToolRegistry→ReAct→API→前端→部署\n");
     输出(";========================================\n");
     
     输出("\n;  鈹€鈹€ 鏋舵瀯鎬昏 鈹€鈹€\n");
@@ -25,32 +25,32 @@
     
     输出("\n;  鈹€鈹€ MockLLM(瀛︿範/寮€鍙戦樁娈? 鈹€鈹€\n");
     输出(";  妯℃嫙宸ュ叿璋冪敤妫€娴? 鐢ㄦ埛杈撳叆鈫掕В鏋愭剰鍥锯啋鍖归厤宸ュ叿\n");
-    输出(";  妯℃嫙璁＄畻: 璇嗗埆鏁板琛ㄨ揪寮忊啋杩斿洖缁撴灉\n");
+    输出(";  模拟计算: 识别数学表达式→返回结果\n");
     输出(";  寮€鍙戝畬涓€閿浛鎹? MockLLM.chat() 鈫?OpenAI/Claude API\n");
     
     输出("\n;  鈹€鈹€ ToolRegistry(Agent鐨勬墜) 鈹€鈹€\n");
-    输出(";  娉ㄥ唽: register(name, func, desc, params) | 鑷姩鐢熸垚OpenAI Schema\n");
-    输出(";  鎵ц: execute(name, **kwargs) | 缁撴灉鍥炴敞涓婁笅鏂嘰n");
+    输出(";  注册: register(name, func, desc, params) | 自动生成OpenAI Schema\n");
+    输出(";  执行: execute(name, **kwargs) | 结果回注上下文\n");
     输出(";  涓€浜哄叕鍙稿伐鍏烽泦: get_weather | calculator | search | email | slack\n");
     
     输出("\n;  鈹€鈹€ ReAct寰幆(Agent鐨勫績璺? 鈹€鈹€\n");
-    输出(";  1. THINK: 鍒嗘瀽闂鈫掑喅瀹氱瓥鐣モ啋閫夊伐鍏穃n");
-    输出(";  2. ACT: 璋冪敤宸ュ叿鈫掑緱鍒扮粨鏋淺n");
-    输出(";  3. OBSERVE: 缁撴灉鍥炴敞鈫掓洿鏂颁笂涓嬫枃\n");
-    输出(";  4. 寰幆鎴朢ESPOND\n");
+    输出(";  1. THINK: 分析问题→决定策略→选工具\n");
+    输出(";  2. ACT: 调用工具→得到结果\n");
+    输出(";  3. OBSERVE: 结果回注→更新上下文\n");
+    输出(";  4. 循环或RESPOND\n");
     输出(";  瀹夊叏: 鏈€澶ц疆娆￠檺鍒?10-20) | 瓒呮椂 | 寮傚父鍥為€€\n");
     
     输出("\n;  鈹€鈹€ FastAPI涓棿灞?鈹€鈹€\n");
-    输出(";  POST /chat: 鍚屾瀵硅瘽(杩斿洖JSON)\n");
+    输出(";  POST /chat: 同步对话(返回JSON)\n");
     输出(";  GET /chat/stream: SSE娴佸紡(閫恡oken/宸ュ叿璋冪敤)\n");
-    输出(";  浜嬩欢鏍煎紡: {type:thinking|tool_start|tool_end|token|done}\n");
-    输出(";  CORS: 鍏佽鍓嶇璺ㄥ煙 | Session: SQLite鎸佷箙鍖朶n");
+    输出(";  事件格式: {type:thinking|tool_start|tool_end|token|done}\n");
+    输出(";  CORS: 允许前端跨域 | Session: SQLite持久化\n");
     
     输出("\n;  鈹€鈹€ 鍓嶇 鈹€鈹€\n");
     输出(";  绾疕TML/CSS/JS: 闆朵緷璧?鐩存帴娴忚鍣ㄦ墦寮€\n");
     输出(";  娴佸紡娓叉煋: EventSource鈫掗€恡oken鏄剧ず\n");
     输出(";  宸ュ叿鍙鍖? tool_start/tool_end浜嬩欢鈫掑崱鐗囧睍绀篭n");
-    输出(";  浼氳瘽绠＄悊: 鏈湴瀛樺偍+鏈嶅姟绔痵ession_id\n");
+    输出(";  会话管理: 本地存储+服务端session_id\n");
     
     输出("\n;  鈹€鈹€ 鏁版嵁搴撴寔涔呭寲 鈹€鈹€\n");
     输出(";  sessions琛? id | created_at | updated_at\n");
@@ -68,9 +68,9 @@
     输出(";  绗?澶? 瀹炵幇鏍稿績宸ュ叿+娴佸紡娓叉煋\n");
     输出(";  绗?澶? 鏇挎崲鐪熷疄LLM+閮ㄧ讲涓婄嚎\n");
     输出(";  绗?-5澶? 娴嬭瘯+杩唬+瀹氫环$19/鏈圽n");
-    输出(";  5澶╀粠0鍒颁粯璐圭敤鎴穃n");
+    输出(";  5天从0到付费用户\n");
     
-    输出("\n;  宸茬剨: 鍏ㄦ爤Agent瀹屾暣浜や粯閾捐矾路7澶㎝VP\n");
+    输出("\n;  已焊: 全栈Agent完整交付链路·7天MVP\n");
     输出(";  鐭ヨ瘑鍩? fullstack_delivery | 宸茬剨鍏榫欓\n");
     返 0;
 }

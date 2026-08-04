@@ -8,7 +8,7 @@
 /*
  * weighted_uf.c 鈥?甯︽潈骞舵煡闆?(鍏冪礌闂寸浉瀵硅窛绂?
  * 琛€鑲夋暟鎹粨鏋勫彛璇€
- * 缂栬瘧: gcc -O2 -Wall -Wextra -Os -s -o wuf.exe weighted_uf.c
+ * 编译: gcc -O2 -Wall -Wextra -Os -s -o wuf.exe weighted_uf.c
  */
 // @pure <=4KB
 #include <stdio.h>
@@ -39,7 +39,7 @@
 }
 
 空 uf_union(整 x, 整 y, 整 diff) {
-    /* y姣攛澶iff: weight[y] = weight[x] + diff */
+    /* y比x大diff: weight[y] = weight[x] + diff */
     整 rx = uf_find(x), ry = uf_find(y);
     若 (rx == ry) 返;
     若 (rank[rx] < rank[ry]) {
@@ -71,7 +71,7 @@
     输出("    v4 = v3 + 10\n");
     输出("    v3 = v0 + 15\n");
 
-    输出("\n  鏌ヨ鐩稿璺濈:\n");
+    输出("\n  查询相对距离:\n");
     输出("    diff(1,0)=%d (搴?)\n", uf_diff(1,0));
     输出("    diff(2,0)=%d (搴?)\n", uf_diff(2,0));
     输出("    diff(3,0)=%d (搴?5)\n", uf_diff(3,0));
