@@ -6,8 +6,9 @@
  */
 // @pure 
 /*
- * knowledge_fullstack_delivery.c 鈥?鍏ㄦ爤Agent浜や粯瀹屾暣鎵嬪唽
- * 涓€浜哄叕鍙镐骇鍝佺殑瀹屾暣楠ㄦ灦锛氫粠MockLLM鍒颁竴閿儴缃? * 2026-06-29 09:40 | seed=828
+ * knowledge_fullstack_delivery.c — 全栈Agent交付完整手册
+ * 一人公司产品的完整骨架：从MockLLM到一键部署
+ * 2026-06-29 09:40 | seed=828
  */
 // @pure <=6KB
 #include <stdio.h>
@@ -18,59 +19,59 @@
     输出(";  MockLLM→ToolRegistry→ReAct→API→前端→部署\n");
     输出(";========================================\n");
     
-    输出("\n;  鈹€鈹€ 鏋舵瀯鎬昏 鈹€鈹€\n");
-    输出(";  娴忚鍣?Frontend) 鈫?SSE/JSON 鈫?FastAPI(涓棿灞? 鈫?Agent Engine(鍚庣)\n");
-    输出(";  浼犵粺鍚庣: 璇锋眰鈫掑鐞嗏啋鍝嶅簲 (鏃犵姸鎬?\n");
-    输出(";  Agent鍚庣: 娑堟伅鈫扵hink鈫扐ct鈫扥bserve鈫扵hink鈫?..鈫掑搷搴?鏈夌姸鎬佸惊鐜?\n");
+    输出("\n;  ── 架构总览 ──\n");
+    输出(";  浏览器(Frontend) ← SSE/JSON → FastAPI(中间层) → Agent Engine(后端)\n");
+    输出(";  传统后端: 请求→处理→响应 (无状态)\n");
+    输出(";  Agent后端: 消息→Think→Act→Observe→Think→...→响应(有状态循环)\n");
     
-    输出("\n;  鈹€鈹€ MockLLM(瀛︿範/寮€鍙戦樁娈? 鈹€鈹€\n");
-    输出(";  妯℃嫙宸ュ叿璋冪敤妫€娴? 鐢ㄦ埛杈撳叆鈫掕В鏋愭剰鍥锯啋鍖归厤宸ュ叿\n");
+    输出("\n;  ── MockLLM(学习/开发阶段) ──\n");
+    输出(";  模拟工具调用检测: 用户输入→解析意图→匹配工具\n");
     输出(";  模拟计算: 识别数学表达式→返回结果\n");
-    输出(";  寮€鍙戝畬涓€閿浛鎹? MockLLM.chat() 鈫?OpenAI/Claude API\n");
+    输出(";  开发完一键替换: MockLLM.chat() → OpenAI/Claude API\n");
     
-    输出("\n;  鈹€鈹€ ToolRegistry(Agent鐨勬墜) 鈹€鈹€\n");
+    输出("\n;  ── ToolRegistry(Agent的手) ──\n");
     输出(";  注册: register(name, func, desc, params) | 自动生成OpenAI Schema\n");
     输出(";  执行: execute(name, **kwargs) | 结果回注上下文\n");
-    输出(";  涓€浜哄叕鍙稿伐鍏烽泦: get_weather | calculator | search | email | slack\n");
+    输出(";  一人公司工具集: get_weather | calculator | search | email | slack\n");
     
-    输出("\n;  鈹€鈹€ ReAct寰幆(Agent鐨勫績璺? 鈹€鈹€\n");
+    输出("\n;  ── ReAct循环(Agent的心跳) ──\n");
     输出(";  1. THINK: 分析问题→决定策略→选工具\n");
     输出(";  2. ACT: 调用工具→得到结果\n");
     输出(";  3. OBSERVE: 结果回注→更新上下文\n");
     输出(";  4. 循环或RESPOND\n");
-    输出(";  瀹夊叏: 鏈€澶ц疆娆￠檺鍒?10-20) | 瓒呮椂 | 寮傚父鍥為€€\n");
+    输出(";  安全: 最大轮次限制(10-20) | 超时 | 异常回退\n");
     
-    输出("\n;  鈹€鈹€ FastAPI涓棿灞?鈹€鈹€\n");
+    输出("\n;  ── FastAPI中间层 ──\n");
     输出(";  POST /chat: 同步对话(返回JSON)\n");
-    输出(";  GET /chat/stream: SSE娴佸紡(閫恡oken/宸ュ叿璋冪敤)\n");
+    输出(";  GET /chat/stream: SSE流式(逐token/工具调用)\n");
     输出(";  事件格式: {type:thinking|tool_start|tool_end|token|done}\n");
     输出(";  CORS: 允许前端跨域 | Session: SQLite持久化\n");
     
-    输出("\n;  鈹€鈹€ 鍓嶇 鈹€鈹€\n");
-    输出(";  绾疕TML/CSS/JS: 闆朵緷璧?鐩存帴娴忚鍣ㄦ墦寮€\n");
-    输出(";  娴佸紡娓叉煋: EventSource鈫掗€恡oken鏄剧ず\n");
-    输出(";  宸ュ叿鍙鍖? tool_start/tool_end浜嬩欢鈫掑崱鐗囧睍绀篭n");
+    输出("\n;  ── 前端 ──\n");
+    输出(";  纯HTML/CSS/JS: 零依赖,直接浏览器打开\n");
+    输出(";  流式渲染: EventSource→逐token显示\n");
+    输出(";  工具可视化: tool_start/tool_end事件→卡片展示\n");
     输出(";  会话管理: 本地存储+服务端session_id\n");
     
-    输出("\n;  鈹€鈹€ 鏁版嵁搴撴寔涔呭寲 鈹€鈹€\n");
-    输出(";  sessions琛? id | created_at | updated_at\n");
-    输出(";  messages琛? id | session_id | role | content | created_at\n");
-    输出(";  SQLite: 鍗曟枃浠?閰嶇疆 | 澶熺敤浜嶮VP\n");
+    输出("\n;  ── 数据库持久化 ──\n");
+    输出(";  sessions表: id | created_at | updated_at\n");
+    输出(";  messages表: id | session_id | role | content | created_at\n");
+    输出(";  SQLite: 单文件0配置 | 够用于MVP\n");
     
-    输出("\n;  鈹€鈹€ 涓€閿儴缃?鈹€鈹€\n");
-    输出(";  寮€鍙? python main.py (鍗曟枃浠跺叏鏍?\n");
-    输出(";  鐢熶骇: uvicorn main:app --host 0.0.0.0 --port 8080\n");
+    输出("\n;  ── 一键部署 ──\n");
+    输出(";  开发: python main.py (单文件全栈)\n");
+    输出(";  生产: uvicorn main:app --host 0.0.0.0 --port 8080\n");
     输出(";  Docker: python:3.11-slim + pip install + uvicorn\n");
-    输出(";  鎴愭湰: $0(Vercel鍏嶈垂+SQLite+MockLLM)~$20(API+DB)\n");
+    输出(";  成本: $0(Vercel免费+SQLite+MockLLM)~$20(API+DB)\n");
     
-    输出("\n;  鈹€鈹€ 涓€浜哄叕鍙镐骇鍝佸紑鍙戣妭濂?鈹€鈹€\n");
-    输出(";  绗?澶? 鎼鏋?FastAPI+ReAct+MockLLM+鍓嶇HTML)\n");
-    输出(";  绗?澶? 瀹炵幇鏍稿績宸ュ叿+娴佸紡娓叉煋\n");
-    输出(";  绗?澶? 鏇挎崲鐪熷疄LLM+閮ㄧ讲涓婄嚎\n");
-    输出(";  绗?-5澶? 娴嬭瘯+杩唬+瀹氫环$19/鏈圽n");
+    输出("\n;  ── 一人公司产品开发节奏 ──\n");
+    输出(";  第1天: 搭骨架(FastAPI+ReAct+MockLLM+前端HTML)\n");
+    输出(";  第2天: 实现核心工具+流式渲染\n");
+    输出(";  第3天: 替换真实LLM+部署上线\n");
+    输出(";  第4-5天: 测试+迭代+定价$19/月\n");
     输出(";  5天从0到付费用户\n");
     
     输出("\n;  已焊: 全栈Agent完整交付链路·7天MVP\n");
-    输出(";  鐭ヨ瘑鍩? fullstack_delivery | 宸茬剨鍏榫欓\n");
+    输出(";  知识域: fullstack_delivery | 已焊入C龙骨\n");
     返 0;
 }
