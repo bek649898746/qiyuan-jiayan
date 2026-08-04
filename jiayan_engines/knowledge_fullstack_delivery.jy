@@ -1,0 +1,76 @@
+/*
+ * 启元 · 甲言引擎 knowledge_fullstack_delivery.jy —— 甲言化
+ * 源码: knowledge_fullstack_delivery.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+// @pure 
+/*
+ * knowledge_fullstack_delivery.c 鈥?鍏ㄦ爤Agent浜や粯瀹屾暣鎵嬪唽
+ * 涓€浜哄叕鍙镐骇鍝佺殑瀹屾暣楠ㄦ灦锛氫粠MockLLM鍒颁竴閿儴缃? * 2026-06-29 09:40 | seed=828
+ */
+// @pure <=6KB
+#include <stdio.h>
+
+整 主(空) {
+    输出(";========================================\n");
+    输出(";  Full-Stack Agent Delivery Manual\n");
+    输出(";  MockLLM鈫扵oolRegistry鈫扲eAct鈫扐PI鈫掑墠绔啋閮ㄧ讲\n");
+    输出(";========================================\n");
+    
+    输出("\n;  鈹€鈹€ 鏋舵瀯鎬昏 鈹€鈹€\n");
+    输出(";  娴忚鍣?Frontend) 鈫?SSE/JSON 鈫?FastAPI(涓棿灞? 鈫?Agent Engine(鍚庣)\n");
+    输出(";  浼犵粺鍚庣: 璇锋眰鈫掑鐞嗏啋鍝嶅簲 (鏃犵姸鎬?\n");
+    输出(";  Agent鍚庣: 娑堟伅鈫扵hink鈫扐ct鈫扥bserve鈫扵hink鈫?..鈫掑搷搴?鏈夌姸鎬佸惊鐜?\n");
+    
+    输出("\n;  鈹€鈹€ MockLLM(瀛︿範/寮€鍙戦樁娈? 鈹€鈹€\n");
+    输出(";  妯℃嫙宸ュ叿璋冪敤妫€娴? 鐢ㄦ埛杈撳叆鈫掕В鏋愭剰鍥锯啋鍖归厤宸ュ叿\n");
+    输出(";  妯℃嫙璁＄畻: 璇嗗埆鏁板琛ㄨ揪寮忊啋杩斿洖缁撴灉\n");
+    输出(";  寮€鍙戝畬涓€閿浛鎹? MockLLM.chat() 鈫?OpenAI/Claude API\n");
+    
+    输出("\n;  鈹€鈹€ ToolRegistry(Agent鐨勬墜) 鈹€鈹€\n");
+    输出(";  娉ㄥ唽: register(name, func, desc, params) | 鑷姩鐢熸垚OpenAI Schema\n");
+    输出(";  鎵ц: execute(name, **kwargs) | 缁撴灉鍥炴敞涓婁笅鏂嘰n");
+    输出(";  涓€浜哄叕鍙稿伐鍏烽泦: get_weather | calculator | search | email | slack\n");
+    
+    输出("\n;  鈹€鈹€ ReAct寰幆(Agent鐨勫績璺? 鈹€鈹€\n");
+    输出(";  1. THINK: 鍒嗘瀽闂鈫掑喅瀹氱瓥鐣モ啋閫夊伐鍏穃n");
+    输出(";  2. ACT: 璋冪敤宸ュ叿鈫掑緱鍒扮粨鏋淺n");
+    输出(";  3. OBSERVE: 缁撴灉鍥炴敞鈫掓洿鏂颁笂涓嬫枃\n");
+    输出(";  4. 寰幆鎴朢ESPOND\n");
+    输出(";  瀹夊叏: 鏈€澶ц疆娆￠檺鍒?10-20) | 瓒呮椂 | 寮傚父鍥為€€\n");
+    
+    输出("\n;  鈹€鈹€ FastAPI涓棿灞?鈹€鈹€\n");
+    输出(";  POST /chat: 鍚屾瀵硅瘽(杩斿洖JSON)\n");
+    输出(";  GET /chat/stream: SSE娴佸紡(閫恡oken/宸ュ叿璋冪敤)\n");
+    输出(";  浜嬩欢鏍煎紡: {type:thinking|tool_start|tool_end|token|done}\n");
+    输出(";  CORS: 鍏佽鍓嶇璺ㄥ煙 | Session: SQLite鎸佷箙鍖朶n");
+    
+    输出("\n;  鈹€鈹€ 鍓嶇 鈹€鈹€\n");
+    输出(";  绾疕TML/CSS/JS: 闆朵緷璧?鐩存帴娴忚鍣ㄦ墦寮€\n");
+    输出(";  娴佸紡娓叉煋: EventSource鈫掗€恡oken鏄剧ず\n");
+    输出(";  宸ュ叿鍙鍖? tool_start/tool_end浜嬩欢鈫掑崱鐗囧睍绀篭n");
+    输出(";  浼氳瘽绠＄悊: 鏈湴瀛樺偍+鏈嶅姟绔痵ession_id\n");
+    
+    输出("\n;  鈹€鈹€ 鏁版嵁搴撴寔涔呭寲 鈹€鈹€\n");
+    输出(";  sessions琛? id | created_at | updated_at\n");
+    输出(";  messages琛? id | session_id | role | content | created_at\n");
+    输出(";  SQLite: 鍗曟枃浠?閰嶇疆 | 澶熺敤浜嶮VP\n");
+    
+    输出("\n;  鈹€鈹€ 涓€閿儴缃?鈹€鈹€\n");
+    输出(";  寮€鍙? python main.py (鍗曟枃浠跺叏鏍?\n");
+    输出(";  鐢熶骇: uvicorn main:app --host 0.0.0.0 --port 8080\n");
+    输出(";  Docker: python:3.11-slim + pip install + uvicorn\n");
+    输出(";  鎴愭湰: $0(Vercel鍏嶈垂+SQLite+MockLLM)~$20(API+DB)\n");
+    
+    输出("\n;  鈹€鈹€ 涓€浜哄叕鍙镐骇鍝佸紑鍙戣妭濂?鈹€鈹€\n");
+    输出(";  绗?澶? 鎼鏋?FastAPI+ReAct+MockLLM+鍓嶇HTML)\n");
+    输出(";  绗?澶? 瀹炵幇鏍稿績宸ュ叿+娴佸紡娓叉煋\n");
+    输出(";  绗?澶? 鏇挎崲鐪熷疄LLM+閮ㄧ讲涓婄嚎\n");
+    输出(";  绗?-5澶? 娴嬭瘯+杩唬+瀹氫环$19/鏈圽n");
+    输出(";  5澶╀粠0鍒颁粯璐圭敤鎴穃n");
+    
+    输出("\n;  宸茬剨: 鍏ㄦ爤Agent瀹屾暣浜や粯閾捐矾路7澶㎝VP\n");
+    输出(";  鐭ヨ瘑鍩? fullstack_delivery | 宸茬剨鍏榫欓\n");
+    返 0;
+}

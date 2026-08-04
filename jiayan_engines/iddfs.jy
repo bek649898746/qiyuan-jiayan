@@ -1,0 +1,76 @@
+/*
+ * 启元 · 甲言引擎 iddfs.jy —— 甲言化
+ * 源码: iddfs.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+// @pure 
+/*
+ * iddfs.c 鈥?杩唬鍔犳繁DFS (IDDFS, 娣卞害闄愬埗+鏈€鐭矾寰?
+ * 琛€鑲夋悳绱㈢畻娉曞彛璇€
+ * 缂栬瘧: gcc -O2 -Wall -Wextra -Os -s -o iddfs.exe iddfs.c
+ */
+// @pure <=4KB
+#include <stdio.h>
+#include <string.h>
+
+#define N 9
+
+静 整 adj[N][N];
+静 整 path[32], path_len;
+静 整 found = 0;
+
+整 dls(整 u, 整 goal, 整 depth, 整 limit) {
+    若 (depth > limit) 返 0;
+    path[depth] = u;
+    若 (u == goal) { path_len = depth+1; found = 1; 返 1; }
+    遍 (整 v = 0; v < N; v++)
+        若 (adj[u][v]) {
+            整 dup = 0;
+            遍 (整 i = 0; i < depth; i++) 若 (path[i] == v) { dup = 1; 断; }
+            若 (!dup && dls(v, goal, depth+1, limit)) 返 1;
+        }
+    返 0;
+}
+
+整 iddfs(整 start, 整 goal, 整 max_depth) {
+    found = 0;
+    遍 (整 limit = 0; limit <= max_depth; limit++) {
+        若 (dls(start, goal, 0, limit)) 返 limit;
+    }
+    返 -1;
+}
+
+整 主(空) {
+    输出(";========================================\n");
+    输出(";  IDDFS (杩唬鍔犳繁DFS)\n");
+    输出(";========================================\n\n");
+
+    遍 (整 i = 0; i < N-1; i++) adj[i][i+1] = adj[i+1][i] = 1;
+    adj[0][8] = adj[8][0] = 1; /* 鎹峰緞 0鈫? */
+
+    输出("  鍥? 0-1-2-3-4-5-6-7-8, 0鈫?鎹峰緞\n\n");
+
+    输出("  0鈫?: 闄愬埗娣卞害0~10\n");
+    遍 (整 lim = 0; lim <= 3; lim++) {
+        path_len = 0; found = 0;
+        dls(0, 8, 0, lim);
+        输出("    limit=%d: %s", lim, found?"found":"not found");
+        若 (found) { 输出("  path: "); 遍 (整 i=0;i<path_len;i++) 输出("%d ", path[i]); }
+        输出("\n");
+    }
+
+    整 d = iddfs(0, 8, 10);
+    输出("\n  IDDFS鏈€鐭矾寰? dist=%d path=", d);
+    遍 (整 i=0;i<path_len;i++) 输出("%d ", path[i]);
+    输出("\n  鎹峰緞: 0鈫? (涓嶆槸绾垮舰8姝?\n");
+
+    输出("\n  1鈫?: dist=%d\n", iddfs(1,7,10));
+
+    输出("\n  0鈫?(涓嶅瓨鍦?: dist=%d\n", iddfs(0,9,5));
+
+    输出("\n  IDDFS: 绌洪棿O(d), 鏃堕棿鈮坆^d, 閫傚悎澶у浘鎵炬渶鐭璡n");
+
+    输出("\n; IDDFS 鉁?琛€鑲夊～姣昞n");
+    返 0;
+}

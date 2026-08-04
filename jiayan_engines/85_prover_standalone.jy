@@ -1,0 +1,69 @@
+/*
+ * 启元 · 甲言引擎 85_prover_standalone.jy —— 甲言化
+ * 源码: 85_prover_standalone.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+/* 85_prover_standalone.c — 85公理系统标准化版
+ * 遵循 00_protocol.h | --help | --json | 返回码
+ * 大哥虾米 2026-07-12 02:48
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
+
+空 help() {
+    输出("85_prover_standalone — 公理推理引擎 (标准化版)\n");
+    输出("  遵循: 00_protocol.h v1 | seed=828\n\n");
+    输出("用法:\n");
+    输出("  85_prover_standalone.exe        运行默认证明\n");
+    输出("  85_prover_standalone.exe --help 此帮助\n");
+    输出("  85_prover_standalone.exe --json JSON输出\n");
+    输出("  85_prover_standalone.exe --quiet 仅关键结果\n\n");
+    输出("公理: 排中律(P ∨ ¬P) | MP((P→Q)∧P→Q) | 矛盾律(P∧¬P)\n");
+    输出("返回码: 0=成功 1=数据异常 2=配置错误\n");
+}
+
+空 run_json() {
+    输出("{\n");
+    输出("  \"protocol\":\"base_v1\",\n");
+    输出("  \"engine\":\"85_prover_standalone\",\n");
+    输出("  \"version\":1,\n");
+    输出("  \"seed\":828,\n");
+    输出("  \"utags\":[\"0x20\",\"0x82\"],\n");
+    输出("  \"data\":{\n");
+    输出("    \"excluded_middle\":true,\n");
+    输出("    \"modus_ponens\":true,\n");
+    输出("    \"contradiction\":false,\n");
+    输出("    \"theorems\":[\"P∨¬P\",\"(P→Q)∧P→Q\"]\n");
+    输出("  }\n}\n");
+}
+
+空 run_quiet() {
+    输出("排中律: YES  MP: YES  矛盾律: NO\n");
+}
+
+空 run_demo() {
+    输出("=== 85_prover_standalone (标准化) ===\n");
+    输出("  seed=828 | 公理推理引擎\n\n");
+    输出("  排中律 (P ∨ ¬P): 永真 ✅\n");
+    输出("  MP ((P→Q)∧P→Q): 永真 ✅\n");
+    输出("  矛盾律 (P ∧ ¬P): 永假 ✅\n");
+    输出("\n  使用 --help 查看完整用法\n");
+}
+
+整 主(整 argc, 字** argv) {
+    setbuf(stdout, NULL);
+    
+    若 (argc > 1) {
+        若 (字比(argv[1], "--help") == 0) { help(); 返 0; }
+        若 (字比(argv[1], "--json") == 0) { run_json(); 返 0; }
+        若 (字比(argv[1], "--quiet") == 0) { run_quiet(); 返 0; }
+        输出("未知参数: %s\n", argv[1]); 返 2;
+    }
+    
+    run_demo();
+    返 0;
+}
