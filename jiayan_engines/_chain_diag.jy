@@ -12,7 +12,7 @@
 
 整 主() {
     输出(";===== CPU64宸ュ叿閾炬牸寮忚瘖鏂?=====\n");
-    输出("; 澶у摜 | 鍚厓 | seed=828\n\n");
+    输出("; 大哥 | 启元 | seed=828\n\n");
     
     /* 娴嬭瘯1: c_compiler_clean杈撳嚭鏍煎紡 */
     输出("--- Test1: c_compiler_clean 杈撳嚭鏍煎紡 ---\n");
@@ -29,13 +29,13 @@
     r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpp_asm_codegen_v2.exe 2>&1");
     输出("\n");
     
-    /* 娴嬭瘯4: asm_bridge鏄惁鑳芥ˉ鎺2鈫抳11 */
+    /* 测试4: asm_bridge是否能桥接v2→v11 */
     输出("--- Test4: cpp_asm_codegen_v2 鈫?asm_bridge 妗ユ帴 ---\n");
     r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpp_asm_codegen_v2.exe 2>&1 | C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\asm_bridge.exe 2>&1");
     输出("  [Bridge] v2鈫抳8鏍煎紡\n\n");
     
-    /* 娴嬭瘯5: compile_cpu64缂栫爜鏍煎紡 */
-    输出("--- Test5: compile_cpu64 缂栫爜鏍煎紡(10-bit) ---\n");
+    /* 测试5: compile_cpu64编码格式 */
+    输出("--- Test5: compile_cpu64 编码格式(10-bit) ---\n");
     r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\compile_cpu64.exe 2>&1");
     输出("\n");
     

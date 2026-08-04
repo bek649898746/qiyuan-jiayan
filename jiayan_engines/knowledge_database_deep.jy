@@ -7,7 +7,7 @@
 // @pure 
 /*
  * knowledge_database_deep.c 鈥?鏁版嵁搴撳紩鎿庢繁搴﹀彛璇€
- * 瀛樺偍寮曟搸路绱㈠紩路鏌ヨ鎵ц路浜嬪姟路MVCC
+ * 存储引擎·索引·查询执行·事务·MVCC
  * 涓€浜哄叕鍙革細鍗曟満SQLite澶熺敤鍒?0涓囩敤鎴? * 2026-06-29 09:15 | seed=828
  */
 // @pure <=4KB
@@ -16,7 +16,7 @@
 整 主(空) {
     输出(";========================================\n");
     输出(";  Database Engine Deep Core\n");
-    输出(";  瀛樺偍路绱㈠紩路鏌ヨ路浜嬪姟路MVCC\n");
+    输出(";  存储·索引·查询·事务·MVCC\n");
     输出(";========================================\n");
     
     输出("\n;  鈹€鈹€ 瀛樺偍寮曟搸鏋舵瀯 鈹€鈹€\n");
@@ -44,16 +44,16 @@
     输出(";  Join: NestedLoop(O(NM)) | HashJoin(build+probe) | SortMerge\n");
     
     输出("\n;  鈹€鈹€ 浜嬪姟+MVCC 鈹€鈹€\n");
-    输出(";  ACID: Undo Log(鍘熷瓙) MVCC(闅旂) WAL+Checkpoint(鎸佷箙)\n");
+    输出(";  ACID: Undo Log(原子) MVCC(隔离) WAL+Checkpoint(持久)\n");
     输出(";  MVCC: 姣忚澶氱増鏈?浜嬪姟ID+鍙鎬ф鏌?| 璇讳笉闃诲鍐橽n");
-    输出(";  闅旂: RU鈫扲C鈫扲R鈫扴erializable(MVCC瀹炵幇)\n");
+    输出(";  隔离: RU→RC→RR→Serializable(MVCC实现)\n");
     输出(";  姝婚攣: Wait-Die/Wound-Wait | Timeout | 姝婚攣妫€娴?鍥炴粴\n");
     
     输出("\n;  鈹€鈹€ 涓€浜哄叕鍙稿疄鎴?鈹€鈹€\n");
     输出(";  0-1K鐢ㄦ埛: SQLite(0閰嶇疆/鍗曟枃浠?鍏嶈垂)\n");
-    输出(";  1K-10K: Supabase(PostgreSQL鎵樼/鍏嶈垂棰濆害)\n");
+    输出(";  1K-10K: Supabase(PostgreSQL托管/免费额度)\n");
     输出(";  10K+: Turso(LibSQL杈圭紭DB) | CockroachDB Serverless\n");
-    输出(";  鍒: 鑷繁鎼璏ySQL闆嗙兢/鍒嗗簱鍒嗚〃\n");
+    输出(";  别碰: 自己搭MySQL集群/分库分表\n");
     
     输出("\n;  宸茬剨: 6瀛愬煙路35鏍稿績姒傚康路涓€浜哄叕鍙稿疄鎴樿矾寰刓n");
     输出(";  鐭ヨ瘑鍩? database_deep | 宸茬剨鍏榫欓\n");
