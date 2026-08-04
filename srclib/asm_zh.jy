@@ -144,6 +144,20 @@
     若 (strcmp(mn, "压栈") == 0) { 整 r = RG(); 若 (r >= 0) push_r(r); 返 1; }
     若 (strcmp(mn, "弹栈") == 0) { 整 r = RG(); 若 (r >= 0) pop_r(r); 返 1; }
     若 (strcmp(mn, "返回") == 0) { ret(); 返 1; }
+    若 (strcmp(mn, "扩字") == 0) { rex(1,0,0,0); b(0x98); 返 1; } /* cdqe（fix 2026-08-05） */
+    若 (strcmp(mn, "扩八字") == 0) { rex(1,0,0,0); b(0x99); 返 1; } /* cqo */
+    若 (strcmp(mn, "串拷") == 0) { b(0xF3); b(0xA4); 返 1; } /* rep movsb */
+    若 (strcmp(mn, "交还") == 0) { SK(); 整 m = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 r = RG(); 若 (m >= 0 && r >= 0) { b(0x0F); b(0xB1); modrm(3, r & 7, m & 7); } 返 1; } /* cmpxchg r/m32,r32 */
+    若 (strcmp(mn, "条移等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x44); modrm(3, d & 7, s & 7); } 返 1; } /* cmove */
+    若 (strcmp(mn, "条移不等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x45); modrm(3, d & 7, s & 7); } 返 1; } /* cmovne */
+    若 (strcmp(mn, "条移低") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x42); modrm(3, d & 7, s & 7); } 返 1; } /* cmovb */
+    若 (strcmp(mn, "条移低等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x46); modrm(3, d & 7, s & 7); } 返 1; } /* cmovbe */
+    若 (strcmp(mn, "条移高") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x47); modrm(3, d & 7, s & 7); } 返 1; } /* cmova */
+    若 (strcmp(mn, "条移高等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x43); modrm(3, d & 7, s & 7); } 返 1; } /* cmovae */
+    若 (strcmp(mn, "条移小") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4C); modrm(3, d & 7, s & 7); } 返 1; } /* cmovl */
+    若 (strcmp(mn, "条移小等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4E); modrm(3, d & 7, s & 7); } 返 1; } /* cmovle */
+    若 (strcmp(mn, "条移大") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4F); modrm(3, d & 7, s & 7); } 返 1; } /* cmovg */
+    若 (strcmp(mn, "条移大等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4D); modrm(3, d & 7, s & 7); } 返 1; } /* cmovge */
     若 (strcmp(mn, "移动") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (strncmp(gp, "STR", 3) == 0) { gp = gp + 3; 整 si = NUM(); 若 (r >= 0 && spn2 < 2048) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(0); str_patches2[spn2].at = cp - 4; str_patches2[spn2].idx = si; spn2 = spn2 + 1; } } 否 若 (strncmp(gp, "FN:", 3) == 0) { gp = gp + 3; 整 li = LR(); 若 (li >= 0 && r >= 0 && fnpn2 < 2048) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(0); fn_patches2[fnpn2].at = cp - 4; fn_patches2[fnpn2].label = li; fnpn2 = fnpn2 + 1; } } 否 { 整 vv = NUM(); 若 (r >= 0) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(vv); } } 返 1; }
     若 (strcmp(mn, "移64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) mov_rr64(d, s); 返 1; }
     若 (strcmp(mn, "移32") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) mov_rr(d, s); 返 1; }
