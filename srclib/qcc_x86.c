@@ -51,6 +51,7 @@ static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, 
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
 static int root_global, g_lc_save, g_rsp_save, entry_rva_global;
+static int gen_final = 0; /* 1 only on the LAST gen_code pass: gate -S asm text so the .asm file holds one copy (fix 2026-08-05: iteration re-runs gen_code → duplicate code + broken label resolution) */
 static int crt_entry_off; /* .text offset of the mini-CRT entry stub (pass 2 value) */
 static int fvb[512], fve[512], fvn; /* per-function var index ranges (parse order == gen order) */
 static int fr_start[512], fr_end[512]; /* per-function rsp_used bounds at parse (exact frame footprint) */
@@ -86,7 +87,7 @@ static int asm_pass = 0;
    arrive as (char*)(long long)int (the int survives in the low 32 bits), %s args pass
    the string pointer straight. */
 static void asm_emit(const char *fmt, char *a, char *b, char *c) {
-    if (asm_out && asm_pass == 2) {
+    if (asm_out && asm_pass == 2 && gen_final) {
         char abuf[512];
         sprintf(abuf, fmt, a, b, c);
         fwrite(abuf, 1, strlen(abuf), asm_out);
@@ -94,7 +95,7 @@ static void asm_emit(const char *fmt, char *a, char *b, char *c) {
 }
 /* float-arg ASM text (%.1f of a double literal) — same sprintf+fwrite path. */
 static void asm_emit_dbl(const char *fmt, double v) {
-    if (asm_out && asm_pass == 2) {
+    if (asm_out && asm_pass == 2 && gen_final) {
         char abuf[512];
         sprintf(abuf, fmt, v);
         fwrite(abuf, 1, strlen(abuf), asm_out);
@@ -113,6 +114,72 @@ static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!st
    and the 3-stage H1==H2 string layout stays identical. */
 static struct { char name[32]; char val[512]; } str_macros[64]; static int str_macro_n;
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
+/* conditional compilation stack (fix 2026-08-05) */
+static int if_parent_skip[64]; static int if_taken[64]; static int if_n; static int if_skip;
+/* #if expression evaluator: defined(X), numbers, macro values, !, &&, ||, comparisons */
+static int pp_eval(const char *e) {
+    /* strip outer parens */
+    while (*e == ' ') e++;
+    int len = (int)strlen(e);
+    while (len > 0 && e[len-1] == ' ') len--;
+    if (len >= 2 && e[0] == '(' && e[len-1] == ')') {
+        char inner[512]; memcpy(inner, e+1, len-2); inner[len-2] = 0;
+        return pp_eval(inner);
+    }
+    if (!strncmp(e, "defined", 7) && e[7] == '(') { /* defined(X) */
+        char nm[32]; int ni = 0; int p = 8;
+        while (isalnum(e[p]) || e[p] == '_' || ((unsigned char)e[p] >= 0x80)) { if (ni < 31) nm[ni++] = e[p]; p++; }
+        nm[ni] = 0;
+        return (macro_find(nm) >= 0 || str_macro_find(nm) != 0) ? 1 : 0;
+    }
+    if (e[0] == '!') return pp_eval(e + 1) ? 0 : 1;
+    /* split on || (lowest precedence), then &&, then ==/!=/< <= > >= */
+    for (int i = 0; e[i]; i++) {
+        if (e[i] == '|' && e[i+1] == '|') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            return (pp_eval(a) || pp_eval(b)) ? 1 : 0;
+        }
+    }
+    for (int i = 0; e[i]; i++) {
+        if (e[i] == '&' && e[i+1] == '&') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            return (pp_eval(a) && pp_eval(b)) ? 1 : 0;
+        }
+    }
+    for (int i = 0; e[i]; i++) {
+        char op = 0; int ol = 0;
+        if (e[i] == '=' && e[i+1] == '=') { op = 1; ol = 2; }
+        else if (e[i] == '!' && e[i+1] == '=') { op = 2; ol = 2; }
+        else if (e[i] == '<' && e[i+1] == '=') { op = 3; ol = 2; }
+        else if (e[i] == '>' && e[i+1] == '=') { op = 4; ol = 2; }
+        else if (e[i] == '<') { op = 5; ol = 1; }
+        else if (e[i] == '>') { op = 6; ol = 1; }
+        if (op) {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + ol);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            int x = pp_eval(a), y = pp_eval(b);
+            if (op == 1) return x == y;
+            if (op == 2) return x != y;
+            if (op == 3) return x <= y;
+            if (op == 4) return x >= y;
+            if (op == 5) return x < y;
+            if (op == 6) return x > y;
+        }
+    }
+    /* number or macro name */
+    if (e[0] == '0' && (e[1] == 'x' || e[1] == 'X')) {
+        int v = 0, p = 2; while (isxdigit((unsigned char)e[p])) { int c = e[p]; v = v * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); p++; }
+        return v;
+    }
+    if (isdigit((unsigned char)e[0])) { int v = 0, p = 0; while (isdigit((unsigned char)e[p])) v = v * 10 + (e[p++] - '0'); return v; }
+    int mv = macro_find(e); if (mv >= 0) return mv;
+    return 0;
+}
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -1532,10 +1599,66 @@ static void lex(const char *s) {
     while (s[i] && ti < TS) {
         while (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r') i++;
         if (!s[i]) break;
+        if (if_skip && s[i] != '#') { while (s[i] && s[i] != '\n') i++; continue; } /* false branch: skip whole code lines (fix 2026-08-05) */
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; }
         if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; }
-        if (s[i] == '#') { /* #define NAME VALUE or skip preprocessor line */
+        if (s[i] == '#') { /* #define NAME VALUE / #include / conditional compilation (fix 2026-08-05: #ifdef/#ifndef/#if/#elif/#else/#endif) */
             int is_def = (s[i + 1] == 'd' && !strncmp(s + i, "#define", 7));
+            int is_ifdef = !strncmp(s + i, "#ifdef", 6);
+            int is_ifndef = !strncmp(s + i, "#ifndef", 7);
+            int is_if = !strncmp(s + i, "#if", 3) && !is_ifdef && !is_ifndef;
+            int is_elif = !strncmp(s + i, "#elif", 5);
+            int is_else = !strncmp(s + i, "#else", 5);
+            int is_endif = !strncmp(s + i, "#endif", 6);
+            if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                int parent = if_skip;
+                char expr[512]; int ei = 0;
+                if (is_if || is_elif) {
+                    int p = i;
+                    if (is_if) p += 3; else p += 5;
+                    while (s[p] == ' ' || s[p] == '\t') p++;
+                    while (s[p] && s[p] != '\n' && ei < 510) expr[ei++] = s[p++];
+                    while (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--; /* trim trailing (fix 2026-08-05: "#if VER > 1" left "VER " → macro lookup failed) */
+                }
+                expr[ei] = 0;
+                int cond = 0;
+                if (is_ifdef || is_ifndef) { /* #ifdef NAME / #ifndef NAME — read macro name straight from s[] */
+                    char nm[32]; int ni = 0;
+                    int p = i + (is_ifdef ? 6 : 7);
+                    while (s[p] == ' ' || s[p] == '\t') p++;
+                    while (isalnum(s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 31) nm[ni++] = s[p]; p++; }
+                    nm[ni] = 0;
+                    int def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    cond = is_ifdef ? def : !def;
+                } else if (is_if || is_elif) {
+                    cond = pp_eval(expr);
+                }
+                if (is_if || is_ifdef || is_ifndef) {
+                    if (if_n < 64) {
+                        if_parent_skip[if_n] = parent;
+                        if (is_if || is_ifdef || is_ifndef) { if_taken[if_n] = cond && !parent; if_skip = parent || !cond; }
+                        if_n++;
+                    }
+                } else if (is_elif) {
+                    if (if_n > 0) {
+                        if (!if_taken[if_n - 1] && !if_parent_skip[if_n - 1]) { if_taken[if_n - 1] = cond; if_skip = if_parent_skip[if_n - 1] || !cond; }
+                        else if_skip = 1;
+                    }
+                } else if (is_else) {
+                    if (if_n > 0) {
+                        if (!if_taken[if_n - 1] && !if_parent_skip[if_n - 1]) { if_taken[if_n - 1] = 1; if_skip = if_parent_skip[if_n - 1]; }
+                        else if_skip = 1;
+                    }
+                } else if (is_endif) {
+                    if (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n - 1] : 0; }
+                }
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* skip directive line */
+                continue;
+            }
+            if (if_skip) { /* in a false branch: skip all lines (incl. #define/#include) until the matching #endif/#elif/#else */
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; }
+                continue;
+            }
             if (is_def) {
                 i += 7;
                 while (s[i] == ' ' || s[i] == '\t') i++;
@@ -3971,7 +4094,7 @@ static void cg(int n) {
         case STR: { /* string literal ??placeholder, patched after codegen */
             int si = nv[n];
             str_place(si); /* ensure string is in data buffer */
-            if (asm_out && asm_pass == 2) {
+            if (asm_out && asm_pass == 2 && gen_final) {
                 /* STR marker uses the COMPACT index (position among PLACED strings),
                    matching asm_zh's .字串 directive order. Some IDs are parsed but
                    never placed (str_offs=-1), so the raw ID misaligns str_offs2. */
@@ -3990,7 +4113,7 @@ static void cg(int n) {
         case FP: { /* double literal: movsd xmm0, [rip + dbl_const] (patched) */
             int di = nv[n];
             dbl_place(di);
-            if (asm_out && asm_pass == 2) {
+            if (asm_out && asm_pass == 2 && gen_final) {
                 asm_emit("    浮取静 xmm0, [rip+DBL%d]\n", (char*)(long long)(di), (char*)(long long)0, (char*)(long long)0);
                 b(0xF2); b(0x0F); b(0x10); b(0x05); b4(0); /* movsd xmm0,[rip+0] bare */
             } else {
@@ -5975,7 +6098,23 @@ int main(int argc, char **argv) {
         data_rva_base = (0x1000 + cp + 4095) & ~4095;
         if (data_rva_base < 0x2000) data_rva_base = 0x2000;
         asm_pass = 2;
+        gen_final = 0;
         gen_code();
+        /* fix 2026-08-05: pass-2 code can GROW past the pass-1 estimate (data-ref
+           encodings shift with the .data base), rounding text past data_rva_base →
+           .text/.data overlap → ERROR_BAD_EXE_FORMAT 193. Recompute the base from
+           the pass-2 cp and re-generate until stable. Intermediate passes are
+           silent (gen_final=0) so the -S asm file holds exactly one code copy. */
+        for (int it = 0; it < 8; it++) {
+            int nb = (0x1000 + cp + 4095) & ~4095;
+            if (nb < 0x2000) nb = 0x2000;
+            if (nb == data_rva_base) break;
+            data_rva_base = nb;
+            gen_code();
+        }
+        gen_final = 1;
+        gen_code();
+        gen_final = 0;
         asm_pass = 0;
     }
 
