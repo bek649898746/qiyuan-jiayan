@@ -52,6 +52,7 @@ __attribute__((unused))
 静 整 crt_entry_off; /* .text offset of the mini-CRT entry stub (pass 2 value) */
 静 整 fvb[512], fve[512], fvn; /* per-function var index ranges (parse order == gen order) */
 静 整 fr_start[512], fr_end[512]; /* per-function rsp_used bounds at parse (exact frame footprint) */
+静 整 gen_final = 0; /* 1 only on the LAST gen_code pass: gate -S asm text so the .asm file holds one copy (fix 2026-08-05: iteration re-runs gen_code → duplicate code + broken label resolution) */
 静 整 gfn; /* current function index during gen_code */
 静 整 vs_end = 0; /* var-search bound: vcnt during parse, fve[gfn] during codegen */
 静 整 parse_base = 0; /* var-search floor during parse: fvb[fvn] inside a function body, else 0.
@@ -72,6 +73,69 @@ __attribute__((unused))
 静 构 { 字 name[32]; 整 val; } macros[64]; 静 整 macro_n;
 静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 64) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
+/* 条件编译栈（fix 2026-08-05） */
+静 整 if_parent_skip[64]; 静 整 if_taken[64]; 静 整 if_n; 静 整 if_skip;
+/* #if 表达式求值：defined(X)、数字、宏值、!、&&、||、比较 */
+静 整 pp_eval(常 字 *e) {
+    循环 (*e == ' ') e++;
+    整 elen = (整)strlen(e);
+    循环 (elen > 0 && e[elen-1] == ' ') elen--;
+    若 (elen >= 2 && e[0] == '(' && e[elen-1] == ')') {
+        字 inner[512]; memcpy(inner, e+1, elen-2); inner[elen-2] = 0;
+        返 pp_eval(inner);
+    }
+    若 (!strncmp(e, "defined", 7) && e[7] == '(') { /* defined(X) */
+        字 nm[32]; 整 ni = 0; 整 p = 8;
+        循环 (isalnum(e[p]) || e[p] == '_' || ((无 字)e[p] >= 0x80)) { 若 (ni < 31) nm[ni++] = e[p]; p++; }
+        nm[ni] = 0;
+        返 (macro_find(nm) >= 0 || str_macro_find(nm) != 0) ? 1 : 0;
+    }
+    若 (e[0] == '!') 返 pp_eval(e + 1) ? 0 : 1;
+    遍 (整 i = 0; e[i]; i++) {
+        若 (e[i] == '|' && e[i+1] == '|') {
+            字 a[512]; 字 b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            整 la = (整)strlen(a); 循环 (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            整 lb = (整)strlen(b); 循环 (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            返 (pp_eval(a) || pp_eval(b)) ? 1 : 0;
+        }
+    }
+    遍 (整 i = 0; e[i]; i++) {
+        若 (e[i] == '&' && e[i+1] == '&') {
+            字 a[512]; 字 b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            整 la = (整)strlen(a); 循环 (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            整 lb = (整)strlen(b); 循环 (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            返 (pp_eval(a) && pp_eval(b)) ? 1 : 0;
+        }
+    }
+    遍 (整 i = 0; e[i]; i++) {
+        整 op = 0; 整 ol = 0;
+        若 (e[i] == '=' && e[i+1] == '=') { op = 1; ol = 2; }
+        否 若 (e[i] == '!' && e[i+1] == '=') { op = 2; ol = 2; }
+        否 若 (e[i] == '<' && e[i+1] == '=') { op = 3; ol = 2; }
+        否 若 (e[i] == '>' && e[i+1] == '=') { op = 4; ol = 2; }
+        否 若 (e[i] == '<') { op = 5; ol = 1; }
+        否 若 (e[i] == '>') { op = 6; ol = 1; }
+        若 (op) {
+            字 a[512]; 字 b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + ol);
+            整 la = (整)strlen(a); 循环 (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            整 lb = (整)strlen(b); 循环 (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            整 x = pp_eval(a); 整 y = pp_eval(b);
+            若 (op == 1) 返 x == y;
+            若 (op == 2) 返 x != y;
+            若 (op == 3) 返 x <= y;
+            若 (op == 4) 返 x >= y;
+            若 (op == 5) 返 x < y;
+            若 (op == 6) 返 x > y;
+        }
+    }
+    若 (e[0] == '0' && (e[1] == 'x' || e[1] == 'X')) {
+        整 v = 0; 整 p = 2; 循环 (isxdigit((无 字)e[p])) { 整 c = e[p]; v = v * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); p++; }
+        返 v;
+    }
+    若 (isdigit((无 字)e[0])) { 整 v = 0; 整 p = 0; 循环 (isdigit((无 字)e[p])) v = v * 10 + (e[p++] - '0'); 返 v; }
+    整 mv = macro_find(e); 若 (mv >= 0) 返 mv;
+    返 0;
+}
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -260,14 +324,14 @@ __attribute__((unused))
 #define NULL 0
 /* ASM text emission for -S mode */
 静 空 asm_emit(常 字 *fmt, 字 *a, 字 *b, 字 *c) {
-    若 (asm_out && asm_pass == 2) {
+    若 (asm_out && asm_pass == 2 && gen_final) {
         字 abuf[512];
         sprintf(abuf, fmt, a, b, c);
         fwrite(abuf, 1, strlen(abuf), asm_out);
     }
 }
 静 空 asm_emit_dbl(常 字 *fmt, 双 v) {
-    若 (asm_out && asm_pass == 2) {
+    若 (asm_out && asm_pass == 2 && gen_final) {
         字 abuf[512];
         sprintf(abuf, fmt, v);
         fwrite(abuf, 1, strlen(abuf), asm_out);
@@ -830,7 +894,7 @@ __attribute__((unused))
    scales by 8. */
 静 整 var_esz(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= 0; i--)
-        若 (!strcmp(vars[i].name, n)) {
+        若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
             若 (vars[i].arr_esz > 0) 返 vars[i].arr_esz;
             返 vars[i].p_esz > 0 ? vars[i].p_esz : 4;
         }
@@ -850,7 +914,7 @@ __attribute__((unused))
 /* eax = param value: register param (rcx/rdx/r8/r9) or stack param ([rbp+pdisp]) */
 静 空 load_param_val(常 字 *name) {
     遍 (整 i = vs_n() - 1; i >= 0; i--) {
-        若 (!strcmp(vars[i].name, name)) {
+        若 (!strcmp(vars[i].name, name) && var_codegen_visible(i)) {
             若 (vars[i].pstk) mov_reg_mbrp(0, vars[i].pdisp); /* eax = [rbp+pdisp] */
             否 若 (vars[i].is_param) { 整 r = -(vars[i].rsp_off + 1); 若 (r != 0) mov_rr(0, r); }
             返;
@@ -966,6 +1030,15 @@ __attribute__((unused))
         *si_out = var_stidx(vn);
         若 (var_isstatic(vn)) lea_rax_rip(stc_disp(off) - 1);
         否 lea_r_mbrp(0, var_sbase(vn, off) - cur_frame_sz);
+        返 0;
+    }
+    若 (nt[n] == 14) { /* arr[i]: rax = &arr[i]; element struct type from the array var (fix 2026-08-05: port C mem_addr nt==14 — nested member chains with an array root, e.g. items[i].p.x, previously returned -1 → stores/loads silently dropped → stack corruption) */
+        字 *av = (字*)(nn + n0[n]);
+        整 si = var_stidx(av);
+        若 (si < 0) 返 -1;
+        cg_no_deref = 1; cg(n); cg_no_deref = 0; /* rax = &arr[i] (struct array / struct ptr) */
+        *fsz_out = stypes[si].sz;
+        *si_out = si;
         返 0;
     }
     若 (nt[n] == 15 || nt[n] == 13) {
@@ -1328,10 +1401,66 @@ __attribute__((unused))
     循环 (s[i] && ti < TS) {
         循环 (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r') i++;
         若 (!s[i]) 断;
+        若 (if_skip && s[i] != '#') { 循环 (s[i] && s[i] != '\n') i++; 续; } /* 假分支跳过整行（fix 2026-08-05） */
         若 (s[i] == '/' && s[i + 1] == '/') { 循环 (s[i] && s[i] != '\n') i++; 续; }
         若 (s[i] == '/' && s[i + 1] == '*') { i += 2; 循环 (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; 若 (s[i]) i += 2; 续; }
-        若 (s[i] == '#') { /* #define NAME VALUE or skip preprocessor line */
+        若 (s[i] == '#') { /* #define / #include / 条件编译（fix 2026-08-05） */
             整 is_def = (s[i + 1] == 'd' && !strncmp(s + i, "#define", 7));
+            整 is_ifdef = !strncmp(s + i, "#ifdef", 6);
+            整 is_ifndef = !strncmp(s + i, "#ifndef", 7);
+            整 is_if = !strncmp(s + i, "#if", 3) && !is_ifdef && !is_ifndef;
+            整 is_elif = !strncmp(s + i, "#elif", 5);
+            整 is_else = !strncmp(s + i, "#else", 5);
+            整 is_endif = !strncmp(s + i, "#endif", 6);
+            若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                整 parent = if_skip;
+                字 expr[512]; 整 ei = 0;
+                若 (is_if || is_elif) {
+                    整 p = i;
+                    若 (is_if) p += 3; 否 p += 5;
+                    循环 (s[p] == ' ' || s[p] == '\t') p++;
+                    循环 (s[p] && s[p] != '\n' && ei < 510) { expr[ei] = s[p]; ei++; p++; }
+                    循环 (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--; /* trim trailing (fix 2026-08-05: "#if VER > 1" left "VER " → macro lookup failed) */
+                }
+                expr[ei] = 0;
+                整 cond = 0;
+                若 (is_ifdef || is_ifndef) { /* #ifdef NAME / #ifndef NAME — 直接从 s[] 读宏名 */
+                    字 nm[32]; 整 ni = 0;
+                    整 p2 = i + (is_ifdef ? 6 : 7);
+                    循环 (s[p2] == ' ' || s[p2] == '\t') p2++;
+                    循环 (isalnum(s[p2]) || s[p2] == '_' || ((无 字)s[p2] >= 0x80)) { 若 (ni < 31) { nm[ni] = s[p2]; ni++; } p2++; }
+                    nm[ni] = 0;
+                    整 def = (macro_find(nm) >= 0);
+                    cond = is_ifdef ? def : !def;
+                } 否 若 (is_if || is_elif) {
+                    cond = pp_eval(expr);
+                }
+                若 (is_if || is_ifdef || is_ifndef) {
+                    若 (if_n < 64) {
+                        if_parent_skip[if_n] = parent;
+                        若 (is_if || is_ifdef || is_ifndef) { if_taken[if_n] = cond && !parent; if_skip = parent || !cond; }
+                        if_n++;
+                    }
+                } 否 若 (is_elif) {
+                    若 (if_n > 0) {
+                        若 (!if_taken[if_n - 1] && !if_parent_skip[if_n - 1]) { if_taken[if_n - 1] = cond; if_skip = if_parent_skip[if_n - 1] || !cond; }
+                        否 if_skip = 1;
+                    }
+                } 否 若 (is_else) {
+                    若 (if_n > 0) {
+                        若 (!if_taken[if_n - 1] && !if_parent_skip[if_n - 1]) { if_taken[if_n - 1] = 1; if_skip = if_parent_skip[if_n - 1]; }
+                        否 if_skip = 1;
+                    }
+                } 否 若 (is_endif) {
+                    若 (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n - 1] : 0; }
+                }
+                循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; }
+                续;
+            }
+            若 (if_skip) { /* 假分支：跳过所有行（含 #define/#include）直到 #endif/#elif/#else */
+                循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; }
+                续;
+            }
             若 (is_def) {
                 i += 7;
                 循环 (s[i] == ' ' || s[i] == '\t') i++;
@@ -4452,7 +4581,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } 否 若(off>=0){
                     整 did=0;
-                    遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static){
+                    遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
                     若(esz==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);} /* IMUL r11d, r9d */
@@ -4565,7 +4694,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 否 {
                     整 si = var_stidx(vname);
                     若 (si >= 0) off -= stypes[si].sz; /* struct: off is END */
-                    否 遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vname)&&vars[vi].arr_sz>0)
+                    否 遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vname)&&vars[vi].arr_sz>0&&var_codegen_visible(vi))
                         { 整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4; off -= vars[vi].arr_sz * esz; 断; }
                     lea_r_mbrp(0, off - cur_frame_sz);
                 }
@@ -4709,7 +4838,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 cg(n1[n]); /* index �?eax */
                 整 did = 0;
                 遍 (整 vi = 0; vi < vs_n(); vi++)
-                    若 (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static) {
+                    若 (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && var_codegen_visible(vi)) {
                         整 esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         cg_mem_frow = vars[vi].p_esz ? vars[vi].p_esz : 4; /* scalar element size (2D outer scale) */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
@@ -5437,7 +5566,23 @@ __attribute__((unused))
     data_rva_base = (0x1000 + cp + 4095) & ~4095;
     若 (data_rva_base < 0x2000) data_rva_base = 0x2000;
     asm_pass = 2;
+    gen_final = 0;
     gen_code();
+    /* fix 2026-08-05: pass-2 code can GROW past the pass-1 estimate (data-ref
+       encodings shift with the .data base), rounding text past data_rva_base →
+       .text/.data overlap → ERROR_BAD_EXE_FORMAT 193. Recompute the base from
+       the pass-2 cp and re-generate until stable. Intermediate passes are
+       silent (gen_final=0) so the -S asm file holds exactly one code copy. */
+    遍 (整 it = 0; it < 8; it++) {
+        整 nb = (0x1000 + cp + 4095) & ~4095;
+        若 (nb < 0x2000) nb = 0x2000;
+        若 (nb == data_rva_base) 断;
+        data_rva_base = nb;
+        gen_code();
+    }
+    gen_final = 1;
+    gen_code();
+    gen_final = 0;
     asm_pass = 0;
 
     /* ??PE */
