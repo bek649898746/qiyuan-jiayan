@@ -1,0 +1,181 @@
+/*
+ * 启元 · 认知工程底座 addyosmani_core.jy —— 甲言化
+ * Skill 设计七原则 / 上下文工程 / 可观测性 RED / 调试循环 / Skill 依赖图
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化移植（原 C 移植版，涂鸦已换）
+ */
+#include <stdio.h>
+#include <string.h>
+
+/* ─── Skill 设计七原则 ─── */
+typedef struct {
+    字 principle[64];   /* 原则名 */
+    字 meaning[128];    /* 含义 */
+} Principle;
+Principle seven_principles[8];
+整 n_principles = 7;
+
+/* ─── 化身 Skill 契约(元数据) ─── */
+typedef struct {
+    字 name[48];           /* 化身/Skill名称 */
+    字 trigger[128];       /* 触发条件 */
+    整 steps;              /* 流程步骤数 */
+    字 verification[64];   /* 验证关卡 */
+    字 anti_pattern[64];   /* 反模式 */
+    字 scope[64];          /* 范围边界 */
+} SkillContract;
+
+空 print_contract(SkillContract *s) {
+    输出("  [%s]\n", s->name);
+    输出("  触发: %s\n", s->trigger);
+    输出("  步骤: %d步\n", s->steps);
+    输出("  验证: %s\n", s->verification);
+    输出("  反模式: %s\n", s->anti_pattern);
+    输出("  边界: %s\n", s->scope);
+}
+
+/* ─── 可观测性 RED(三层) ─── */
+typedef struct { 整 rate; 整 errors; 浮 duration_ms; } REDMetrics;
+
+/* ─── 调试循环 ─── */
+/* 甲言: typedef enum 有编译器 bug，用 #define 常量替代 */
+#define ST_REPRODUCE 0
+#define ST_ISOLATE 1
+#define ST_HYPOTHESIZE 2
+#define ST_TEST 3
+#define ST_FIX 4
+#define ST_PREVENT 5
+字 debug_steps[6][16];   /* 甲言: 用 2D char 数组 + 运行时字拷（字符串指针数组有编译器 bug） */
+
+/* ─── 16个 Skill 依赖关系图 ─── */
+typedef struct {
+    字 name[32];
+    整 level;            /* 基础=0 工程=1 协作=2 运维=3 */
+    字 depends[3][32];   /* 依赖的 Skill */
+    整 nd;
+} SkillNode;
+SkillNode skill_graph[16];
+整 n_skills = 16;
+
+/* ─── 数据初始化（运行时，避免 struct 数组初始化器局限） ─── */
+空 init_data() {
+    /* 七原则 */
+    字拷(seven_principles[0].principle, "Trigger-first");
+    字拷(seven_principles[0].meaning, "每个Skill必须有明确的触发条件");
+    字拷(seven_principles[1].principle, "Process over prose");
+    字拷(seven_principles[1].meaning, "流程>描述, 步骤可执行");
+    字拷(seven_principles[2].principle, "Anti-patterns teach");
+    字拷(seven_principles[2].meaning, "列出常见错误和反面模式");
+    字拷(seven_principles[3].principle, "Verification gate");
+    字拷(seven_principles[3].meaning, "每步有验证关卡, 过不了不继续");
+    字拷(seven_principles[4].principle, "Common rationalizations");
+    字拷(seven_principles[4].meaning, "预判常见的这次不用借口");
+    字拷(seven_principles[5].principle, "Red flags");
+    字拷(seven_principles[5].meaning, "明确标记危险信号和终止条件");
+    字拷(seven_principles[6].principle, "Scope boundaries");
+    字拷(seven_principles[6].meaning, "明确Skill的边界: 做什么和不做什么");
+
+    /* 调试循环 6 步 */
+    字拷(debug_steps[0], "重现");
+    字拷(debug_steps[1], "隔离");
+    字拷(debug_steps[2], "假设");
+    字拷(debug_steps[3], "测试");
+    字拷(debug_steps[4], "修复");
+    字拷(debug_steps[5], "预防");
+
+    /* 依赖图: 基础层 Level0 */
+    字拷(skill_graph[0].name, "context-engineering"); skill_graph[0].level = 0; skill_graph[0].nd = 0;
+    字拷(skill_graph[1].name, "writing-skills"); skill_graph[1].level = 0; skill_graph[1].nd = 1;
+    字拷(skill_graph[1].depends[0], "context-engineering");
+    字拷(skill_graph[2].name, "code-review"); skill_graph[2].level = 0; skill_graph[2].nd = 1;
+    字拷(skill_graph[2].depends[0], "context-engineering");
+    字拷(skill_graph[3].name, "testing"); skill_graph[3].level = 0; skill_graph[3].nd = 1;
+    字拷(skill_graph[3].depends[0], "context-engineering");
+    字拷(skill_graph[4].name, "debugging"); skill_graph[4].level = 0; skill_graph[4].nd = 1;
+    字拷(skill_graph[4].depends[0], "testing");
+    /* 工程实践层 Level1 */
+    字拷(skill_graph[5].name, "observability"); skill_graph[5].level = 1; skill_graph[5].nd = 1;
+    字拷(skill_graph[5].depends[0], "debugging");
+    字拷(skill_graph[6].name, "performance"); skill_graph[6].level = 1; skill_graph[6].nd = 1;
+    字拷(skill_graph[6].depends[0], "observability");
+    字拷(skill_graph[7].name, "security"); skill_graph[7].level = 1; skill_graph[7].nd = 1;
+    字拷(skill_graph[7].depends[0], "code-review");
+    字拷(skill_graph[8].name, "tdd"); skill_graph[8].level = 1; skill_graph[8].nd = 1;
+    字拷(skill_graph[8].depends[0], "testing");
+    字拷(skill_graph[9].name, "composing-skills"); skill_graph[9].level = 1; skill_graph[9].nd = 1;
+    字拷(skill_graph[9].depends[0], "writing-skills");
+    字拷(skill_graph[10].name, "extracting-knowledge"); skill_graph[10].level = 1; skill_graph[10].nd = 1;
+    字拷(skill_graph[10].depends[0], "context-engineering");
+    /* 协作层 Level2 */
+    字拷(skill_graph[11].name, "code-review-collab"); skill_graph[11].level = 2; skill_graph[11].nd = 1;
+    字拷(skill_graph[11].depends[0], "code-review");
+    字拷(skill_graph[12].name, "knowledge-sharing"); skill_graph[12].level = 2; skill_graph[12].nd = 2;
+    字拷(skill_graph[12].depends[0], "extracting-knowledge");
+    字拷(skill_graph[12].depends[1], "composing-skills");
+    /* 运维层 Level3 */
+    字拷(skill_graph[13].name, "shipping"); skill_graph[13].level = 3; skill_graph[13].nd = 3;
+    字拷(skill_graph[13].depends[0], "testing");
+    字拷(skill_graph[13].depends[1], "security");
+    字拷(skill_graph[13].depends[2], "performance");
+    字拷(skill_graph[14].name, "monitoring"); skill_graph[14].level = 3; skill_graph[14].nd = 1;
+    字拷(skill_graph[14].depends[0], "observability");
+    字拷(skill_graph[15].name, "incident-response"); skill_graph[15].level = 3; skill_graph[15].nd = 2;
+    字拷(skill_graph[15].depends[0], "monitoring");
+    字拷(skill_graph[15].depends[1], "debugging");
+}
+
+空 print_dependency_graph() {
+    字 levels[4][16];   /* 甲言: 2D 数组 + 运行时字拷 */
+    字拷(levels[0], "基础层");
+    字拷(levels[1], "工程实践层");
+    字拷(levels[2], "协作层");
+    字拷(levels[3], "运维层");
+    整 cur_level = -1;
+    遍 (整 i = 0; i < n_skills; i++) {
+        若 (skill_graph[i].level != cur_level) {
+            cur_level = skill_graph[i].level;
+            输出("  [%s]\n", levels[cur_level]);
+        }
+        输出("    %s", skill_graph[i].name);
+        若 (skill_graph[i].nd > 0) {
+            输出(" ← ");
+            遍 (整 j = 0; j < skill_graph[i].nd; j++) {
+                输出("%s%s", skill_graph[i].depends[j], j < skill_graph[i].nd - 1 ? ", " : "");
+            }
+        }
+        输出("\n");
+    }
+}
+
+/* ─── 主 ─── */
+整 主() {
+    init_data();
+    输出("=== 启元 · 认知工程底座 · Skill 设计七原则 ===\n\n");
+
+    输出("[七原则] Skill 设计原则:\n");
+    遍 (整 i = 0; i < n_principles; i++)
+        输出("  %d. %s — %s\n", i + 1, seven_principles[i].principle, seven_principles[i].meaning);
+
+    输出("\n[契约] 化身 Skill 元数据示例:\n");
+    SkillContract contracts[2];   /* 甲言: struct 用数组（标量有编译器 bug） */
+    SkillContract *knowledge_agent = &contracts[0];
+    字拷(knowledge_agent->name, "knowledge_agent");
+    字拷(knowledge_agent->trigger, "cycle触发/用户搜索");
+    knowledge_agent->steps = 4;
+    字拷(knowledge_agent->verification, "返回COUNT>0");
+    字拷(knowledge_agent->anti_pattern, "未传查询参数");
+    字拷(knowledge_agent->scope, "只处理知识域搜索,不处理路由");
+    print_contract(knowledge_agent);
+
+    输出("\n[RED] 可观测性三层:\n");
+    输出("  Rate(请求率) | Error(错误率) | Duration(耗时)\n");
+
+    输出("\n[调试] 循环6步:\n");
+    遍 (整 i = 0; i < 6; i++) 输出("  %d. %s\n", i + 1, debug_steps[i]);
+
+    输出("\n[依赖图] 16个 Skill:\n");
+    print_dependency_graph();
+
+    输出("\n  启元认知底座: 七原则/化身契约/Skill依赖图 已甲言化\n");
+    返 0;
+}

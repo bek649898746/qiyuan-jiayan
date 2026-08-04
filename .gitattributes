@@ -1,0 +1,9 @@
+# 甲言源码是 UTF-8 文本；GitHub 不认识 .jy 后缀会猜错编码，这里显式声明。
+*.jy text encoding=UTF-8
+
+# 常见文本文件（显式 UTF-8，防止边缘情况）
+*.c    text encoding=UTF-8
+*.md   text encoding=UTF-8
+*.txt  text encoding=UTF-8
+*.ps1  text eol=crlf
+*.asm  text encoding=UTF-8

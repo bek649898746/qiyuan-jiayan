@@ -1,0 +1,139 @@
+/*
+ * 启元 · 甲言引擎 cpu64_dsa.jy —— 甲言化
+ * 源码: cpu64_dsa.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+// @pure
+/*
+ * cpu64_dsa.c -- CPU64领域专用架构(DSA)指令扩展
+ * 在cpu64_vm现有27条指令基础上新增:
+ *   OP_ODEF   29 — 单指令ODE积分步 (y' = -k*y)
+ *   OP_MVMUL  30 — 单指令矩阵向量乘 (4x4 × 4x1)
+ * 不改原有指令体系, 纯追加
+ * seed=828 | 大哥: 郑宇和 | 启元: 郑启元
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* cpu64最小编码: 4字节指令 word=(op<<24)|(r0<<16)|(r1<<8)|r2 */
+typedef 无 整 word;
+#define OP(i) ((i>>24)&0xFF)
+#define R0(i) ((i>>16)&0xFF)
+#define R1(i) ((i>>8)&0xFF)
+#define R2(i) (i&0xFF)
+
+/* 现有指令(复刻cpu64_vm编码) */
+#define OP_NOP  0
+#define OP_LDI  1
+#define OP_ADD  5
+#define OP_SUB  6
+#define OP_MUL  7
+#define OP_RET  23
+
+/* DSA新指令 */
+#define OP_ODEF  29  /* ODE积分步: y -= k * y * dt */
+#define OP_MVMUL 30  /* 4x4矩阵向量乘: v[0..3] = M[0..15] × v[0..3] */
+
+/* 寄存器文件 + 内存 */
+#define REGS 16
+#define MEM_W 4096
+静 word regs[REGS];
+静 word mem[MEM_W];
+
+/* 矩阵缓存(用于OP_MVMUL) */
+静 word *mx_ptr;
+
+/* ——— 执行一条指令(含DSA扩展) ——— */
+静 空 exec_dsa(word inst) {
+    无 字 op = OP(inst), r0 = R0(inst), r1 = R1(inst), r2 = R2(inst);
+    
+    择 (op) {
+    例 OP_NOP: 断;
+    例 OP_LDI: regs[r0] = (r1 << 8) | r2; 断;
+    例 OP_ADD: regs[r0] = regs[r1] + regs[r2]; 断;
+    例 OP_SUB: regs[r0] = regs[r1] - regs[r2]; 断;
+    例 OP_MUL: regs[r0] = regs[r1] * regs[r2]; 断;
+    例 OP_RET: /* 模拟return */ 断;
+    
+    /* ----- DSA扩展 ----- */
+    例 OP_ODEF: {
+        /* ODE积分步: regs[r0] -= k * regs[r0] * dt
+         * k = regs[r1] / 1000.0f (定点), dt = regs[r2] / 1000.0f
+         */
+        word y = regs[r0];
+        word k = regs[r1];
+        word dt = regs[r2];
+        /* 定点运算: y = y - (y * k * dt) / 1e6 */
+        word dy = (y * k * dt) / 1000000;
+        若 (y > dy) regs[r0] = y - dy;
+        否 regs[r0] = 0;
+        断;
+    }
+    例 OP_MVMUL: {
+        /* 4x4矩阵乘4x1向量
+         * 矩阵基址=regs[r0], 向量基址=regs[r1]
+         * M[0..15]在mem[base..base+15], v[0..3]在mem[base2..base2+3]
+         */
+        word mbase = regs[r0];
+        word vbase = regs[r1];
+        word result[4];
+        遍 (整 i = 0; i < 4; i++) {
+            word s = 0;
+            遍 (整 j = 0; j < 4; j++)
+                s += mem[mbase + i*4 + j] * mem[vbase + j];
+            result[i] = s;
+        }
+        遍 (整 i = 0; i < 4; i++)
+            mem[vbase + i] = result[i];
+        断;
+    }
+    缺: 断;
+    }
+}
+
+/* ——— 汇编器: 将助记符文本编码为word ——— */
+静 word asm_word(无 字 op, 无 字 r0, 无 字 r1, 无 字 r2) {
+    返 (op << 24) | (r0 << 16) | (r1 << 8) | r2;
+}
+
+静 整 self_test() {
+    输出("; cpu64_dsa -- DSA指令扩展\n");
+    输出("; OP_ODEF=%d OP_MVMUL=%d\n", OP_ODEF, OP_MVMUL);
+    
+    /* === 测试1: OP_ODEF ODE积分步 === */
+    regs[0] = 1000;  /* y = 1000 */
+    regs[1] = 50;    /* k = 0.050 */
+    regs[2] = 100;   /* dt = 0.100 */
+    word inst = asm_word(OP_ODEF, 0, 1, 2);
+    exec_dsa(inst);
+    输出("; ODEF: y=1000 k=50 dt=100 → y=%u (dy=%u)\n", regs[0], (1000u*50u*100u)/1000000u);
+    
+    /* === 测试2: OP_MVMUL 4x4矩阵向量乘 === */
+    word mbase = 0;
+    word vbase = 16;
+    遍 (整 i = 0; i < 16; i++) mem[mbase + i] = (i == 0 || i == 5 || i == 10 || i == 15) ? 2 : 0; /* 对角阵2 */
+    遍 (整 i = 0; i < 4; i++) mem[vbase + i] = i + 1;  /* 向量 [1,2,3,4] */
+    regs[0] = mbase;
+    regs[1] = vbase;
+    inst = asm_word(OP_MVMUL, 0, 1, 0);
+    exec_dsa(inst);
+    输出("; MVMUL: diag(2)×[1,2,3,4] → [%u,%u,%u,%u]\n",
+           mem[vbase], mem[vbase+1], mem[vbase+2], mem[vbase+3]);
+    
+    /* === 测试3: 连续ODEF 10步 = 物理衰减模拟 === */
+    regs[0] = 10000; /* 初始能量 */
+    regs[1] = 10;    /* k=0.010 */
+    regs[2] = 50;    /* dt=0.050, 衰减=10000*0.01*0.05=5/步 */
+    输出("; ODEF连续10步: ");
+    遍 (整 i = 0; i < 10; i++) {
+        exec_dsa(asm_word(OP_ODEF, 0, 1, 2));
+        输出("%u ", regs[0]);
+    }
+    输出("\n");
+    
+    输出("; [OK] cpu64_dsa DSA指令扩展龙骨\n");
+    返 0;
+}
+整 主() { 返 self_test(); }

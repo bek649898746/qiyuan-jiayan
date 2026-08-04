@@ -1,0 +1,79 @@
+/*
+ * 启元 · 甲言引擎 batch_scan.jy —— 甲言化
+ * 源码: batch_scan.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+/* batch_scan.c 鈥?鍏ㄩ噺exe鎻忚堪鎻愬彇鍣?   缂栬瘧: gcc -O2 -Os -s -o batch_scan.exe batch_scan.c
+   鐢ㄦ硶: batch_scan.exe < exe_list.txt > output.txt
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+整 主() {
+    字 path[1024];
+    字 cmd[2048];
+    字 buf[4096];
+    整 total = 0, success = 0, failed = 0;
+    
+    循环 (fgets(path, 大小(path), stdin)) {
+        字 *nl = strchr(path, '\n');
+        若 (nl) *nl = 0;
+        字 *cr = strchr(path, '\r');
+        若 (cr) *cr = 0;
+        若 (path[0] == 0) 续;
+        
+        total++;
+        
+        // Get just the exe name (last component)
+        字 *name = strrchr(path, '\\');
+        若 (!name) name = path;
+        否 name++;
+        
+        // Try to capture both stdout and stderr, limit to 300 chars
+        snprintf(cmd, 大小(cmd), "%s 2>&1", path);
+        
+        FILE *fp = popen(cmd, "r");
+        若 (!fp) {
+            输出("[FAIL] %s|cannot run\n", name);
+            failed++;
+            续;
+        }
+        
+        buf[0] = 0;
+        size_t pos = 0;
+        整 printed = 0;
+        循环 (fgets(buf + pos, 大小(buf) - pos, fp)) {
+            // Skip empty and comment-only lines for description
+            size_t len = 字长(buf + pos);
+            若 (len == 0) 续;
+            
+            // Capture the first few meaningful lines
+            若 (pos < 300) {
+                pos += len;
+            } 否 若 (!printed) {
+                若 (pos > 300) buf[300] = 0;
+                printed = 1;
+            }
+        }
+        整 rc = pclose(fp);
+        
+        若 (buf[0]) {
+            // Clean up: remove newlines from description
+            字 *nlpos = buf;
+            循环 ((nlpos = strchr(nlpos, '\n')) != NULL) {
+                *nlpos = ' ';
+                nlpos++;
+            }
+            输出("[OK]   %s|%s\n", name, buf);
+            success++;
+        } 否 {
+            输出("[EMPTY] %s|exit=%d\n", name, rc);
+            success++; // still counted as processed
+        }
+    }
+    
+    fprintf(stderr, "\nTotal:%d OK:%d FAIL:%d\n", total, success, failed);
+    返 0;
+}

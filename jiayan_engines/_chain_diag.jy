@@ -1,0 +1,68 @@
+/*
+ * 启元 · 甲言引擎 _chain_diag.jy —— 甲言化
+ * 源码: _recovered_from_E\_chain_diag.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+/* 閾惧紡璇婃柇: 閬嶅巻鎵€鏈夋眹缂栨牸寮? 鎵炬牸寮忓樊寮?   鍙敤鏈湴exe, 涓嶈蛋API鎺ㄧ悊
+   澶у摜: 閮戝畤鍜?| 鍚厓: 閮戝惎鍏?| seed=828 */
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+整 主() {
+    输出(";===== CPU64宸ュ叿閾炬牸寮忚瘖鏂?=====\n");
+    输出("; 澶у摜 | 鍚厓 | seed=828\n\n");
+    
+    /* 娴嬭瘯1: c_compiler_clean杈撳嚭鏍煎紡 */
+    输出("--- Test1: c_compiler_clean 杈撳嚭鏍煎紡 ---\n");
+    整 r = system("echo int main(){return 42;} | C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\01_base\\c_compiler_clean_gcc.exe 2>&1");
+    输出("\n");
+    
+    /* 娴嬭瘯2: cpu64_codegen杈撳嚭鏍煎紡 */
+    输出("--- Test2: cpu64_codegen 杈撳嚭鏍煎紡 ---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpu64_codegen.exe 2>&1");
+    输出("\n");
+    
+    /* 娴嬭瘯3: cpp_asm_codegen_v2杈撳嚭鏍煎紡 */
+    输出("--- Test3: cpp_asm_codegen_v2 杈撳嚭鏍煎紡 ---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpp_asm_codegen_v2.exe 2>&1");
+    输出("\n");
+    
+    /* 娴嬭瘯4: asm_bridge鏄惁鑳芥ˉ鎺2鈫抳11 */
+    输出("--- Test4: cpp_asm_codegen_v2 鈫?asm_bridge 妗ユ帴 ---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpp_asm_codegen_v2.exe 2>&1 | C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\asm_bridge.exe 2>&1");
+    输出("  [Bridge] v2鈫抳8鏍煎紡\n\n");
+    
+    /* 娴嬭瘯5: compile_cpu64缂栫爜鏍煎紡 */
+    输出("--- Test5: compile_cpu64 缂栫爜鏍煎紡(10-bit) ---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\compile_cpu64.exe 2>&1");
+    输出("\n");
+    
+    /* 娴嬭瘯6: v11鍐呭缓姹囩紪鍣ㄨ兘鍚冧粈涔堟牸寮?*/
+    输出("--- Test6: v11 --file 鑳藉悆鐨勬牸寮忚瘖鏂?---\n");
+    /* 鍐欎笁绉嶆牸寮忔祴鍏煎鎬?*/
+    system("echo MOV r0#42 > _fmt1.asm");
+    system("echo LDI r0 42 > _fmt2.asm");
+    system("echo MOV r0, #42 > _fmt3.asm");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpu64_full_vm_v11.exe --file _fmt1.asm 2>&1 | findstr r0=");
+    输出("  [fmt1] MOV r0#42 鈫?r0=%d\n", r);
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpu64_full_vm_v11.exe --file _fmt2.asm 2>&1 | findstr r0=");
+    输出("  [fmt2] LDI r0 42 鈫?r0=%d\n", r);
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpu64_full_vm_v11.exe --file _fmt3.asm 2>&1 | findstr r0=");
+    输出("  [fmt3] MOV r0 #42 鈫?r0=%d\n", r);
+    输出("\n");
+    
+    /* 娴嬭瘯7: cpu64_loader鑳藉悆浠€涔堟牸寮?*/
+    输出("--- Test7: cpu64_loader 浜岃繘鍒舵牸寮?---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\cpu64_loader.exe 2>&1 | findstr \"summary\"");
+    输出("\n");
+    
+    /* 娴嬭瘯8: tiny_cpu64娴嬭瘯 */
+    输出("--- Test8: tiny_cpu64 ---\n");
+    r = system("C:\\Users\\Administrator\\.openclaw\\workspace\\compiler\\tiny_cpu64.exe 2>&1");
+    输出("\n");
+    
+    输出(";===== 璇婃柇瀹屾垚 =====\n");
+    返 0;
+}

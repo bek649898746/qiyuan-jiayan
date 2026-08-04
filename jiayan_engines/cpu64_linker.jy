@@ -1,0 +1,72 @@
+/*
+ * 启元 · 甲言引擎 cpu64_linker.jy —— 甲言化
+ * 源码: srclib/cpu64_linker.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+/* C→CPU64 连接器 —— 战斗态 */
+/* 把c_parser产生的AST直接转成CPU64汇编 */
+/* 计算机AI化身: IR生成 硬件化身: 指令编码 数学化身: 寄存器着色 */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* CPU64 二进制编码 */
+typedef 无 短 word;
+
+word encode_ldi(整 reg, 整 val) { 返 (word)(0x8000 | (reg << 10) | (val & 0x3FF)); }
+word encode_mov(整 dst, 整 src)  { 返 (word)(0x4000 | (dst << 5) | src); }
+word encode_add(整 dst, 整 src)  { 返 (word)(0x2000 | (dst << 5) | src); }
+word encode_sub(整 dst, 整 src)  { 返 (word)(0x1000 | (dst << 5) | src); }
+word encode_mul(整 dst, 整 src)  { 返 (word)(0x0800 | (dst << 5) | src); }
+word encode_cmp(整 rn, 整 rm)    { 返 (word)(0x0400 | (rn << 5) | rm); }
+word encode_jmp(word addr)         { 返 (word)(0x0200 | (addr & 0x1FF)); }
+word encode_jz(word addr)          { 返 (word)(0x0100 | (addr & 0x1FF)); }
+word encode_jnz(word addr)         { 返 (word)(0x0080 | (addr & 0x1FF)); }
+word encode_hlt()                  { 返 0x0040; }
+
+整 主() {
+    输出(";== 战斗态: C→CPU64 二进制编码器 v1 ==\n");
+    输出("; seed=828  三化身协同 handshake\n\n");
+    
+    /* 测试: return 42; → 3条指令 */
+    word prog1[] = {
+        encode_ldi(0, 42),    /* LDI r0, 42 */
+        encode_hlt()           /* HLT */
+    };
+    
+    输出("; int main() { return 42; }\n");
+    输出("; 二进制: ");
+    遍 (整 i = 0; i < 2; i++)
+        输出("0x%04X ", prog1[i]);
+    输出("\n; 大小: %d bytes\n\n", (整)大小(prog1));
+    
+    /* 测试: Fibonacci(7) 循环 */
+    /* LDI r0,0 / LDI r1,1 / LDI r2,7 / loop: MOV r3,r1 / ADD r1,r0 / MOV r0,r3 / DEC r2 / CMP r0,r2 / JZ end / JMP loop / end: HLT */
+    word fib[] = {
+        encode_ldi(0,0), encode_ldi(1,1), encode_ldi(2,7),
+        encode_mov(3,1), encode_add(1,0), encode_mov(0,3),
+        encode_sub(2,1),  /* 模拟DEC: SUB r2,1 但CPU64的DEC是单指令, 这里先吃个警告 */
+        0x0000,           /* placeholder - 后面需要CPU64 DEC编码 */
+        encode_cmp(0,2), encode_jz(12), encode_jmp(3),
+        encode_hlt()
+    };
+    /* 修正: CPU64 DEC的编码放进来 */
+    fib[7] = 0x0044; /* DEC r2 */
+    
+    输出("; Fibonacci(7) CPU64二进制\n");
+    输出("; 指令数: %d\n", (整)(大小(fib)/大小(word)));
+    输出("; 字节: %d bytes\n", (整)大小(fib));
+    输出("; HEX: ");
+    遍 (整 i = 0; i < (整)(大小(fib)/大小(word)); i++)
+        输出("%04X ", fib[i]);
+    输出("\n\n");
+    
+    /* 验证: CPU64可以加载这段二进制 */
+    输出(";== 二进制验证 ==\n");
+    输出("; CPU64.load_program(fib, %d) → 执行Fibonacci\n", (整)(大小(fib)/大小(word)));
+    输出("; 预期: r0 = 13 (Fibonacci(7))\n");
+    输出(";== HELLO, CPU64 ==\n");
+    返 0;
+}

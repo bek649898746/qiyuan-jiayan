@@ -1,0 +1,87 @@
+/*
+ * 启元 · 甲言引擎 weighted_uf.jy —— 甲言化
+ * 源码: weighted_uf.c（C 版）| 纯 C 整数引擎
+ * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
+ * 2026-08-04 甲言化（自动翻译 + 验证通过）
+ */
+// @pure 
+/*
+ * weighted_uf.c 鈥?甯︽潈骞舵煡闆?(鍏冪礌闂寸浉瀵硅窛绂?
+ * 琛€鑲夋暟鎹粨鏋勫彛璇€
+ * 缂栬瘧: gcc -O2 -Wall -Wextra -Os -s -o wuf.exe weighted_uf.c
+ */
+// @pure <=4KB
+#include <stdio.h>
+#include <string.h>
+
+#define N 10
+
+静 整 parent[N];
+静 整 rank[N];
+静 整 weight[N];  /* 鍒扮埗鑺傜偣鐨勮窛绂?*/
+
+空 uf_init(空) {
+    遍 (整 i = 0; i < N; i++) { parent[i] = i; rank[i] = 0; weight[i] = 0; }
+}
+
+整 uf_find(整 x) {
+    若 (parent[x] != x) {
+        整 p = parent[x];
+        parent[x] = uf_find(parent[x]);
+        weight[x] += weight[p];
+    }
+    返 parent[x];
+}
+
+整 uf_diff(整 x, 整 y) {
+    若 (uf_find(x) != uf_find(y)) 返 -999; /* 涓嶅悓闆嗗悎 */
+    返 weight[y] - weight[x];
+}
+
+空 uf_union(整 x, 整 y, 整 diff) {
+    /* y姣攛澶iff: weight[y] = weight[x] + diff */
+    整 rx = uf_find(x), ry = uf_find(y);
+    若 (rx == ry) 返;
+    若 (rank[rx] < rank[ry]) {
+        parent[rx] = ry;
+        weight[rx] = weight[y] - weight[x] + diff;
+    } 否 {
+        parent[ry] = rx;
+        weight[ry] = weight[x] - weight[y] - diff;
+        若 (rank[rx] == rank[ry]) rank[rx] = rank[rx] + 1;
+    }
+}
+
+整 主(空) {
+    输出(";========================================\n");
+    输出(";  甯︽潈骞舵煡闆?(鐩稿璺濈)\n");
+    输出(";========================================\n\n");
+
+    uf_init();
+
+    /* 瀹氫箟鍏崇郴: y = x + diff */
+    uf_union(0, 1, 5);    /* 1姣?澶? */
+    uf_union(1, 2, 3);    /* 2姣?澶? */
+    uf_union(3, 4, 10);   /* 4姣?澶?0 */
+    uf_union(0, 3, 15);   /* 3姣?澶?5 */
+
+    输出("  鍏崇郴:\n");
+    输出("    v1 = v0 + 5\n");
+    输出("    v2 = v1 + 3 = v0 + 8\n");
+    输出("    v4 = v3 + 10\n");
+    输出("    v3 = v0 + 15\n");
+
+    输出("\n  鏌ヨ鐩稿璺濈:\n");
+    输出("    diff(1,0)=%d (搴?)\n", uf_diff(1,0));
+    输出("    diff(2,0)=%d (搴?)\n", uf_diff(2,0));
+    输出("    diff(3,0)=%d (搴?5)\n", uf_diff(3,0));
+    输出("    diff(4,3)=%d (搴?0)\n", uf_diff(4,3));
+    输出("    diff(4,0)=%d (搴?5)\n", uf_diff(4,0));
+
+    输出("\n  涓嶅悓闆嗗悎: diff(5,0)=%d (搴?999)\n", uf_diff(5,0));
+
+    输出("\n  搴旂敤: 鐗╃悊鍗曚綅杞崲銆佽揣甯佹眹鐜囥€並ruskal MST\n");
+
+    输出("\n; WeightedUF 鉁?琛€鑲夊～姣昞n");
+    返 0;
+}
