@@ -211,7 +211,9 @@
     若 (strcmp(mn, "除64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, r & 7); } 返 1; } /* cqo; idiv r64（LL；fix 2026-08-05） */
 若 (strcmp(mn, "除余64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, r & 7); } 返 1; } /* cqo; idiv r64（qcc 文本自带「移64 r0, r2」取余数；fix 2026-08-05） */
 若 (strcmp(mn, "整除") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); modrm(3, 7, r & 7); } 返 1; }
-    若 (strcmp(mn, "无符号除") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); modrm(3, 6, r & 7); } 返 1; } /* div r（无符号；fix 2026-08-05：qcc %x 的 emit_hex_digits 生成，原缺失） */
+    若 (strcmp(mn, "无符号除") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); modrm(3, 6, r & 7); } 返 1; }
+    若 (strcmp(mn, "无符号除64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { b(0x48); b(0xF7); modrm(3, 6, r & 7); } 返 1; } /* div r64 (unsigned LL; fix 2026-08-06 M1) */
+    若 (strcmp(mn, "无符号除余64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { b(0x48); b(0xF7); modrm(3, 6, r & 7); } 返 1; } /* div r64, rax=rdx (qcc 自带移64; fix 2026-08-06 M1) */ /* div r（无符号；fix 2026-08-05：qcc %x 的 emit_hex_digits 生成，原缺失） */
     若 (strcmp(mn, "取反") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); b(0xD8 | (r & 7)); } 返 1; }
     若 (strcmp(mn, "减即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0x83); modrm(3, 5, r & 7); b(v); } 返 1; }
     若 (strcmp(mn, "运即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 0, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 0, r & 7); b4(v); } } 返 1; }
@@ -265,7 +267,7 @@
 若 (strcmp(mn, "乘无64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xF7); modrm(3, 4, r & 7); } 返 1; } /* mul r64（P0） */
 若 (strcmp(mn, "乘即") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(1, d & 8, 0, s & 8); 若 (v >= -128 && v <= 127) { b(0x6B); modrm(3, d & 7, s & 7); b(v & 0xff); } 否 { b(0x69); modrm(3, d & 7, s & 7); b4(v); } } 返 1; } /* imul r64,r64,imm（P0） */
     若 (strcmp(mn, "加指针") == 0) { SK(); 若 (strncmp(gp, "rax", 3) == 0) { gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (v >= -128 && v <= 127) { rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 0); b(v & 0xff); } 否 { rex(1, 0, 0, 0); b(0x05); b4(v); } } 返 1; }
-    若 (strcmp(mn, "扩展符号") == 0) { b(0x48); b(0x99); 返 1; }
+    若 (strcmp(mn, "扩展符号") == 0) { b(0x99); 返 1; } /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负值高32位为0 → 变无符号除法!) */
     若 (strcmp(mn, "清零") == 0) { SK(); 整 r = RG(); 若 (r == 2 || r < 0) { b(0x31); b(0xD2); } 返 1; }
     若 (strcmp(mn, "测试位") == 0) { SK(); 若 (strncmp(gp, "r0", 2) == 0) { gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); rex(1, 0, 0, 0); b(0x0F); b(0xBA); b(0xE0); b(v); } 返 1; }
 若 (strcmp(mn, "测试位64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xA3); modrm(3, s & 7, d & 7); } 返 1; } /* bt r64,r64（P0） */
