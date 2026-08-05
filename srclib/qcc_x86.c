@@ -4136,6 +4136,7 @@ static int parse(const char *s) {
             }
             if (tt[tk] == SK) { tk++; continue; } /* function prototype: register name, no body; call sites auto-register */
             Nc(fdef, blk());
+            if (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
             parse_base = 0; /* back to file scope for the next top-level item */
