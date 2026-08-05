@@ -147,7 +147,16 @@ static void fn_macro_collect(const char *s) {
                 if (s[p] == ')') p++;
                 while (s[p] == ' ' || s[p] == '\t') p++;
                 int bi = 0;
-                while (s[p] && s[p] != '\n' && bi < 511) fn_macros[fn_macro_n].body[bi++] = s[p++];
+                while (s[p] && s[p] != '\n' && bi < 511) {
+                    if (s[p] == '\\' && (s[p + 1] == '\n' || (s[p + 1] == '\r' && s[p + 2] == '\n'))) { /* 多行 body: \ 续行 → 空格 (fix 2026-08-05) */
+                        if (bi < 511) fn_macros[fn_macro_n].body[bi++] = ' ';
+                        p++;
+                        if (s[p] == '\r') p++;
+                        if (s[p] == '\n') p++;
+                        continue;
+                    }
+                    fn_macros[fn_macro_n].body[bi++] = s[p++];
+                }
                 fn_macros[fn_macro_n].body[bi] = 0;
                 fn_macro_n++;
             }
@@ -445,6 +454,29 @@ static void fp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
         int e = 0; while (s[i] >= '0' && s[i] <= '9') { e = e * 10 + (s[i] - '0'); i++; }
         double p10 = 1; for (int k = 0; k < e; k++) p10 *= 10;
         if (es > 0) v *= p10; else v /= p10;
+    }
+    *pi = i;
+    char *vp = (char *)&v;
+    int lo = (vp[0] & 0xff) | ((vp[1] & 0xff) << 8) | ((vp[2] & 0xff) << 16) | ((vp[3] & 0xff) << 24);
+    int hi = (vp[4] & 0xff) | ((vp[5] & 0xff) << 8) | ((vp[6] & 0xff) << 16) | ((vp[7] & 0xff) << 24);
+    *out_lo = lo; *out_hi = hi;
+}
+
+/* hex float literal: 0x1.8p3 = 1.5*2^3 = 12.0 (C99; fix 2026-08-05: was parsed as hex int then junk) */
+static void hexfp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
+    double v = 0; int i = *pi; /* s[i] = first hex digit (after 0x) */
+    while (isxdigit((unsigned char)s[i])) { int c = s[i] | 0x20; v = v * 16 + (c <= '9' ? c - '0' : c - 'a' + 10); i++; }
+    if (s[i] == '.') {
+        i++;
+        double fr = 1.0 / 16;
+        while (isxdigit((unsigned char)s[i])) { int c = s[i] | 0x20; double d = c <= '9' ? c - '0' : c - 'a' + 10; v += d * fr; fr /= 16; i++; }
+    }
+    if (s[i] == 'p' || s[i] == 'P') {
+        i++; int es = 1;
+        if (s[i] == '+' || s[i] == '-') { if (s[i] == '-') es = -1; i++; }
+        int e = 0; while (s[i] >= '0' && s[i] <= '9') { e = e * 10 + (s[i] - '0'); i++; }
+        double p2 = 1; for (int k = 0; k < e; k++) p2 *= 2;
+        if (es > 0) v *= p2; else v /= p2;
     }
     *pi = i;
     char *vp = (char *)&v;
@@ -1847,6 +1879,18 @@ static void lex(const char *s) {
         if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0;
             if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2;
+                /* hex float literal 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
+                int j = i; while (isxdigit((unsigned char)s[j])) j++;
+                int is_hexfp = 0;
+                if (s[j] == '.' && isxdigit((unsigned char)s[j + 1])) is_hexfp = 1;
+                else if (s[j] == 'p' || s[j] == 'P') is_hexfp = 1;
+                if (is_hexfp) {
+                    int fhi, flo;
+                    hexfp_parse(s, &i, &fhi, &flo);
+                    if (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; }
+                    tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
+                    ti++; continue;
+                }
                 while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') tv[ti] = tv[ti] * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') tv[ti] = tv[ti] * 16 + (c - 'a' + 10); else tv[ti] = tv[ti] * 16 + (c - 'A' + 10); i++; }
             } else {
                 /* floating literal? digits '.' digits  or digits e[+-]digits */
@@ -6305,6 +6349,18 @@ int main(int argc, char **argv) {
     {
         char *rtb = read_file("srclib/qcc_rt.c");
         if (!rtb) rtb = read_file("qcc_rt.c");
+        if (!rtb && argc > 1) { /* cwd 无关: 基于源码路径推导运行时 (fix 2026-08-05: 原相对 cwd, 非根目录编译静默缺运行时) */
+            char sp[1024];
+            strncpy(sp, argv[1], 1023); sp[1023] = 0;
+            char *sl = strrchr(sp, '/');
+            char *bs = strrchr(sp, '\\');
+            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
+            if (last) {
+                *last = 0;
+                strcat(sp, "/srclib/qcc_rt.c");
+                rtb = read_file(sp);
+            }
+        }
         if (rtb) {
             int rl = (int)strlen(rtb);
             int al = (int)strlen(src);

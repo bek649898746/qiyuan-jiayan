@@ -109,7 +109,16 @@ __attribute__((unused))
                 若 (s[p] == ')') p++;
                 循环 (s[p] == ' ' || s[p] == '\t') p++;
                 整 bi = 0;
-                循环 (s[p] && s[p] != '\n' && bi < 511) fn_macros[fn_macro_n].body[bi++] = s[p++];
+                循环 (s[p] && s[p] != '\n' && bi < 511) {
+                    若 (s[p] == '\\' && (s[p + 1] == '\n' || (s[p + 1] == '\r' && s[p + 2] == '\n'))) { /* 多行 body: \ 续行 → 空格 (fix 2026-08-05) */
+                        若 (bi < 511) fn_macros[fn_macro_n].body[bi++] = ' ';
+                        p++;
+                        若 (s[p] == '\r') p++;
+                        若 (s[p] == '\n') p++;
+                        续;
+                    }
+                    fn_macros[fn_macro_n].body[bi++] = s[p++];
+                }
                 fn_macros[fn_macro_n].body[bi] = 0;
                 fn_macro_n++;
             }
@@ -398,6 +407,29 @@ __attribute__((unused))
         整 e = 0; 循环 (s[i] >= '0' && s[i] <= '9') { e = e * 10 + (s[i] - '0'); i++; }
         双 p10 = 1; 遍 (整 k = 0; k < e; k++) p10 *= 10;
         若 (es > 0) v *= p10; 否 v /= p10;
+    }
+    *pi = i;
+    字 *vp = (字 *)&v;
+    整 lo = (vp[0] & 0xff) | ((vp[1] & 0xff) << 8) | ((vp[2] & 0xff) << 16) | ((vp[3] & 0xff) << 24);
+    整 hi = (vp[4] & 0xff) | ((vp[5] & 0xff) << 8) | ((vp[6] & 0xff) << 16) | ((vp[7] & 0xff) << 24);
+    *out_lo = lo; *out_hi = hi;
+}
+
+/* 十六进制浮点字面量: 0x1.8p3 = 1.5*2^3 = 12.0 (C99; fix 2026-08-05: 曾被当 hex 整数解析) */
+静 空 hexfp_parse(常 字 *s, 整 *pi, 整 *out_hi, 整 *out_lo) {
+    双 v = 0; 整 i = *pi; /* s[i] = 第一个 hex 数字 (0x 之后) */
+    循环 (isxdigit((无 字)s[i])) { 整 c = s[i] | 0x20; v = v * 16 + (c <= '9' ? c - '0' : c - 'a' + 10); i++; }
+    若 (s[i] == '.') {
+        i++;
+        双 fr = 1.0 / 16;
+        循环 (isxdigit((无 字)s[i])) { 整 c = s[i] | 0x20; 双 d = c <= '9' ? c - '0' : c - 'a' + 10; v += d * fr; fr /= 16; i++; }
+    }
+    若 (s[i] == 'p' || s[i] == 'P') {
+        i++; 整 es = 1;
+        若 (s[i] == '+' || s[i] == '-') { 若 (s[i] == '-') es = -1; i++; }
+        整 e = 0; 循环 (s[i] >= '0' && s[i] <= '9') { e = e * 10 + (s[i] - '0'); i++; }
+        双 p2 = 1; 遍 (整 k = 0; k < e; k++) p2 *= 2;
+        若 (es > 0) v *= p2; 否 v /= p2;
     }
     *pi = i;
     字 *vp = (字 *)&v;
@@ -1631,6 +1663,18 @@ __attribute__((unused))
         若 (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0;
             若 (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2;
+                /* 十六进制浮点字面量 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
+                整 j = i; 循环 (isxdigit((无 字)s[j])) j++;
+                整 is_hexfp = 0;
+                若 (s[j] == '.' && isxdigit((无 字)s[j + 1])) is_hexfp = 1;
+                否 若 (s[j] == 'p' || s[j] == 'P') is_hexfp = 1;
+                若 (is_hexfp) {
+                    整 fhi, flo;
+                    hexfp_parse(s, &i, &fhi, &flo);
+                    若 (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; }
+                    tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
+                    ti++; 续;
+                }
                 循环 (isxdigit(s[i])) { 整 c = s[i]; 若 (c >= '0' && c <= '9') tv[ti] = tv[ti] * 16 + (c - '0'); 否 若 (c >= 'a' && c <= 'f') tv[ti] = tv[ti] * 16 + (c - 'a' + 10); 否 tv[ti] = tv[ti] * 16 + (c - 'A' + 10); i++; }
             } 否 {
                 /* floating literal? digits '.' digits  or digits e[+-]digits */
@@ -5800,6 +5844,18 @@ __attribute__((unused))
     {
         字 *rtb = read_file("srclib/qcc_rt.c");
         若 (!rtb) rtb = read_file("qcc_rt.c");
+        若 (!rtb && argc > 1) { /* cwd 无关: 基于源码路径推导运行时 (fix 2026-08-05: 原相对 cwd, 非根目录编译静默缺运行时) */
+            字 sp[1024];
+            strncpy(sp, argv[1], 1023); sp[1023] = 0;
+            字 *sl = strrchr(sp, '/');
+            字 *bs = strrchr(sp, '\\');
+            字 *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
+            若 (last) {
+                *last = 0;
+                strcat(sp, "/srclib/qcc_rt.c");
+                rtb = read_file(sp);
+            }
+        }
         若 (rtb) {
             整 rl = (整)strlen(rtb);
             整 al = (整)strlen(src);
