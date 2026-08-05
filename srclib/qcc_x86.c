@@ -4520,6 +4520,12 @@ static int emit_fmt_loop(void) {
     set_label(lsnoprec);
     mov_r_imm(1, 0x7FFFFFFF); /* ecx = huge (practically unbounded) */
     set_label(lcp);
+    /* H2 fix 2026-08-06: %s 缓冲上限检查 — r12 已达 rbp（scratch 272B 起点 [rbp-272]）即停止，防止覆盖保存的 rbp/返回地址。
+       用 rbp 直接比较（不占 r11，格式指针在 %s 结束后仍需推进）。 */
+    asm_emit("    比较64 r12, rbp\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0x39); modrm(3, 5, 4); /* cmp r12, rbp */
+    asm_emit("    置高等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x93); modrm(3, 0, 0); /* setae al (r12 >= rbp); 置高等 = setae(0x93)，与 asm_zh setcc(34) 一致 (fix 2026-08-06) */
+    asm_emit("    零扩展 eax, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(3, 0, 0); /* movzx eax, al — 无 0x40 REX，与 asm_zh movzx_eax_al 一致 */
+    test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lfmt, 3); /* r12 >= rbp -> stop; is_jmp=3=非零跳，与 jnz_rel(0F 85) 一致 (fix 2026-08-06) */
     asm_emit("    零扩展 eax, [r8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 0, 0); /* movzx eax, byte[r8] */
     test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lfmt, 1);
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lfmt, 1); /* count exhausted */
