@@ -5419,10 +5419,17 @@ static void cg(int n) {
                         movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[k] - 8);
                         movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0);
                     }
-                    { int pad8 = ((nargs + extra + 5) & 1) ? 8 : 0; /* call 前 rsp%%16==0（msvcrt SSE 对齐指令；fix 2026-08-06） */
-                    if (extra > 0) sub_rsp_imm(32 + 8 * extra + pad8); else sub_rsp_imm(32 + pad8);
+                    { /* fix 2026-08-06: 显式对齐替代启发式 pad8 — pad8=((nargs+extra+5)&1) 在表达式嵌套时错（printf 参数里的 pow 调用，fmt 已压栈偏移 8 → rsp 未对齐 → msvcrt movdqa SIGSEGV）。
+                          r15 保存 rsp → and rsp,-16 → sub 32 shadow → call → 恢复。数学函数全为 1-2 double 参数（extra=0）。 */
+                    push_r(15); /* save r15 */
+                    mov_rr64(15, 4); /* mov r15, rsp */
+                    asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp, -16 */
+                    sub_rsp_imm(32); /* shadow space */
                     call_iat(mslot);
-                    add_rsp_imm(32 + 8 * extra + pad8 + total_h); }
+                    add_rsp_imm(32);
+                    mov_rr64(4, 15); /* mov rsp, r15 */
+                    pop_r(15); /* restore r15 */
+                    add_rsp_imm(total_h); /* pop dead arg slots */ }
                     math_done = 1;
                 } else {
                     mov_r_imm(0, 0); /* undefined �?return 0 */
