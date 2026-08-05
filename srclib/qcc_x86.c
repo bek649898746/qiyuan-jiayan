@@ -47,7 +47,7 @@ __attribute__((unused))
 static char __pad0[0x160000];
 static char str_tbl[1024][512]; int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
-static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns; } vars[4096]; int vcnt;
+static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096]; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
 static int root_global, g_lc_save, g_rsp_save, entry_rva_global;
@@ -65,6 +65,9 @@ static int parse_base = 0; /* var-search floor during parse: fvb[fvn] inside a f
 static int cg_no_deref = 0; /* case 14: skip the final deref (nested-store base address) */
 static int cg_mem_frow = 0; /* case 15: row size of the last static-struct array member read (2D field: fnames[idx]) */
 static int cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
+static int cg_fdepth = 0;   /* multi-D nested-array chain depth (fix 2026-08-05) */
+static int cg_fdepth_max = 0; /* innermost array's dimension count (deref only at outermost) */
+static int cg_frows[4];     /* per-dim row sizes, set by the innermost array var */
 static int cg_ginit_ctx = 0; /* 1 while emitting ginit initializers at main entry (case-7 must NOT skip them) */
 static int cur_fn_sret = 0;  /* parse/codegen: current function returns a >8B struct by value (Win64 sret) */
 static int cur_ret_si = -1;  /* codegen: current function's return struct type index (-1 = not struct) */
@@ -300,15 +303,17 @@ static int pp_eval(const char *e) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[32]; char fnames[32][32]; int foffs[32]; int fsizes[32]; int frows[32]; int ftypes[32]; char fdbls[32]; int fn; int sz; } stypes[64]; static int st_n;
+static struct { char name[32]; char fnames[32][32]; int foffs[32]; int fsizes[32]; int frows[32]; int ftypes[32]; int fbits[32]; int fbitof[32]; char fdbls[32]; char fsgn[32]; int fn; int sz; } stypes[64]; static int st_n;
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) return i;
     return -1;
 }
+static int bit_slot = -1, bit_pos = 0;  /* bit-field packing state: current int-slot foffs + bit offset inside it */
 static int st_add(const char *n) {
     if (st_n >= 64) return -1;
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0;
+    bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     return st_n++;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
@@ -316,9 +321,39 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
     stypes[si].fsizes[idx] = fsz;
-    stypes[si].frows[idx] = frow;
+    memcpy(&stypes[si].frows[idx], &frow, 4); /* fix 2026-08-05: direct frows[idx]=frow made nested-store scale read the OLD st_field_row -> self-referential garbage on self-host; &arr[i] scales by the fixed element size */
     stypes[si].ftypes[idx] = -1; /* not a struct field by default */
+    stypes[si].fbits[idx] = 0; stypes[si].fbitof[idx] = 0; /* non bit-field */
+    stypes[si].fsgn[idx] = 0; /* non bit-field: signedness irrelevant (fix 2026-08-05) */
+    bit_slot = -1; bit_pos = 0; /* a non-bit-field ends any pending bit run */
     stypes[si].sz += fsz; stypes[si].fn = stypes[si].fn + 1;
+}
+static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, int uns) {
+    /* real bit-field semantics: pack consecutive bit-fields into shared int slots.
+       foffs = slot byte offset; fbitof = bit offset inside the slot; fbits = width.
+       uns = 1 for `unsigned` bit-fields (no sign extension on read); int → signed. */
+    int idx = stypes[si].fn;
+    strcpy(stypes[si].fnames[idx], fn);
+    if (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
+    stypes[si].foffs[idx] = bit_slot;
+    stypes[si].fsizes[idx] = fsz;
+    memcpy(&stypes[si].frows[idx], &frow, 4);
+    stypes[si].ftypes[idx] = -1;
+    stypes[si].fbits[idx] = bitw;
+    stypes[si].fbitof[idx] = bit_pos;
+    stypes[si].fsgn[idx] = uns;
+    bit_pos += bitw;
+    stypes[si].fn = stypes[si].fn + 1;
+}
+static void st_field_bit_anon(int si, int bitw) {
+    /* unnamed bit-field ": N" — occupies bits but registers no field (fix 2026-08-05).
+       : 0 forces the next named bit-field into a fresh int slot (C rule). */
+    if (bitw > 0) {
+        if (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
+        bit_pos += bitw;
+    } else {
+        bit_slot = -1; bit_pos = 0; /* zero-width: next field starts a new slot */
+    }
 }
 static void st_field_ty(int si, const char *fn, int ty) {
     for (int i = 0; i < stypes[si].fn; i++)
@@ -327,7 +362,7 @@ static void st_field_ty(int si, const char *fn, int ty) {
 static int st_field_ty_idx(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return -1;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) return stypes[si].ftypes[i];
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].ftypes[i], 4); return v; }
     return -1;
 }
 static void st_field_dbl(int si, const char *fn) { /* mark a struct field as double (8-byte movsd access) */
@@ -337,7 +372,7 @@ static void st_field_dbl(int si, const char *fn) { /* mark a struct field as dou
 static int st_field_is_dbl(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return 0;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) return stypes[si].fdbls[i];
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v = 0; memcpy(&v, &stypes[si].fdbls[i], 1); return v != 0; } /* fix 2026-08-05: `int v; memcpy(&v,...,1)` left 3 garbage bytes → self-host flagged plain fields as double → comparisons went fp; v=0 zeroes the slot first */
     return 0;
 }
 static void st_field_sz(int si, const char *fn, int fsz) { st_field_sz_r(si, fn, fsz, 1); }
@@ -349,6 +384,7 @@ static void st_union_field(int si, const char *fn, int fsz) {
     stypes[si].fsizes[idx] = fsz;
     stypes[si].frows[idx] = 1;
     stypes[si].ftypes[idx] = -1;
+    stypes[si].fbits[idx] = 0; stypes[si].fbitof[idx] = 0; stypes[si].fsgn[idx] = 0; /* union fields: never bit-fields (fix 2026-08-05) */
     if (fsz > stypes[si].sz) stypes[si].sz = fsz;
     stypes[si].fn = stypes[si].fn + 1;
 }
@@ -357,20 +393,38 @@ static void st_field(int si, const char *fn) { st_field_sz(si, fn, 4); }
 static int st_field_row(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return 0;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) return stypes[si].frows[i];
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].frows[i], 4); return v; }
     return 0;
 }
 static int st_off(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return -1;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) return stypes[si].foffs[i];
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].foffs[i], 4); return v; }
     return -1;
+}
+static int st_field_bitw(const char *sn, const char *fn) { /* bit-field width, 0 = not a bit-field (fix 2026-08-05) */
+    int si = st_find(sn); if (si < 0) return 0;
+    for (int i = 0; i < stypes[si].fn; i++)
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].fbits[i], 4); return v; }
+    return 0;
+}
+static int st_field_bitof(const char *sn, const char *fn) { /* bit offset inside the slot (fix 2026-08-05) */
+    int si = st_find(sn); if (si < 0) return 0;
+    for (int i = 0; i < stypes[si].fn; i++)
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].fbitof[i], 4); return v; }
+    return 0;
+}
+static int st_field_is_uns(const char *sn, const char *fn) { /* 1 = unsigned bit-field (no sign-extend on read) (fix 2026-08-05) */
+    int si = st_find(sn); if (si < 0) return 0;
+    for (int i = 0; i < stypes[si].fn; i++)
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v = 0; memcpy(&v, &stypes[si].fsgn[i], 1); return v != 0; }
+    return 0;
 }
 static int st_sz(const char *sn) { int si = st_find(sn); return si >= 0 ? stypes[si].sz : 0; }
 static int st_field_size(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return 0;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) return stypes[si].fsizes[i];
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].fsizes[i], 4); return v; }
     return 0;
 }
 
@@ -512,6 +566,13 @@ static void rex(int w, int r, int x, int bval) { b(0x40 | (w ? 8 : 0) | (r ? 4 :
 
 /* MOV reg32, imm32 (zero-extends to 64-bit in x86-64) */
 static void mov_r_imm(int reg, int imm) { asm_emit("    移动 r%d, %d\n", (char*)(long long)(reg), (char*)(long long)(imm), (char*)(long long)0); b(0xB8 | (reg & 7)); b4(imm); }
+/* MOV rax, imm64 (48 B8 imm64) — long long literals (fix 2026-08-05) */
+static void mov_rax_imm64(long long imm) {
+    asm_emit("    移动64 r0, %d\n", (char*)(long long)((int)(imm & 0xFFFFFFFF)), (char*)(long long)0, (char*)(long long)0); /* text: low 32 (asm_zh approximation) */
+    b(0x48); b(0xB8); b4((int)(imm & 0xFFFFFFFF)); b4((int)(((unsigned long long)imm) >> 32));
+}
+/* push/pop r64 (sub rsp,8; mov [rsp],r64) — 64-bit temporaries, nesting-safe (fix 2026-08-05) */
+/* NOTE: defined after sub_rsp_imm/add_rsp_imm (below 831) — sub_rsp_imm needs its forward decl first */
 /* MOV [rsp+disp], reg32 */
 __attribute__((unused))
 static void mov_mrsp_reg(int disp, int reg) {
@@ -773,11 +834,23 @@ static void add_rsp_imm(int v) { asm_emit("    加栈 %d\n", (char*)(long long)(
 /* SUB rsp, imm32 �?imm8 (0x83) sign-extends and breaks for frame sizes �?0x80 */
 static void sub_rsp_imm(int v) { asm_emit("    减栈 %d\n", (char*)(long long)(v), (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x81); b(0xEC); b4(v); }
 
+/* push/pop r64 (sub rsp,8; mov [rsp],r64) — 64-bit temporaries, nesting-safe (fix 2026-08-05: mov [rsp+0] clobbered across nested LL ops) */
+static void push_r64(int reg) {
+    sub_rsp_imm(8);
+    asm_emit("    存栈64 [rsp+0], r%d\n", (char*)(long long)(reg), (char*)(long long)0, (char*)(long long)0);
+    rex(1, reg & 8, 0, 0); b(0x89); modrm(1, reg & 7, 4); b(0x24); b(0);
+}
+static void pop_r64(int reg) {
+    asm_emit("    取栈64 r%d, [rsp+0]\n", (char*)(long long)(reg), (char*)(long long)0, (char*)(long long)0);
+    rex(1, reg & 8, 0, 0); b(0x8B); modrm(1, reg & 7, 4); b(0x24); b(0);
+    add_rsp_imm(8);
+}
+
 /* b4_at: write 4 bytes at absolute position */
 static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0xff; code[pos+2] = (v>>16)&0xff; code[pos+3] = (v>>24)&0xff; }
 
 /* ?????? ??????: ???????????????????? */
-#define ASZ 131072
+#define ASZ 262144
 #define MAX_LABELS 16384
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
@@ -787,6 +860,8 @@ static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n;
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
 static int ginit[128]; static int ginit_n; /* global variable initializer nodes (emitted at main entry) */
 static int ndbl[ASZ]; /* per-node flag: expression yields a double (floating) */
+static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
+static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
 static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
 
 /* ==================== COFF 对象输出（-c 模式） ==================== */
@@ -960,6 +1035,11 @@ static int var_is_dbl(const char *n) {
     for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
     return 0;
 }
+/* long long var: 64-bit int loads/stores (fix 2026-08-05) */
+static int var_is_ll(const char *n) {
+    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_ll;
+    return 0;
+}
 /* unsigned variable: >> must use SHR (logical), not SAR (fix 2026-08-05) */
 static int var_is_uns(const char *n) {
     for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_uns;
@@ -971,6 +1051,19 @@ static int var_pdbl(const char *n) {
     return 0;
 }
 /* 8-byte frame slot for a local double */
+static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05) */
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_ll = 1; return vars[i].rsp_off; }
+    if (vcnt >= 4000) exit(1);
+    strcpy(vars[vcnt].name, n);
+    rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
+    vars[vcnt].rsp_off = rsp_used - 8;
+    vars[vcnt].is_param = 0;
+    vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
+    vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].is_ll = 1;
+    return vars[vcnt++].rsp_off;
+}
 static int var_double(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_dbl = 1; return vars[i].rsp_off; }
     if (vcnt >= 4000) exit(1);
@@ -980,7 +1073,7 @@ static int var_double(const char *n) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
-    vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     vars[vcnt].is_dbl = 1;
     return vars[vcnt++].rsp_off;
 }
@@ -998,7 +1091,7 @@ static int var_offset(const char *n) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
-    vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
 static int var_offset_ptr(const char *n, int pesz) {
@@ -1012,7 +1105,7 @@ static int var_offset_ptr(const char *n, int pesz) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
-    vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     off = vars[vcnt].rsp_off;
     vcnt++;
     return off;
@@ -1026,7 +1119,7 @@ static int var_static(const char *n, int pesz) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
-    vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
 static int var_isstatic(const char *n) {
@@ -1044,7 +1137,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = esz;
-    vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
@@ -1058,7 +1151,7 @@ static int var_static_struct(const char *n, int si, int count) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = slots * 4; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = stypes[si].sz;
-    vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
 /* RIP-relative offset to .data static slot (RVA data_rva_base + 0x140 + 4*idx) from instr at 0x1000+cp */
@@ -1095,7 +1188,7 @@ static int var_struct(const char *n, int si) {
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = sz; vars[vcnt].arr_sz = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
-    vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
 __attribute__((unused))
@@ -1109,10 +1202,10 @@ static int var_array(const char *n, int count, int esz) {
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = esz;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
-    vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
-static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int is_dbl) {
+static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int is_dbl, int is_ll) { /* is_ll: long long param -> 8-byte slot (fix 2026-08-05) */
     /* always allocate a fresh frame slot; incoming value copied in function prologue.
        esz = pointer element size for ptr[i] indexing (1 char* / 4 int* / 8 char**),
        so `char **argv` scales argv[i] by 8, not 4. struct* params scale by struct size.
@@ -1121,7 +1214,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
        slot fed from xmm[i] (Win64). */
     if (vcnt >= 4000) exit(1);
     strcpy(vars[vcnt].name, n);
-    int psz = (pesz > 0 || stidx >= 0 || is_dbl) ? 8 : 4; /* struct/dbl by-value param: 8-byte slot */
+    int psz = (pesz > 0 || stidx >= 0 || is_dbl || is_ll) ? 8 : 4; /* struct/dbl/LL by-value param: 8-byte slot */
     int big_val = (stidx >= 0 && stypes[stidx].sz > 8);
     if (big_val) pesz = 4; /* big struct param is passed as a pointer to the copy */
     rsp_used += psz;
@@ -1131,7 +1224,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
     vars[vcnt].pslot = slot;
     vars[vcnt].st_idx = stidx; vars[vcnt].st_sz = (stidx >= 0) ? stypes[stidx].sz : 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = esz;
     vars[vcnt].p_esz = pesz;
-    vars[vcnt].is_dbl = is_dbl; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].is_dbl = is_dbl; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     if (cur_fn_sret) {
         /* sret function: hidden return pointer occupies rcx; params take rdx/r8/r9,
            then the stack. slot 3+ maps to the FIRST stack slot ([rbp+56]). */
@@ -1248,8 +1341,8 @@ static void load_ptr_slot(int off, const char *vn) {
 static void load_param_val(const char *name) {
     for (int i = vs_n() - 1; i >= 0; i--) {
         if (!strcmp(vars[i].name, name) && var_codegen_visible(i)) {
-            if (vars[i].pstk) mov_reg_mbrp(0, vars[i].pdisp); /* eax = [rbp+pdisp] */
-            else if (vars[i].is_param) { int r = -(vars[i].rsp_off + 1); if (r != 0) mov_rr(0, r); }
+            if (vars[i].pstk) { if (vars[i].is_ll) mov_reg_mbrp64(0, vars[i].pdisp); else mov_reg_mbrp(0, vars[i].pdisp); } /* eax/rax = [rbp+pdisp] (LL: 64-bit, fix 2026-08-05) */
+            else if (vars[i].is_param) { int r = -(vars[i].rsp_off + 1); if (r != 0) { if (vars[i].is_ll) mov_rr64(0, r); else mov_rr(0, r); } }
             return;
         }
     }
@@ -1334,9 +1427,11 @@ static int lbl_reg(const char *n) {
 }
 enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66 }; /* MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
-#define TS 131072
+#define TS 262144
 static int *tt, *tv; char (*tn)[32]; char (*nn)[32]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
 static int *tuns; /* per-token unsigned-suffix flag (0xFFFFFFFFu) — fix 2026-08-05 */
+static int *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-08-05 */
+static int *tll_hi; /* per-token high 32 bits of a long-long literal (fix 2026-08-05) */
 
 static int *nt, *nv, *n0, *n1, *n2, *n3, *n4, *n5, *n6, *n7, *n8, *n9, *n10, *n11, *n12, *n13, *n14, *n15, *n16, *n17, *n18, *n19, *n20, *n21, *n22, *n23, *n24, *n25, *n26, *n27, *n28, *n29, *n30, *n31, *n32, *n33, *n34, *n35, *n36, *n37, *n38, *n39, *n40, *n41, *n42, *n43, *n44, *n45, *n46, *n47, *n48, *n49, *n50, *n51, *n52, *n53, *n54, *n55, *n56, *n57, *n58, *n59, *n60, *n61, *n62, *n63, *n64, *n65, *n66, *n67, *n68, *n69, *n70, *n71, *n72, *n73, *n74, *n75, *n76, *n77, *n78, *n79, *n80, *n81, *n82, *n83, *n84, *n85, *n86, *n87, *n88, *n89, *n90, *n91, *n92, *n93, *n94, *n95, *n96, *n97, *n98, *n99, *n100, *n101, *n102, *n103, *n104, *n105, *n106, *n107, *n108, *n109, *n110, *n111, *n112, *n113, *n114, *n115, *n116, *n117, *n118, *n119, *n120, *n121, *n122, *n123, *n124, *n125, *n126, *n127, *n128, *n129, *n130, *n131, *n132, *n133, *n134, *n135, *n136, *n137, *n138, *n139, *n140, *n141, *n142, *n143, *n144, *n145, *n146, *n147, *n148, *n149, *n150, *n151, *n152, *n153, *n154, *n155, *n156, *n157, *n158, *n159, *n160, *n161, *n162, *n163, *n164, *n165, *n166, *n167, *n168, *n169, *n170, *n171, *n172, *n173, *n174, *n175, *n176, *n177, *n178, *n179, *n180, *n181, *n182, *n183, *n184, *n185, *n186, *n187, *n188, *n189, *n190, *n191, *n192, *n193, *n194, *n195, *n196, *n197, *n198, *n199, *n200, *n201, *n202, *n203, *n204, *n205, *n206, *n207, *n208, *n209, *n210, *n211, *n212, *n213, *n214, *n215, *n216, *n217, *n218, *n219, *n220, *n221, *n222, *n223, *n224, *n225, *n226, *n227, *n228, *n229, *n230, *n231, *n232, *n233, *n234, *n235, *n236, *n237, *n238, *n239, *n240, *n241, *n242, *n243, *n244, *n245, *n246, *n247, *n248, *n249, *n250, *n251, *n252, *n253, *n254, *n255, nc;
 
@@ -1394,6 +1489,7 @@ static int mem_addr(int n, int *fsz_out, int *si_out) {
         if (fo != 0) add_rax_imm8(fo);
         *fsz_out = st_field_size(stypes[sub_si].name, fn);
         *si_out = st_field_ty_idx(stypes[sub_si].name, fn);
+        if (*si_out < 0 && st_field_bitw(stypes[sub_si].name, fn) > 0) *si_out = sub_si; /* bit-field: report the CONTAINING struct so callers can extract/store (fix 2026-08-05) */
         cg_mem_frow = st_field_row(stypes[sub_si].name, fn); /* array field: element size for a following [i] */
         return 0;
     }
@@ -1876,7 +1972,8 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cval; ti++; continue;
         }
-        if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0;
+        if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll_hi[ti] = 0;
+            long long v64 = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05) */
             if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2;
                 /* hex float literal 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
@@ -1891,7 +1988,7 @@ static void lex(const char *s) {
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; continue;
                 }
-                while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') tv[ti] = tv[ti] * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') tv[ti] = tv[ti] * 16 + (c - 'a' + 10); else tv[ti] = tv[ti] * 16 + (c - 'A' + 10); i++; }
+                while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') v64 = v64 * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') v64 = v64 * 16 + (c - 'a' + 10); else v64 = v64 * 16 + (c - 'A' + 10); i++; }
             } else {
                 /* floating literal? digits '.' digits  or digits e[+-]digits */
                 int j = i; while (isdigit(s[j])) j++;
@@ -1907,12 +2004,14 @@ static void lex(const char *s) {
                     ti++; continue;
                 }
                 if (s[i] == '0' && s[i + 1] >= '0' && s[i + 1] <= '7') { /* 八进制 0755 = 493 (fix 2026-08-05: was decimal → 755) */
-                    while (s[i] >= '0' && s[i] <= '7') tv[ti] = tv[ti] * 8 + (s[i++] - '0');
+                    while (s[i] >= '0' && s[i] <= '7') v64 = v64 * 8 + (s[i++] - '0');
                 } else {
-                    while (isdigit(s[i])) tv[ti] = tv[ti] * 10 + (s[i++] - '0');
+                    while (isdigit(s[i])) v64 = v64 * 10 + (s[i++] - '0');
                 }
             }
+            tv[ti] = (int)v64; tll_hi[ti] = (int)(v64 >> 32); /* low/high 32 (fix 2026-08-05) */
             if (s[i] == 'u' || s[i] == 'U') { tuns[ti] = 1; i++; } /* unsigned suffix 0xFFFFFFFFu (fix 2026-08-05) */
+            if (s[i] == 'l' || s[i] == 'L') { while (s[i] == 'l' || s[i] == 'L') i++; tll[ti] = 1; } /* long long suffix (fix 2026-08-05) */
             ti++; continue; }
         if (isalpha(s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) { int j = 0; while (isalnum(s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) { if (j < 31) tn[ti][j++] = s[i]; i++; } tn[ti][j] = 0;
             /* 甲言库函数: 中文名 → 英文名 (输出→printf, 分配→malloc ...) */
@@ -2258,6 +2357,40 @@ static int prim(void) {
                 int sz = st_sz(tn[tk]); tk++; /* struct name */
                 if (tt[tk] == KK) tk++; /* ) */
                 int n = Nd(0); nv[n] = sz; return n;
+            } else if (tt[tk] == FK) { /* sizeof(struct {...}) — anonymous inline definition (fix 2026-08-05: was unhandled → parse returned -1 and main() body was silently dropped) */
+                tk++; /* { */
+                char aname[32]; aname[0] = 0; int si = st_add(aname);
+                int funs = 0; /* unsigned bit-field marker */
+                while (tk < TS && tt[tk] != UK) {
+                    int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
+                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; if (tt[tk] == VR) { char fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
+                    else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
+                    if (tt[tk] == CL) { /* unnamed bit-field */
+                        tk++; int ubw = 0;
+                        if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                        st_field_bit_anon(si, ubw);
+                        funs = 0;
+                    }
+                    if (tt[tk] == VR) {
+                        char fn[32]; strcpy(fn, tn[tk]); tk++;
+                        int bitw = 0;
+                        if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } }
+                        if (bitw > 0) { st_field_bit(si, fn, fsz, fsz, bitw, funs); if (fdbl) st_field_dbl(si, fn); funs = 0; }
+                        else {
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            if (dims >= 1) frow = fsz / first; else frow = fsz;
+                            st_field_sz_r(si, fn, fsz, frow);
+                            if (fdbl) st_field_dbl(si, fn);
+                        }
+                    }
+                    if (tt[tk] == CK) tk++;
+                    if (tt[tk] == SK) tk++;
+                }
+                if (tt[tk] == UK) tk++; /* } */
+                int sz = stypes[si].sz;
+                if (tt[tk] == KK) tk++; /* ) */
+                int n = Nd(0); nv[n] = sz; return n;
             }
         }
         if (tt[tk] == VR && td_is(tn[tk])) { /* sizeof(TypedefName) — typedef'd struct/double (fix 2026-08-03: was 4) */
@@ -2299,7 +2432,7 @@ static int prim(void) {
         }
         return -1;
     }
-    if (tt[tk] == NK) { int n = Nd(0); nv[n] = tv[tk]; if (tuns[tk]) nuns[n] = 1; tk++; return n; } /* u-suffix literal → unsigned flag (fix 2026-08-05) */
+    if (tt[tk] == NK) { int n = Nd(0); nv[n] = tv[tk]; if (tuns[tk]) nuns[n] = 1; if (tll[tk]) { nll[n] = 1; nll_hi[n] = tll_hi[tk]; } tk++; return n; } /* u-/LL-suffix literals → flags (fix 2026-08-05) */
     if (tt[tk] == FP) { int n = Nd(0); nv[n] = tv[tk]; nt[n] = FP; ndbl[n] = 1; tk++; return n; } /* double literal */
     if (tt[tk] == VR) {
         /* NULL = 0 (fix 2026-08-03: the self-host lexer has no preprocessor, so
@@ -2311,6 +2444,7 @@ static int prim(void) {
         if (ev >= 0) { tk++; int n = Nd(0); nv[n] = ev; return n; }
         int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 32); tk++;
         if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
+        if (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
         /* suffix chain: arr[expr] / .field / ->field (repeatable) */
         while (1) {
             if (tt[tk] == LB) { /* array access */
@@ -2353,11 +2487,12 @@ static int prim(void) {
             else if (tt[tk] == VR && td_is(tn[tk])) tk++;
             while (tt[tk] == DK) tk++; /* pointer * */
             if (tt[tk] == KK) tk++; /* ) */
-            int ce = expr();
+            int ce = prim(); /* cast operand is a UNARY expr — prim() not expr(): (long long)1<<32 must shift the 64-bit cast, not parse as (long long)(1<<32) (fix 2026-08-05) */
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si).
                expr_is_double covers double-returning CALLS whose ndbl is set only at
                codegen (root-cause 2026-08-03: ndbl[ce] alone missed them → no-op cast). */
             if (cast_ty && !strcmp(cast_ty, "int") && (ndbl[ce] || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; return m; }
+            if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
             
             return ce; /* cast is no-op: value unchanged */
         }
@@ -2414,6 +2549,7 @@ static int expr(void) { return asgn(); }
 
 /* local ARRAY brace init: int a[3]={1,2,3}; -> a[0]=1; a[1]=2; a[2]=3; */
 static int gi_idx[8];  /* 全局多维初始化游标 (fix 2026-08-05) */
+static int str_row = 0; /* string-init row counter: char rows filled in order (fix 2026-08-05) */
 
 static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
@@ -2429,6 +2565,44 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
             gi_idx[depth + 1] = 0; /* reset the child cursor (fix: next row continued from the previous row's column) */
             brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
             gi_idx[depth]++; /* 行推进 */
+            continue;
+        }
+        if (tt[tk] == STR) { /* char 行 = 字符串: char s[2][4] = {"ab","cd"} — copy the string BYTES into the row (fix 2026-08-05: was stored as a string ADDRESS → garbage) */
+            int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32);
+            char *sval = str_tbl[tv[tk]]; tk++;
+            int row_sz = dims[nd - 1] ? dims[nd - 1] : 1;
+            /* 行号 → 前 nd-1 维索引（从次内层展开，独立于嵌套 depth） */
+            int rem = str_row;
+            int idxs[8];
+            for (int i = nd - 2; i >= 0; i--) { idxs[i] = rem % (dims[i] ? dims[i] : 1); rem /= (dims[i] ? dims[i] : 1); }
+            int node = idn;
+            for (int i = 0; i < nd - 1; i++) {
+                int acc = Nd(14); Nc(acc, node);
+                int idx = Nd(0); nv[idx] = idxs[i];
+                Nc(acc, idx);
+                node = acc;
+            }
+            int len = (int)strlen(sval);
+            if (len > row_sz) len = row_sz;
+            for (int k = 0; k < len; k++) {
+                int acc = Nd(14); Nc(acc, node);
+                int idx = Nd(0); nv[idx] = k;
+                Nc(acc, idx);
+                int asgn = Nd(10); Nc(asgn, acc);
+                int cn = Nd(0); nv[cn] = (unsigned char)sval[k];
+                Nc(asgn, cn);
+                Nc(b, asgn);
+            }
+            if (len < row_sz) { /* NUL-terminate (C: the rest of the char row is zeroed) */
+                int acc = Nd(14); Nc(acc, node);
+                int idx = Nd(0); nv[idx] = len;
+                Nc(acc, idx);
+                int asgn = Nd(10); Nc(asgn, acc);
+                int cn = Nd(0); nv[cn] = 0;
+                Nc(asgn, cn);
+                Nc(b, asgn);
+            }
+            str_row++;
             continue;
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
@@ -2481,9 +2655,10 @@ static int blk(void) {
                 char tname[32]; strcpy(tname, tn[tk - 1]);
                 int nsi = st_add(tname);
                 tk++; /* { */
+                int funs = 0; /* unsigned bit-field marker (crosses the unsigned/int iterations; fix 2026-08-05) */
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) fsz = 1; else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fsz = 1; else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* funs: unsigned prefix marks the bit-field (fix 2026-08-05) */
                     else if (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
                         tk++;
                         if (tt[tk] == VR) {
@@ -2524,13 +2699,27 @@ static int blk(void) {
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
+                    if (tt[tk] == CL) { /* unnamed bit-field ": N" — padding bits, no field (fix 2026-08-05: was unhandled → parse loop stuck on ':' forever) */
+                        tk++; int ubw = 0;
+                        if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                        st_field_bit_anon(nsi, ubw);
+                        funs = 0; /* unsigned marker must not leak past an unnamed bit-field (fix 2026-08-05) */
+                    }
                     if (tt[tk] == VR) {
                         char fn[32]; strcpy(fn, tn[tk]); tk++;
+                        int bitw = 0;
+                        if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: was unhandled → parse loop stuck on ':' forever) */
+                        if (bitw > 0) {
+                            st_field_bit(nsi, fn, fsz, fsz, bitw, funs); /* bit-field: packed into shared int slots */
+                            if (fdbl) st_field_dbl(nsi, fn);
+                            funs = 0;
+                        } else {
                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
                         if (dims >= 1) frow = fsz / first;
                         else frow = fsz;
                         st_field_sz_r(nsi, fn, fsz, frow);
                         if (fdbl) st_field_dbl(nsi, fn);
+                        }
                     }
                     if (tt[tk] == CK) tk++;
                     if (tt[tk] == SK) tk++;
@@ -2682,10 +2871,12 @@ static int blk(void) {
             int was_enum = (tt[tk] == EN);
             int ltd_si = -1; /* typedef'd struct type index (fix 2026-08-03: typedef local decls were unhandled → EngineStat s was registered as int, field offsets 0) */
             if (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); } /* no tk++ here — the shared tk++ below skips the type name */
+            int tdi2v = tdef_lookup(tn[tk]); int tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); int tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef var/array: ops_t ops[2] / ops_t f (fix 2026-08-05: was registered as int → 4-byte elements, fnptr calls loaded the wrong address; p_dbl=0 broke double-return calls on case-10 assigns) */
             int is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
             int is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             int is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
+            int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")); /* long long → 8-byte int (fix 2026-08-05) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             int is_ptr = (tt[tk] == DK);
@@ -2733,7 +2924,7 @@ static int blk(void) {
                    st_idx set so arr[i].field resolves (fix 2026-08-03: this branch
                    shadowed the second typedef branch, registering P arr[3] as an
                    INT array with no st_idx → arr[i].a read garbage). */
-                int esz = is_ptr ? 8 : (is_char ? 1 : (is_double ? 8 : 4));
+                int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_double ? 8 : 4))); /* fnptr typedef array: 8-byte pointer elements (fix 2026-08-05) */
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
                     tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
@@ -2760,12 +2951,15 @@ static int blk(void) {
                 if (is_static) {
                     var_static_arr(vn, 0, esz, cnt); /* esz = ELEMENT byte size (slots = cnt*esz/4) */
                     vars[vcnt - 1].p_esz = esz; /* element byte size for 2D outer scale (cg_mem_frow) */
+                    if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array (fix 2026-08-05) */
                     if (dims > 1 && first > 0) vars[vcnt - 1].arr_esz = (cnt / first) * esz; /* row byte size for 2D+ */
+                    if (dims >= 1) { vars[vcnt - 1].frows[dims - 1] = esz; for (int fi = dims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * adimv[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                     if (is_double) vars[vcnt - 1].is_dbl = 1; /* static double array */
                     if (is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned array: u[i] >> n logical (fix 2026-08-05) */
                     if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si;
                 } else {
                     var_array(vn, cnt, esz);
+                    if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array (fix 2026-08-05) */
                     if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; /* struct array elem type */
                     if (dims > 1 && first > 0) {
                         /* local 2D+ array: arr_esz = ROW byte size (m[i] scales by it),
@@ -2773,6 +2967,7 @@ static int blk(void) {
                         vars[vcnt - 1].arr_esz = (cnt / first) * esz;
                         vars[vcnt - 1].p_esz = esz;
                     }
+                    if (dims >= 1) { vars[vcnt - 1].frows[dims - 1] = esz; for (int fi = dims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * adimv[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                     if (is_double) vars[vcnt - 1].is_dbl = 1; /* local double array */
                     if (is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned array (fix 2026-08-05) */
                 }
@@ -2784,6 +2979,8 @@ static int blk(void) {
                 else var_offset_ptr(vn, is_char ? 1 : 4);
                 if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; } /* typedef struct pointer (fix 2026-08-03) */
             else if (ltd_si >= 0) { var_struct(vn, ltd_si); } /* typedef struct var (fix 2026-08-03: was var_offset → int, field offsets 0) */
+            else if (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
+            else if (is_ll) { var_ll(vn); } /* long long: 8-byte int (fix 2026-08-05) */
             else if (is_double) { var_double(vn); }
             else { var_offset(vn); if (is_char) vars[vcnt - 1].is_char = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05) */
             memcpy((char*)(nn + d), vn, 32);
@@ -2793,6 +2990,7 @@ static int blk(void) {
                 /* local ARRAY brace init: int data[5]={1,2,3,4,5}; / int m[2][3]={{...}}; (multi-dim fix 2026-08-05: was adims<=1 → 2D got no init) */
                 Nc(b, d); b_cnt++; /* declare first */
                 for (int i = 0; i < 8; i++) gi_idx[i] = 0;
+                str_row = 0; /* string-init row counter (fix 2026-08-05) */
                 brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0); /* 自管 { } */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
@@ -2814,8 +3012,17 @@ static int blk(void) {
                 int d2 = Nd(7);
                 if (tt[tk] == VR) {
                     char vn2[32]; strcpy(vn2, tn[tk]); tk++;
-                    if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
-                    if (is_ptr2) var_offset_ptr(vn2, is_char ? 1 : 4); else var_offset(vn2);
+                    if (tt[tk] == LB) { /* array in comma list: int a, b[3]; (fix 2026-08-05: was var_offset → adimv[8] registered as int, &adimv[0] NULL) */
+                        int cnt2 = 1;
+                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { cnt2 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                        int esz2 = is_char ? 1 : (is_double ? 8 : (is_ptr ? 8 : 4));
+                        if (is_ptr2) var_offset_ptr(vn2, 4); else var_array(vn2, cnt2, esz2);
+                        vars[vcnt - 1].p_esz = esz2;
+                        if (is_double) vars[vcnt - 1].is_dbl = 1;
+                    } else {
+                        if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                        if (is_ptr2) var_offset_ptr(vn2, is_char ? 1 : 4); else var_offset(vn2);
+                    }
                     memcpy((char*)(nn + d2), vn2, 32);
                     Nc(b, d2); b_cnt++;
                 }
@@ -3043,9 +3250,10 @@ static int parse(const char *s) {
                 tk++; /* struct name */
                 if (tt[tk] == FK) { /* { */
                     tk++;
+                    int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
                         int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* int/char/double */
+                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* int/char/double */
                         else if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             if (tt[tk] == VR) {
@@ -3054,15 +3262,27 @@ static int parse(const char *s) {
                                 if (tt[tk] == FK) { /* inline definition body: struct B { int y; } — parse + register (fix 2026-08-05: was unhandled `{` → infinite loop) */
                                     int ni = inner_si < 0 ? st_add(iname) : inner_si;
                                     tk++; /* { */
+                                    int ifuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                                     while (tk < TS && tt[tk] != UK) {
                                         int ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
-                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
+                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
                                         else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; }
+                                        if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
+                                            tk++; int ubw = 0;
+                                            if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                                            st_field_bit_anon(ni, ubw);
+                                            ifuns = 0;
+                                        }
                                         if (tt[tk] == VR) {
                                             char fn[32]; strcpy(fn, tn[tk]); tk++;
+                                            int ibw = 0;
+                                            if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { ibw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: inline nested struct loop) */
+                                            if (ibw > 0) { st_field_bit(ni, fn, ifsz, ifsz, ibw, ifuns); ifuns = 0; }
+                                            else {
                                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
                                             if (ifdims >= 1) ifrow = ifsz / ifirst; else ifrow = ifsz;
                                             st_field_sz_r(ni, fn, ifsz, ifrow);
+                                            }
                                         }
                                         if (tt[tk] == CK) tk++;
                                         if (tt[tk] == SK) tk++;
@@ -3098,21 +3318,30 @@ static int parse(const char *s) {
                         }
                         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; } /* enum field: `enum Color c;` → int (fix 2026-08-05: was unhandled → infinite loop) */
                         else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
+                        if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
+                            tk++; int ubw = 0;
+                            if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                            st_field_bit_anon(si, ubw);
+                            funs = 0; /* unsigned marker must not leak past an unnamed bit-field (fix 2026-08-05) */
+                        }
                         if (tt[tk] == VR) {
                             char fn[32]; strcpy(fn, tn[tk]); tk++;
+                            int bitw = 0;
+                            if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: was unhandled → infinite loop; upgraded from width-skip to real packing) */
+                            if (bitw > 0) {
+                                st_field_bit(si, fn, fsz, fsz, bitw, funs); /* bit-field: packed into shared int slots */
+                                if (fdbl) st_field_dbl(si, fn);
+                                funs = 0;
+                            } else {
                             int unsized = 0; /* 柔性数组 int arr[] (fix 2026-08-05: was sized 4 → sizeof overcounted) */
                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else unsized = 1; if (tt[tk] == RB) tk++; }
-                            if (tt[tk] == CL) { /* bitfield width: unsigned a : 3 (fix 2026-08-05: was unhandled → infinite loop). 按 int 槽处理，跳过宽度 */
-                                tk++;
-                                if (tt[tk] == NK) tk++; /* width (or a #define'd constant) */
-                                else if (tt[tk] == VR) tk++; /* width as constant name */
-                            }
                             if (dims >= 1) frow = fsz / first; /* element/row byte size (same as anon branch) */
                             else frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             if (unsized) { fsz = 0; frow = 4; } /* 柔性数组: 不占 struct 空间, 元素大小保留 */
                             if (is_union) st_union_field(si, fn, fsz);
                             else st_field_sz_r(si, fn, fsz, frow);
                             if (fdbl) st_field_dbl(si, fn);
+                            }
                         }
                         if (tt[tk] == CK) tk++; /* comma between fields */
                         if (tt[tk] == SK) tk++;
@@ -3216,8 +3445,9 @@ static int parse(const char *s) {
                     aname[0] = 0;
                     int si = st_add(aname); /* placeholder name */
                     int fdflt = 4; /* default field element size (int); VK sets char=1/double=8 (fix 2026-08-03) */
+                    int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
-                        if (tt[tk] == VK) { fdflt = 4; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
+                        if (tt[tk] == VK) { fdflt = 4; if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         else if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
                             if (tt[tk] == VR) {
@@ -3247,11 +3477,22 @@ static int parse(const char *s) {
                             continue;
                         }
                         else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++;
+                        if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
+                            tk++; int ubw = 0;
+                            if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                            st_field_bit_anon(si, ubw);
+                            funs = 0; /* unsigned marker must not leak past an unnamed bit-field (fix 2026-08-05) */
+                        }
                         if (tt[tk] == VR) {
                             char fn[32]; strcpy(fn, tn[tk]); tk++;
                             int fsz = fdflt, first = 1, dims = 0; /* fdflt = 1/4/8 from the VK type (fix 2026-08-03: was fixed 4 → char name[128] became 512) */
+                            int bitw = 0;
+                            if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: typedef anon struct loop) */
+                            if (bitw > 0) { st_field_bit(si, fn, fdflt, fdflt, bitw, funs); funs = 0; }
+                            else {
                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
                             st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz); /* frow = ELEMENT size (fix 2026-08-03: was fsz, so char name[128] scaled indices by 128) */
+                            }
                         }
                         if (tt[tk] == CK) { tk++; } if (tt[tk] == SK) tk++;
                     }
@@ -3270,9 +3511,10 @@ static int parse(const char *s) {
                         if (tsi < 0) { tsi = st_add(td_stname); }
                         strcpy(stypes[tsi].name, td_stname);
                         tk++; /* { */
+                        int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                         while (tk < TS && tt[tk] != UK) {
                             int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             else if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
                                 if (tt[tk] == VR) {
@@ -3303,13 +3545,24 @@ static int parse(const char *s) {
                                 continue;
                             }
                             else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
+                            if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
+                                tk++; int ubw = 0;
+                                if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                                st_field_bit_anon(tsi, ubw);
+                            tfuns = 0; /* unsigned marker must not leak (fix 2026-08-05) */
+                            }
                             if (tt[tk] == VR) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
+                                int bitw = 0;
+                                if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: typedef tagged struct loop) */
+                                if (bitw > 0) { st_field_bit(tsi, fn, fsz, fsz, bitw, tfuns); if (fdbl) st_field_dbl(tsi, fn); tfuns = 0; }
+                                else {
                                 while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
                                 if (dims >= 1) frow = fsz / first;
                                 else frow = fsz;
                                 st_field_sz_r(tsi, fn, fsz, frow);
                                 if (fdbl) st_field_dbl(tsi, fn);
+                                }
                             }
                             if (tt[tk] == CK) tk++;
                             if (tt[tk] == SK) tk++;
@@ -3378,9 +3631,10 @@ static int parse(const char *s) {
                 /* anonymous struct definition + global var: struct {...} name; */
                 tk++; /* { */
                 char aname[32]; aname[0] = 0; int si = st_add(aname);
+                int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     else if (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
                         if (tt[tk] == VR) {
@@ -3396,17 +3650,30 @@ static int parse(const char *s) {
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
+                    if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
+                        tk++; int ubw = 0;
+                        if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
+                        st_field_bit_anon(si, ubw);
+                    }
                     if (tt[tk] == VR) {
                         char fn[32]; strcpy(fn, tn[tk]); tk++;
-                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
-                        /* frow = element size in BYTES (row for 2D+): fsz / first dim.
-                           char fnames[16][32] -> 512/16=32; int fsizes[16] -> 64/16=4;
-                           char name[32] -> 32/32=1. Lets nested-base store/read scale
-                           int array fields correctly (previously hardcoded char). */
-                        if (dims >= 1) frow = fsz / first;
-                        else frow = fsz; /* scalar: frow==fsz → not an array */
-                        st_field_sz_r(si, fn, fsz, frow);
-                        if (fdbl) st_field_dbl(si, fn);
+                        int bitw = 0;
+                        if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (real semantics fix 2026-08-05) */
+                        if (bitw > 0) {
+                            st_field_bit(si, fn, fsz, fsz, bitw, funs); /* bit-field: packed into shared int slots */
+                            if (fdbl) st_field_dbl(si, fn);
+                            funs = 0;
+                        } else {
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            /* frow = element size in BYTES (row for 2D+): fsz / first dim.
+                               char fnames[16][32] -> 512/16=32; int fsizes[16] -> 64/16=4;
+                               char name[32] -> 32/32=1. Lets nested-base store/read scale
+                               int array fields correctly (previously hardcoded char). */
+                            if (dims >= 1) frow = fsz / first;
+                            else frow = fsz; /* scalar: frow==fsz → not an array */
+                            st_field_sz_r(si, fn, fsz, frow);
+                            if (fdbl) st_field_dbl(si, fn);
+                        }
                     }
                     if (tt[tk] == CK) tk++;
                     if (tt[tk] == SK) tk++;
@@ -3467,6 +3734,8 @@ static int parse(const char *s) {
                 int g_is_double = 0;
                 for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "double")) g_is_double = 1;
                 if (!g_is_double) { int tdi = tdef_lookup(tn[save_tk]); if (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias */
+                int g_is_ll = 0; /* global long long: 8-byte .data slot (fix 2026-08-05) */
+                for (int ti2 = save_tk; ti2 + 1 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1;
                 int g_is_fnptr = 0, g_fptr_dbl = 0; /* typedef'd fnptr global: 8-byte .data slot (fix 2026-08-03) */
                 { int tdi = tdef_lookup(tn[save_tk]); if (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } }
                 while (1) {
@@ -3482,11 +3751,13 @@ static int parse(const char *s) {
                     if (ptrd > 1 && g_is_char) pesz = 8; /* char** -> 8-byte elements */
                     int gcnt = 0; /* array element count (0 = not array) */
                     int gfirst = 0; /* first dimension (row count) */
+                    int gdims[8]; for (int gdi = 0; gdi < 8; gdi++) gdims[gdi] = 0; int gdim_n = 0; /* per-dim sizes → frows (fix 2026-08-05: global 3D arrays had no frows → nested scale fell back to scalar) */
                     while (tt[tk] == LB) {
                         tk++;
                         if (tt[tk] == NK) {
                             if (gcnt == 0) { gfirst = tv[tk]; gcnt = 1; }
                             gcnt *= tv[tk];
+                            if (gdim_n < 8) { gdims[gdim_n] = tv[tk]; gdim_n++; }
                             tk++;
                         }
                         if (tt[tk] == RB) tk++;
@@ -3526,11 +3797,13 @@ static int parse(const char *s) {
                             var_static_arr(gname, pesz, g_esz, gcnt);
                             vars[vcnt - 1].p_esz = g_esz; /* element byte size for outer [j] scale / 64-bit load */
                             if (gfirst > 0 && gcnt > gfirst && ptrd <= 0) vars[vcnt - 1].arr_esz = gcnt / gfirst * g_esz; /* 2D+: ROW byte size */
+                            if (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = g_esz; for (int fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                             if (g_is_double) vars[vcnt - 1].is_dbl = 1; /* global double array */
                         }
                     }
                     else if (g_is_fnptr) { var_static(gname, 4); vars[vcnt - 1].arr_esz = 8; if (g_fptr_dbl) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte .data slot */
                     else if (g_stidx >= 0) var_static_struct(gname, g_stidx, 1); /* struct var */
+                    else if (g_is_ll) { var_static(gname, 4); vars[vcnt - 1].is_ll = 1; } /* global long long: 8-byte .data slot (fix 2026-08-05) */
                     else if (g_is_double) { var_static(gname, 4); vars[vcnt - 1].is_dbl = 1; } /* global double: 8-byte .data slot */
                     else var_static(gname, pesz);
                     if (tt[tk] == AK) { /* = init */
@@ -3542,20 +3815,13 @@ static int parse(const char *s) {
                             if (tt[tk] == UK) tk++;
                             if (ginit_n < 128) ginit[ginit_n++] = blkinit; /* the block IS the initializer */
                         } else if (tt[tk] == FK && gcnt > 0 && ginit_n < 128) {
-                            /* global ARRAY init: garr[N] = { a, b, c }; — expand to garr[0]=a; garr[1]=b; ... */
-                            tk++; /* { */
+                            /* global ARRAY init incl. multi-dim braces: garr[N] = { a, b, c }; / int m[2][2][2] = {{{1,2},{3,4}},...}
+                               → brace_arr_init expands to garr[i][j][k]=... (fix 2026-08-05: flat-only loop choked on nested '{{' → main never parsed) */
                             int blk = Nd(5);
-                            int eidx = 0;
-                            while (tt[tk] != UK && eidx < gcnt) {
-                                if (tt[tk] == CK || tt[tk] == SK) tk++;
-                                if (tt[tk] == UK) break;
-                                int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
-                                int acc = Nd(14); Nc(acc, idn);
-                                int idx = Nd(0); nv[idx] = eidx; Nc(acc, idx);
-                                int asgn = Nd(10); Nc(asgn, acc); Nc(asgn, expr()); Nc(blk, asgn);
-                                eidx++;
-                            }
-                            if (tt[tk] == UK) tk++;
+                            int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
+                            for (int i = 0; i < 8; i++) gi_idx[i] = 0;
+                            str_row = 0; /* string-init row counter (fix 2026-08-05) */
+                            brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0); /* 自管 { } 配平 */
                             if (ginit_n < 128) ginit[ginit_n++] = blk;
                         } else if (ginit_n < 128) {
                             int decl = Nd(7); memcpy((char*)(nn + decl), gname, 32);
@@ -3637,16 +3903,17 @@ static int parse(const char *s) {
                 int pis_char = 0, pis_ptr = 0, ptr_depth = 0, p_stidx = -1, pis_dbl = 0;
                 int p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr param: 8-byte pointer slot (fix 2026-08-03) */
                 int pis_uns = 0; /* unsigned param: >> logical (fix 2026-08-05) */
-                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; tk++; }
+                int pis_ll = 0; /* long long param: 8-byte slot (fix 2026-08-05) */
+                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                 else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
-                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; tk++; } /* 2nd keyword */
+                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
                     tk++; tk++; /* skip ( * */
                     if (tt[tk] == VR) {
-                        var_param(tn[tk], pr, 4, 8, -1, 0); /* fnptr: 8-byte pointer slot, 8-byte element (*fp loads 64-bit) */
+                        var_param(tn[tk], pr, 4, 8, -1, 0, 0); /* fnptr: 8-byte pointer slot, 8-byte element (*fp loads 64-bit) */
                         if (pis_dbl) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr param: fp(x) yields xmm0 */
                         tk++; pr++;
                     }
@@ -3663,7 +3930,7 @@ static int parse(const char *s) {
                 }
                 if (tt[tk] == VR) {
                     if (p_fptr) { /* typedef'd fnptr param: fp_t cb — 8-byte pointer slot (fix 2026-08-03) */
-                        var_param(tn[tk], pr, 4, 8, -1, 0);
+                        var_param(tn[tk], pr, 4, 8, -1, 0, 0);
                         if (p_fptr_dbl) vars[vcnt - 1].p_dbl = 1;
                         tk++; pr++;
                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; } /* skip [N] */
@@ -3682,9 +3949,10 @@ static int parse(const char *s) {
                         if (ptr_depth > 0) esz = 8; /* pointer array: char *argv[] → 8-byte elements (fix 2026-08-03: was esz=1, argv[1] read a byte instead of a pointer) */
                         else if (esz == 0) esz = 4; /* element size for arr[i] scaling */
                     }
-                    var_param(tn[tk], pr, pis_ptr ? 4 : 0, esz, p_stidx, pis_dbl && !pis_ptr); /* double* is a POINTER (rcx), not an xmm double */
+                    var_param(tn[tk], pr, pis_ptr ? 4 : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* double* is a POINTER (rcx), not an xmm double */
                     if (pis_char && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_char = 1; /* sizeof(char param) (fix 2026-08-05) */
                     if (pis_uns && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_uns = 1; /* unsigned param: >> logical (fix 2026-08-05) */
+                    if (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long param: 8-byte slot (fix 2026-08-05) */
                     if (pis_dbl && pis_ptr) vars[vcnt - 1].p_dbl = 1; /* double* param */
                     fn_dbl_put((char*)(nn + fdef), pr, pis_dbl && !pis_ptr); /* caller routes scalar doubles to xmm */
                     tk++; pr++;
@@ -3806,6 +4074,62 @@ static void cgc(int n) {
    No calls until the final WriteFile, so volatile registers are safe throughout. */
 static int emit_fmt_loop(void);
 static void mov_ri_ext(int reg, int imm); /* high-reg immediate mov (defined near CRT stub) */
+/* bit-field codegen helpers (real bit semantics, fix 2026-08-05).
+   A bit-field lives inside a shared 32-bit slot: foffs = slot byte offset,
+   fbitof = bit offset in the slot, fbits = width. All slot traffic is 4-byte. */
+static void bf_shl_imm(int reg, int cnt) { /* shl r32, cl  (cnt compile-time 0..31) */
+    if (cnt <= 0) return;
+    mov_ri_ext(9, cnt);
+    mov_rr(1, 9); /* ecx = cnt */
+    rex(0, 0, 0, reg & 8); b(0xD3); modrm(3, 4, reg & 7);
+}
+static void bf_extract(const char *sn, const char *fn) {
+    /* eax = whole slot value → eax = field value (shr + and; signed fields sign-extend). */
+    int bw = st_field_bitw(sn, fn);
+    if (bw <= 0) return;
+    int bitof = st_field_bitof(sn, fn);
+    int mask = bw >= 32 ? -1 : (1 << bw) - 1;
+    if (bitof == 0) { mov_ri_ext(9, mask); alu_rr(25, 0, 9); } /* eax &= mask */
+    else {
+        mov_rr(10, 0); /* r10d = slot value */
+        mov_ri_ext(9, bitof);
+        mov_rr(0, 9); /* eax = bit offset (shift count) */
+        g_uns_shift = 1;
+        alu_rr(T_SR, 10, 0); /* r10d >>= cl (logical) */
+        mov_rr(0, 10); /* eax = shifted field value */
+        mov_ri_ext(9, mask);
+        alu_rr(25, 0, 9); /* eax &= mask */
+    }
+    if (bw < 32 && !st_field_is_uns(sn, fn)) { /* signed bit-field: sign-extend (fix 2026-08-05) */
+        mov_rr(10, 0); /* r10d = masked field value */
+        mov_ri_ext(9, 32 - bw);
+        mov_rr(0, 9); /* eax = 32-bw (shift count) */
+        alu_rr(T_SH, 10, 0); /* r10d <<= cl → sign bit lands in bit 31 */
+        g_uns_shift = 0; /* arithmetic shift for signed fields */
+        alu_rr(T_SR, 10, 0); /* r10d >>= cl (sar) → sign-extended */
+        mov_rr(0, 10); /* eax = result */
+    }
+}
+static int bf_store(const char *sn, const char *fn) {
+    /* rax = &slot, ebx = rhs value → read-modify-write the field bits.
+       Returns 1 when handled (a bit-field), 0 for a plain field.
+       NEVER write eax here: eax is the low 32 bits of rax, and rax holds the
+       slot ADDRESS — writing eax zeroes the upper half and loses the address. */
+    int bw = st_field_bitw(sn, fn);
+    if (bw <= 0) return 0;
+    int bitof = st_field_bitof(sn, fn);
+    int fm = bw >= 32 ? -1 : ((1 << bw) - 1) << bitof;
+    mov_reg_mreg(10, 0); /* r10d = [rax] = old slot (rax keeps the address) */
+    mov_rr(11, 3); /* r11d = rhs */
+    bf_shl_imm(11, bitof); /* r11d <<= bitof */
+    mov_ri_ext(9, fm);
+    alu_rr(25, 11, 9); /* r11d &= field-bits mask */
+    mov_ri_ext(9, ~fm);
+    alu_rr(25, 10, 9); /* r10d &= ~field-bits mask (clear field bits) */
+    alu_rr(47, 10, 11); /* r10d |= r11d */
+    asm_emit("    存32rax r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 0); b(0x89); modrm(0, 2, 0); /* MOV [rax], r10d */
+    return 1;
+}
 static void emit_print(const char *fname, int nargs) {
     int is_fprintf = !strcmp(fname, "fprintf");
     int is_putstr = !strcmp(fname, "putstr");
@@ -4393,7 +4717,7 @@ static void cg(int n) {
     int t = nt[n];
     if (t < 0 || t > 65) { fprintf(stderr, "[CG-BADTYPE] n=%d nt=%d nc=%d\n", n, t, nc); abort(); }
     switch (nt[n]) {
-        case 0: mov_r_imm(0, nv[n]); break; /* imm -> eax */
+        case 0: if (nll[n]) mov_rax_imm64(((long long)(unsigned int)nv[n]) | (((long long)(unsigned int)nll_hi[n]) << 32)); else mov_r_imm(0, nv[n]); break; /* LL imm: unsigned low-32 | high-32<<32 (fix 2026-08-05: signed ext garbled 0xFFFFFFFFLL) */ /* imm → eax / rax (LL: 64-bit, fix 2026-08-05) */
         case 19: cg_f(n0[n]); cvttsd2si_eax_xmm0(); break; /* (int)double: truncate xmm0 to eax */
         case STR: { /* string literal ??placeholder, patched after codegen */
             int si = nv[n];
@@ -4449,6 +4773,7 @@ static void cg(int n) {
                     if (var_arrsz(vn) > 0) lea_rax_rip(coff_static_disp(off, 1) - 1); /* static ARRAY name: its address (lea is 7B, stc_disp assumes 6) */
                     else if (var_pesz(vn) > 0) mov_rax_rip64(coff_static_disp(off, 1) - 1);
                     else if (var_small_struct(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); /* struct value: full 8 bytes */
+                    else if (var_is_ll(vn)) { mov_rax_rip64(coff_static_disp(off, 1) - 1); nll[n] = 1; } /* long long: full 64-bit static load (fix 2026-08-05) */
                     else mov_eax_rip(coff_static_disp(off, 0));
                 } else {
                     /* check if array �?LEA. MUST resolve to the SAME var var_lookup found:
@@ -4463,6 +4788,7 @@ static void cg(int n) {
                         }
                     if (is_arr) { lea_r_mbrp(0, base - cur_frame_sz); }
                     else if (var_pesz(vn) > 0) { mov_reg_mbrp64(0, off - cur_frame_sz); } /* pointer: full 64-bit */
+                    else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     else if (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
                     else { mov_reg_mbrp(0, off - cur_frame_sz); }
@@ -4497,6 +4823,54 @@ static void cg(int n) {
                     break;
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
+            }
+            if (nll[n0[n]] || nll[n1[n]]) {
+                /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
+                if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
+                    cg(n0[n]); push_r64(0); /* save lhs (rax 64-bit, nesting-safe) */
+                    cg(n1[n]); mov_rr64(3, 0);       /* rbx = rhs */
+                    pop_r64(0);                      /* rax = lhs */
+                    if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); } /* add rax, rbx (REX.R=0: rbx bit3=0) */
+                    else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); } /* sub rax, rbx */
+                    else if (o == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); } /* imul rax, rbx (IMUL r64,r/m64: reg=dest rax, r/m=src rbx) */
+                    else if (o == DV) { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } /* cqo; idiv rbx */
+                    else if (o == MD) { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } /* cqo; idiv rbx; rax = rdx (remainder) */
+                    nll[n] = 1;
+                    break;
+                }
+                if (o == T_SH || o == T_SR) { /* 64-bit shift: shl/sar/shr r64, cl (fix 2026-08-05) */
+                    cg(n0[n]); push_r64(0); /* save lhs */
+                    cg(n1[n]); mov_rr(1, 0); /* ecx = shift count (cl = low 8) */
+                    pop_r64(0); /* rax = lhs */
+                    if (o == T_SR) { int use_shr = expr_is_unsigned(n0[n]); if (use_shr) { asm_emit("    逻辑右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 5, 0); } else { asm_emit("    算术右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 7, 0); } }
+                    else { asm_emit("    左移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 4, 0); }
+                    nll[n] = 1;
+                    break;
+                }
+                if (o == 25 || o == 46 || o == 47 || o == 48) { /* 64-bit bitwise & | ^ (fix 2026-08-05) */
+                    cg(n0[n]); push_r64(0);
+                    cg(n1[n]); mov_rr64(3, 0); /* rbx = rhs */
+                    pop_r64(0); /* rax = lhs */
+                    if (o == 25 || o == 46) { asm_emit("    与64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x21); modrm(3, 3, 0); } /* and rax, rbx */
+                    else if (o == 47) { asm_emit("    或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 3, 0); } /* or rax, rbx */
+                    else { asm_emit("    异或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x31); modrm(3, 3, 0); } /* xor rax, rbx */
+                    nll[n] = 1;
+                    break;
+                }
+                if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) {
+                    cg(n0[n]); push_r64(0);
+                    cg(n1[n]); mov_rr64(3, 0);
+                    pop_r64(0);
+                    asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x48); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx */
+                    if (o == T_LK) { asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9C); modrm(3, 0, 0); } /* setl (signed) */
+                    else if (o == T_GK) { asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9F); modrm(3, 0, 0); } /* setg */
+                    else if (o == T_QK) { asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3, 0, 0); } /* sete */
+                    else if (o == T_XK) { asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x95); modrm(3, 0, 0); } /* setne */
+                    else if (o == T_HK) { asm_emit("    置低等于 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9E); modrm(3, 0, 0); } /* setle */
+                    else { asm_emit("    置高等于 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9D); modrm(3, 0, 0); } /* setge */
+                    movzx_eax_al();
+                    break;
+                }
             }
             if (o == LA) { /* && short-circuit */
                 int lf = new_label(), le = new_label();
@@ -4974,8 +5348,9 @@ static void cg(int n) {
                         mov_byte_mbrp_imm(base + i - cur_frame_sz, (unsigned char)sv[i]);
                 } else {
                 if (ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } else cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS */
-                if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); else mov_rip_eax(coff_static_disp(off, 0)); }
+                if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); else mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
                 else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
+                else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
                 else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
                 else mov_mbrp_reg(off - cur_frame_sz, 0); } /* close E: else of STR */
                 } /* close D: STR branch */
@@ -5123,7 +5498,8 @@ static void cg(int n) {
                         cg_no_deref = 0;
                         if (foff != 0) add_rax_imm8(foff);
                         pop_r(3); /* ebx = rhs */
-                        if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
+                        if (bf_store(stypes[s2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                        else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
                         else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx */
                         else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
                     }
@@ -5133,7 +5509,8 @@ static void cg(int n) {
                     cg(n1[n]); push_r(0); /* save rhs */
                     if (mem_addr(mc, &fsz, &si_out) == 0) { /* rax = &chain */
                         pop_r(3); /* ebx = rhs */
-                        if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
+                        if (si_out >= 0 && bf_store(stypes[si_out].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                        else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
                         else if (fsz == 8) { rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx (64-bit ptr/struct field) */
                         else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
                     }
@@ -5160,7 +5537,8 @@ static void cg(int n) {
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
                                 if(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
                                 pop_r(3); /* ebx = rhs */
-                                if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
+                                if (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                                else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
                                 else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
                                 else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [eax],ebx */
                             }
@@ -5175,7 +5553,8 @@ static void cg(int n) {
                                 cg(n1[n]); push_r(0); /* save rhs */
                                 lea_rax_rip(coff_static_disp(off, 1) + foff - 1); /* rax = &field */
                                 pop_r(3); /* ebx = rhs */
-                                if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
+                                if (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                                else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
                                 else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
                                 else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax], ebx */
                             }
@@ -5186,7 +5565,8 @@ static void cg(int n) {
                             else mov_reg_mbrp64(0, off - cur_frame_sz); /* rax = copy ptr */
                             if (foff != 0) add_rax_imm8(foff);
                             pop_r(3);
-                            if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
+                            if (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                            else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
                             else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
                             else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax], ebx */
                         } else {
@@ -5195,7 +5575,8 @@ static void cg(int n) {
                                 movsd_mbrp_xmm0(var_sbase(vname, off) + foff - cur_frame_sz); /* double field write */
                             } else {
                                 cg(n1[n]);
-                                if (fsz == 8) { mov_mbrp_reg64(var_sbase(vname, off) + foff - cur_frame_sz, 0); }
+                                if (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); bf_store(stypes[si].name, fname); } /* bit-field RMW store (fix 2026-08-05) */
+                                else if (fsz == 8) { mov_mbrp_reg64(var_sbase(vname, off) + foff - cur_frame_sz, 0); }
                                 else if (fsz == 1) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl (char store: lea must not clobber the value in eax — fix 2026-08-03) */
                                 else { mov_mbrp_reg(var_sbase(vname, off) + foff - cur_frame_sz, 0); }
                             }
@@ -5204,15 +5585,16 @@ static void cg(int n) {
                 }
                 /* arrow write with non-struct pointer var */
                 if (is_arrow && si < 0) {
-                    int fo = -1;
-                    for (int i = 0; i < st_n; i++) { fo = st_off(stypes[i].name, fname); if (fo >= 0) break; }
+                    int fo = -1, si2 = -1;
+                    for (int i = 0; i < st_n; i++) { fo = st_off(stypes[i].name, fname); if (fo >= 0) { si2 = i; break; } }
                     cg(n1[n]); push_r(0); /* save rhs on stack */
                     if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
                     else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                     else { mov_r_imm(0, 0); }
                     if (fo != 0) add_rax_imm8(fo);
                     pop_r(3); /* ebx = rhs */
-                    asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); /* MOV [eax], ebx */
+                    if (si2 >= 0 && bf_store(stypes[si2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                    else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [eax], ebx */
                 }
                 } /* end var.field else */
             } else if (nt[n0[n]] == 14) { /* arr[i] = expr */
@@ -5223,7 +5605,10 @@ static void cg(int n) {
                 if (arr_dbl) { cg_f(n1[n]); push_xmm0(); } /* double array element write */
                 else { cg(n1[n]); push_r(0); } /* rhs -> eax (compute value FIRST), saved on stack */
                 cg(n1[ac]); /* index -> eax */
-                if (!arr_dbl) pop_r(3); /* ebx = value (int; double keeps its xmm0 slot) */
+                /* NOTE: pop_r(3) is DELAYED into each store branch — the base-address
+                   expression (cg(n0[ac]), e.g. `vars[vcnt-1]`) may itself use r3 for a
+                   `var - const` subtraction and would CLOBBER the RHS (fix 2026-08-05:
+                   vars[vcnt-1].frows[dims-1] = esz compiled to storing vcnt-1). */
                 int off=var_lookup(vn);
                 int pesz=var_pesz(vn);
                 if (nt[n0[ac]] == 15 || nt[n0[ac]] == 14) {
@@ -5236,6 +5621,7 @@ static void cg(int n) {
                     cg(n0[ac]); /* base address �?rax */
                     cg_no_deref = 0;
                     pop_r(11);
+                    if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     if (cg_mem_frow > 1) {
                         mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
                     }
@@ -5247,6 +5633,7 @@ static void cg(int n) {
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } else if(off>=0){
                     int did=0;
+                    if (!arr_dbl) pop_r(3); /* ebx = rhs (plain array/pointer branches never touch r3 in the address calc) */
                     for(int vi=0;vi<vs_n();vi++)if(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     int esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
@@ -5290,6 +5677,7 @@ static void cg(int n) {
                 }
                 else { /* pointer param arr[i]=v: index in r11 (r9 may be the param reg) */
                     int peszp = var_esz(vn);
+                    if (!arr_dbl) pop_r(3); /* ebx = rhs (fix 2026-08-05) */
                     mov_rr(11, 0); /* r11d = index */
                     if(peszp==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}else if(peszp==2){rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}else if(peszp>4){mov_r_imm(0,peszp);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                     load_param_val(vn); /* eax = ptr (reg or [rbp+disp]) */
@@ -5329,8 +5717,9 @@ static void cg(int n) {
                 if (ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS */
                 else cg(n1[n]);
                 if (off >= 0) {
-                    if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); else mov_rip_eax(coff_static_disp(off, 0)); }
+                    if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); else mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
                     else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
+                    else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
                     else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
                     else mov_mbrp_reg(off - cur_frame_sz, 0);
                 }
@@ -5400,7 +5789,8 @@ static void cg(int n) {
                         if (fsz == 8 && st_field_ty_idx(stypes[s2].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field (fty==-2 marker): load 64-bit VALUE (fix 2026-08-03: must not treat 8-byte ARRAY fields as fnptr) */
                         /* else: struct/array field -> address (no deref) */
                     } else if (!cg_no_deref) {
-                        if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                        if (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
+                        else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                         else { mov_reg_mreg(0, 0); }
                     }
                 }
@@ -5412,7 +5802,7 @@ static void cg(int n) {
                     if (fsz > 8) { /* struct/array field → address */ }
                     else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                     else if (fsz == 8) { mov_reg_mreg64(0, 0); } /* 64-bit pointer / struct field */
-                    else if (!cg_no_deref) { mov_reg_mreg(0, 0); }
+                    else if (!cg_no_deref) { mov_reg_mreg(0, 0); if (si_out >= 0 && st_field_bitw(stypes[si_out].name, fn) > 0) bf_extract(stypes[si_out].name, fn); } /* bit-field extract (fix 2026-08-05) */
                 }
             } else {
             char*vn=(char*)(nn+n0[n]);
@@ -5425,7 +5815,7 @@ static void cg(int n) {
                     if(o>=0){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(o, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, o - cur_frame_sz); else mov_reg_mbrp(0, o - cur_frame_sz); } /* rax = ptr */
                     else if(o<0){load_param_val(vn);} /* param in register or stack */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += offset */
-                    if (!cg_no_deref) mov_reg_mreg(0,0); /* eax = [rax] (fix 2026-08-05: honor cg_no_deref → ++p->f crashed) */
+                    if (!cg_no_deref) { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 }
             } else if(o>=0&&s>=0){int fo=st_off(stypes[s].name,fn);if(fo>=0){
                 if(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
@@ -5436,7 +5826,7 @@ static void cg(int n) {
                     if (cg_no_deref) { /* address only (fix 2026-08-05) */ }
                     else if (afsz > 4) { if (afsz == 8 && st_field_ty_idx(stypes[s].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field: 64-bit value */ }
                     else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
-                    else { mov_reg_mreg(0,0); } /* eax = [rax] */
+                    else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 } else if (var_isstatic(vn)) {
                     /* static struct member read */
                     int fsz = st_field_size(stypes[s].name, fn);
@@ -5449,7 +5839,7 @@ static void cg(int n) {
                     else if (fsz > 4) {
                         if (fsz == 8 && st_field_ty_idx(stypes[s].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field (fty==-2): 64-bit value (fix 2026-08-03) */
                     } else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
-                    else { mov_reg_mreg(0, 0); }
+                    else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
                     }
                 } else if (var_big_param(vn)) {
                     /* big-struct PARAM: slot holds a POINTER to the caller-side copy.
@@ -5461,7 +5851,7 @@ static void cg(int n) {
                         int bsz = st_field_size(stypes[s].name, fn);
                         if (bsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                         else if (bsz == 8) { mov_reg_mreg64(0, 0); }
-                        else { mov_reg_mreg(0, 0); }
+                        else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* bit-field extract (fix 2026-08-05) */
                     }
                 } else {
                     if (cg_no_deref) {
@@ -5476,7 +5866,7 @@ static void cg(int n) {
                     if (fty >= 0 && fsz <= 8) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* struct field value: 8 bytes */
                     else if (fty == -2) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr field (fty==-2): 64-bit value (fix 2026-08-03) */
                     else if (fsz == 1) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* char field read: movzx byte (fix 2026-08-03: was a 4-byte read bleeding into neighbours) */
-                    else mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz);
+                    else { mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
                     }
                 }
             }}
@@ -5495,19 +5885,24 @@ static void cg(int n) {
                 cg(n1[n]); /* outer idx �?eax */
                 mov_rr(11, 0);
                 push_r(11); /* cg may clobber r11 */
+                int sv_noderef = cg_no_deref; /* preserve caller's value (fix 2026-08-05) */
                 cg_no_deref = 1; /* nested base must yield the ADDRESS (2D array row / struct field) */
                 cg(n0[n]); /* base address �?rax */
-                cg_no_deref = 0;
+                cg_no_deref = sv_noderef;
                 pop_r(11);
                 /* scale idx by cg_mem_frow (element/row byte size, set by cg(n0[n])).
                    frow==1 (char) or 0 (unset) -> no scale. frow==4/8 -> scalar deref.
-                   frow>8 -> row is an array -> yield the ADDRESS (C decay, no deref). */
-                if (cg_mem_frow > 1) { /* r9d gets the scale via mov_ri_ext — mov eax,imm would
+                   frow>8 -> row is an array -> yield the ADDRESS (C decay, no deref).
+                   3D+: per-dim row size from the innermost var (fix 2026-08-05). */
+                int scale = cg_mem_frow;
+                if (cg_fdepth >= 1 && cg_fdepth < 4 && cg_frows[cg_fdepth] > 0) scale = cg_frows[cg_fdepth]; /* per-dim row scale (fix 2026-08-05: nested dims scale by their own row size) */
+                if (scale > 1) { /* r9d gets the scale via mov_ri_ext — mov eax,imm would
                                           CLOBBER the base address that cg(n0[n]) just loaded! */
-                    mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
+                    mov_ri_ext(9, scale); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
                 }
+                if (cg_fdepth >= 1 && cg_fdepth < 4) cg_fdepth++; /* next outer dimension */
                 asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
-                if (!cg_no_deref) {
+                if (!cg_no_deref && cg_fdepth >= cg_fdepth_max) { /* deref only at OUTERMOST index (fix 2026-08-05) */
                     if (cg_mem_dbl) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
                     else if (cg_mem_frow == 1 || cg_mem_frow == 0) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                     else if (cg_mem_frow == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
@@ -5522,6 +5917,8 @@ static void cg(int n) {
                         int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         int elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
                         cg_mem_frow = vars[vi].p_esz ? vars[vi].p_esz : 4; /* scalar element size (2D outer scale) */
+                        cg_fdepth = 1; for (int fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows (fix 2026-08-05) */
+                        cg_fdepth_max = 1; for (int fk = 0; fk < 4; fk++) if (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
                         mov_rr(11, 0); /* r11d = index (r9 may be arg3) */
                         if (esz == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
@@ -5566,6 +5963,8 @@ static void cg(int n) {
                                8-byte POINTER arrays (char *names[3]: esz=8, elem=8) load 64-bit. */
                             if (esz > 4 && (vars[vi].st_idx >= 0 || esz > 8 || vars[vi].arr_esz > vars[vi].p_esz || vars[vi].p_esz == 0)) is_struct_elem = 1;
                             cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* static double array base → outer [i] movsd */
+                            cg_fdepth = 1; for (int fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows: static arrays too (fix 2026-08-05: leftover fdepth/frows polluted nested field-array scale) */
+                            cg_fdepth_max = 1; for (int fk = 0; fk < 4; fk++) if (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                             break;
                         }
                     mov_rr(11, 0); /* r11d = index */
@@ -5951,9 +6350,9 @@ void gen_code(void) {
                     else if (cur_fn_sret) movsd_mbrp_xmmreg(vars[vi].rsp_off - cur_frame_sz, vars[vi].pslot); /* sret fn: double param k lives in xmm[k] */
                     else movsd_mbrp_xmmreg(vars[vi].rsp_off - cur_frame_sz, preg_to_xmm(vars[vi].preg));
                 } else if (vars[vi].pstk) {
-                    if (vars[vi].p_esz > 0 || (vars[vi].st_idx >= 0 && vars[vi].st_sz > 0 && vars[vi].st_sz <= 8)) { mov_reg_mbrp64(0, vars[vi].pdisp); mov_mbrp_reg64(vars[vi].rsp_off - cur_frame_sz, 0); }
+                    if (vars[vi].p_esz > 0 || (vars[vi].st_idx >= 0 && vars[vi].st_sz > 0 && vars[vi].st_sz <= 8) || vars[vi].is_ll) { mov_reg_mbrp64(0, vars[vi].pdisp); mov_mbrp_reg64(vars[vi].rsp_off - cur_frame_sz, 0); }
                     else { mov_reg_mbrp(0, vars[vi].pdisp); mov_mbrp_reg(vars[vi].rsp_off - cur_frame_sz, 0); }
-                } else if (vars[vi].p_esz > 0 || (vars[vi].st_idx >= 0 && vars[vi].st_sz > 0 && vars[vi].st_sz <= 8)) mov_mbrp_reg64(vars[vi].rsp_off - cur_frame_sz, vars[vi].preg);
+                } else if (vars[vi].p_esz > 0 || (vars[vi].st_idx >= 0 && vars[vi].st_sz > 0 && vars[vi].st_sz <= 8) || vars[vi].is_ll) mov_mbrp_reg64(vars[vi].rsp_off - cur_frame_sz, vars[vi].preg);
                 else mov_mbrp_reg(vars[vi].rsp_off - cur_frame_sz, vars[vi].preg);
             }
         }
@@ -6377,6 +6776,8 @@ int main(int argc, char **argv) {
     /* ????????*/
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 32); nn = calloc(ASZ, 32);
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
+    tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
+    tll_hi = calloc(TS, 4); /* long-long literal high 32 bits (fix 2026-08-05) */
     nt = _va_alloc(ASZ * 4); nv = _va_alloc(ASZ * 4); n0 = _va_alloc(ASZ * 4); n1 = _va_alloc(ASZ * 4);
     n2 = _va_alloc(ASZ * 4); n3 = _va_alloc(ASZ * 4); n4 = _va_alloc(ASZ * 4); n5 = _va_alloc(ASZ * 4);
     n6 = _va_alloc(ASZ * 4); n7 = _va_alloc(ASZ * 4); n8 = _va_alloc(ASZ * 4); n9 = _va_alloc(ASZ * 4);
@@ -6474,5 +6875,6 @@ int main(int argc, char **argv) {
     if (asm_out) { fclose(asm_out); asm_out = NULL; }
 
     if (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } else { printf("OK: %s (%d bytes code)\n", outf, cp); }
+    if (getenv("QCC_DBG")) fprintf(stderr, "[CAP] tokens=%d/%d nodes=%d/%d labels=%d/%d stypes=%d vars=%d cp=0x%x\n", ti, TS, nc, ASZ, lc, MAX_LABELS, st_n, vcnt, cp);
     return 0;
 }
