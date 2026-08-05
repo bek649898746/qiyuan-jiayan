@@ -8,6 +8,13 @@
  *       qcc_x86.exe -o out.exe src.c
  */
 
+
+/* PE 魔数（工程化：语义等价 #define，不动点 SHA 不变；fix 2026-08-05） */
+#define FILE_ALIGNMENT 0x200
+#define IMAGE_BASE 0x400000
+#define DATA_RVA_OFF 0x300 /* statics 起点后移：给扩展导入区（IAT 24+ILT 24+desc+names 至 0x2B0）让位（fix 2026-08-06 BUG-1） */
+#define STACK_PAD_SIZE 0x160000
+#define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +51,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    (rbp high bits -> SIGSEGV). This pad shifts every written static/heap slot
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
-static char __pad0[0x160000];
+static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[1024][512]; int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096]; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -119,6 +126,12 @@ static struct { char name[32]; char val[512]; } str_macros[64]; static int str_m
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
 static struct { char name[32]; char params[8][16]; int pn; char body[512]; } fn_macros[64]; static int fn_macro_n;
+/* #undef: remove NAME from numeric/string/function macro tables (fix 2026-08-05) */
+static void macro_remove(const char *n) {
+    for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) { for (int j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n--; return; }
+    for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) { for (int j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n--; return; }
+    for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, n)) { for (int j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n--; return; }
+}
 
 static void fn_macro_collect(const char *s) {
     fn_macro_n = 0;
@@ -300,6 +313,97 @@ static int pp_eval(const char *e) {
     int mv = macro_find(e); if (mv >= 0) return mv;
     return 0;
 }
+
+/* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
+static char *pp_read_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    if (sz < 0) { fclose(f); return 0; }
+    char *buf = malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return 0; }
+    size_t rd = fread(buf, 1, (size_t)sz, f);
+    buf[rd] = 0; fclose(f);
+    return buf;
+}
+static char *pp_include_expand(const char *src, int depth) {
+    if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
+    int cap = (int)strlen(src) + 16384;
+    char *out = malloc(cap); int oi = 0;
+    const char *p = src;
+    int if_skip = 0, if_n = 0;
+    int if_parent_skip[64], if_taken[64];
+    while (*p) {
+        const char *le = p; while (*le && *le != '\n') le++;
+        int llen = (int)(le - p);
+        if (*p == '#') {
+            int is_ifdef = !strncmp(p, "#ifdef", 6);
+            int is_ifndef = !strncmp(p, "#ifndef", 7);
+            int is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
+            int is_elif = !strncmp(p, "#elif", 5);
+            int is_else = !strncmp(p, "#else", 5);
+            int is_endif = !strncmp(p, "#endif", 6);
+            int is_include = !strncmp(p, "#include", 8);
+            if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                int parent = if_skip; int cond = 0;
+                if (is_ifdef || is_ifndef) {
+                    char nm[32]; int ni = 0; const char *q = p + (is_ifdef ? 6 : 7);
+                    while (*q == ' ' || *q == '\t') q++;
+                    while (isalnum(*q) || *q == '_' || ((unsigned char)*q >= 0x80)) { if (ni < 31) nm[ni++] = *q; q++; }
+                    nm[ni] = 0;
+                    int def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    cond = is_ifdef ? def : !def;
+                } else if (is_if || is_elif) {
+                    char expr[512]; int ei = 0; const char *q = p + (is_if ? 3 : 5);
+                    while (*q == ' ' || *q == '\t') q++;
+                    while (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
+                    while (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
+                    expr[ei] = 0;
+                    cond = pp_eval(expr);
+                }
+                if (is_if || is_ifdef || is_ifndef) {
+                    if (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; }
+                } else if (is_elif) {
+                    if (if_n > 0) { if (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = cond; if_skip = if_parent_skip[if_n-1] || !cond; } else if_skip = 1; }
+                } else if (is_else) {
+                    if (if_n > 0) { if (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = 1; if_skip = if_parent_skip[if_n-1]; } else if_skip = 1; }
+                } else if (is_endif) {
+                    if (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n-1] : 0; }
+                }
+                memcpy(out + oi, p, llen + 1); oi += llen + 1;
+            } else if (is_include && !if_skip) {
+                const char *q = p + 8;
+                while (*q == ' ' || *q == '\t') q++;
+                if (*q != '"') { memcpy(out + oi, p, llen + 1); oi += llen + 1; } /* <系统头> 跳过（自包含） */
+                else {
+                    char fname[512]; int fi = 0;
+                    q++; while (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
+                    fname[fi] = 0;
+                    if (fi > 0) {
+                        char *fc = pp_read_file(fname);
+                        if (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        char *exp = pp_include_expand(fc, depth + 1);
+                        free(fc);
+                        int el = (int)strlen(exp);
+                        if (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
+                        memcpy(out + oi, exp, el); oi += el;
+                        out[oi++] = '\n';
+                        free(exp);
+                    }
+                }
+            } else {
+                memcpy(out + oi, p, llen + 1); oi += llen + 1;
+            }
+        } else {
+            memcpy(out + oi, p, llen + 1); oi += llen + 1;
+        }
+        if (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        p = *le ? le + 1 : le;
+    }
+    out[oi] = 0;
+    return out;
+}
+
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -501,7 +605,7 @@ static int g_uns_shift; /* set by cg() before alu_rr: T_SR operand is unsigned �
 static void fp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
     double v = 0; int i = *pi;
     while (s[i] >= '0' && s[i] <= '9') { v = v * 10 + (s[i] - '0'); i++; }
-    if (s[i] == '.') { i++; double fr = 0.1; while (s[i] >= '0' && s[i] <= '9') { v += (s[i] - '0') * fr; fr *= 0.1; i++; } }
+    if (s[i] == '.') { i++; double fr = 0, sc = 1; while (s[i] >= '0' && s[i] <= '9') { fr = fr * 10 + (s[i] - '0'); sc *= 10; i++; } v += fr / sc; } /* fix 2026-08-06: 整数累加+单次除法，避免 fr*=0.1 累加误差（0.015625 等精确） */
     if (s[i] == 'e' || s[i] == 'E') {
         i++; int es = 1;
         if (s[i] == '+' || s[i] == '-') { if (s[i] == '-') es = -1; i++; }
@@ -1154,23 +1258,31 @@ static int var_static_struct(const char *n, int si, int count) {
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
-/* RIP-relative offset to .data static slot (RVA data_rva_base + 0x140 + 4*idx) from instr at 0x1000+cp */
+/* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 static int data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
-static int stc_disp(int idx) { return (data_rva_base + 0x140 + 4 * idx) - (0x1000 + cp + 6); }
+static int stc_disp(int idx) { return (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
-static int iat_disp_at(int at, int slot) { return (data_rva_base + 8 + 8 * slot) - (0x1000 + at + 6); }
+static int iat_disp_at(int at, int slot) { int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); return (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32 / IAT2@+0x50 msvcrt（fix 2026-08-06 BUG-1） */
 static void call_iat(int slot) {
     asm_emit("    调系统 %d\n", (char*)(long long)(slot), (char*)(long long)0, (char*)(long long)0);
     int at = cp; /* instruction start (FF 15 + disp32 = 6 bytes) */
     b(0xFF); b(0x15);
     if (coff_mode) {
-        static const char *impn[8] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
-            "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA" };
+        static const char *impn[24] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
+            "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA",
+            "__imp_pow", "__imp_atan2", "__imp_fmod", "__imp_remainder", "__imp_sqrt", "__imp_cbrt", "__imp_cos", "__imp_sin",
+            "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor" };
         b4(0);
         coff_crel(at + 2, 0x0004, coff_func_name_sym(impn[slot]), 0);
         return;
     }
     b4(iat_disp_at(at, slot));
+}
+/* 外部数学函数 → IAT slot 8-23（非 coff 模式；fix 2026-08-06 BUG-1） */
+static int fn_math_iat(const char *n) {
+    static const char *maths[16] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs" };
+    for (int i = 0; i < 16; i++) if (!strcmp(maths[i], n)) return 8 + i;
+    return -1;
 }
 static int scratch_base = 0; /* frame scratch area for printf (set in main) */
 /* r12/r13 are high registers: [r13] needs mod=01+disp8, [r12] needs SIB 0x24 */
@@ -1881,6 +1993,8 @@ static void lex(const char *s) {
             int is_elif = !strncmp(s + i, "#elif", 5);
             int is_else = !strncmp(s + i, "#else", 5);
             int is_endif = !strncmp(s + i, "#endif", 6);
+            int is_undef = !strncmp(s + i, "#undef", 6);
+            int is_error = !strncmp(s + i, "#error", 6);
             if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 int parent = if_skip;
                 char expr[512]; int ei = 0;
@@ -1929,6 +2043,25 @@ static void lex(const char *s) {
             if (if_skip) { /* in a false branch: skip all lines (incl. #define/#include) until the matching #endif/#elif/#else */
                 while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; }
                 continue;
+            }
+            if (is_undef) { /* #undef NAME — 从三个宏表删除（fix 2026-08-05） */
+                int p = i + 6;
+                while (s[p] == ' ' || s[p] == '\t') p++;
+                char un[32]; int ui = 0;
+                while (isalnum(s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ui < 31) un[ui++] = s[p]; p++; }
+                un[ui] = 0;
+                if (ui > 0) macro_remove(un);
+                while (s[i] && s[i] != '\n') i++;
+                continue;
+            }
+            if (is_error) { /* #error msg — 硬诊断（fix 2026-08-05） */
+                int p = i + 6;
+                while (s[p] == ' ' || s[p] == '\t') p++;
+                char em[512]; int ei = 0;
+                while (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
+                em[ei] = 0;
+                fprintf(stderr, "[ERR] #error: %s\n", em);
+                exit(1);
             }
             if (is_def) {
                 i += 7;
@@ -2522,7 +2655,7 @@ static int prim(void) {
         if (tt[tk] == FP) {
             int idx = tv[tk];
             if (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; }
-            int n = Nd(FP); nv[n] = dbl_n; dbl_n++; tk++;
+            int n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double-literal: must be marked ndbl (fix 2026-08-06) */
             return n;
         }
         int n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); return n;
@@ -3235,7 +3368,10 @@ static int parse(const char *s) {
     memset(ndbl, 0, sizeof(ndbl)); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, sizeof(nuns)); /* per-node unsigned flags (fix 2026-08-05) */
     fvn = 0; /* reset per-function var-range table */
-    memset(tt, 0, TS * 4); lex(s);
+    memset(tt, 0, TS * 4);
+    char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
+    lex(exp_src);
+    free(exp_src);
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
     int p = Nd(3); if (p < 0) return -1;
     
@@ -4928,6 +5064,7 @@ static void cg(int n) {
         case 3: for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); } break;
         case 4: { /* function call */
             int fn = -1;
+            int math_done = 0; /* external math fn IAT call already cleaned rsp (fix 2026-08-06 BUG-1) */
             /* The callee is attached LAST (Nc(c,n) appends it after the args), so the
                LAST child is always the callee — for plain names (add(1,2)), fnptr vars
                (fp(x)) AND expression callees (h.cb(x,y), tbl[i](x)). The old reverse
@@ -5250,9 +5387,24 @@ static void cg(int n) {
             } else if (!strcmp(fname, "_exit_proc")) {
                 emit_exit_proc();
             } else {
-                mov_r_imm(0, 0); /* undefined �?return 0 */
+                int mslot = fn_math_iat(fname);
+                if (mslot >= 0) { /* 外部数学函数：Win64 ABI 传参（double→xmm，签名固定全 double）+ IAT 调用（fix 2026-08-06 BUG-1） */
+                    for (int k = 0; k < nargs && k < 4; k++)
+                        movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8);
+                    for (int k = 4; k < nargs; k++) {
+                        movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[k] - 8);
+                        movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0);
+                    }
+                    { int pad8 = ((nargs + extra + 5) & 1) ? 8 : 0; /* call 前 rsp%%16==0（msvcrt SSE 对齐指令；fix 2026-08-06） */
+                    if (extra > 0) sub_rsp_imm(32 + 8 * extra + pad8); else sub_rsp_imm(32 + pad8);
+                    call_iat(mslot);
+                    add_rsp_imm(32 + 8 * extra + pad8 + total_h); }
+                    math_done = 1;
+                } else {
+                    mov_r_imm(0, 0); /* undefined �?return 0 */
+                }
             }
-            if (!is_user && !fnptr) add_rsp_imm(8 * nargs); /* clean up pushed args (builtins: no shadow sub) */
+            if (!is_user && !fnptr && !math_done) add_rsp_imm(8 * nargs); /* clean up pushed args (builtins: no shadow sub) */
         } break;
         case 5: for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); } break;
         case 6: { /* return �?epilogue */
@@ -6040,7 +6192,7 @@ static void write_pe(FILE *f, int entry_rva) {
        Make .text always end exactly where .data begins. */
     int need = data_rva_base - text_rva;
     if (text_size < need) text_size = need;
-    int text_foff = 0x200;
+    int text_foff = FILE_ALIGNMENT;
     int data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     int data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
     int image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
@@ -6069,20 +6221,20 @@ static void write_pe(FILE *f, int entry_rva) {
     w4(f, 0);       /* SizeOfUninitializedData */
     w4(f, entry_rva); /* AddressOfEntryPoint */
     w4(f, text_rva);  /* BaseOfCode */
-    w8(f, 0x400000); /* ImageBase �?low address for 32-bit pointers */
+    w8(f, IMAGE_BASE); /* ImageBase �?low address for 32-bit pointers */
     w4(f, 0x1000);  /* SectionAlignment */
-    w4(f, 0x200);   /* FileAlignment */
+    w4(f, FILE_ALIGNMENT);   /* FileAlignment */
     w2(f, 6); w2(f, 0); /* OSVersion */
     w2(f, 0); w2(f, 0); /* ImageVersion */
     w2(f, 6); w2(f, 0); /* SubsystemVersion */
     w4(f, 0);       /* Win32VersionValue */
     w4(f, image_size); /* SizeOfImage */
-    w4(f, 0x200);   /* SizeOfHeaders */
+    w4(f, FILE_ALIGNMENT);   /* SizeOfHeaders */
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
     w8(f, 0x100000); /* SizeOfStackReserve */
-    w8(f, 0x400000); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
+    w8(f, IMAGE_BASE); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
     w8(f, 0x100000); /* SizeOfHeapReserve */
     w8(f, 0x1000);   /* SizeOfHeapCommit */
     w4(f, 0);       /* LoaderFlags */
@@ -6090,7 +6242,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x98); w4(f, 40); /* RVA of import descriptors + size */
+    w4(f, data_rva_base + 0x1A8); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -6128,64 +6280,57 @@ static void write_pe(FILE *f, int entry_rva) {
     pos = (int)ftell(f);
     while (pos < end) { fputc(0, f); pos++; }
 
-    /* .data section: write heap counter at data_foff, then kernel32 import table
-       Layout: IAT@+0x08(72B) ILT@+0x50(72B) desc@+0x98(40B) hint/names@+0xC0 dll@+0x12E
-       statics start at +0x140. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
-       3=ReadFile 4=VirtualAlloc 5=SetFilePointer 6=ExitProcess 7=GetCommandLineA */
+    /* .data section: write heap counter, then import table
+       布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (16 msvcrt + term=136B)
+       ILT1@+0xD8 (8+term) ILT2@+0x120 (16+term) desc@+0x1A8 (3*20=60B) names@+0x1E4 */
     fseek(f, data_foff, SEEK_SET);
-    int heap_start = 0x400000 + data_rva + 0x140 + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
-    /* IAT (at .data+0x08): loader overwrites with kernel32 addresses */
-    w8(f, data_rva_base + 0xC0); /* IAT[0] = GetStdHandle */
-    w8(f, data_rva_base + 0xCE); /* IAT[1] = WriteFile */
-    w8(f, data_rva_base + 0xDA); /* IAT[2] = CreateFileA */
-    w8(f, data_rva_base + 0xE8); /* IAT[3] = ReadFile */
-    w8(f, data_rva_base + 0xF2); /* IAT[4] = VirtualAlloc */
-    w8(f, data_rva_base + 0x100); /* IAT[5] = SetFilePointer */
-    w8(f, data_rva_base + 0x110); /* IAT[6] = ExitProcess */
-    w8(f, data_rva_base + 0x11D); /* IAT[7] = GetCommandLineA */
-    w8(f, 0);             /* terminator */
-    /* ILT (at .data+0x50) */
-    w8(f, data_rva_base + 0xC0);
-    w8(f, data_rva_base + 0xCE);
-    w8(f, data_rva_base + 0xDA);
-    w8(f, data_rva_base + 0xE8);
-    w8(f, data_rva_base + 0xF2);
-    w8(f, data_rva_base + 0x100);
-    w8(f, data_rva_base + 0x110);
-    w8(f, data_rva_base + 0x11D);
+    static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
+    static const char *mnames[16] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs" };
+    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0xD8, ilt2 = 0x120, desc_off = 0x1A8, name_off = 0x1E4;
+    int n_off[24];
+    /* IAT/ILT 占位 */
+    fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 17; i++) w8(f, 0);
+    fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 17; i++) w8(f, 0);
+    /* names（hint 2B + name + \0） */
+    fseek(f, data_foff + name_off, SEEK_SET);
+    for (int i = 0; i < 8; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
+    for (int i = 0; i < 16; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
+    int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
+    /* 回填 IAT1（8 + term） */
+    fseek(f, data_foff + iat1, SEEK_SET);
+    for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* import descriptor (at .data+0x98) for kernel32.dll */
-    w4(f, data_rva_base + 0x50); /* OriginalFirstThunk = ILT RVA */
-    w4(f, 0);             /* TimeDateStamp */
-    w4(f, 0);             /* ForwarderChain */
-    w4(f, data_rva_base + 0x12F); /* Name = "kernel32.dll" RVA */
-    w4(f, data_rva_base + 0x08); /* FirstThunk = IAT RVA */
-    /* terminator descriptor */
-    for (int di = 0; di < 5; di++) w4(f, 0);
-    /* hint/names */
-    fseek(f, data_foff + 0xC0, SEEK_SET);
-    w2(f, 0); fputs("GetStdHandle", f); fputc(0, f);
-    fseek(f, data_foff + 0xCE, SEEK_SET);
-    w2(f, 0); fputs("WriteFile", f); fputc(0, f);
-    fseek(f, data_foff + 0xDA, SEEK_SET);
-    w2(f, 0); fputs("CreateFileA", f); fputc(0, f);
-    fseek(f, data_foff + 0xE8, SEEK_SET);
-    w2(f, 0); fputs("ReadFile", f); fputc(0, f);
-    fseek(f, data_foff + 0xF2, SEEK_SET);
-    w2(f, 0); fputs("VirtualAlloc", f); fputc(0, f);
-    fseek(f, data_foff + 0x100, SEEK_SET);
-    w2(f, 0); fputs("SetFilePointer", f); fputc(0, f);
-    fseek(f, data_foff + 0x110, SEEK_SET);
-    w2(f, 0); fputs("ExitProcess", f); fputc(0, f);
-    fseek(f, data_foff + 0x11D, SEEK_SET);
-    w2(f, 0); fputs("GetCommandLineA", f); fputc(0, f);
-    /* dll name */
-    fseek(f, data_foff + 0x12F, SEEK_SET);
-    fputs("kernel32.dll", f); fputc(0, f);
+    /* 回填 IAT2（16 + term） */
+    fseek(f, data_foff + iat2, SEEK_SET);
+    for (int i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    w8(f, 0);
+    /* 回填 ILT1/ILT2 */
+    fseek(f, data_foff + ilt1, SEEK_SET);
+    for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
+    w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET);
+    for (int i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    w8(f, 0);
+    /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
+    fseek(f, data_foff + desc_off, SEEK_SET);
+    w4(f, data_rva_base + ilt1);  /* kernel32 OriginalFirstThunk */
+    w4(f, 0); w4(f, 0);
+    w4(f, data_rva_base + kdll);  /* Name */
+    w4(f, data_rva_base + iat1);  /* FirstThunk */
+    w4(f, data_rva_base + ilt2);  /* msvcrt OriginalFirstThunk */
+    w4(f, 0); w4(f, 0);
+    w4(f, data_rva_base + mdll);  /* Name */
+    w4(f, data_rva_base + iat2);  /* FirstThunk */
+    for (int di = 0; di < 5; di++) w4(f, 0); /* terminator descriptor */
     /* pad .data to raw size */
-    fseek(f, data_foff + 0x140, SEEK_SET);
+    fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
     int data_end = data_foff + 0x4000;
     while (pos < data_end) { fputc(0, f); pos++; }
@@ -6201,13 +6346,13 @@ static void mov_ri_ext(int reg, int imm) { asm_emit("    移动 r%d, %d\n", (cha
    Registers: r10=cmdline r11=scan idx r12=&argv[0] r13=&token_area(advancing)
    r14=argc r8=token_start r15=saved rsp. Each token is NUL-terminated in the copy. */
 static void emit_crt_stub(void) {
-    int argv_va = 0x400000 + data_rva_base + 0x140 + 4 * stc_n; /* .data static area for argv[64] */
+    int argv_va = IMAGE_BASE + data_rva_base + DATA_RVA_OFF + 4 * stc_n; /* .data static area for argv[64] */
     crt_entry_off = cp; /* entry point = start of this stub */
     /* 自切栈：立即�?rsp 切到 .data 内的高地址区（62MB 偏移处），完全脱�?loader �?
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    int stk_top = 0x400000 + data_rva_base + 0x4400000;
+    int stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
@@ -6433,12 +6578,12 @@ void gen_code(void) {
     for (int i = 0; i < strpn; i++) {
         int si = str_patches[i].str_idx;
         int off = str_offs[si]; /* byte offset within string data */
-        int rva = 0x400000 + 0x1000 + code_end + off; /* ImageBase(0x400000) + text_rva + code + off */
+        int rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     for (int i = 0; i < fnpn; i++) {
-        int rva = 0x400000 + 0x1000 + label_pos[fn_patches[i].label];
+        int rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -6447,12 +6592,12 @@ void gen_code(void) {
     for (int i = 0; i < dbl_patch_n; i++) {
         int di = dbl_patches[i].dbl_idx;
         int off = dbl_offs[di];
-        int rva = 0x400000 + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (0x400000 + 0x1000 + dbl_patches[i].patch_at + 4));
+        int rva = IMAGE_BASE + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     if (sdp > 0) {
-        while (cp + sdp >= 0x400000) { unsigned char *nc = realloc(code, 0x400000+4096); if (!nc) { fprintf(stderr, "qcc_x86: OOM at code buffer %d bytes\n", 0x400000+4096); exit(1); } code = nc; }
+        while (cp + sdp >= CODE_BUF_CAP) { unsigned char *nc = realloc(code, CODE_BUF_CAP+4096); /* code 缓冲上限（fix 2026-08-06: 误用 IMAGE_BASE 语义，H1） */ if (!nc) { fprintf(stderr, "qcc_x86: OOM at code buffer %d bytes\n", IMAGE_BASE+4096); exit(1); } code = nc; }
         memcpy(code + cp, sdat, sdp);
         cp += sdp;
     }
@@ -6815,7 +6960,7 @@ int main(int argc, char **argv) {
     n244 = _va_alloc(ASZ * 4); n245 = _va_alloc(ASZ * 4); n246 = _va_alloc(ASZ * 4); n247 = _va_alloc(ASZ * 4); n248 = _va_alloc(ASZ * 4); n249 = _va_alloc(ASZ * 4); n250 = _va_alloc(ASZ * 4); n251 = _va_alloc(ASZ * 4);
     n252 = _va_alloc(ASZ * 4); n253 = _va_alloc(ASZ * 4); n254 = _va_alloc(ASZ * 4); n255 = _va_alloc(ASZ * 4);
 
-    code = malloc(0x400000); /* 4MB pre-alloc: self-host never reallocs (kills the bump-leak) */ if (!code) { fprintf(stderr, "qcc_x86: OOM at init\n"); return 1; } cp = 0; lc = 0;
+    code = malloc(CODE_BUF_CAP); /* 4MB pre-alloc: self-host never reallocs (kills the bump-leak) */ if (!code) { fprintf(stderr, "qcc_x86: OOM at init\n"); return 1; } cp = 0; lc = 0;
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
     memset(str_offs, -1, sizeof(str_offs));
 

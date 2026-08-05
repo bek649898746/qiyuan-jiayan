@@ -14,3 +14,15 @@ v3.exe
 # 系统
 .DS_Store
 Thumbs.db
+
+# 调试结果（不上传，本地保留）
+_w.log
+_wextra.log
+_t_min.asm
+_t_*.c
+_t_*.asm
+_sync_build.log
+err.txt
+out.txt
+qcc_test_*.txt
+seed/_BOOTSTRAP.md
