@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 7010a07f —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 fa8e6540 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -51,7 +51,7 @@
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 静 字 __pad0[STACK_PAD_SIZE];
-静 字 str_tbl[1024][512]; 整 str_cnt;
+静 字 str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量 */ 整 str_cnt;
 静 构 { 字 name[32]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; 字 p_dbl, is_char, is_uns, is_ll; 整 frows[4]; } vars[4096]; 整 vcnt; /* is_ll: long long（8 字节整）变量（fix 2026-08-05） */
 静 整 stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
@@ -84,7 +84,7 @@ __attribute__((unused))
 静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 64) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
-静 构 { 字 name[32]; 字 val[512]; } str_macros[64]; 静 整 str_macro_n;
+静 构 { 字 name[32]; 字 val[2048]; } str_macros[64]; /* fix 2026-08-06 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
 静 构 { 字 name[32]; 字 params[8][16]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n;
@@ -1091,7 +1091,7 @@ __attribute__((unused))
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 静 整 var_static(常 字 *n, 整 pesz) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 只应遮蔽既有 STATIC 全局 — qcc_rt.c 前置的库函数局部变量会撞名（atof 的 `s` 等）导致输入全局变量永不注册 */
-    若 (vcnt >= 4000 || stc_n >= 4194304) exit(1);
+    若 (vcnt >= 4000 || stc_n >= 8388608) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1110,7 +1110,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off;
     整 slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     若 (esz > 4) slots = (count * esz + 3) / 4;
-    若 (vcnt >= 4000 || stc_n + slots >= 4194304) exit(1);
+    若 (vcnt >= 4000 || stc_n + slots >= 8388608) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1125,7 +1125,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 同 var_static — 只应遮蔽既有 STATIC 全局 */
     整 slots = (stypes[si].sz + 3) / 4; 若 (slots < 1) slots = 1;
     整 total = slots * count;
-    若 (vcnt >= 4000 || stc_n + total >= 4194304) exit(1);
+    若 (vcnt >= 4000 || stc_n + total >= 8388608) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -2049,7 +2049,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             整 k = kw(tn[ti]);            若 (k == NK) { 整 mv = macro_find(tn[ti]); 若 (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; 续; } tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
-        若 (s[i] == '"') { i++; 整 j = 0; 循环 (s[i] && s[i] != '"' && j < 510) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 510 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 510 字符上限 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; 续; }
+        若 (s[i] == '"') { i++; 整 j = 0; 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; 续; }
         若 (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; 整 cv = s[i];
             若 (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
