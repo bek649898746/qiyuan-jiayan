@@ -2462,7 +2462,7 @@ __attribute__((unused))
         若 (tt[tk] == FP) {
             整 idx = tv[tk];
             若 (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* 不去重（C 原版 1922）：自举对齐 */
-            整 n = Nd(FP); nv[n] = dbl_n; dbl_n++; tk++;
+            整 n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double 字面量必须标 ndbl（fix 2026-08-06） */
             返 n;
         }
         整 n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); 返 n;
