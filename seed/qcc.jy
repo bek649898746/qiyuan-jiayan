@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 9cdc57a0 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 2cbc0d00 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -1944,7 +1944,7 @@ __attribute__((unused))
                 若 (is_hexfp) {
                     整 fhi, flo;
                     hexfp_parse(s, &i, &fhi, &flo);
-                    若 (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; }
+                    若 (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); } dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; 续;
                 }
@@ -1959,7 +1959,7 @@ __attribute__((unused))
                     整 fhi, flo;
                     fp_parse(s, &i, &fhi, &flo);
                     若 (s[i] == 'f' || s[i] == 'F') i++; /* 浮点后缀 1.5f → double（C 原版 1466） */
-                    若 (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; } /* 不去重（C 原版 1467）：自举对齐 */
+                    若 (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); } dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; /* 不去重（C 原版 1467）：自举对齐 */
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; 续;
                 }
@@ -1967,7 +1967,7 @@ __attribute__((unused))
                     整 fhi, flo;
                     fp_parse(s, &i, &fhi, &flo);
                     若 (s[i] == 'f' || s[i] == 'F') i++; /* 浮点后缀 1.5f → double（C 原版 1466） */
-                    若 (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; } /* 不去重（C 原版 1467）：自举对齐 */
+                    若 (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); } dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; /* 不去重（C 原版 1467）：自举对齐 */
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; 续;
                 }
@@ -2480,7 +2480,8 @@ __attribute__((unused))
            real negative zero; a runtime 0.0 - x would round -0.0 to +0.0) */
         若 (tt[tk] == FP) {
             整 idx = tv[tk];
-            若 (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* 不去重（C 原版 1922）：自举对齐 */
+            若 (dbl_n < 1024) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* 不去重（C 原版 1922）：自举对齐 */
+                    若 (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); }
             整 n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double 字面量必须标 ndbl（fix 2026-08-06） */
             返 n;
         }
