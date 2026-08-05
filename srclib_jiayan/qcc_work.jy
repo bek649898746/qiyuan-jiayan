@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 0d817a34 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 17471a35 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -964,7 +964,7 @@ __attribute__((unused))
 静 构 { 整 patch_at; 整 str_idx; } str_patches[2048]; 整 strpn;
 静 构 { 整 patch_at; 整 dbl_idx; } dbl_patches[2048]; 整 dbl_patch_n; /* double-literal rip-relative disp32 patches */
 静 构 { 整 patch_at; 整 label; } fn_patches[2048]; 整 fnpn; /* function-address imm32 patches */
-静 整 ginit[128]; 静 整 ginit_n; /* global variable initializer nodes (emitted at main entry) */
+静 整 ginit[4096]; 静 整 ginit_n; /* fix 2026-08-06: 128→4096 + 溢出报错 */ /* global variable initializer nodes (emitted at main entry) */
 静 整 coff_mode = 0; /* -c 模式（COFF 对象输出）标记——曾缺定义，隐式 extern 垃圾值 1 → 全局/局部 char 数组 = 字符串初始化被跳过（fix 2026-08-05） */
 静 整 ndbl[262144]; /* per-node flag: expression yields a double (floating) */
 静 整 nll[262144]; /* per-node flag: expression is a 64-bit long long（fix 2026-08-05） */
@@ -2528,11 +2528,13 @@ __attribute__((unused))
 静 整 gi_idx[8];  /* 全局多维初始化游标 (fix 2026-08-05) */
 静 整 str_row = 0; /* 字符串初始化行计数器：char 行按顺序填充（fix 2026-08-05） */
 
+静 整 arr_init_leaf_n; /* fix 2026-08-06: 数组初始化器叶子计数（块节点 256 子槽上限） */
 静 空 brace_arr_init(整 b, 整 d, 整 *dims, 整 nd, 整 depth) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
        本函数自管 { } 配平 (fix 2026-08-05) */
+    若 (depth == 0) arr_init_leaf_n = 0; /* fix 2026-08-06 */
     若 (tt[tk] == FK) tk++; /* 本层 '{' */
     整 has_nested = (tt[tk] == FK); /* 本层是否为嵌套行模式 */
     循环 (tt[tk] != UK) {
@@ -2582,7 +2584,8 @@ __attribute__((unused))
             str_row++;
             续;
         }
-        /* 叶子: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
+        /* 叶子: a[gi_idx[0]]...[gi_idx[nd-1]] = expr */
+        arr_init_leaf_n++; 若 (arr_init_leaf_n > 256) { fprintf(stderr, "[ERR] 数组初始化器超过 256 元素上限 (fix 2026-08-06)\n"); exit(1); }
         整 idn = Nd(1); memcpy((字*)(nn + idn), (字*)(nn + d), 32);
         整 node = idn;
         遍 (整 i = 0; i < nd; i++) {
@@ -2962,7 +2965,7 @@ __attribute__((unused))
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 若 (tt[tk] == SK) tk++;
                 续;
-            } 否 若 (is_static && ginit_n < 128) {
+            } 否 若 (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
                 整 decl = Nd(7); memcpy((字*)(nn + decl), (字*)(nn + d), 32);
@@ -3731,14 +3734,15 @@ __attribute__((unused))
                     否 若 (g_is_double) { var_static(gname, 4); vars[vcnt - 1].is_dbl = 1; } /* global double: 8-byte .data slot */
                     否 var_static(gname, pesz);
                     若 (tt[tk] == AK) { /* = init */
+                        若 (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限 (fix 2026-08-06)\n"); exit(1); }
                         tk++;
                         若 (tt[tk] == FK && g_stidx >= 0) { /* struct G g = { a, b, c }; — brace init */
                             tk++;
                             整 idn = Nd(1); memcpy((字*)(nn + idn), gname, 32);
                             整 blkinit = brace_fields(g_stidx, idn);
                             若 (tt[tk] == UK) tk++;
-                            若 (ginit_n < 128) ginit[ginit_n++] = blkinit; /* the block IS the initializer */
-                        } 否 若 (tt[tk] == FK && gcnt > 0 && ginit_n < 128) {
+                            若 (ginit_n < 4096) ginit[ginit_n++] = blkinit; /* the block IS the initializer */
+                        } 否 若 (tt[tk] == FK && gcnt > 0 && ginit_n < 4096) {
                             /* 全局数组初始化（含多维嵌套）：garr[N] = { a, b, c }; / 整 m[2][2][2] = {{{1,2},{3,4}},...}
                                → brace_arr_init 展开 garr[i][j][k]=...（fix 2026-08-05: 扁平循环遇嵌套 '{{' 崩 → main 未被解析） */
                             整 blk = Nd(5);
@@ -3746,8 +3750,8 @@ __attribute__((unused))
                             遍 (整 i = 0; i < 8; i++) gi_idx[i] = 0;
                             str_row = 0; /* 字符串初始化行计数器（fix 2026-08-05） */
                             brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0); /* 自管 { } 配平 */
-                            若 (ginit_n < 128) ginit[ginit_n++] = blk;
-                        } 否 若 (ginit_n < 128) {
+                            若 (ginit_n < 4096) ginit[ginit_n++] = blk;
+                        } 否 若 (ginit_n < 4096) {
                             整 decl = Nd(7); memcpy((字*)(nn + decl), gname, 32);
                             Nc(decl, expr());
                             ginit[ginit_n++] = decl;
