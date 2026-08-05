@@ -2655,7 +2655,7 @@ static int prim(void) {
         if (tt[tk] == FP) {
             int idx = tv[tk];
             if (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; }
-            int n = Nd(FP); nv[n] = dbl_n; dbl_n++; tk++;
+            int n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double-literal: must be marked ndbl (fix 2026-08-06) */
             return n;
         }
         int n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); return n;
