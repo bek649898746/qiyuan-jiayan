@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 01134780 (2026-08-06)
+**%llu unsigned long long 打印 + ULL 变量声明修复：新不动点 01134780**
+
+- 新增 emit_ll_unsigned_digits()：无符号 64 位十进制（无符号检查，div rcx 无符号）；%u 处理器加 ll_cnt>=2 跃迁（lu32 回退），镜像 %lld 模式
+- 修复 unsigned long long 变量声明：is_ll 检测只认 "long"+"long" 相邻，`unsigned long long` 的 tk 停在 "unsigned" → 检测失败 → 变量被当 32 位 int
+  - 症状：`unsigned long long x = 12345678901234567890ULL; printf("%llu", x)` 打印 4204667（=fmt 字符串地址！movabs 值被 mov eax,addr 覆盖，x 槽从未被写）
+  - 三处修复：is_ll 检测加 unsigned 前缀组合 + 第三个关键字 long 消费（局部声明与参数解析各一处）+ ULL 变量 is_uns 置位
+- %llu 8 例（小/大/最大 2^64-1/2^63/变量/混合/u32/减法）C 端与自举端全 PASS；%lld 回归 8/8
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_01134780_seed.exe
+
 ## afb6e8a5 (2026-08-06)
 **%lld / long long 打印完整修复：64 位取参 + 64 位十进制发射器 + 负值参数 64 位压栈**
 
