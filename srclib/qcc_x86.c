@@ -320,6 +320,7 @@ static char *pp_read_file(const char *path) {
     if (!f) return 0;
     fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
     if (sz < 0) { fclose(f); return 0; }
+    if (sz > 4 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 4MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
     char *buf = malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return 0; }
     size_t rd = fread(buf, 1, (size_t)sz, f);
