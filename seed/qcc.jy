@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 64847608 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 7010a07f —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -1432,6 +1432,14 @@ __attribute__((unused))
     若 (idx < 0) 返 0;
     若 (nt[idx] == 1) 返 var_is_uns((字*)(nn + idx)); /* unsigned 变量 */
     若 (nt[idx] == 0) 返 nuns[idx];                       /* 0xFFFFFFFFu 字面量 */
+    若 (nt[idx] == 2) { /* 二元运算: C 通常算术转换 (fix 2026-08-06 M1 传播) */
+        整 o = nv[idx];
+        若 (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) 返 0;
+        若 (o == LA || o == LO) 返 0;
+        若 (o == T_SR || o == T_SH) 返 expr_is_unsigned(n0[idx]); /* 移位: 结果类型=左操作数 */
+        返 expr_is_unsigned(n0[idx]) || expr_is_unsigned(n1[idx]);
+    }
+    若 (nt[idx] == 14) 返 expr_is_unsigned(n0[idx]); /* arr[i]: 数组元素类型 */
     返 0;
 }
 
