@@ -126,6 +126,12 @@ static struct { char name[32]; char val[512]; } str_macros[64]; static int str_m
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
 static struct { char name[32]; char params[8][16]; int pn; char body[512]; } fn_macros[64]; static int fn_macro_n;
+/* #undef: remove NAME from numeric/string/function macro tables (fix 2026-08-05) */
+static void macro_remove(const char *n) {
+    for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) { for (int j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n--; return; }
+    for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) { for (int j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n--; return; }
+    for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, n)) { for (int j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n--; return; }
+}
 
 static void fn_macro_collect(const char *s) {
     fn_macro_n = 0;
@@ -1888,6 +1894,8 @@ static void lex(const char *s) {
             int is_elif = !strncmp(s + i, "#elif", 5);
             int is_else = !strncmp(s + i, "#else", 5);
             int is_endif = !strncmp(s + i, "#endif", 6);
+            int is_undef = !strncmp(s + i, "#undef", 6);
+            int is_error = !strncmp(s + i, "#error", 6);
             if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 int parent = if_skip;
                 char expr[512]; int ei = 0;
@@ -1936,6 +1944,25 @@ static void lex(const char *s) {
             if (if_skip) { /* in a false branch: skip all lines (incl. #define/#include) until the matching #endif/#elif/#else */
                 while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; }
                 continue;
+            }
+            if (is_undef) { /* #undef NAME — 从三个宏表删除（fix 2026-08-05） */
+                int p = i + 6;
+                while (s[p] == ' ' || s[p] == '\t') p++;
+                char un[32]; int ui = 0;
+                while (isalnum(s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ui < 31) un[ui++] = s[p]; p++; }
+                un[ui] = 0;
+                if (ui > 0) macro_remove(un);
+                while (s[i] && s[i] != '\n') i++;
+                continue;
+            }
+            if (is_error) { /* #error msg — 硬诊断（fix 2026-08-05） */
+                int p = i + 6;
+                while (s[p] == ' ' || s[p] == '\t') p++;
+                char em[512]; int ei = 0;
+                while (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
+                em[ei] = 0;
+                fprintf(stderr, "[ERR] #error: %s\n", em);
+                exit(1);
             }
             if (is_def) {
                 i += 7;
