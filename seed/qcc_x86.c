@@ -2136,7 +2136,8 @@ static void lex(const char *s) {
                 if (is_hexfp) {
                     int fhi, flo;
                     hexfp_parse(s, &i, &fhi, &flo);
-                    if (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; }
+                    if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
+                    dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; continue;
                 }
@@ -2151,7 +2152,8 @@ static void lex(const char *s) {
                     int fhi, flo;
                     fp_parse(s, &i, &fhi, &flo);
                     if (s[i] == 'f' || s[i] == 'F') i++; /* float suffix 1.5f → double */
-                    if (dbl_n < 512) { dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo; }
+                    if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
+                    dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; continue;
                 }
