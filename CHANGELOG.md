@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## ee0755a8 (2026-08-06)
+**指针自增 step 修复 + switch fall-through 尝试 + %X 大写：新不动点 ee0755a8**
+
+- **指针自增 step 修复**（行为测试挖出）：case 23/26 用 `p_esz`（槽大小 4）当步长 → `char* a` 的 a++ 跳 4 字节 → 循环只走 1 次（strcmp 返回 60）；改用 `arr_esz`（元素大小 1）
+- **switch fall-through 尝试**：if-else 链改并列 if 方案 → 累积 OR 链 O(N²) 膨胀 3 倍（v1 2.3MB）；改 _swm 标志变量 O(N) → **但生成 v1 编译任何输入卡死**（大 switch 触发）→ **回滚到原始 if-else 链**（fall-through 记已知限制，下次用标签跳转方案）
+- **%X/%llX 大写**：emit_hex_digits/emit_ll_hex_digits 加 upper 参数（0x57→'a' / 0x37→'A'）+ lxU/lxU32 标签（%X/%llX 分派）
+- 行为测试扩到 20 用例（位域/浮点格式/hex/多维数组/字符串比较/指针运算/switch）——**19/20**（仅 %08x 零填充/%#x 前缀 已知限制）
+- 诊断沉淀：v1 编译卡死 = jy 镜像 C/jy 不一致 → 逐个回滚 jy 3 项仍卡 → 回滚 C 端 switch 才恢复（定位到 C 端标志变量方案）
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_EE0755A8_seed.exe
+
 ## 9931ab80 (2026-08-06)
 **行为正确性测试体系 + printf %- 左对齐 + LL 数组 nll 传播：新不动点 9931ab80**
 
