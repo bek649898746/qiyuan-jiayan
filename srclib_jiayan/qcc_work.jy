@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 e6c32556 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 8fea2afe —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -2005,7 +2005,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             整 k = kw(tn[ti]);            若 (k == NK) { 整 mv = macro_find(tn[ti]); 若 (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; 续; } tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
-        若 (s[i] == '"') { i++; 整 j = 0; 循环 (s[i] && s[i] != '"' && j < 510) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; 续; }
+        若 (s[i] == '"') { i++; 整 j = 0; 循环 (s[i] && s[i] != '"' && j < 510) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 510 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 510 字符上限 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; 续; }
         若 (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; 整 cv = s[i];
             若 (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
@@ -3955,7 +3955,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 /* printf/fprintf/putstr: build output into a frame scratch buffer, then WriteFile.
    r10=handle r11=fmt r12=buf(advancing) r14=buf(start) r13=next-format-arg ptr.
    No calls until the final WriteFile, so volatile registers are safe throughout. */
-静 整 emit_fmt_loop(空);
+静 整 emit_fmt_loop(整 bound_disp);
 静 空 mov_ri_ext(整 reg, 整 imm); /* high-reg immediate mov (defined near CRT stub) */
 /* bit-field codegen helpers (real bit semantics, fix 2026-08-05). */
 静 空 bf_shl_imm(整 reg, 整 cnt) { /* shl r32, cl  (cnt compile-time 0..31) */
@@ -4036,7 +4036,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     add_rsp_imm(32);
     mov_rr64(10, 0);   /* r10 = handle */
     mov_rr64(11, 3);   /* r11 = fmt */
-    lea_r_mbrp(12, scratch_base - cur_frame_sz); /* r12 = buf */
+    lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf — 缓冲下移到状态区之下 [rbp-4368] (fix 2026-08-06) */
     mov_rr64(14, 12);  /* r14 = buf start */
     整 ldone;
     若 (is_putstr) {
@@ -4050,7 +4050,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 */
         jmp_rel(-1); patch_label(cp-4, lcp, 2);
     } 否 {
-        ldone = emit_fmt_loop();
+        ldone = emit_fmt_loop(-272); /* printf/putstr 链：%s 以 rbp-272 为界 (fix 2026-08-06) */
     }
     set_label(ldone);
     /* len = r12 - r14 */
@@ -4148,7 +4148,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
 
-静 整 emit_fmt_loop(空) {
+静 整 emit_fmt_loop(整 bound_disp) {
     整 ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label(), lsnoprec = new_label();
     整 lfnum = new_label(), lfrac = new_label(), lfrac2 = new_label(), lfsgn = new_label();
     /* specifier-prefix parse + %f precision（C 原版 3305 移植） */
@@ -4259,12 +4259,15 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     jmp_rel(-1); patch_label(cp-4, lcp, 2);
     set_label(lsnoprec);
     mov_r_imm(1, 0x7FFFFFFF); /* ecx = 极大（实际不限） */
+    /* H2 fix 2026-08-06: %s 缓冲上限检查 — 仅 printf/putstr 链（bound_disp != 0，= rbp-272 状态区起点）：
+       r9 预载 [rbp+bound_disp]，r12 达界即停（缓冲 4096B [rbp-4368..rbp-273]，不碰状态区/&written）。
+       sprintf 链 bound_disp=0 → 不设界（用户缓冲，标准 C 语义）。 */
+    若 (bound_disp) { lea_r_mbrp(9, bound_disp); } /* lea r9, [rbp+bound_disp] */
     set_label(lcp);
-    /* H2 fix 2026-08-06: %s 缓冲上限检查 — r12 已达 rbp（scratch 272B 起点 [rbp-272]）即停止，防止覆盖保存的 rbp/返回地址（C 原版 4521-4527 移植）。置高等 = setae(0x93)；零扩展不带 0x40 REX —— 与 asm_zh movzx_eax_al 逐字节一致。 */
-    asm_emit("    比较64 r12, rbp\n", 0, 0, 0); rex(1, 0, 0, 1); b(0x39); modrm(3, 5, 4); /* cmp r12, rbp */
-    asm_emit("    置高等 al\n", 0, 0, 0); b(0x0F); b(0x93); modrm(3, 0, 0); /* setae al (r12 >= rbp) */
-    asm_emit("    零扩展 eax, al\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(3, 0, 0); /* movzx eax, al */
-    test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lfmt, 3); /* r12 >= rbp -> stop; is_jmp=3=非零跳，与 jnz_rel(0F 85) 一致 */
+    若 (bound_disp) {
+        asm_emit("    比较64 r12, r9\n", 0, 0, 0); rex(1, 1, 0, 1); b(0x39); modrm(3, 1, 4); /* cmp r12, r9 */
+        b(0x0F); b(0x83); b4(0); patch_label(cp-4, lfmt, 7); /* jae lfmt (高于等跳): r12 >= 界 -> stop */
+    }
     asm_emit("    零扩展 eax, [r8]\n", 0, 0, 0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 0, 0); /* movzx eax, byte[r8] */
     test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lfmt, 1);
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lfmt, 1); /* 计数耗尽 */
@@ -4424,7 +4427,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_rr64(14, 1);  /* r14 = dest (rcx = arg0) */
     mov_rr64(11, 2);  /* r11 = fmt (rdx = arg1) */
     mov_rr64(12, 14); /* r12 = dest advancing */
-    整 ldone = emit_fmt_loop();
+    整 ldone = emit_fmt_loop(0); /* sprintf/snprintf：用户缓冲，不设界 */
     set_label(ldone);
     /* NUL 终止 dest 缓冲区 —— sprintf 必须写终止符（C 原版 3548：否则 -S 文本残留脏数据） */
     asm_emit("    存字节0r12\n", 0, 0, 0); b(0x41); b(0xC6); b(0x04); b(0x24); b(0); /* mov byte [r12], 0 */
@@ -6179,9 +6182,9 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         cur_ret_si = (fi >= 0 && fi < 512 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
         cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8); /* sret fn: params shift (rcx = hidden ptr); double param k in xmm[k] */
 
-        整 fn_frame = (fr_end[gfn] - fr_start[gfn]) + 272; /* 本函数局部帧 (C 原版 5172) */
+        整 fn_frame = (fr_end[gfn] - fr_start[gfn]) + 4368; /* fix 2026-08-06: 272 状态区 + 4096 printf 缓冲（审计 P1），16 对齐 */ /* fix 2026-08-06: 272→4096，审计 P1：printf scratch 扩到 4KB（16 对齐） */ /* 本函数局部帧 (C 原版 5172) */
         cur_frame_sz = fr_start[gfn] + fn_frame; /* 51 处 `off - cur_frame_sz` 不变 */
-        scratch_base = cur_frame_sz - 272; /* scratch 在 [rbp-272]，与原全局帧同槽 */
+        scratch_base = cur_frame_sz - 272; /* fix 2026-08-06: 状态区 [rbp-272..]，printf 缓冲在其下 */
         sret_ptr_off = cur_frame_sz - 8;   /* sret 槽在 [rbp-8] */
 
         push_r(5);  /* push rbp */

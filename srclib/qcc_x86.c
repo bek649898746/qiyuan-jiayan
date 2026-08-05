@@ -2188,8 +2188,8 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            int k = kw(tn[ti]);            if (k == NK) { int mv = macro_find(tn[ti]); if (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; continue; } char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 510) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
-        if (s[i] == '"') { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (s[i] && s[i] != '"' && j < 510) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { int mv = macro_find(tn[ti]); if (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; continue; } char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 510) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 510 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 510 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
+        if (s[i] == '"') { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (s[i] && s[i] != '"' && j < 510) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 510 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 510 字符上限 (fix 2026-08-06: 原来截断后解析器错位死循环)\n"); exit(1); } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
             if (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
@@ -4208,7 +4208,7 @@ static void cgc(int n) {
 /* printf/fprintf/putstr: build output into a frame scratch buffer, then WriteFile.
    r10=handle r11=fmt r12=buf(advancing) r14=buf(start) r13=next-format-arg ptr.
    No calls until the final WriteFile, so volatile registers are safe throughout. */
-static int emit_fmt_loop(void);
+static int emit_fmt_loop(int bound_disp);
 static void mov_ri_ext(int reg, int imm); /* high-reg immediate mov (defined near CRT stub) */
 /* bit-field codegen helpers (real bit semantics, fix 2026-08-05).
    A bit-field lives inside a shared 32-bit slot: foffs = slot byte offset,
@@ -4291,7 +4291,7 @@ static void emit_print(const char *fname, int nargs) {
     add_rsp_imm(32);
     mov_rr64(10, 0);   /* r10 = handle */
     mov_rr64(11, 3);   /* r11 = fmt */
-    lea_r_mbrp(12, scratch_base - cur_frame_sz); /* r12 = buf */
+    lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf — 缓冲下移到状态区之下 [rbp-4368] (fix 2026-08-06: 原与状态槽/&written 重叠) */
     mov_rr64(14, 12);  /* r14 = buf start */
     int ldone;
     if (is_putstr) {
@@ -4305,7 +4305,7 @@ static void emit_print(const char *fname, int nargs) {
         asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 */
         jmp_rel(-1); patch_label(cp-4, lcp, 2);
     } else {
-        ldone = emit_fmt_loop();
+        ldone = emit_fmt_loop(-272); /* printf/putstr 链：%s 拷贝以 rbp-272 为界（H2 fix 2026-08-06） */
     }
     set_label(ldone);
     /* len = r12 - r14 */
@@ -4405,7 +4405,7 @@ static void emit_hex_digits(int tail) {
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
 
-static int emit_fmt_loop(void) {
+static int emit_fmt_loop(int bound_disp) {
     int ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label(), lsnoprec = new_label();
     int lfnum = new_label(), lfrac = new_label(), lfrac2 = new_label(), lfsgn = new_label();
     /* specifier-prefix parse + %f precision (root-cause 2026-08-03) */
@@ -4519,13 +4519,15 @@ static int emit_fmt_loop(void) {
     jmp_rel(-1); patch_label(cp-4, lcp, 2);
     set_label(lsnoprec);
     mov_r_imm(1, 0x7FFFFFFF); /* ecx = huge (practically unbounded) */
+    /* H2 fix 2026-08-06: %s 缓冲上限检查 — 仅 printf/putstr 链（bound_disp != 0，= rbp-272 状态区起点）：
+       r9 预载 [rbp+bound_disp]，r12 达界即停（缓冲 4096B [rbp-4368..rbp-273]，不碰状态区/&written）。
+       sprintf 链 bound_disp=0 → 不设界（用户缓冲，标准 C 语义）。 */
+    if (bound_disp) lea_r_mbrp(9, bound_disp); /* lea r9, [rbp+bound_disp] */
     set_label(lcp);
-    /* H2 fix 2026-08-06: %s 缓冲上限检查 — r12 已达 rbp（scratch 272B 起点 [rbp-272]）即停止，防止覆盖保存的 rbp/返回地址。
-       用 rbp 直接比较（不占 r11，格式指针在 %s 结束后仍需推进）。 */
-    asm_emit("    比较64 r12, rbp\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0x39); modrm(3, 5, 4); /* cmp r12, rbp */
-    asm_emit("    置高等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x93); modrm(3, 0, 0); /* setae al (r12 >= rbp); 置高等 = setae(0x93)，与 asm_zh setcc(34) 一致 (fix 2026-08-06) */
-    asm_emit("    零扩展 eax, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(3, 0, 0); /* movzx eax, al — 无 0x40 REX，与 asm_zh movzx_eax_al 一致 */
-    test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lfmt, 3); /* r12 >= rbp -> stop; is_jmp=3=非零跳，与 jnz_rel(0F 85) 一致 (fix 2026-08-06) */
+    if (bound_disp) {
+        asm_emit("    比较64 r12, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 1); b(0x39); modrm(3, 1, 4); /* cmp r12, r9 */
+        b(0x0F); b(0x83); b4(0); patch_label(cp-4, lfmt, 7); /* jae lfmt (高于等跳): r12 >= 界 -> stop */
+    }
     asm_emit("    零扩展 eax, [r8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 0, 0); /* movzx eax, byte[r8] */
     test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lfmt, 1);
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lfmt, 1); /* count exhausted */
@@ -4688,7 +4690,7 @@ static void emit_sprintf(int nargs, int argstart) {
     mov_rr64(14, 1);  /* r14 = dest (rcx = arg0) */
     mov_rr64(11, 2);  /* r11 = fmt (rdx = arg1) */
     mov_rr64(12, 14); /* r12 = dest advancing */
-    int ldone = emit_fmt_loop();
+    int ldone = emit_fmt_loop(0); /* sprintf/snprintf：用户缓冲，不设界（标准语义） */
     set_label(ldone);
     /* NUL-terminate the dest buffer — sprintf MUST write the terminator (fix 2026-08-03: emit_fmt_loop
        leaves it off because printf/fprintf write a known-length blob; self-host -S text was corrupted
@@ -6474,9 +6476,9 @@ void gen_code(void) {
            = (off - fr_start) - fn_frame, so each var lands at [rsp + (off - fr_start)]
            right after `sub rsp, fn_frame`. fr_end-fr_start is always 16-aligned and
            272 = 17*16, so fn_frame keeps ABI alignment at OS-call sites. */
-        int fn_frame = (fr_end[gfn] - fr_start[gfn]) + 272;
+        int fn_frame = (fr_end[gfn] - fr_start[gfn]) + 4368; /* fix 2026-08-06: 272 状态区 + 4096 printf 缓冲（审计 P1），16 对齐 */
         cur_frame_sz = fr_start[gfn] + fn_frame; /* 51 sites `off - cur_frame_sz` untouched */
-        scratch_base = cur_frame_sz - 272; /* scratch at [rbp-272], same slot as the old global frame */
+        scratch_base = cur_frame_sz - 272; /* 状态区 [rbp-272..]，printf 缓冲在其下 [rbp-4368..rbp-273]（emit_print 里 lea -4096） */
         sret_ptr_off = cur_frame_sz - 8;   /* sret slot at [rbp-8] */
 
         push_r(5);  /* push rbp */
