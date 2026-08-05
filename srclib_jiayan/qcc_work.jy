@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 8fea2afe —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 52c8b416 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -670,6 +670,7 @@ __attribute__((unused))
 静 空 mov_rr(整 dst, 整 src) { asm_emit("    移32 r%d, r%d\n", (字*)(长)(整)dst, (字*)(长)(整)src, 0); rex(0, src & 8, 0, dst & 8); b(0x89); modrm(3, src & 7, dst & 7); }
 
 静 整 g_uns_shift; /* cg() 在 alu_rr 前设置: T_SR 操作数是 unsigned → SHR (fix 2026-08-05) */
+静 整 g_uns_div;   /* fix 2026-08-06 M1: T_DV/T_MD 操作数 unsigned → DIV */
 
 /* ADD/SUB/IMUL/CMP reg32, reg32 ??op is token type (PK/MK/DK/QK) */
 静 空 alu_rr(整 op, 整 dst, 整 src) {
@@ -704,10 +705,16 @@ __attribute__((unused))
         返;
     }
     若 (op == T_DV || op == T_MD) {
+        整 use_udiv = g_uns_div; g_uns_div = 0; /* fix 2026-08-06 M1 */
         mov_rr(9, 0); /* r9d = divisor */
         mov_rr(0, dst); /* eax = dividend */
-        asm_emit("    扩展符号\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x99); /* CDQ */
-        asm_emit("    整除 r9\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 7, 1); /* IDIV r9d (REX.B=1 for rm=r9) */
+        若 (use_udiv) {
+            asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
+            asm_emit("    无符号除 r9\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 6, 1); /* DIV r9d */
+        } 否 {
+            asm_emit("    扩展符号\n", 0, 0, 0); b(0x99); /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负值高32位为0 → 变无符号除法!) */
+            asm_emit("    整除 r9\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 7, 1); /* IDIV r9d */
+        }
         若 (op == T_MD) mov_rr(0, 2); /* remainder �?eax */
         mov_rr(dst, 0); /* result �?dst for mov_rr(0,dst) in caller */
         返;
@@ -894,6 +901,18 @@ __attribute__((unused))
     否 若 (op == T_GK) { cc = 0x9F; asm_emit("    置大 al\n", 0, 0, 0); }   /* SETG */
     否 若 (op == T_HK) { cc = 0x9E; asm_emit("    置小等 al\n", 0, 0, 0); } /* SETLE */
     否 若 (op == T_YK) { cc = 0x9D; asm_emit("    置大等 al\n", 0, 0, 0); } /* SETGE */
+    否 { cc = 0x94; asm_emit("    置条件 al\n", 0, 0, 0); }
+    b(0x0F); b(cc); modrm(3, 0, 0);
+}
+/* unsigned setcc (fix 2026-08-06 M1): < → setb(0x92), > → seta(0x97), <= → setbe(0x96), >= → setae(0x93) */
+静 空 setcc_u(整 op) {
+    无 字 cc;
+    若 (op == T_QK) { cc = 0x94; asm_emit("    置等 al\n", 0, 0, 0); }
+    否 若 (op == T_XK) { cc = 0x95; asm_emit("    置不等 al\n", 0, 0, 0); }
+    否 若 (op == T_LK) { cc = 0x92; asm_emit("    置低 al\n", 0, 0, 0); }
+    否 若 (op == T_GK) { cc = 0x97; asm_emit("    置高 al\n", 0, 0, 0); }
+    否 若 (op == T_HK) { cc = 0x96; asm_emit("    置低等 al\n", 0, 0, 0); }
+    否 若 (op == T_YK) { cc = 0x93; asm_emit("    置高等 al\n", 0, 0, 0); }
     否 { cc = 0x94; asm_emit("    置条件 al\n", 0, 0, 0); }
     b(0x0F); b(cc); modrm(3, 0, 0);
 }
@@ -3948,7 +3967,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     pop_r(3);  /* ebx = lhs */
     alu_rr(T_QK, 3, 0); /* cmp ebx(lhs), eax(rhs) ??flags = lhs - rhs */
     整 o = nv[n];
-    setcc(o); /* setcc al */
+    若 (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); 否 setcc(o); /* fix 2026-08-06 M1 */
     movzx_eax_al();
 }
 
@@ -4698,8 +4717,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     若 (o == PK) { asm_emit("    加64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); } /* add rax, rbx */
                     否 若 (o == MK) { asm_emit("    减64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); } /* sub rax, rbx */
                     否 若 (o == DK) { asm_emit("    乘64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); } /* imul rax, rbx（reg=dest, r/m=src） */
-                    否 若 (o == DV) { asm_emit("    除64 r3\n", 0, 0, 0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } /* cqo; idiv rbx */
-                    否 若 (o == MD) { asm_emit("    除余64 r3\n", 0, 0, 0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } /* cqo; idiv rbx; rax = rdx */
+                    否 若 (o == DV) { 若 (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); } 否 { asm_emit("    除64 r3\n", 0, 0, 0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } } /* xor edx,edx; div rbx (unsigned M1) / cqo; idiv rbx */
+                    否 若 (o == MD) { 若 (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); } 否 { asm_emit("    除余64 r3\n", 0, 0, 0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } } /* cqo; idiv rbx; rax = rdx */
                     nll[n] = 1;
                     断;
                 }
@@ -4727,12 +4746,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     cg(n1[n]); mov_rr64(3, 0);
                     pop_r64(0);
                     asm_emit("    比较64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx（fix 2026-08-05：rex 已含 48，双 REX 破坏 H1==H2） */
-                    若 (o == T_LK) { asm_emit("    置低 al\n", 0, 0, 0); b(0x0F); b(0x9C); modrm(3, 0, 0); } /* setl */
-                    否 若 (o == T_GK) { asm_emit("    置高 al\n", 0, 0, 0); b(0x0F); b(0x9F); modrm(3, 0, 0); } /* setg */
-                    否 若 (o == T_QK) { asm_emit("    置等 al\n", 0, 0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); } /* sete */
-                    否 若 (o == T_XK) { asm_emit("    置不等 al\n", 0, 0, 0); b(0x0F); b(0x95); modrm(3, 0, 0); } /* setne */
-                    否 若 (o == T_HK) { asm_emit("    置低等于 al\n", 0, 0, 0); b(0x0F); b(0x9E); modrm(3, 0, 0); } /* setle */
-                    否 { asm_emit("    置高等于 al\n", 0, 0, 0); b(0x0F); b(0x9D); modrm(3, 0, 0); } /* setge */
+                    若 (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); 否 setcc(o); /* fix 2026-08-06 M1: 修正旧文本-字节不配对 */
                     movzx_eax_al();
                     断;
                 }
@@ -4783,6 +4797,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             cg(n0[n]); push_r(0); cg(n1[n]); pop_r(3);
             若 (pscale > 1) { mov_rr(10, 0); mov_r_imm(0, pscale); asm_emit("    乘 r0, r10\n", 0, 0, 0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); } /* eax = index * row size */
             若 (o == T_SR) g_uns_shift = expr_is_unsigned(n0[n]); /* unsigned >> → SHR (fix 2026-08-05) */
+            若 (o == T_DV || o == T_MD) g_uns_div = expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* fix 2026-08-06 M1 */
             alu_rr(o, 3, 0); mov_rr(0, 3);
             若 (psub_div > 1) { /* eax = (p - q) / 元素大小 (idiv: edx:eax / ecx) */
                 mov_r_imm(1, psub_div);
