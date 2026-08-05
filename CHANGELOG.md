@@ -3,6 +3,18 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## afb6e8a5 (2026-08-06)
+**%lld / long long 打印完整修复：64 位取参 + 64 位十进制发射器 + 负值参数 64 位压栈**
+
+- emit_fmt_loop 新增 LL 计数槽 sc+244：'l' 前缀递增、每 spec 清零（mov_mbrp_reg 第二参是寄存器号，必须先 mov_r_imm(0,0) 清零 eax）；%d 分派 sc+244>=2 → 64 位路径
+- 新增 emit_ll_digits()：test rbx,rbx 符号检查 → 负号 + neg rbx → 64 位无符号 div rcx → 反向写临时区 [rbp-56] 再前向拷出
+- 参数压栈 nll[c] → push_r64(0)（根因：原 push_r 只压 32 位，负 LL 高 32 位丢 → 4294967254 类错值）
+- 修复 emit_ll_digits neg rbx 的 REX.B：49 F7 DB = neg r11（fmt 指针被取反）→ div 商溢出 #DE 崩溃；正确 48 F7 DB（asm_zh 的 取反64 本就 r&8 正确，C 端硬编码 B=1 是复制粘贴 bug）
+- resolve_patches Jcc 范围 3-9 → 3-11；patch_label 补 is_jmp=10(小跳 jl)/11(大跳 jg)
+- asm_zh.c/jy 新增 测试64 助记符（test r64,r64 = 48 85，REX.B 必须 0）
+- %lld 8 例（正/负/乘/大/零/最小/ld/d32）C 端与 v1 自举端全 PASS
+- C/jy 双版；新不动点 **afb6e8a5**；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_AFB6E8A5_seed.exe
+
 ## 90f4a3af (M8, 2026-08-06)
 **审计 M8: #include 文件读取加 4MB 上限（编译不可信源码 = 任意大文件读取面）**
 
