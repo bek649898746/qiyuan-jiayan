@@ -1597,6 +1597,14 @@ static int expr_is_unsigned(int n) {
     if (n < 0) return 0;
     if (nt[n] == 1) return var_is_uns((char*)(nn + n)); /* unsigned var */
     if (nt[n] == 0) return nuns[n];                       /* 0xFFFFFFFFu literal */
+    if (nt[n] == 2) { /* binary op: 结果类型按 C 通常算术转换 (fix 2026-08-06 M1 传播: (u-1)>0 判 unsigned) */
+        int o = nv[n];
+        if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) return 0; /* 比较 -> int 0/1 */
+        if (o == LA || o == LO) return 0; /* && || -> int */
+        if (o == T_SR || o == T_SH) return expr_is_unsigned(n0[n]); /* 移位: 结果类型=左操作数 */
+        return expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* + - * / % & | ^: 任一 unsigned */
+    }
+    if (nt[n] == 14) return expr_is_unsigned(n0[n]); /* arr[i]: 结果类型=数组元素类型 */
     return 0;
 }
 
