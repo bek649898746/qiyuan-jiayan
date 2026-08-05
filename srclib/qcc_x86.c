@@ -568,7 +568,7 @@ static void rex(int w, int r, int x, int bval) { b(0x40 | (w ? 8 : 0) | (r ? 4 :
 static void mov_r_imm(int reg, int imm) { asm_emit("    移动 r%d, %d\n", (char*)(long long)(reg), (char*)(long long)(imm), (char*)(long long)0); b(0xB8 | (reg & 7)); b4(imm); }
 /* MOV rax, imm64 (48 B8 imm64) — long long literals (fix 2026-08-05) */
 static void mov_rax_imm64(long long imm) {
-    asm_emit("    移动64 r0, %d\n", (char*)(long long)((int)(imm & 0xFFFFFFFF)), (char*)(long long)0, (char*)(long long)0); /* text: low 32 (asm_zh approximation) */
+    asm_emit("    移动64 r0, %d, %d\n", (char*)(long long)((int)(imm & 0xFFFFFFFF)), (char*)(long long)((int)(((unsigned long long)imm) >> 32)), (char*)(long long)0); /* text: lo, hi (asm_zh needs hi for H1==H2; fix 2026-08-05) */
     b(0x48); b(0xB8); b4((int)(imm & 0xFFFFFFFF)); b4((int)(((unsigned long long)imm) >> 32));
 }
 /* push/pop r64 (sub rsp,8; mov [rsp],r64) — 64-bit temporaries, nesting-safe (fix 2026-08-05) */
@@ -4861,7 +4861,7 @@ static void cg(int n) {
                     cg(n0[n]); push_r64(0);
                     cg(n1[n]); mov_rr64(3, 0);
                     pop_r64(0);
-                    asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x48); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx */
+                    asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx (fix 2026-08-05: rex 已含 48，双 REX 破坏 H1==H2) */
                     if (o == T_LK) { asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9C); modrm(3, 0, 0); } /* setl (signed) */
                     else if (o == T_GK) { asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9F); modrm(3, 0, 0); } /* setg */
                     else if (o == T_QK) { asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3, 0, 0); } /* sete */

@@ -551,7 +551,7 @@ __attribute__((unused))
 静 空 mov_rax_imm64(长 长 imm) {
     整 lo = (整)(imm & 0xFFFFFFFF);
     整 hi = (整)(imm >> 32);
-    asm_emit("    移动64 r0, %d\n", (字*)(长)(整)lo, 0, 0);
+    asm_emit("    移动64 r0, %d, %d\n", (字*)(长)(整)lo, (字*)(长)(整)hi, 0); /* asm_zh 需要高 32 位（fix 2026-08-05） */
     b(0x48); b(0xB8); b4(lo); b4(hi);
 }
 /* push/pop r64 定义在 sub_rsp_imm/add_rsp_imm（815 行）之后 */
@@ -4580,7 +4580,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     cg(n0[n]); push_r64(0);
                     cg(n1[n]); mov_rr64(3, 0);
                     pop_r64(0);
-                    asm_emit("    比较64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x48); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx */
+                    asm_emit("    比较64 r0, r3\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx（fix 2026-08-05：rex 已含 48，双 REX 破坏 H1==H2） */
                     若 (o == T_LK) { asm_emit("    置低 al\n", 0, 0, 0); b(0x0F); b(0x9C); modrm(3, 0, 0); } /* setl */
                     否 若 (o == T_GK) { asm_emit("    置高 al\n", 0, 0, 0); b(0x0F); b(0x9F); modrm(3, 0, 0); } /* setg */
                     否 若 (o == T_QK) { asm_emit("    置等 al\n", 0, 0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); } /* sete */
