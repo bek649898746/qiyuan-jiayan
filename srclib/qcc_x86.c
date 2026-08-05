@@ -2627,6 +2627,7 @@ static int prim(void) {
         int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 32); tk++;
         if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         if (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
+        if (var_is_uns(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nuns[n] = 1; /* unsigned VARIABLE (fix 2026-08-06: (long long)u 必须零扩展, movsxd 判断靠 nuns) */
         /* suffix chain: arr[expr] / .field / ->field (repeatable) */
         while (1) {
             if (tt[tk] == LB) { /* array access */
