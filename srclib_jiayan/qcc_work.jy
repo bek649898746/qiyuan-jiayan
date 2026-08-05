@@ -5,6 +5,13 @@
  * 2026-08-04 自举不动点 dc34276fa5e20fc4 —— 自己生自己，与宿主逐字节一致
  */
 
+
+/* PE 魔数（工程化：语义等价 #define，不动点 SHA 不变；fix 2026-08-05） */
+#define FILE_ALIGNMENT 0x200
+#define IMAGE_BASE 0x400000
+#define DATA_RVA_OFF 0x300 /* statics 起点后移：给扩展导入区让位（fix 2026-08-06 BUG-1） */
+#define STACK_PAD_SIZE 0x160000
+#define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +50,7 @@
    (rbp high bits -> SIGSEGV). This pad shifts every written static/heap slot
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
-静 字 __pad0[0x160000];
+静 字 __pad0[STACK_PAD_SIZE];
 静 字 str_tbl[1024][512]; 整 str_cnt;
 静 构 { 字 name[32]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; 字 p_dbl, is_char, is_uns, is_ll; 整 frows[4]; } vars[4096]; 整 vcnt; /* is_ll: long long（8 字节整）变量（fix 2026-08-05） */
 静 整 stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
@@ -81,6 +88,12 @@ __attribute__((unused))
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
 静 构 { 字 name[32]; 字 params[8][16]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n;
+/* #undef：从数字/字符串/函数三个宏表删除（fix 2026-08-05） */
+静 空 macro_remove(常 字 *n) {
+    遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) { 遍 (整 j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n = macro_n - 1; 返; }
+    遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) { 遍 (整 j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n = str_macro_n - 1; 返; }
+    遍 (整 i = 0; i < fn_macro_n; i++) 若 (!strcmp(fn_macros[i].name, n)) { 遍 (整 j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n = fn_macro_n - 1; 返; }
+}
 
 静 空 fn_macro_collect(常 字 *s) {
     fn_macro_n = 0;
@@ -252,6 +265,86 @@ __attribute__((unused))
     整 mv = macro_find(e); 若 (mv >= 0) 返 mv;
     返 0;
 }
+
+/* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
+静 字 *pp_include_expand(常 字 *src, 整 depth) {
+    若 (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
+    整 cap = strlen(src) + 16384;
+    字 *out = malloc(cap); 整 oi = 0;
+    常 字 *p = src;
+    整 if_skip = 0, if_n = 0;
+    整 if_parent_skip[64], if_taken[64];
+    循环 (*p) {
+        常 字 *le = p; 循环 (*le && *le != '\n') le++;
+        整 llen = le - p;
+        若 (*p == '#') {
+            整 is_ifdef = !strncmp(p, "#ifdef", 6);
+            整 is_ifndef = !strncmp(p, "#ifndef", 7);
+            整 is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
+            整 is_elif = !strncmp(p, "#elif", 5);
+            整 is_else = !strncmp(p, "#else", 5);
+            整 is_endif = !strncmp(p, "#endif", 6);
+            整 is_include = !strncmp(p, "#include", 8);
+            若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                整 parent = if_skip; 整 cond = 0;
+                若 (is_ifdef || is_ifndef) {
+                    字 nm[32]; 整 ni = 0; 常 字 *q = p + (is_ifdef ? 6 : 7);
+                    循环 (*q == ' ' || *q == '\t') q++;
+                    循环 (isalnum(*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (ni < 31) nm[ni++] = *q; q++; }
+                    nm[ni] = 0;
+                    整 def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    cond = is_ifdef ? def : !def;
+                } 否 若 (is_if || is_elif) {
+                    字 expr[512]; 整 ei = 0; 常 字 *q = p + (is_if ? 3 : 5);
+                    循环 (*q == ' ' || *q == '\t') q++;
+                    循环 (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
+                    循环 (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
+                    expr[ei] = 0;
+                    cond = pp_eval(expr);
+                }
+                若 (is_if || is_ifdef || is_ifndef) {
+                    若 (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; }
+                } 否 若 (is_elif) {
+                    若 (if_n > 0) { 若 (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = cond; if_skip = if_parent_skip[if_n-1] || !cond; } 否 if_skip = 1; }
+                } 否 若 (is_else) {
+                    若 (if_n > 0) { 若 (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = 1; if_skip = if_parent_skip[if_n-1]; } 否 if_skip = 1; }
+                } 否 若 (is_endif) {
+                    若 (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n-1] : 0; }
+                }
+                整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+            } 否 若 (is_include && !if_skip) {
+                常 字 *q = p + 8;
+                循环 (*q == ' ' || *q == '\t') q++;
+                若 (*q != '"') { 整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; } } /* <系统头> 跳过（自包含） */
+                否 {
+                    字 fname[512]; 整 fi = 0;
+                    q++; 循环 (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
+                    fname[fi] = 0;
+                    若 (fi > 0) {
+                        字 *fc = read_file(fname);
+                        若 (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        字 *exp = pp_include_expand(fc, depth + 1);
+                        free(fc);
+                        整 el = strlen(exp);
+                        若 (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
+                        整 k; 遍 (k = 0; k < el; k++) { out[oi] = exp[k]; oi++; }
+                        out[oi] = '\n'; oi++;
+                        free(exp);
+                    }
+                }
+            } 否 {
+                整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+            }
+        } 否 {
+            整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+        }
+        若 (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        p = *le ? le + 1 : le;
+    }
+    out[oi] = 0;
+    返 out;
+}
+
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -454,7 +547,7 @@ __attribute__((unused))
 静 空 fp_parse(常 字 *s, 整 *pi, 整 *out_hi, 整 *out_lo) {
     双 v = 0; 整 i = *pi;
     循环 (s[i] >= '0' && s[i] <= '9') { v = v * 10 + (s[i] - '0'); i++; }
-    若 (s[i] == '.') { i++; 双 fr = 0.1; 循环 (s[i] >= '0' && s[i] <= '9') { v += (s[i] - '0') * fr; fr *= 0.1; i++; } }
+    若 (s[i] == '.') { i++; 双 fr = 0, sc = 1; 循环 (s[i] >= '0' && s[i] <= '9') { fr = fr * 10 + (s[i] - '0'); sc *= 10; i++; } v += fr / sc; } /* fix 2026-08-06: 整数累加+单次除法，避免 fr*=0.1 累加误差 */
     若 (s[i] == 'e' || s[i] == 'E') {
         i++; 整 es = 1;
         若 (s[i] == '+' || s[i] == '-') { 若 (s[i] == '-') es = -1; i++; }
@@ -1006,17 +1099,38 @@ __attribute__((unused))
     vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     返 vars[vcnt++].rsp_off;
 }
-/* RIP-relative offset to .data static slot (RVA data_rva_base + 0x140 + 4*idx) from instr at 0x1000+cp */
+/* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 静 整 data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
-静 整 stc_disp(整 idx) { 返 (data_rva_base + 0x140 + 4 * idx) - (0x1000 + cp + 6); }
+静 整 stc_disp(整 idx) { 返 (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
-静 整 iat_disp_at(整 at, 整 slot) { 返 (data_rva_base + 8 + 8 * slot) - (0x1000 + at + 6); }
+静 整 iat_disp_at(整 at, 整 slot) { 整 iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); 返 (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32 / IAT2@+0x50 msvcrt（fix 2026-08-06 BUG-1） */
 静 空 call_iat(整 slot) {
     asm_emit("    调系统 %d\n", (字*)(长)(整)slot, 0, 0);
     整 at = cp; /* instruction start (FF 15 + disp32 = 6 bytes) */
     b(0xFF); b(0x15);
     b4(iat_disp_at(at, slot));
 }
+/* 外部数学函数 → IAT slot 8-23（非 coff 模式；fix 2026-08-06 BUG-1） */
+静 整 fn_math_iat(常 字 *n) {
+    若 (!strcmp(n, "pow")) 返 8;
+    若 (!strcmp(n, "atan2")) 返 9;
+    若 (!strcmp(n, "fmod")) 返 10;
+    若 (!strcmp(n, "sqrt")) 返 11;
+    若 (!strcmp(n, "cos")) 返 12;
+    若 (!strcmp(n, "sin")) 返 13;
+    若 (!strcmp(n, "tan")) 返 14;
+    若 (!strcmp(n, "acos")) 返 15;
+    若 (!strcmp(n, "asin")) 返 16;
+    若 (!strcmp(n, "atan")) 返 17;
+    若 (!strcmp(n, "log")) 返 18;
+    若 (!strcmp(n, "log10")) 返 19;
+    若 (!strcmp(n, "exp")) 返 20;
+    若 (!strcmp(n, "floor")) 返 21;
+    若 (!strcmp(n, "ceil")) 返 22;
+    若 (!strcmp(n, "fabs")) 返 23;
+    返 -1;
+}
+
 静 整 scratch_base = 0; /* frame scratch area for printf (set in main) */
 /* r12/r13 are high registers: [r13] needs mod=01+disp8, [r12] needs SIB 0x24 */
 静 空 mov_eax_mr13(空) { asm_emit("    取参 eax, [r13]\n", 0, 0, 0); b(0x41); b(0x8B); b(0x45); b(0); }      /* mov eax, [r13] */
@@ -1703,6 +1817,8 @@ __attribute__((unused))
             整 is_elif = !strncmp(s + i, "#elif", 5);
             整 is_else = !strncmp(s + i, "#else", 5);
             整 is_endif = !strncmp(s + i, "#endif", 6);
+            整 is_undef = !strncmp(s + i, "#undef", 6);
+            整 is_error = !strncmp(s + i, "#error", 6);
             若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 整 parent = if_skip;
                 字 expr[512]; 整 ei = 0;
@@ -1751,6 +1867,25 @@ __attribute__((unused))
             若 (if_skip) { /* 假分支：跳过所有行（含 #define/#include）直到 #endif/#elif/#else */
                 循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; }
                 续;
+            }
+            若 (is_undef) { /* #undef NAME — 从三个宏表删除（fix 2026-08-05） */
+                整 p = i + 6;
+                循环 (s[p] == ' ' || s[p] == '\t') p++;
+                字 un[32]; 整 ui = 0;
+                循环 (isalnum(s[p]) || s[p] == '_' || ((无 字)s[p] >= 0x80)) { 若 (ui < 31) un[ui++] = s[p]; p++; }
+                un[ui] = 0;
+                若 (ui > 0) macro_remove(un);
+                循环 (s[i] && s[i] != '\n') i++;
+                续;
+            }
+            若 (is_error) { /* #error msg — 硬诊断（fix 2026-08-05） */
+                整 p = i + 6;
+                循环 (s[p] == ' ' || s[p] == '\t') p++;
+                字 em[512]; 整 ei = 0;
+                循环 (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
+                em[ei] = 0;
+                fprintf(stderr, "[ERR] #error: %s\n", em);
+                exit(1);
             }
             若 (is_def) {
                 i += 7;
@@ -2327,7 +2462,7 @@ __attribute__((unused))
         若 (tt[tk] == FP) {
             整 idx = tv[tk];
             若 (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* 不去重（C 原版 1922）：自举对齐 */
-            整 n = Nd(FP); nv[n] = dbl_n; dbl_n++; tk++;
+            整 n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double 字面量必须标 ndbl（fix 2026-08-06） */
             返 n;
         }
         整 n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); 返 n;
@@ -3030,7 +3165,10 @@ __attribute__((unused))
     memset(ndbl, 0, ASZ * 4); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, ASZ * 4); /* per-node unsigned flags (fix 2026-08-05) */
     fvn = 0; /* reset per-function var-range table */
-    memset(tt, 0, TS * 4); lex(s);
+    memset(tt, 0, TS * 4);
+    字 *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
+    lex(exp_src);
+    free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
     整 p = Nd(3); 若 (p < 0) 返 -1;
     
@@ -4647,6 +4785,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         例 3: 遍 (整 i = 0; i < 256; i++) { 整 c = child_i(n, i); 若 (c > 0) cg(c); } 断;
         例 4: { /* function call */
             整 fn = -1;
+            整 math_done = 0; /* external math fn IAT call already cleaned rsp (fix 2026-08-06 BUG-1) */
             遍 (整 i = 19; i >= 0; i--) { 整 c = child_i(n, i); 若 (c >= 0 && nt[c] == 1) { fn = c; 断; } }
             若 (fn < 0) {
                 /* call through an EXPRESSION (e.g. tbl[i](x), (*fp)(x), f().g(x)): the
@@ -4961,9 +5100,23 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             } 否 若 (!strcmp(fname, "_exit_proc")) {
                 emit_exit_proc();
             } 否 {
-                mov_r_imm(0, 0); /* undefined �?return 0 */
+                整 mslot = fn_math_iat(fname);
+                若 (mslot >= 0) { /* 外部数学函数：Win64 ABI 传参（double→xmm，签名固定全 double）+ IAT 调用（fix 2026-08-06 BUG-1） */
+                    遍 (整 k = 0; k < nargs && k < 4; k++) { movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8); }
+                    遍 (整 k = 4; k < nargs; k++) {
+                        movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[k] - 8);
+                        movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0);
+                    }
+                    整 pad8 = ((nargs + extra + 5) & 1) ? 8 : 0; /* call 前 rsp%16==0（msvcrt SSE 对齐指令；fix 2026-08-06） */
+                    若 (extra > 0) sub_rsp_imm(32 + 8 * extra + pad8); 否 sub_rsp_imm(32 + pad8);
+                    call_iat(mslot);
+                    add_rsp_imm(32 + 8 * extra + pad8 + total_h);
+                    math_done = 1;
+                } 否 {
+                    mov_r_imm(0, 0); /* undefined �?return 0 */
+                }
             }
-            若 (!is_user && !fnptr) add_rsp_imm(8 * nargs); /* clean up pushed args (builtins: no shadow sub) */
+            若 (!is_user && !fnptr && !math_done) add_rsp_imm(8 * nargs); /* clean up pushed args (builtins: no shadow sub) */
         } 断;
         例 5: 遍 (整 i = 0; i < 256; i++) { 整 c = child_i(n, i); 若 (c > 0) cg(c); } 断;
         例 6: { /* return �?epilogue */
@@ -5728,7 +5881,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 静 空 write_pe(FILE *f, 整 entry_rva) {
     整 text_rva = 0x1000, text_size = ((cp + 4095) & ~4095);
     若 (text_size < 512) text_size = 512;
-    整 text_foff = 0x200;
+    整 text_foff = FILE_ALIGNMENT;
     整 data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     整 data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
     整 image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
@@ -5757,20 +5910,20 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     w4(f, 0);       /* SizeOfUninitializedData */
     w4(f, entry_rva); /* AddressOfEntryPoint */
     w4(f, text_rva);  /* BaseOfCode */
-    w8(f, 0x400000); /* ImageBase �?low address for 32-bit pointers */
+    w8(f, IMAGE_BASE); /* ImageBase �?low address for 32-bit pointers */
     w4(f, 0x1000);  /* SectionAlignment */
-    w4(f, 0x200);   /* FileAlignment */
+    w4(f, FILE_ALIGNMENT);   /* FileAlignment */
     w2(f, 6); w2(f, 0); /* OSVersion */
     w2(f, 0); w2(f, 0); /* ImageVersion */
     w2(f, 6); w2(f, 0); /* SubsystemVersion */
     w4(f, 0);       /* Win32VersionValue */
     w4(f, image_size); /* SizeOfImage */
-    w4(f, 0x200);   /* SizeOfHeaders */
+    w4(f, FILE_ALIGNMENT);   /* SizeOfHeaders */
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
     w8(f, 0x100000); /* SizeOfStackReserve */
-    w8(f, 0x400000); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
+    w8(f, IMAGE_BASE); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
     w8(f, 0x100000); /* SizeOfHeapReserve */
     w8(f, 0x1000);   /* SizeOfHeapCommit */
     w4(f, 0);       /* LoaderFlags */
@@ -5778,7 +5931,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x98); w4(f, 40); /* RVA of import descriptors + size */
+    w4(f, data_rva_base + 0x1A8); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     遍 (整 di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -5816,64 +5969,77 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     pos = (整)ftell(f);
     循环 (pos < end) { fputc(0, f); pos++; }
 
-    /* .data section: write heap counter at data_foff, then kernel32 import table
-       Layout: IAT@+0x08(72B) ILT@+0x50(72B) desc@+0x98(40B) hint/names@+0xC0 dll@+0x12E
-       statics start at +0x140. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
-       3=ReadFile 4=VirtualAlloc 5=SetFilePointer 6=ExitProcess 7=GetCommandLineA */
+    /* .data section: write heap counter, then import table
+       布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (16 msvcrt + term=136B)
+       ILT1@+0xD8 (8+term) ILT2@+0x120 (16+term) desc@+0x1A8 (3*20=60B) names@+0x1E4 */
     fseek(f, data_foff, SEEK_SET);
-    整 heap_start = 0x400000 + data_rva + 0x140 + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    整 heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
-    /* IAT (at .data+0x08): loader overwrites with kernel32 addresses */
-    w8(f, data_rva_base + 0xC0); /* IAT[0] = GetStdHandle */
-    w8(f, data_rva_base + 0xCE); /* IAT[1] = WriteFile */
-    w8(f, data_rva_base + 0xDA); /* IAT[2] = CreateFileA */
-    w8(f, data_rva_base + 0xE8); /* IAT[3] = ReadFile */
-    w8(f, data_rva_base + 0xF2); /* IAT[4] = VirtualAlloc */
-    w8(f, data_rva_base + 0x100); /* IAT[5] = SetFilePointer */
-    w8(f, data_rva_base + 0x110); /* IAT[6] = ExitProcess */
-    w8(f, data_rva_base + 0x11D); /* IAT[7] = GetCommandLineA */
-    w8(f, 0);             /* terminator */
-    /* ILT (at .data+0x50) */
-    w8(f, data_rva_base + 0xC0);
-    w8(f, data_rva_base + 0xCE);
-    w8(f, data_rva_base + 0xDA);
-    w8(f, data_rva_base + 0xE8);
-    w8(f, data_rva_base + 0xF2);
-    w8(f, data_rva_base + 0x100);
-    w8(f, data_rva_base + 0x110);
-    w8(f, data_rva_base + 0x11D);
+    整 iat1 = 0x08, iat2 = 0x50, ilt1 = 0xD8, ilt2 = 0x120, desc_off = 0x1A8, name_off = 0x1E4;
+    整 n_off[24];
+    /* IAT/ILT 占位 */
+    fseek(f, data_foff + iat1, SEEK_SET); 遍 (整 i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); 遍 (整 i = 0; i < 17; i++) w8(f, 0);
+    fseek(f, data_foff + ilt1, SEEK_SET); 遍 (整 i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); 遍 (整 i = 0; i < 17; i++) w8(f, 0);
+    /* names（hint 2B + name + \0）：逐个写（避免函数内静态数组 codegen bug） */
+    fseek(f, data_foff + name_off, SEEK_SET);
+    n_off[0] = (整)ftell(f) - data_foff; w2(f, 0); fputs("GetStdHandle", f); fputc(0, f);
+    n_off[1] = (整)ftell(f) - data_foff; w2(f, 0); fputs("WriteFile", f); fputc(0, f);
+    n_off[2] = (整)ftell(f) - data_foff; w2(f, 0); fputs("CreateFileA", f); fputc(0, f);
+    n_off[3] = (整)ftell(f) - data_foff; w2(f, 0); fputs("ReadFile", f); fputc(0, f);
+    n_off[4] = (整)ftell(f) - data_foff; w2(f, 0); fputs("VirtualAlloc", f); fputc(0, f);
+    n_off[5] = (整)ftell(f) - data_foff; w2(f, 0); fputs("SetFilePointer", f); fputc(0, f);
+    n_off[6] = (整)ftell(f) - data_foff; w2(f, 0); fputs("ExitProcess", f); fputc(0, f);
+    n_off[7] = (整)ftell(f) - data_foff; w2(f, 0); fputs("GetCommandLineA", f); fputc(0, f);
+    n_off[8] = (整)ftell(f) - data_foff; w2(f, 0); fputs("pow", f); fputc(0, f);
+    n_off[9] = (整)ftell(f) - data_foff; w2(f, 0); fputs("atan2", f); fputc(0, f);
+    n_off[10] = (整)ftell(f) - data_foff; w2(f, 0); fputs("fmod", f); fputc(0, f);
+    n_off[11] = (整)ftell(f) - data_foff; w2(f, 0); fputs("sqrt", f); fputc(0, f);
+    n_off[12] = (整)ftell(f) - data_foff; w2(f, 0); fputs("cos", f); fputc(0, f);
+    n_off[13] = (整)ftell(f) - data_foff; w2(f, 0); fputs("sin", f); fputc(0, f);
+    n_off[14] = (整)ftell(f) - data_foff; w2(f, 0); fputs("tan", f); fputc(0, f);
+    n_off[15] = (整)ftell(f) - data_foff; w2(f, 0); fputs("acos", f); fputc(0, f);
+    n_off[16] = (整)ftell(f) - data_foff; w2(f, 0); fputs("asin", f); fputc(0, f);
+    n_off[17] = (整)ftell(f) - data_foff; w2(f, 0); fputs("atan", f); fputc(0, f);
+    n_off[18] = (整)ftell(f) - data_foff; w2(f, 0); fputs("log", f); fputc(0, f);
+    n_off[19] = (整)ftell(f) - data_foff; w2(f, 0); fputs("log10", f); fputc(0, f);
+    n_off[20] = (整)ftell(f) - data_foff; w2(f, 0); fputs("exp", f); fputc(0, f);
+    n_off[21] = (整)ftell(f) - data_foff; w2(f, 0); fputs("floor", f); fputc(0, f);
+    n_off[22] = (整)ftell(f) - data_foff; w2(f, 0); fputs("ceil", f); fputc(0, f);
+    n_off[23] = (整)ftell(f) - data_foff; w2(f, 0); fputs("fabs", f); fputc(0, f);
+    整 kdll = (整)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
+    整 mdll = (整)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
+    /* 回填 IAT1（8 + term） */
+    fseek(f, data_foff + iat1, SEEK_SET);
+    遍 (整 i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* import descriptor (at .data+0x98) for kernel32.dll */
-    w4(f, data_rva_base + 0x50); /* OriginalFirstThunk = ILT RVA */
-    w4(f, 0);             /* TimeDateStamp */
-    w4(f, 0);             /* ForwarderChain */
-    w4(f, data_rva_base + 0x12F); /* Name = "kernel32.dll" RVA */
-    w4(f, data_rva_base + 0x08); /* FirstThunk = IAT RVA */
-    /* terminator descriptor */
-    遍 (整 di = 0; di < 5; di++) w4(f, 0);
-    /* hint/names */
-    fseek(f, data_foff + 0xC0, SEEK_SET);
-    w2(f, 0); fputs("GetStdHandle", f); fputc(0, f);
-    fseek(f, data_foff + 0xCE, SEEK_SET);
-    w2(f, 0); fputs("WriteFile", f); fputc(0, f);
-    fseek(f, data_foff + 0xDA, SEEK_SET);
-    w2(f, 0); fputs("CreateFileA", f); fputc(0, f);
-    fseek(f, data_foff + 0xE8, SEEK_SET);
-    w2(f, 0); fputs("ReadFile", f); fputc(0, f);
-    fseek(f, data_foff + 0xF2, SEEK_SET);
-    w2(f, 0); fputs("VirtualAlloc", f); fputc(0, f);
-    fseek(f, data_foff + 0x100, SEEK_SET);
-    w2(f, 0); fputs("SetFilePointer", f); fputc(0, f);
-    fseek(f, data_foff + 0x110, SEEK_SET);
-    w2(f, 0); fputs("ExitProcess", f); fputc(0, f);
-    fseek(f, data_foff + 0x11D, SEEK_SET);
-    w2(f, 0); fputs("GetCommandLineA", f); fputc(0, f);
-    /* dll name */
-    fseek(f, data_foff + 0x12F, SEEK_SET);
-    fputs("kernel32.dll", f); fputc(0, f);
+    /* 回填 IAT2（16 + term） */
+    fseek(f, data_foff + iat2, SEEK_SET);
+    遍 (整 i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    w8(f, 0);
+    /* 回填 ILT1/ILT2 */
+    fseek(f, data_foff + ilt1, SEEK_SET);
+    遍 (整 i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
+    w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET);
+    遍 (整 i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    w8(f, 0);
+    /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
+    fseek(f, data_foff + desc_off, SEEK_SET);
+    w4(f, data_rva_base + ilt1);  /* kernel32 OriginalFirstThunk */
+    w4(f, 0); w4(f, 0);
+    w4(f, data_rva_base + kdll);  /* Name */
+    w4(f, data_rva_base + iat1);  /* FirstThunk */
+    w4(f, data_rva_base + ilt2);  /* msvcrt OriginalFirstThunk */
+    w4(f, 0); w4(f, 0);
+    w4(f, data_rva_base + mdll);  /* Name */
+    w4(f, data_rva_base + iat2);  /* FirstThunk */
+    遍 (整 di = 0; di < 5; di++) w4(f, 0); /* terminator descriptor */
     /* pad .data to raw size */
-    fseek(f, data_foff + 0x140, SEEK_SET);
+    fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
     整 data_end = data_foff + 0x4000;
     循环 (pos < data_end) { fputc(0, f); pos++; }
@@ -5890,13 +6056,13 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
    r14=argc r8=token_start r15=saved rsp. Each token is NUL-terminated in the copy. */
 静 空 emit_crt_stub(空) {
     asm_emit("\n; === CRT ===\n_入口:\n", 0, 0, 0);
-    整 argv_va = 0x400000 + data_rva_base + 0x140 + 4 * stc_n; /* .data static area for argv[64] */
+    整 argv_va = IMAGE_BASE + data_rva_base + DATA_RVA_OFF + 4 * stc_n; /* .data static area for argv[64] */
     crt_entry_off = cp; /* entry point = start of this stub */
     /* 自切栈：立即�?rsp 切到 .data 内的高地址区（62MB 偏移处），完全脱�?loader �?
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    整 stk_top = 0x400000 + data_rva_base + 0x4400000;
+    整 stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
@@ -6084,12 +6250,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < strpn; i++) {
         整 si = str_patches[i].str_idx;
         整 off = str_offs[si]; /* byte offset within string data */
-        整 rva = 0x400000 + 0x1000 + code_end + off; /* ImageBase(0x400000) + text_rva + code + off */
+        整 rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     遍 (整 i = 0; i < fnpn; i++) {
-        整 rva = 0x400000 + 0x1000 + label_pos[fn_patches[i].label];
+        整 rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -6098,12 +6264,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < dbl_patch_n; i++) {
         整 di = dbl_patches[i].dbl_idx;
         整 off = dbl_offs[di];
-        整 rva = 0x400000 + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (0x400000 + 0x1000 + dbl_patches[i].patch_at + 4));
+        整 rva = IMAGE_BASE + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     若 (sdp > 0) {
-        循环 (cp + sdp >= 0x400000) { cc += 4096; code = realloc(code, cc); } /* C 原版 5259：与 4MB 常量比较，不依赖 cc 全局写 */
+        循环 (cp + sdp >= IMAGE_BASE) { cc += 4096; code = realloc(code, cc); } /* C 原版 5259：与 4MB 常量比较，不依赖 cc 全局写 */
         memcpy(code + cp, sdat, sdp);
         cp += sdp;
     }
@@ -6337,7 +6503,7 @@ __attribute__((unused))
     n244 = _va_alloc(ASZ * 4); n245 = _va_alloc(ASZ * 4); n246 = _va_alloc(ASZ * 4); n247 = _va_alloc(ASZ * 4); n248 = _va_alloc(ASZ * 4); n249 = _va_alloc(ASZ * 4); n250 = _va_alloc(ASZ * 4); n251 = _va_alloc(ASZ * 4);
     n252 = _va_alloc(ASZ * 4); n253 = _va_alloc(ASZ * 4); n254 = _va_alloc(ASZ * 4); n255 = _va_alloc(ASZ * 4);
 
-    code = malloc(0x400000); cc = 0x400000; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
+    code = malloc(CODE_BUF_CAP); cc = IMAGE_BASE; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
     memset(str_offs, -1, 1024 * 4);;
 
