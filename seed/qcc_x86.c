@@ -5211,11 +5211,7 @@ static void cg(int n) {
                     total_h += (nblk + 1) * 8;
                 } else {
                     slot_h[slot_n] = total_h;
-                    if (is_user && fi >= 0) {
-                        /* user call: use the recorded signature (double* / double array args go to GPR as pointers) */
-                        if (fn_dbl_get(fname, slot_n)) { cg_f(c); push_xmm0(); }
-                        else { cg(c); push_r(0); }
-                    } else if (ndbl[c]) { cg_f(c); push_xmm0(); } /* builtin (printf %f): raw 8-byte bits via [r13] */
+                    if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); push_xmm0(); } /* fix 2026-08-06: 数学函数调用 int 参数转 double (pow(2.0,10)); ndbl 表达式; 记录签名 double 参数 */
                     else { cg(c); push_r(0); } /* arg value -> rax */
                     total_h += 8;
                 }
