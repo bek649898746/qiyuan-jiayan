@@ -18,6 +18,16 @@
 - 补齐后 asm_zh.jy 可编译为 asm_zh_jy.exe; 30 用例 C/jy 汇编输出逐字节一致
 - 不动点不变; 131/131 + H1==H2 128/128
 
+## 64847608 (2026-08-06)
+**审计 M6: qcc_rt.c 可被 gcc 编译（原缺 #include + 签名冲突，仅自宿主链可用）**
+
+- gcc 护栏：`#ifdef __GNUC__` 下 include stdio/stdlib/string.h + 声明 qcc 内建
+  （_va_alloc/_setpos/_getpos/_exit_proc）；函数实现包 `#ifndef __GNUC__`（gcc 用 libc 版本）。
+- 签名标准化：realloc(int→size_t)、strcpy/strcat(返回 char* + const)、strncmp(const+size_t)。
+- `gcc -O2 -Wall -c srclib/qcc_rt.c` 现在零警告通过（原报错）。
+- 自宿主不变：qcc 跳过标准头 + #ifndef 分支走自定义实现；三代自举收敛。
+- 新不动点 **64847608**：三代自举 + 131/131 + 数学 13/13 + H1==H2 128/128。
+
 ## 17471a35 (2026-08-06)
 **审计 M5: jyld .data SizeOfRawData 动态计算 + 数组初始化器上限守卫**
 
