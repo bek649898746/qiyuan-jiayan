@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 7287147d (2026-08-06)
+
+**修复浮点多参调用（审计 BUG-1）+ 导入表重构**
+
+- 外部数学函数（pow/atan2/fmod/sqrt/cos/...）经 msvcrt IAT 调用（Win64 ABI：double→xmm + rsp 16 对齐）
+- 非 coff 模式导入表扩展：kernel32 + msvcrt 双 DLL，IAT/ILT 每 DLL 独立 + 0 终止
+- DATA_RVA_OFF 0x140 → 0x300（导入区让位）
+- H1 修复：code 缓冲比较 IMAGE_BASE → CODE_BUF_CAP
+- 已知遗留：fabs(-5.5) 负字面量常量池、pow(2.0,10) int→double 转换
+
 ## 16217ef2 (2026-08-06)
 
 **预处理器 #include 支持**

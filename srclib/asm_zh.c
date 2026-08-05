@@ -89,7 +89,7 @@ static void call_rel(int rel) { b(0xE8);b4(rel); }
 static void jmp_rel(int rel) { b(0xE9);b4(rel); }
 static void jz_rel(int rel) { b(0x0F);b(0x84);b4(rel); }
 static void jnz_rel(int rel) { b(0x0F);b(0x85);b4(rel); }
-static void call_iat(int slot) { int at=cp;b(0xFF);b(0x15);b4((data_rva_base+8+8*slot)-(0x1000+at+6)); }
+static void call_iat(int slot) { int at=cp; int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); b(0xFF);b(0x15);b4((data_rva_base+iat_off)-(0x1000+at+6)); } /* IAT1@+0x08 / IAT2@+0x50（fix 2026-08-06 BUG-1） */
 static void resolve_patches(void) { for(int i=0;i<pn;i++){ if(!labels[patches[i].target].defined){fprintf(stderr,"[ERR] asm_zh: undefined label '%s' at line %d\n",labels[patches[i].target].name,labels[patches[i].target].line);exit(1);} int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label → clean error */
 /* Data section buffer */
 static unsigned char *sdat; static int sdp, sdc;
@@ -109,8 +109,7 @@ static void w8(FILE *f, int v) { w4(f,v);w4(f,0); }
 static void w2(FILE *f, int v) { fputc(v&0xff,f);fputc((v>>8)&0xff,f); }
 
 static void write_pe(FILE *f, int entry_rva) {
-    const int ns[8]={0xC0,0xCE,0xDA,0xE8,0xF2,0x100,0x110,0x11D}; /* hint/name slots (match qcc) */
-    int ts=((cp+4095)&~4095); if(ts<512)ts=512;
+        int ts=((cp+4095)&~4095); if(ts<512)ts=512;
     int tf=0x200, dr=data_rva_base;
     int isz=dr+0x5000000+0x1000, df=tf+ts;
     fputc('M',f);fputc('Z',f);pad(f,58);w4(f,64);
@@ -120,22 +119,40 @@ static void write_pe(FILE *f, int entry_rva) {
     w8(f,0x400000);w4(f,0x1000);w4(f,0x200);w2(f,6);w2(f,0);w2(f,0);w2(f,0);w2(f,6);w2(f,0);
     w4(f,0);w4(f,isz);w4(f,0x200);w4(f,0);w2(f,3);w2(f,0x8100);
     w8(f,0x100000);w8(f,0x400000);w8(f,0x100000);w8(f,0x1000);w4(f,0);w4(f,16);
-    w4(f,0);w4(f,0);w4(f,dr+0x98);w4(f,40);
+    w4(f,0);w4(f,0);w4(f,dr+0x1A8);w4(f,60); /* import dir: desc@+0x1A8（fix 2026-08-06 BUG-1） */
     for(int di=2;di<16;di++){w4(f,0);w4(f,0);}
     fwrite(".text\0\0\0",1,8,f);w4(f,ts);w4(f,0x1000);w4(f,ts);w4(f,tf);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0x60000020);
     fwrite(".data\0\0\0",1,8,f);w4(f,0x5000000);w4(f,dr);w4(f,0x4000);w4(f,df);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0xC0000040);
     int pos=(int)ftell(f);while(pos<tf)fputc(0,f),pos++;fwrite(code,1,cp,f);pos=(int)ftell(f);while(pos<df)fputc(0,f),pos++;
-    /* .data header (match qcc layout): heap counter@+0 (8B), IAT@+8, ILT@+0x50,
-       desc@+0x98, hint/names@+0xC0, dll@+0x12F, statics@+0x140.
-       heap_start = statics_start + 4*stc_n + 2560; stc_n=0 for tests (no static vars). */
-    w8(f, 0x400000 + dr + 0x140 + 4 * asm_stc_n + 2560); /* heap counter (qcc: +4*stc_n+2560) */
-    int iat=dr+8;for(int i=0;i<8;i++)w8(f,dr+ns[i]);w8(f,0);
-    int ilt=dr+0x50;for(int i=0;i<8;i++)w8(f,dr+ns[i]);w8(f,0);
-    w4(f,ilt);w4(f,0);w4(f,0);w4(f,dr+0x12F);w4(f,iat);for(int di=0;di<5;di++)w4(f,0);
-    /* hint/names at qcc's hardcoded slots: fseek to df+slot, write hint+name */
+    /* .data header (match qcc fix 2026-08-06 BUG-1): heap counter@+0 (8B),
+       IAT1@+8 (8 kernel32 + term), IAT2@+0x50 (16 msvcrt + term),
+       ILT1@+0xD8, ILT2@+0x120, desc@+0x1A8, names@+0x1E4, statics@+0x300. */
+    w8(f, 0x400000 + dr + 0x300 + 4 * asm_stc_n + 2560); /* heap counter */
+    int nslot[24];
+    /* IAT/ILT 占位 */
+    fseek(f, df + 0x08, SEEK_SET); for(int i=0;i<9;i++)w8(f,0);
+    fseek(f, df + 0x50, SEEK_SET); for(int i=0;i<17;i++)w8(f,0);
+    fseek(f, df + 0xD8, SEEK_SET); for(int i=0;i<9;i++)w8(f,0);
+    fseek(f, df + 0x120, SEEK_SET); for(int i=0;i<17;i++)w8(f,0);
+    /* names（hint 2B + name + \0）逐个写 */
     const char *nm[]={"GetStdHandle","WriteFile","CreateFileA","ReadFile","VirtualAlloc","SetFilePointer","ExitProcess","GetCommandLineA"};
-    for(int i=0;i<8;i++){fseek(f,df+ns[i],SEEK_SET);w2(f,0);fputs(nm[i],f);fputc(0,f);}
-    fseek(f,df+0x12F,SEEK_SET);fputs("kernel32.dll",f);fputc(0,f);
+    const char *mn[]={"pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs"};
+    fseek(f, df + 0x1E4, SEEK_SET);
+    for(int i=0;i<8;i++){nslot[i]=(int)ftell(f)-df;w2(f,0);fputs(nm[i],f);fputc(0,f);}
+    for(int i=0;i<16;i++){nslot[8+i]=(int)ftell(f)-df;w2(f,0);fputs(mn[i],f);fputc(0,f);}
+    int kdll=(int)ftell(f)-df;fputs("kernel32.dll",f);fputc(0,f);
+    int mdll=(int)ftell(f)-df;fputs("msvcrt.dll",f);fputc(0,f);
+    /* 回填 IAT1/IAT2 */
+    fseek(f, df + 0x08, SEEK_SET); for(int i=0;i<8;i++)w8(f,dr+nslot[i]); w8(f,0);
+    fseek(f, df + 0x50, SEEK_SET); for(int i=0;i<16;i++)w8(f,dr+nslot[8+i]); w8(f,0);
+    /* 回填 ILT1/ILT2 */
+    fseek(f, df + 0xD8, SEEK_SET); for(int i=0;i<8;i++)w8(f,dr+nslot[i]); w8(f,0);
+    fseek(f, df + 0x120, SEEK_SET); for(int i=0;i<16;i++)w8(f,dr+nslot[8+i]); w8(f,0);
+    /* desc: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
+    fseek(f, df + 0x1A8, SEEK_SET);
+    w4(f,dr+0xD8);w4(f,0);w4(f,0);w4(f,dr+kdll);w4(f,dr+0x08);
+    w4(f,dr+0x120);w4(f,0);w4(f,0);w4(f,dr+mdll);w4(f,dr+0x50);
+    for(int di=0;di<5;di++)w4(f,0);
     fseek(f,0,SEEK_END);
     pos=(int)ftell(f);while(pos<df+0x4000)fputc(0,f),pos++;fseek(f,0,SEEK_END);
 }
