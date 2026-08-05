@@ -251,13 +251,21 @@ static char *fn_macro_expand(const char *s) {
 static int if_parent_skip[64]; static int if_taken[64]; static int if_n; static int if_skip;
 /* #if expression evaluator: defined(X), numbers, macro values, !, &&, ||, comparisons */
 static int pp_eval(const char *e) {
-    /* strip outer parens */
+    /* strip outer parens — only if the FIRST ( matches the LAST ) (fix 2026-08-06 M7:
+       原只看首尾字符，(1<2)&&(2<3) 被误剥成 1<2)&&(2<3 → 括号失衡) */
     while (*e == ' ') e++;
     int len = (int)strlen(e);
     while (len > 0 && e[len-1] == ' ') len--;
-    if (len >= 2 && e[0] == '(' && e[len-1] == ')') {
-        char inner[512]; memcpy(inner, e+1, len-2); inner[len-2] = 0;
-        return pp_eval(inner);
+    if (len >= 2 && e[0] == '(') {
+        int d = 0, m = -1;
+        for (int i = 0; i < len; i++) {
+            if (e[i] == '(') d++;
+            else if (e[i] == ')') { d--; if (d == 0) { m = i; break; } }
+        }
+        if (m == len - 1) {
+            char inner[512]; memcpy(inner, e+1, len-2); inner[len-2] = 0;
+            return pp_eval(inner);
+        }
     }
     if (!strncmp(e, "defined", 7) && e[7] == '(') { /* defined(X) */
         char nm[32]; int ni = 0; int p = 8;
@@ -266,31 +274,37 @@ static int pp_eval(const char *e) {
         return (macro_find(nm) >= 0 || str_macro_find(nm) != 0) ? 1 : 0;
     }
     if (e[0] == '!') return pp_eval(e + 1) ? 0 : 1;
-    /* split on || (lowest precedence), then &&, then ==/!=/< <= > >= */
-    for (int i = 0; e[i]; i++) {
-        if (e[i] == '|' && e[i+1] == '|') {
+    /* split on || (lowest precedence), then &&, then ==/!=/< <= > >= — paren-aware (fix 2026-08-06 M7: 原在括号内错拆，(A||B)&&C 拆错) */
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && e[i] == '|' && e[i+1] == '|') {
             char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
             int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
             int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
             return (pp_eval(a) || pp_eval(b)) ? 1 : 0;
         }
     }
-    for (int i = 0; e[i]; i++) {
-        if (e[i] == '&' && e[i+1] == '&') {
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && e[i] == '&' && e[i+1] == '&') {
             char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
             int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
             int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
             return (pp_eval(a) && pp_eval(b)) ? 1 : 0;
         }
     }
-    for (int i = 0; e[i]; i++) {
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
         char op = 0; int ol = 0;
-        if (e[i] == '=' && e[i+1] == '=') { op = 1; ol = 2; }
-        else if (e[i] == '!' && e[i+1] == '=') { op = 2; ol = 2; }
-        else if (e[i] == '<' && e[i+1] == '=') { op = 3; ol = 2; }
-        else if (e[i] == '>' && e[i+1] == '=') { op = 4; ol = 2; }
-        else if (e[i] == '<') { op = 5; ol = 1; }
-        else if (e[i] == '>') { op = 6; ol = 1; }
+        if (dp == 0 && e[i] == '=' && e[i+1] == '=') { op = 1; ol = 2; }
+        else if (dp == 0 && e[i] == '!' && e[i+1] == '=') { op = 2; ol = 2; }
+        else if (dp == 0 && e[i] == '<' && e[i+1] == '=') { op = 3; ol = 2; }
+        else if (dp == 0 && e[i] == '>' && e[i+1] == '=') { op = 4; ol = 2; }
+        else if (dp == 0 && e[i] == '<') { op = 5; ol = 1; }
+        else if (dp == 0 && e[i] == '>') { op = 6; ol = 1; }
         if (op) {
             char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + ol);
             int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
