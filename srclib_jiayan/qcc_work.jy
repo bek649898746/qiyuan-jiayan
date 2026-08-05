@@ -265,6 +265,86 @@ __attribute__((unused))
     整 mv = macro_find(e); 若 (mv >= 0) 返 mv;
     返 0;
 }
+
+/* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
+静 字 *pp_include_expand(常 字 *src, 整 depth) {
+    若 (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
+    整 cap = strlen(src) + 16384;
+    字 *out = malloc(cap); 整 oi = 0;
+    常 字 *p = src;
+    整 if_skip = 0, if_n = 0;
+    整 if_parent_skip[64], if_taken[64];
+    循环 (*p) {
+        常 字 *le = p; 循环 (*le && *le != '\n') le++;
+        整 llen = le - p;
+        若 (*p == '#') {
+            整 is_ifdef = !strncmp(p, "#ifdef", 6);
+            整 is_ifndef = !strncmp(p, "#ifndef", 7);
+            整 is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
+            整 is_elif = !strncmp(p, "#elif", 5);
+            整 is_else = !strncmp(p, "#else", 5);
+            整 is_endif = !strncmp(p, "#endif", 6);
+            整 is_include = !strncmp(p, "#include", 8);
+            若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                整 parent = if_skip; 整 cond = 0;
+                若 (is_ifdef || is_ifndef) {
+                    字 nm[32]; 整 ni = 0; 常 字 *q = p + (is_ifdef ? 6 : 7);
+                    循环 (*q == ' ' || *q == '\t') q++;
+                    循环 (isalnum(*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (ni < 31) nm[ni++] = *q; q++; }
+                    nm[ni] = 0;
+                    整 def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    cond = is_ifdef ? def : !def;
+                } 否 若 (is_if || is_elif) {
+                    字 expr[512]; 整 ei = 0; 常 字 *q = p + (is_if ? 3 : 5);
+                    循环 (*q == ' ' || *q == '\t') q++;
+                    循环 (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
+                    循环 (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
+                    expr[ei] = 0;
+                    cond = pp_eval(expr);
+                }
+                若 (is_if || is_ifdef || is_ifndef) {
+                    若 (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; }
+                } 否 若 (is_elif) {
+                    若 (if_n > 0) { 若 (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = cond; if_skip = if_parent_skip[if_n-1] || !cond; } 否 if_skip = 1; }
+                } 否 若 (is_else) {
+                    若 (if_n > 0) { 若 (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = 1; if_skip = if_parent_skip[if_n-1]; } 否 if_skip = 1; }
+                } 否 若 (is_endif) {
+                    若 (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n-1] : 0; }
+                }
+                整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+            } 否 若 (is_include && !if_skip) {
+                常 字 *q = p + 8;
+                循环 (*q == ' ' || *q == '\t') q++;
+                若 (*q != '"') { 整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; } } /* <系统头> 跳过（自包含） */
+                否 {
+                    字 fname[512]; 整 fi = 0;
+                    q++; 循环 (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
+                    fname[fi] = 0;
+                    若 (fi > 0) {
+                        字 *fc = read_file(fname);
+                        若 (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        字 *exp = pp_include_expand(fc, depth + 1);
+                        free(fc);
+                        整 el = strlen(exp);
+                        若 (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
+                        整 k; 遍 (k = 0; k < el; k++) { out[oi] = exp[k]; oi++; }
+                        out[oi] = '\n'; oi++;
+                        free(exp);
+                    }
+                }
+            } 否 {
+                整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+            }
+        } 否 {
+            整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
+        }
+        若 (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        p = *le ? le + 1 : le;
+    }
+    out[oi] = 0;
+    返 out;
+}
+
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -3064,7 +3144,10 @@ __attribute__((unused))
     memset(ndbl, 0, ASZ * 4); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, ASZ * 4); /* per-node unsigned flags (fix 2026-08-05) */
     fvn = 0; /* reset per-function var-range table */
-    memset(tt, 0, TS * 4); lex(s);
+    memset(tt, 0, TS * 4);
+    字 *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
+    lex(exp_src);
+    free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
     整 p = Nd(3); 若 (p < 0) 返 -1;
     
