@@ -26,3 +26,6 @@ err.txt
 out.txt
 qcc_test_*.txt
 seed/_BOOTSTRAP.md
+
+# 种子二进制（开源仓库只传种子：允许提交 seed/*_seed.exe）
+!seed/*_seed.exe
