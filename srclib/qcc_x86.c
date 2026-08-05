@@ -605,7 +605,7 @@ static int g_uns_shift; /* set by cg() before alu_rr: T_SR operand is unsigned �
 static void fp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
     double v = 0; int i = *pi;
     while (s[i] >= '0' && s[i] <= '9') { v = v * 10 + (s[i] - '0'); i++; }
-    if (s[i] == '.') { i++; double fr = 0.1; while (s[i] >= '0' && s[i] <= '9') { v += (s[i] - '0') * fr; fr *= 0.1; i++; } }
+    if (s[i] == '.') { i++; double fr = 0, sc = 1; while (s[i] >= '0' && s[i] <= '9') { fr = fr * 10 + (s[i] - '0'); sc *= 10; i++; } v += fr / sc; } /* fix 2026-08-06: 整数累加+单次除法，避免 fr*=0.1 累加误差（0.015625 等精确） */
     if (s[i] == 'e' || s[i] == 'E') {
         i++; int es = 1;
         if (s[i] == '+' || s[i] == '-') { if (s[i] == '-') es = -1; i++; }
