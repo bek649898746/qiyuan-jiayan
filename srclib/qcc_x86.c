@@ -2731,13 +2731,19 @@ static int expr(void) { return asgn(); }
 static int gi_idx[8];  /* 全局多维初始化游标 (fix 2026-08-05) */
 static int str_row = 0; /* string-init row counter: char rows filled in order (fix 2026-08-05) */
 
-static int arr_init_leaf_n; /* fix 2026-08-06: 数组初始化器叶子计数（块节点 256 子槽上限） */
+static int arr_blk = -1; static int arr_blk_root = -1; static int arr_blk_cnt = 0; /* fix 2026-08-06: 数组初始化器块链（每块 ≤200 赋值, 链子块; arr_blk_root=首块） */
+static void arr_chain_add(int asgn) {
+    if (arr_blk < 0) { arr_blk = Nd(5); arr_blk_root = arr_blk; arr_blk_cnt = 0; }
+    if (arr_blk_cnt >= 200) { int nb = Nd(5); Nc(arr_blk, nb); arr_blk = nb; arr_blk_cnt = 0; }
+    Nc(arr_blk, asgn);
+    arr_blk_cnt++;
+}
 static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
        本函数自管 { } 配平 (fix 2026-08-05) */
-    if (depth == 0) arr_init_leaf_n = 0; /* fix 2026-08-06: 每次顶层调用重置计数器 */
+    if (depth == 0) { arr_blk = -1; arr_blk_root = -1; arr_blk_cnt = 0; } /* fix 2026-08-06 */
     if (tt[tk] == FK) tk++; /* 本层 '{' */
     int has_nested = (tt[tk] == FK); /* 本层是否为嵌套行模式 */
     while (tt[tk] != UK) {
@@ -2773,7 +2779,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
                 int asgn = Nd(10); Nc(asgn, acc);
                 int cn = Nd(0); nv[cn] = (unsigned char)sval[k];
                 Nc(asgn, cn);
-                Nc(b, asgn);
+                arr_chain_add(asgn);
             }
             if (len < row_sz) { /* NUL-terminate (C: the rest of the char row is zeroed) */
                 int acc = Nd(14); Nc(acc, node);
@@ -2782,13 +2788,12 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
                 int asgn = Nd(10); Nc(asgn, acc);
                 int cn = Nd(0); nv[cn] = 0;
                 Nc(asgn, cn);
-                Nc(b, asgn);
+                arr_chain_add(asgn);
             }
             str_row++;
             continue;
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
-        if (++arr_init_leaf_n > 256) { fprintf(stderr, "[ERR] 数组初始化器超过 256 元素上限 (fix 2026-08-06: 原静默丢弃，块节点仅 256 子槽)\n"); exit(1); }
         int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32);
         int node = idn;
         for (int i = 0; i < nd; i++) {
@@ -2798,7 +2803,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
             node = acc;
         }
         int asgn = Nd(10); Nc(asgn, node); Nc(asgn, expr());
-        Nc(b, asgn);
+        arr_chain_add(asgn);
         /* advance: top-level flat → little-endian carry; nested rows → this row's column */
         if (depth == 0 && !has_nested) {
             for (int i = nd - 1; i >= 0; i--) {
@@ -2811,6 +2816,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
         }
     }
     if (tt[tk] == UK) tk++; /* 本层 '}' */
+    if (depth == 0 && arr_blk_root >= 0) Nc(b, arr_blk_root); /* fix 2026-08-06: 根块挂到顶层块 */
 }
 
 static int blk(void) {

@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 c4a02739 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 9e2233dc —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -2536,13 +2536,19 @@ __attribute__((unused))
 静 整 gi_idx[8];  /* 全局多维初始化游标 (fix 2026-08-05) */
 静 整 str_row = 0; /* 字符串初始化行计数器：char 行按顺序填充（fix 2026-08-05） */
 
-静 整 arr_init_leaf_n; /* fix 2026-08-06: 数组初始化器叶子计数（块节点 256 子槽上限） */
+静 整 arr_blk = -1; 静 整 arr_blk_root = -1; 静 整 arr_blk_cnt = 0; /* fix 2026-08-06: 块链, arr_blk_root=首块 */
+静 空 arr_chain_add(整 asgn) {
+    若 (arr_blk < 0) { arr_blk = Nd(5); arr_blk_root = arr_blk; arr_blk_cnt = 0; }
+    若 (arr_blk_cnt >= 200) { 整 nb = Nd(5); Nc(arr_blk, nb); arr_blk = nb; arr_blk_cnt = 0; }
+    Nc(arr_blk, asgn);
+    arr_blk_cnt++;
+}
 静 空 brace_arr_init(整 b, 整 d, 整 *dims, 整 nd, 整 depth) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
        本函数自管 { } 配平 (fix 2026-08-05) */
-    若 (depth == 0) arr_init_leaf_n = 0; /* fix 2026-08-06 */
+    若 (depth == 0) { arr_blk = -1; arr_blk_root = -1; arr_blk_cnt = 0; } /* fix 2026-08-06 */
     若 (tt[tk] == FK) tk++; /* 本层 '{' */
     整 has_nested = (tt[tk] == FK); /* 本层是否为嵌套行模式 */
     循环 (tt[tk] != UK) {
@@ -2578,7 +2584,7 @@ __attribute__((unused))
                 整 asgn = Nd(10); Nc(asgn, acc);
                 整 cn = Nd(0); nv[cn] = (无 字)sval[k];
                 Nc(asgn, cn);
-                Nc(b, asgn);
+                arr_chain_add(asgn);
             }
             若 (len < row_sz) { /* 补 NUL（C: char 行其余补 0） */
                 整 acc = Nd(14); Nc(acc, node);
@@ -2587,13 +2593,13 @@ __attribute__((unused))
                 整 asgn = Nd(10); Nc(asgn, acc);
                 整 cn = Nd(0); nv[cn] = 0;
                 Nc(asgn, cn);
-                Nc(b, asgn);
+                arr_chain_add(asgn);
             }
             str_row++;
             续;
         }
         /* 叶子: a[gi_idx[0]]...[gi_idx[nd-1]] = expr */
-        arr_init_leaf_n++; 若 (arr_init_leaf_n > 256) { fprintf(stderr, "[ERR] 数组初始化器超过 256 元素上限 (fix 2026-08-06)\n"); exit(1); }
+        /* 叶子 → 块链 (fix 2026-08-06) */
         整 idn = Nd(1); memcpy((字*)(nn + idn), (字*)(nn + d), 32);
         整 node = idn;
         遍 (整 i = 0; i < nd; i++) {
@@ -2603,7 +2609,7 @@ __attribute__((unused))
             node = acc;
         }
         整 asgn = Nd(10); Nc(asgn, node); Nc(asgn, expr());
-        Nc(b, asgn);
+        arr_chain_add(asgn);
         /* 推进: 顶层扁平 → 低位进位; 嵌套行 → 只推进本层列 */
         若 (depth == 0 && !has_nested) {
             遍 (整 i = nd - 1; i >= 0; i--) {
@@ -2616,6 +2622,7 @@ __attribute__((unused))
         }
     }
     若 (tt[tk] == UK) tk++; /* 本层 '}' */
+    若 (depth == 0 && arr_blk_root >= 0) Nc(b, arr_blk_root); /* fix 2026-08-06: 根块挂到顶层块 */
 }
 
 静 整 jy_min(空) { 返 0; }
