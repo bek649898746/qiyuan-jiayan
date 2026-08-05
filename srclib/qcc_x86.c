@@ -3067,9 +3067,11 @@ static int blk(void) {
             int is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             int is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
-            int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")); /* long long → 8-byte int (fix 2026-08-05) */
+            int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
+                     || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
             int is_ptr = (tt[tk] == DK);
             if (is_ptr) tk++; /* skip * for pointers */
             int d = Nd(7);
@@ -3171,7 +3173,7 @@ static int blk(void) {
                 if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; } /* typedef struct pointer (fix 2026-08-03) */
             else if (ltd_si >= 0) { var_struct(vn, ltd_si); } /* typedef struct var (fix 2026-08-03: was var_offset → int, field offsets 0) */
             else if (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
-            else if (is_ll) { var_ll(vn); } /* long long: 8-byte int (fix 2026-08-05) */
+            else if (is_ll) { var_ll(vn); if (is_uns) vars[vcnt - 1].is_uns = 1; } /* long long / unsigned long long: 8-byte int (fix 2026-08-06: ULL 同时标 is_uns) */
             else if (is_double) { var_double(vn); }
             else { var_offset(vn); if (is_char) vars[vcnt - 1].is_char = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05) */
             memcpy((char*)(nn + d), vn, 32);
@@ -4104,6 +4106,7 @@ static int parse(const char *s) {
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                 else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
                     tk++; tk++; /* skip ( * */
@@ -4442,6 +4445,30 @@ static void emit_ll_digits(int tail) {
     jnz_rel(-1); patch_label(cp-4, lcpd, 3);
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
+/* %llu: 64-bit unsigned decimal digits into [r12], then jmp tail (fix 2026-08-06).
+   No sign handling (rbx is unsigned long long); div rcx unsigned 64-bit. */
+static void emit_ll_unsigned_digits(int tail) {
+    int ldig = new_label(), lcpd = new_label();
+    lea_r_mbrp(8, scratch_base + 192 + 24 - cur_frame_sz); /* r8 = temp end (reuse ll temp area [rbp-56]) */
+    mov_rr64(9, 8); /* r9 = temp end (advancing) */
+    set_label(ldig);
+    asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); /* xor edx, edx */
+    mov_r_imm(1, 10); /* ecx = 10 */
+    asm_emit("    无符号除64 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0xF7); modrm(3, 6, 1); /* div rcx */
+    asm_emit("    加字节 r2, 0x30\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
+    asm_emit("    自减 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9 */
+    asm_emit("    写字节 [r9], r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0, 2, 1); /* mov [r9], dl */
+    asm_emit("    测试64 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x85); modrm(3, 0, 0); /* test rax, rax */
+    jnz_rel(-1); patch_label(cp-4, ldig, 3);
+    set_label(lcpd);
+    asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0, 0, 1); /* mov al, [r9] */
+    mov_r12_al(); /* mov [r12], al */
+    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9 */
+    asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    比较64 r9, r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,1); b(0x39); modrm(3, 0, 1); /* cmp r9, r8 */
+    jnz_rel(-1); patch_label(cp-4, lcpd, 3);
+    jmp_rel(-1); patch_label(cp-4, tail, 2);
+}
 /* %u: unsigned decimal digits (no sign handling, div not idiv — fix 2026-08-05:
    %u was an unknown spec → swallowed). ebx = value, digits into [r12], jmp tail. */
 static void emit_unsigned_digits(int tail) {
@@ -4501,7 +4528,7 @@ static int emit_fmt_loop(int bound_disp) {
     /* specifier-prefix parse + %f precision (root-cause 2026-08-03) */
     int lflag = new_label(), lflags = new_label(), lwidth = new_label(), lprec = new_label();
     int ldot = new_label(), ldig = new_label(), lspec = new_label();
-    int ll_cnt = new_label(), lld32 = new_label(); /* fix 2026-08-06: %lld 64 位 (ll_cnt=计数, lld32=32 位回退) */
+    int ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(); /* fix 2026-08-06: %lld/%llu 64 位 (ll_cnt=计数, lld32/lu32=32 位回退) */
     int lscale = new_label(), lscdone = new_label(), ldigl = new_label(), ldigd = new_label();
     int lu = new_label(); /* %u unsigned decimal (fix 2026-08-05) */
     int lfdot = new_label(); /* %.0f: no '.' when N==0 */
@@ -4684,6 +4711,14 @@ static int emit_fmt_loop(int bound_disp) {
     emit_hex_digits(lfmt);
     set_label(lu); /* %u: unsigned decimal (fix 2026-08-05) */
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
+    /* %llu: 64-bit unsigned decimal（fix 2026-08-06）— sc+244 >= 2 → 64 位路径 */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 244); /* eax = ll_cnt */
+    mov_r_imm(1, 2); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8C); b4(0); patch_label(cp-4, lu32, 10); /* cmp eax,2; jl lu32 (小跳) */
+    mov_rax_mr13(); /* rax = [r13] (64-bit) */
+    asm_emit("    减即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
+    mov_rr64(3, 0); /* rbx = 64-bit value */
+    emit_ll_unsigned_digits(lfmt); /* %llu: print rbx 64 位 unsigned, return to fmt loop */
+    set_label(lu32);
     mov_eax_mr13(); /* eax = [r13] */
     asm_emit("    减即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
     mov_rr(3, 0); /* ebx = value */
