@@ -8,6 +8,13 @@
  *       qcc_x86.exe -o out.exe src.c
  */
 
+
+/* PE 魔数（工程化：语义等价 #define，不动点 SHA 不变；fix 2026-08-05） */
+#define FILE_ALIGNMENT 0x200
+#define IMAGE_BASE 0x400000
+#define DATA_RVA_OFF 0x140
+#define STACK_PAD_SIZE 0x160000
+#define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +51,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    (rbp high bits -> SIGSEGV). This pad shifts every written static/heap slot
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
-static char __pad0[0x160000];
+static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[1024][512]; int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096]; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -1154,9 +1161,9 @@ static int var_static_struct(const char *n, int si, int count) {
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
-/* RIP-relative offset to .data static slot (RVA data_rva_base + 0x140 + 4*idx) from instr at 0x1000+cp */
+/* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 static int data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
-static int stc_disp(int idx) { return (data_rva_base + 0x140 + 4 * idx) - (0x1000 + cp + 6); }
+static int stc_disp(int idx) { return (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
 static int iat_disp_at(int at, int slot) { return (data_rva_base + 8 + 8 * slot) - (0x1000 + at + 6); }
 static void call_iat(int slot) {
@@ -6040,7 +6047,7 @@ static void write_pe(FILE *f, int entry_rva) {
        Make .text always end exactly where .data begins. */
     int need = data_rva_base - text_rva;
     if (text_size < need) text_size = need;
-    int text_foff = 0x200;
+    int text_foff = FILE_ALIGNMENT;
     int data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     int data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
     int image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
@@ -6069,20 +6076,20 @@ static void write_pe(FILE *f, int entry_rva) {
     w4(f, 0);       /* SizeOfUninitializedData */
     w4(f, entry_rva); /* AddressOfEntryPoint */
     w4(f, text_rva);  /* BaseOfCode */
-    w8(f, 0x400000); /* ImageBase �?low address for 32-bit pointers */
+    w8(f, IMAGE_BASE); /* ImageBase �?low address for 32-bit pointers */
     w4(f, 0x1000);  /* SectionAlignment */
-    w4(f, 0x200);   /* FileAlignment */
+    w4(f, FILE_ALIGNMENT);   /* FileAlignment */
     w2(f, 6); w2(f, 0); /* OSVersion */
     w2(f, 0); w2(f, 0); /* ImageVersion */
     w2(f, 6); w2(f, 0); /* SubsystemVersion */
     w4(f, 0);       /* Win32VersionValue */
     w4(f, image_size); /* SizeOfImage */
-    w4(f, 0x200);   /* SizeOfHeaders */
+    w4(f, FILE_ALIGNMENT);   /* SizeOfHeaders */
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
     w8(f, 0x100000); /* SizeOfStackReserve */
-    w8(f, 0x400000); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
+    w8(f, IMAGE_BASE); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
     w8(f, 0x100000); /* SizeOfHeapReserve */
     w8(f, 0x1000);   /* SizeOfHeapCommit */
     w4(f, 0);       /* LoaderFlags */
@@ -6130,10 +6137,10 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* .data section: write heap counter at data_foff, then kernel32 import table
        Layout: IAT@+0x08(72B) ILT@+0x50(72B) desc@+0x98(40B) hint/names@+0xC0 dll@+0x12E
-       statics start at +0x140. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
+       statics start at +DATA_RVA_OFF. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
        3=ReadFile 4=VirtualAlloc 5=SetFilePointer 6=ExitProcess 7=GetCommandLineA */
     fseek(f, data_foff, SEEK_SET);
-    int heap_start = 0x400000 + data_rva + 0x140 + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     /* IAT (at .data+0x08): loader overwrites with kernel32 addresses */
@@ -6185,7 +6192,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fseek(f, data_foff + 0x12F, SEEK_SET);
     fputs("kernel32.dll", f); fputc(0, f);
     /* pad .data to raw size */
-    fseek(f, data_foff + 0x140, SEEK_SET);
+    fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
     int data_end = data_foff + 0x4000;
     while (pos < data_end) { fputc(0, f); pos++; }
@@ -6201,13 +6208,13 @@ static void mov_ri_ext(int reg, int imm) { asm_emit("    移动 r%d, %d\n", (cha
    Registers: r10=cmdline r11=scan idx r12=&argv[0] r13=&token_area(advancing)
    r14=argc r8=token_start r15=saved rsp. Each token is NUL-terminated in the copy. */
 static void emit_crt_stub(void) {
-    int argv_va = 0x400000 + data_rva_base + 0x140 + 4 * stc_n; /* .data static area for argv[64] */
+    int argv_va = IMAGE_BASE + data_rva_base + DATA_RVA_OFF + 4 * stc_n; /* .data static area for argv[64] */
     crt_entry_off = cp; /* entry point = start of this stub */
     /* 自切栈：立即�?rsp 切到 .data 内的高地址区（62MB 偏移处），完全脱�?loader �?
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    int stk_top = 0x400000 + data_rva_base + 0x4400000;
+    int stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
@@ -6433,12 +6440,12 @@ void gen_code(void) {
     for (int i = 0; i < strpn; i++) {
         int si = str_patches[i].str_idx;
         int off = str_offs[si]; /* byte offset within string data */
-        int rva = 0x400000 + 0x1000 + code_end + off; /* ImageBase(0x400000) + text_rva + code + off */
+        int rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     for (int i = 0; i < fnpn; i++) {
-        int rva = 0x400000 + 0x1000 + label_pos[fn_patches[i].label];
+        int rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -6447,12 +6454,12 @@ void gen_code(void) {
     for (int i = 0; i < dbl_patch_n; i++) {
         int di = dbl_patches[i].dbl_idx;
         int off = dbl_offs[di];
-        int rva = 0x400000 + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (0x400000 + 0x1000 + dbl_patches[i].patch_at + 4));
+        int rva = IMAGE_BASE + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     if (sdp > 0) {
-        while (cp + sdp >= 0x400000) { unsigned char *nc = realloc(code, 0x400000+4096); if (!nc) { fprintf(stderr, "qcc_x86: OOM at code buffer %d bytes\n", 0x400000+4096); exit(1); } code = nc; }
+        while (cp + sdp >= IMAGE_BASE) { unsigned char *nc = realloc(code, CODE_BUF_CAP+4096); if (!nc) { fprintf(stderr, "qcc_x86: OOM at code buffer %d bytes\n", IMAGE_BASE+4096); exit(1); } code = nc; }
         memcpy(code + cp, sdat, sdp);
         cp += sdp;
     }
@@ -6815,7 +6822,7 @@ int main(int argc, char **argv) {
     n244 = _va_alloc(ASZ * 4); n245 = _va_alloc(ASZ * 4); n246 = _va_alloc(ASZ * 4); n247 = _va_alloc(ASZ * 4); n248 = _va_alloc(ASZ * 4); n249 = _va_alloc(ASZ * 4); n250 = _va_alloc(ASZ * 4); n251 = _va_alloc(ASZ * 4);
     n252 = _va_alloc(ASZ * 4); n253 = _va_alloc(ASZ * 4); n254 = _va_alloc(ASZ * 4); n255 = _va_alloc(ASZ * 4);
 
-    code = malloc(0x400000); /* 4MB pre-alloc: self-host never reallocs (kills the bump-leak) */ if (!code) { fprintf(stderr, "qcc_x86: OOM at init\n"); return 1; } cp = 0; lc = 0;
+    code = malloc(CODE_BUF_CAP); /* 4MB pre-alloc: self-host never reallocs (kills the bump-leak) */ if (!code) { fprintf(stderr, "qcc_x86: OOM at init\n"); return 1; } cp = 0; lc = 0;
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
     memset(str_offs, -1, sizeof(str_offs));
 

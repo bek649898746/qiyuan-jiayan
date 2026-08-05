@@ -5,6 +5,13 @@
  * 2026-08-04 自举不动点 dc34276fa5e20fc4 —— 自己生自己，与宿主逐字节一致
  */
 
+
+/* PE 魔数（工程化：语义等价 #define，不动点 SHA 不变；fix 2026-08-05） */
+#define FILE_ALIGNMENT 0x200
+#define IMAGE_BASE 0x400000
+#define DATA_RVA_OFF 0x140
+#define STACK_PAD_SIZE 0x160000
+#define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +50,7 @@
    (rbp high bits -> SIGSEGV). This pad shifts every written static/heap slot
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
-静 字 __pad0[0x160000];
+静 字 __pad0[STACK_PAD_SIZE];
 静 字 str_tbl[1024][512]; 整 str_cnt;
 静 构 { 字 name[32]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; 字 p_dbl, is_char, is_uns, is_ll; 整 frows[4]; } vars[4096]; 整 vcnt; /* is_ll: long long（8 字节整）变量（fix 2026-08-05） */
 静 整 stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
@@ -1006,9 +1013,9 @@ __attribute__((unused))
     vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     返 vars[vcnt++].rsp_off;
 }
-/* RIP-relative offset to .data static slot (RVA data_rva_base + 0x140 + 4*idx) from instr at 0x1000+cp */
+/* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 静 整 data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
-静 整 stc_disp(整 idx) { 返 (data_rva_base + 0x140 + 4 * idx) - (0x1000 + cp + 6); }
+静 整 stc_disp(整 idx) { 返 (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
 静 整 iat_disp_at(整 at, 整 slot) { 返 (data_rva_base + 8 + 8 * slot) - (0x1000 + at + 6); }
 静 空 call_iat(整 slot) {
@@ -5728,7 +5735,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 静 空 write_pe(FILE *f, 整 entry_rva) {
     整 text_rva = 0x1000, text_size = ((cp + 4095) & ~4095);
     若 (text_size < 512) text_size = 512;
-    整 text_foff = 0x200;
+    整 text_foff = FILE_ALIGNMENT;
     整 data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     整 data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
     整 image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
@@ -5757,20 +5764,20 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     w4(f, 0);       /* SizeOfUninitializedData */
     w4(f, entry_rva); /* AddressOfEntryPoint */
     w4(f, text_rva);  /* BaseOfCode */
-    w8(f, 0x400000); /* ImageBase �?low address for 32-bit pointers */
+    w8(f, IMAGE_BASE); /* ImageBase �?low address for 32-bit pointers */
     w4(f, 0x1000);  /* SectionAlignment */
-    w4(f, 0x200);   /* FileAlignment */
+    w4(f, FILE_ALIGNMENT);   /* FileAlignment */
     w2(f, 6); w2(f, 0); /* OSVersion */
     w2(f, 0); w2(f, 0); /* ImageVersion */
     w2(f, 6); w2(f, 0); /* SubsystemVersion */
     w4(f, 0);       /* Win32VersionValue */
     w4(f, image_size); /* SizeOfImage */
-    w4(f, 0x200);   /* SizeOfHeaders */
+    w4(f, FILE_ALIGNMENT);   /* SizeOfHeaders */
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
     w8(f, 0x100000); /* SizeOfStackReserve */
-    w8(f, 0x400000); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
+    w8(f, IMAGE_BASE); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
     w8(f, 0x100000); /* SizeOfHeapReserve */
     w8(f, 0x1000);   /* SizeOfHeapCommit */
     w4(f, 0);       /* LoaderFlags */
@@ -5818,10 +5825,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 
     /* .data section: write heap counter at data_foff, then kernel32 import table
        Layout: IAT@+0x08(72B) ILT@+0x50(72B) desc@+0x98(40B) hint/names@+0xC0 dll@+0x12E
-       statics start at +0x140. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
+       statics start at +DATA_RVA_OFF. IAT slots: 0=GetStdHandle 1=WriteFile 2=CreateFileA
        3=ReadFile 4=VirtualAlloc 5=SetFilePointer 6=ExitProcess 7=GetCommandLineA */
     fseek(f, data_foff, SEEK_SET);
-    整 heap_start = 0x400000 + data_rva + 0x140 + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    整 heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     /* IAT (at .data+0x08): loader overwrites with kernel32 addresses */
@@ -5873,7 +5880,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     fseek(f, data_foff + 0x12F, SEEK_SET);
     fputs("kernel32.dll", f); fputc(0, f);
     /* pad .data to raw size */
-    fseek(f, data_foff + 0x140, SEEK_SET);
+    fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
     整 data_end = data_foff + 0x4000;
     循环 (pos < data_end) { fputc(0, f); pos++; }
@@ -5890,13 +5897,13 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
    r14=argc r8=token_start r15=saved rsp. Each token is NUL-terminated in the copy. */
 静 空 emit_crt_stub(空) {
     asm_emit("\n; === CRT ===\n_入口:\n", 0, 0, 0);
-    整 argv_va = 0x400000 + data_rva_base + 0x140 + 4 * stc_n; /* .data static area for argv[64] */
+    整 argv_va = IMAGE_BASE + data_rva_base + DATA_RVA_OFF + 4 * stc_n; /* .data static area for argv[64] */
     crt_entry_off = cp; /* entry point = start of this stub */
     /* 自切栈：立即�?rsp 切到 .data 内的高地址区（62MB 偏移处），完全脱�?loader �?
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    整 stk_top = 0x400000 + data_rva_base + 0x4400000;
+    整 stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
@@ -6084,12 +6091,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < strpn; i++) {
         整 si = str_patches[i].str_idx;
         整 off = str_offs[si]; /* byte offset within string data */
-        整 rva = 0x400000 + 0x1000 + code_end + off; /* ImageBase(0x400000) + text_rva + code + off */
+        整 rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     遍 (整 i = 0; i < fnpn; i++) {
-        整 rva = 0x400000 + 0x1000 + label_pos[fn_patches[i].label];
+        整 rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -6098,12 +6105,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < dbl_patch_n; i++) {
         整 di = dbl_patches[i].dbl_idx;
         整 off = dbl_offs[di];
-        整 rva = 0x400000 + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (0x400000 + 0x1000 + dbl_patches[i].patch_at + 4));
+        整 rva = IMAGE_BASE + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     若 (sdp > 0) {
-        循环 (cp + sdp >= 0x400000) { cc += 4096; code = realloc(code, cc); } /* C 原版 5259：与 4MB 常量比较，不依赖 cc 全局写 */
+        循环 (cp + sdp >= IMAGE_BASE) { cc += 4096; code = realloc(code, cc); } /* C 原版 5259：与 4MB 常量比较，不依赖 cc 全局写 */
         memcpy(code + cp, sdat, sdp);
         cp += sdp;
     }
@@ -6337,7 +6344,7 @@ __attribute__((unused))
     n244 = _va_alloc(ASZ * 4); n245 = _va_alloc(ASZ * 4); n246 = _va_alloc(ASZ * 4); n247 = _va_alloc(ASZ * 4); n248 = _va_alloc(ASZ * 4); n249 = _va_alloc(ASZ * 4); n250 = _va_alloc(ASZ * 4); n251 = _va_alloc(ASZ * 4);
     n252 = _va_alloc(ASZ * 4); n253 = _va_alloc(ASZ * 4); n254 = _va_alloc(ASZ * 4); n255 = _va_alloc(ASZ * 4);
 
-    code = malloc(0x400000); cc = 0x400000; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
+    code = malloc(CODE_BUF_CAP); cc = IMAGE_BASE; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
     memset(str_offs, -1, 1024 * 4);;
 
