@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 2cbc0d00 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 28764852 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -362,6 +362,7 @@ __attribute__((unused))
     返 st_n++;
 }
 静 空 st_field_sz_r(整 si, 常 字 *fn, 整 fsz, 整 frow) {
+    若 (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2)\n"); exit(1); }
     整 idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -377,6 +378,7 @@ __attribute__((unused))
     /* 真实位域语义：连续位域打包进共享 int 槽。
        foffs = 槽字节偏移；fbitof = 槽内位偏移；fbits = 位宽。
        uns = 1 为 `unsigned` 位域（读取不符号扩展）；int → signed。 */
+    若 (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2)\n"); exit(1); }
     整 idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     若 (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
@@ -423,6 +425,7 @@ __attribute__((unused))
 静 空 st_field_sz(整 si, 常 字 *fn, 整 fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 静 空 st_union_field(整 si, 常 字 *fn, 整 fsz) {
+    若 (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2)\n"); exit(1); }
     整 idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = 0;
