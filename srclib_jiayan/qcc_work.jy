@@ -88,6 +88,12 @@ __attribute__((unused))
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
 静 构 { 字 name[32]; 字 params[8][16]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n;
+/* #undef：从数字/字符串/函数三个宏表删除（fix 2026-08-05） */
+静 空 macro_remove(常 字 *n) {
+    遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) { 遍 (整 j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n = macro_n - 1; 返; }
+    遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) { 遍 (整 j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n = str_macro_n - 1; 返; }
+    遍 (整 i = 0; i < fn_macro_n; i++) 若 (!strcmp(fn_macros[i].name, n)) { 遍 (整 j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n = fn_macro_n - 1; 返; }
+}
 
 静 空 fn_macro_collect(常 字 *s) {
     fn_macro_n = 0;
@@ -1710,6 +1716,8 @@ __attribute__((unused))
             整 is_elif = !strncmp(s + i, "#elif", 5);
             整 is_else = !strncmp(s + i, "#else", 5);
             整 is_endif = !strncmp(s + i, "#endif", 6);
+            整 is_undef = !strncmp(s + i, "#undef", 6);
+            整 is_error = !strncmp(s + i, "#error", 6);
             若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 整 parent = if_skip;
                 字 expr[512]; 整 ei = 0;
@@ -1758,6 +1766,25 @@ __attribute__((unused))
             若 (if_skip) { /* 假分支：跳过所有行（含 #define/#include）直到 #endif/#elif/#else */
                 循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; }
                 续;
+            }
+            若 (is_undef) { /* #undef NAME — 从三个宏表删除（fix 2026-08-05） */
+                整 p = i + 6;
+                循环 (s[p] == ' ' || s[p] == '\t') p++;
+                字 un[32]; 整 ui = 0;
+                循环 (isalnum(s[p]) || s[p] == '_' || ((无 字)s[p] >= 0x80)) { 若 (ui < 31) un[ui++] = s[p]; p++; }
+                un[ui] = 0;
+                若 (ui > 0) macro_remove(un);
+                循环 (s[i] && s[i] != '\n') i++;
+                续;
+            }
+            若 (is_error) { /* #error msg — 硬诊断（fix 2026-08-05） */
+                整 p = i + 6;
+                循环 (s[p] == ' ' || s[p] == '\t') p++;
+                字 em[512]; 整 ei = 0;
+                循环 (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
+                em[ei] = 0;
+                fprintf(stderr, "[ERR] #error: %s\n", em);
+                exit(1);
             }
             若 (is_def) {
                 i += 7;
