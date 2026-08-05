@@ -2436,6 +2436,7 @@ __attribute__((unused))
         整 n = Nd(1); memcpy((字*)(nn + n), tn[tk], 32); tk++;
         若 (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (数组名衰减为地址，不是 double — fix 2026-08-05: double 数组名被标 ndbl → 指针/double 比较走了浮点路径) */
         若 (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long 变量（fix 2026-08-05） */
+        若 (var_is_uns(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nuns[n] = 1; /* unsigned 变量（fix 2026-08-06: (long long)u 必须零扩展, movsxd 判断靠 nuns） */
         /* suffix chain: arr[expr] / .field / ->field (repeatable) */
         循环 (1) {
             若 (tt[tk] == LB) { /* array access */

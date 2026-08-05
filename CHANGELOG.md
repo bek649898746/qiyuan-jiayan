@@ -3,6 +3,14 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## fbe6ceae (2026-08-06)
+**unsigned 变量 nuns 传播（(long long)u 零扩展）：任务单复测 16/16 全绿**
+
+- 修复 (long long)u（u 为 unsigned int）错误符号扩展：上一轮 cast movsxd 的 `!nuns[n]` 判断因 unsigned 变量 nuns 未传播而误触发 → -1
+- 修复：变量节点传播 `var_is_uns → nuns[n]=1`（C/jy 双版），movsxd 判断恢复正确
+- 任务单复测：unsigned >=/<=/>/</==/!= 全路径、除法/取模/逻辑右移、pow(2.0,10) int 实参、fib(10)=55 行为断言 → **16/16**
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_FBE6CEAE_seed.exe
+
 ## 3a94b788 (2026-08-06)
 **%llx 64 位十六进制 + (long long)int 符号扩展 + LL 数组 8 字节元素：新不动点 3a94b788**
 
