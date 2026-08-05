@@ -18,6 +18,7 @@
 静 空 modrm(整 mod, 整 reg, 整 rm) { b((mod << 6) | ((reg & 7) << 3) | (rm & 7)); }
 静 空 rex(整 w, 整 r, 整 x, 整 bv) { b(0x40 | (w ? 8 : 0) | (r ? 4 : 0) | (x ? 2 : 0) | (bv ? 1 : 0)); }
 静 空 b4_at(整 pos, 整 v) { code[pos] = v & 0xff; code[pos + 1] = (v >> 8) & 0xff; code[pos + 2] = (v >> 16) & 0xff; code[pos + 3] = (v >> 24) & 0xff; }
+静 空 b_at(整 pos, 整 v) { code[pos] = v & 0xff; }
 
 静 空 mov_rr64(整 d, 整 s) { rex(1, s & 8, 0, d & 8); b(0x89); modrm(3, s & 7, d & 7); }
 静 空 mov_rr(整 d, 整 s) { rex(0, s & 8, 0, d & 8); b(0x89); modrm(3, s & 7, d & 7); }
@@ -79,7 +80,7 @@
 静 空 jz_rel(整 rel) { b(0x0F); b(0x84); b4(rel); }
 静 空 jnz_rel(整 rel) { b(0x0F); b(0x85); b4(rel); }
 静 空 call_iat(整 slot) { 整 at = cp; b(0xFF); b(0x15); b4((data_rva_base + 8 + 8 * slot) - (0x1000 + at + 6)); }
-静 空 resolve_patches(空) { 整 i; 遍 (i = 0; i < pn; i = i + 1) { 若 (labels[patches[i].target].defined == 0) { 输出("[ERR] asm_zh: undefined label '%s' at line %d\n", labels[patches[i].target].name, labels[patches[i].target].line); exit(1); } 整 t = labels[patches[i].target].pos; 整 at = patches[i].at; 整 v = t - (at + 4); b4_at(at, v); } } /* fix 2026-08-05：未定义标签 → 报错而非坏跳转 */
+静 空 resolve_patches(空) { 整 i; 遍 (i = 0; i < pn; i = i + 1) { 若 (labels[patches[i].target].defined == 0) { 输出("[ERR] asm_zh: undefined label '%s' at line %d\n", labels[patches[i].target].name, labels[patches[i].target].line); exit(1); } 整 t = labels[patches[i].target].pos; 整 at = patches[i].at; 若 (patches[i].is_jmp == 3) { 整 v = t - (at + 1); b_at(at, v & 0xff); } 否 { 整 v = t - (at + 4); b4_at(at, v); } } } /* fix 2026-08-05：rel8（is_jmp==3）与 rel32 回填；未定义标签 → 报错而非坏跳转 */
 静 无 字 *sdat; 静 整 sdp, sdc;
 构 { 整 at; 整 idx; } str_patches2[2048]; 静 整 spn2;
 静 整 str_offs2[1024]; 静 整 str_cnt2;
@@ -147,6 +148,15 @@
     若 (strcmp(mn, "扩字") == 0) { rex(1,0,0,0); b(0x98); 返 1; } /* cdqe（fix 2026-08-05） */
     若 (strcmp(mn, "扩八字") == 0) { rex(1,0,0,0); b(0x99); 返 1; } /* cqo */
     若 (strcmp(mn, "串拷") == 0) { b(0xF3); b(0xA4); 返 1; } /* rep movsb */
+若 (strcmp(mn, "串比") == 0) { b(0xA6); 返 1; } /* cmpsb（P1） */
+若 (strcmp(mn, "串比双") == 0) { b(0xA7); 返 1; } /* cmpsd（P1） */
+若 (strcmp(mn, "串扫") == 0) { b(0xAE); 返 1; } /* scasb（P1） */
+若 (strcmp(mn, "串扫双") == 0) { b(0xAF); 返 1; } /* scasd（P1） */
+若 (strcmp(mn, "串载") == 0) { b(0xAC); 返 1; } /* lodsb（P1） */
+若 (strcmp(mn, "串载双") == 0) { b(0xAD); 返 1; } /* lodsd（P1） */
+若 (strcmp(mn, "串存") == 0) { b(0xAA); 返 1; } /* stosb（P1） */
+若 (strcmp(mn, "串存双") == 0) { b(0xAB); 返 1; } /* stosd（P1） */
+若 (strcmp(mn, "串拷双") == 0) { b(0xF3); b(0xA5); 返 1; } /* rep movsd（P1） */
     若 (strcmp(mn, "交还") == 0) { SK(); 整 m = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 r = RG(); 若 (m >= 0 && r >= 0) { b(0x0F); b(0xB1); modrm(3, r & 7, m & 7); } 返 1; } /* cmpxchg r/m32,r32 */
     若 (strcmp(mn, "条移等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x44); modrm(3, d & 7, s & 7); } 返 1; } /* cmove */
     若 (strcmp(mn, "条移不等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x45); modrm(3, d & 7, s & 7); } 返 1; } /* cmovne */
@@ -158,10 +168,18 @@
     若 (strcmp(mn, "条移小等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4E); modrm(3, d & 7, s & 7); } 返 1; } /* cmovle */
     若 (strcmp(mn, "条移大") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4F); modrm(3, d & 7, s & 7); } 返 1; } /* cmovg */
     若 (strcmp(mn, "条移大等") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { 若 (d >= 8 || s >= 8) rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4D); modrm(3, d & 7, s & 7); } 返 1; } /* cmovge */
+若 (strcmp(mn, "条移负") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x48); modrm(3, d & 7, s & 7); } 返 1; } /* cmovs（P0） */
+若 (strcmp(mn, "条移非负") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x49); modrm(3, d & 7, s & 7); } 返 1; } /* cmovns（P0） */
+若 (strcmp(mn, "条移溢") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x40); modrm(3, d & 7, s & 7); } 返 1; } /* cmovo（P0） */
+若 (strcmp(mn, "条移不溢") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x41); modrm(3, d & 7, s & 7); } 返 1; } /* cmovno（P0） */
+若 (strcmp(mn, "条移奇") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4A); modrm(3, d & 7, s & 7); } 返 1; } /* cmovp（P0） */
+若 (strcmp(mn, "条移偶") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0x4B); modrm(3, d & 7, s & 7); } 返 1; } /* cmovnp（P0） */
     若 (strcmp(mn, "移动64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 lo = NUM(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 hi = NUM(); 若 (r >= 0) { b(0x48); b(0xB8); b4(lo); b4(hi); } 返 1; } /* mov rax,imm64（LL；fix 2026-08-05） */
 若 (strcmp(mn, "移动") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (strncmp(gp, "STR", 3) == 0) { gp = gp + 3; 整 si = NUM(); 若 (r >= 0 && spn2 < 2048) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(0); str_patches2[spn2].at = cp - 4; str_patches2[spn2].idx = si; spn2 = spn2 + 1; } } 否 若 (strncmp(gp, "FN:", 3) == 0) { gp = gp + 3; 整 li = LR(); 若 (li >= 0 && r >= 0 && fnpn2 < 2048) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(0); fn_patches2[fnpn2].at = cp - 4; fn_patches2[fnpn2].label = li; fnpn2 = fnpn2 + 1; } } 否 { 整 vv = NUM(); 若 (r >= 0) { 若 (r & 8) b(0x41); b(0xB8 | (r & 7)); b4(vv); } } 返 1; }
     若 (strcmp(mn, "移64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) mov_rr64(d, s); 返 1; }
     若 (strcmp(mn, "移32") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) mov_rr(d, s); 返 1; }
+若 (strcmp(mn, "交换") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x87); modrm(3, d & 7, s & 7); } 返 1; } /* xchg r32,r/m32（P0） */
+若 (strcmp(mn, "交换64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x87); modrm(3, d & 7, s & 7); } 返 1; } /* xchg r64,r/m64（P0） */
     若 (strcmp(mn, "加") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) alu_rr(5, d, s); 返 1; }
     若 (strcmp(mn, "或64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x09); modrm(3, s & 7, d & 7); } 返 1; } /* or r64,r64（LL；fix 2026-08-05） */
 若 (strcmp(mn, "异或64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x31); modrm(3, s & 7, d & 7); } 返 1; } /* xor r64,r64（LL；fix 2026-08-05） */
@@ -197,8 +215,20 @@
     若 (strcmp(mn, "取反") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); b(0xD8 | (r & 7)); } 返 1; }
     若 (strcmp(mn, "减即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0x83); modrm(3, 5, r & 7); b(v); } 返 1; }
     若 (strcmp(mn, "运即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 0, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 0, r & 7); b4(v); } } 返 1; }
+若 (strcmp(mn, "加带进") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x11); modrm(3, s & 7, d & 7); } 返 1; } /* adc r32,r32（P0） */
+若 (strcmp(mn, "加带进64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x11); modrm(3, s & 7, d & 7); } 返 1; } /* adc r64,r64（P0） */
+若 (strcmp(mn, "减带借") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x19); modrm(3, s & 7, d & 7); } 返 1; } /* sbb r32,r32（P0） */
+若 (strcmp(mn, "减带借64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x19); modrm(3, s & 7, d & 7); } 返 1; } /* sbb r64,r64（P0） */
+若 (strcmp(mn, "加带进即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 2, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 2, r & 7); b4(v); } } 返 1; } /* adc r,imm（P0） */
+若 (strcmp(mn, "减带借即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 3, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 3, r & 7); b4(v); } } 返 1; } /* sbb r,imm（P0） */
+若 (strcmp(mn, "加带进即64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 2, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 2, r & 7); b4(v); } } 返 1; } /* adc r64,imm（P0） */
+若 (strcmp(mn, "减带借即64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 3, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 3, r & 7); b4(v); } } 返 1; } /* sbb r64,imm（P0） */
     若 (strcmp(mn, "加字节") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { b(0x80); modrm(3, 0, r & 7); b(v); } 返 1; }
     若 (strcmp(mn, "减字节") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { b(0x80); modrm(3, 5, r & 7); b(v); } 返 1; }
+若 (strcmp(mn, "双左移") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xA4); modrm(3, s & 7, d & 7); b(v & 0xff); } 返 1; } /* shld r/m32,r32,imm8（P0） */
+若 (strcmp(mn, "双左移64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xA4); modrm(3, s & 7, d & 7); b(v & 0xff); } 返 1; } /* shld r/m64,r64,imm8（P0） */
+若 (strcmp(mn, "双右移") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xAC); modrm(3, s & 7, d & 7); b(v & 0xff); } 返 1; } /* shrd r/m32,r32,imm8（P0） */
+若 (strcmp(mn, "双右移64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xAC); modrm(3, s & 7, d & 7); b(v & 0xff); } 返 1; } /* shrd r/m64,r64,imm8（P0） */
     若 (strcmp(mn, "比较字节即") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r == 0) { b(0x3C); b(v); } 否 若 (r >= 0) { b(0x80); modrm(3, 7, r & 7); b(v); } 返 1; }
     若 (strcmp(mn, "减64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x29); modrm(3, s & 7, d & 7); } 返 1; }
     若 (strcmp(mn, "减无") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { b(0x29); modrm(3, s & 7, d & 7); } 返 1; }
@@ -210,19 +240,53 @@
     若 (strcmp(mn, "右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 7, r & 7); } 返 1; }
     若 (strcmp(mn, "算术右移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 7, r & 7); } 返 1; } /* sar r64, cl（LL；fix 2026-08-05） */
 若 (strcmp(mn, "逻辑右移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 5, r & 7); } 返 1; } /* shr r64, cl（LL；fix 2026-08-05） */
+若 (strcmp(mn, "循环左移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xC1); modrm(3, 0, r & 7); b(v & 0xff); } 返 1; } /* rol r,imm8（P0） */
+若 (strcmp(mn, "循环左移cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xD3); modrm(3, 0, r & 7); } 返 1; } /* rol r,cl（P0） */
+若 (strcmp(mn, "循环右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xC1); modrm(3, 1, r & 7); b(v & 0xff); } 返 1; } /* ror r,imm8（P0） */
+若 (strcmp(mn, "循环右移cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xD3); modrm(3, 1, r & 7); } 返 1; } /* ror r,cl（P0） */
+若 (strcmp(mn, "带进左移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xC1); modrm(3, 2, r & 7); b(v & 0xff); } 返 1; } /* rcl r,imm8（P0） */
+若 (strcmp(mn, "带进左移cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xD3); modrm(3, 2, r & 7); } 返 1; } /* rcl r,cl（P0） */
+若 (strcmp(mn, "带进右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xC1); modrm(3, 3, r & 7); b(v & 0xff); } 返 1; } /* rcr r,imm8（P0） */
+若 (strcmp(mn, "带进右移cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); 否 b(0x40); b(0xD3); modrm(3, 3, r & 7); } 返 1; } /* rcr r,cl（P0） */
+若 (strcmp(mn, "循环左移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xC1); modrm(3, 0, r & 7); b(v & 0xff); } 返 1; } /* rol r64,imm8（P0） */
+若 (strcmp(mn, "循环左移64cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 0, r & 7); } 返 1; } /* rol r64,cl（P0） */
+若 (strcmp(mn, "循环右移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xC1); modrm(3, 1, r & 7); b(v & 0xff); } 返 1; } /* ror r64,imm8（P0） */
+若 (strcmp(mn, "循环右移64cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 1, r & 7); } 返 1; } /* ror r64,cl（P0） */
+若 (strcmp(mn, "带进左移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xC1); modrm(3, 2, r & 7); b(v & 0xff); } 返 1; } /* rcl r64,imm8（P0） */
+若 (strcmp(mn, "带进左移64cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 2, r & 7); } 返 1; } /* rcl r64,cl（P0） */
+若 (strcmp(mn, "带进右移64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xC1); modrm(3, 3, r & 7); b(v & 0xff); } 返 1; } /* rcr r64,imm8（P0） */
+若 (strcmp(mn, "带进右移64cl") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xD3); modrm(3, 3, r & 7); } 返 1; } /* rcr r64,cl（P0） */
 若 (strcmp(mn, "算术右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 7, r & 7); } 返 1; } /* sar (fix 2026-08-05) */
     若 (strcmp(mn, "逻辑右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 5, r & 7); } 返 1; } /* shr (fix 2026-08-05: unsigned >>) */
     若 (strcmp(mn, "按位反") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); b(0xD0 | (r & 7)); } 返 1; }
+若 (strcmp(mn, "自增64") == 0) { 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xFF); modrm(3, 0, r & 7); } 返 1; } /* inc r64（P0） */
+若 (strcmp(mn, "自减64") == 0) { 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xFF); modrm(3, 1, r & 7); } 返 1; } /* dec r64（P0） */
+若 (strcmp(mn, "取反64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xF7); modrm(3, 3, r & 7); } 返 1; } /* neg r64（P0） */
+若 (strcmp(mn, "乘无64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xF7); modrm(3, 4, r & 7); } 返 1; } /* mul r64（P0） */
+若 (strcmp(mn, "乘即") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(1, d & 8, 0, s & 8); 若 (v >= -128 && v <= 127) { b(0x6B); modrm(3, d & 7, s & 7); b(v & 0xff); } 否 { b(0x69); modrm(3, d & 7, s & 7); b4(v); } } 返 1; } /* imul r64,r64,imm（P0） */
     若 (strcmp(mn, "加指针") == 0) { SK(); 若 (strncmp(gp, "rax", 3) == 0) { gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (v >= -128 && v <= 127) { rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 0); b(v & 0xff); } 否 { rex(1, 0, 0, 0); b(0x05); b4(v); } } 返 1; }
     若 (strcmp(mn, "扩展符号") == 0) { b(0x48); b(0x99); 返 1; }
     若 (strcmp(mn, "清零") == 0) { SK(); 整 r = RG(); 若 (r == 2 || r < 0) { b(0x31); b(0xD2); } 返 1; }
     若 (strcmp(mn, "测试位") == 0) { SK(); 若 (strncmp(gp, "r0", 2) == 0) { gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); rex(1, 0, 0, 0); b(0x0F); b(0xBA); b(0xE0); b(v); } 返 1; }
+若 (strcmp(mn, "测试位64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xA3); modrm(3, s & 7, d & 7); } 返 1; } /* bt r64,r64（P0） */
+若 (strcmp(mn, "位测置") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xAB); modrm(3, s & 7, d & 7); } 返 1; } /* bts r32,r32（P0） */
+若 (strcmp(mn, "位测置64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xAB); modrm(3, s & 7, d & 7); } 返 1; } /* bts r64,r64（P0） */
+若 (strcmp(mn, "位测清") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xB3); modrm(3, s & 7, d & 7); } 返 1; } /* btr r32,r32（P0） */
+若 (strcmp(mn, "位测清64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xB3); modrm(3, s & 7, d & 7); } 返 1; } /* btr r64,r64（P0） */
+若 (strcmp(mn, "位测翻") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xBB); modrm(3, s & 7, d & 7); } 返 1; } /* btc r32,r32（P0） */
+若 (strcmp(mn, "位测翻64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xBB); modrm(3, s & 7, d & 7); } 返 1; } /* btc r64,r64（P0） */
+若 (strcmp(mn, "扫零位") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xBC); modrm(3, d & 7, s & 7); } 返 1; } /* bsf r32,r/m32（P0） */
+若 (strcmp(mn, "扫零位64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xBC); modrm(3, d & 7, s & 7); } 返 1; } /* bsf r64,r/m64（P0） */
+若 (strcmp(mn, "扫置位") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xBD); modrm(3, d & 7, s & 7); } 返 1; } /* bsr r32,r/m32（P0） */
+若 (strcmp(mn, "扫置位64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x0F); b(0xBD); modrm(3, d & 7, s & 7); } 返 1; } /* bsr r64,r/m64（P0） */
     返 0;
 }
 
 /* ---- 分派函数 2：零扩展/字节/跳转/栈 ---- */
 静 整 dispatch2(字 *mn) {
     若 (strcmp(mn, "零扩展") == 0) { SK(); 若 (strncmp(gp, "SIB", 3) == 0) { b(0x43); b(0x0F); b(0xB6); b(0x04); b(0x1A); } 否 { 整 dst = -1; 若 (strncmp(gp, "eax", 3) == 0) { dst = 0; gp = gp + 3; } 否 若 (strncmp(gp, "ecx", 3) == 0) { dst = 1; gp = gp + 3; } 否 若 (strncmp(gp, "edx", 3) == 0) { dst = 2; gp = gp + 3; } 若 (dst >= 0) { SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (gp[0] == '[') { gp = gp + 1; 整 br = RG(); SK(); 若 (br >= 8) b(0x41); b(0x0F); b(0xB6); modrm(0, dst, br & 7); } 否 { 若 (dst == 0) movzx_eax_al(); 否 若 (dst == 1) { b(0x0F); b(0xB6); modrm(3, 1, 1); } 否 { b(0x0F); b(0xB6); modrm(3, 2, 2); } } } 否 movzx_eax_al(); } 返 1; }
+若 (strcmp(mn, "取符号字节") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xBE); modrm(3, d & 7, s & 7); } 返 1; } /* movsx r32,r/m8（P0） */
+若 (strcmp(mn, "取符号字") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x0F); b(0xBF); modrm(3, d & 7, s & 7); } 返 1; } /* movsx r32,r/m16（P0） */
     若 (strcmp(mn, "存字节帧") == 0) { b(0x41); b(0x88); modrm(1, 1, 5); b(0); 返 1; }
     若 (strcmp(mn, "存字节0") == 0) { b(0x41); b(0xC6); modrm(1, 0, 5); b(0); b(0); 返 1; }
     若 (strcmp(mn, "自增") == 0) { 整 r = RG(); 若 (r >= 8) b(0x41); 若 (r >= 0) { b(0xFF); modrm(3, 0, r & 7); } 返 1; }
@@ -231,6 +295,15 @@
     若 (strcmp(mn, "存字节rax") == 0) { b(0x40); b(0x88); b(0x18); 返 1; }
     若 (strcmp(mn, "存栈索引") == 0) { b(0x4F); b(0x89); b(0x04); b(0xF4); 返 1; }
     若 (strcmp(mn, "跳转") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 2); jmp_rel(0); } 返 1; }
+若 (strcmp(mn, "跳转短") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 3); b(0xEB); b(0); } 返 1; } /* jmp rel8（P0） */
+若 (strcmp(mn, "环跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 3); b(0xE2); b(0); } 返 1; } /* loop rel8（P0） */
+若 (strcmp(mn, "环等跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 3); b(0xE1); b(0); } 返 1; } /* loope rel8（P0） */
+若 (strcmp(mn, "环不等跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 3); b(0xE0); b(0); } 返 1; } /* loopne rel8（P0） */
+若 (strcmp(mn, "间跳") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xFF); modrm(3, 4, r & 7); } 返 1; } /* jmp r64（P0） */
+若 (strcmp(mn, "无操作") == 0) { b(0x90); 返 1; } /* nop（P0） */
+若 (strcmp(mn, "无操作3") == 0) { b(0x0F); b(0x1F); b(0x00); 返 1; } /* 3-byte nop（P1） */
+若 (strcmp(mn, "无操作4") == 0) { b(0x0F); b(0x1F); b(0x40); b(0x00); 返 1; } /* 4-byte nop（P1） */
+若 (strcmp(mn, "无操作9") == 0) { b(0x0F); b(0x1F); b(0x84); b(0x00); b(0x00); b(0x00); b(0x00); b(0x00); b(0x00); 返 1; } /* 9-byte nop（P1） */
     若 (strcmp(mn, "为零跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); jz_rel(0); } 返 1; }
     若 (strcmp(mn, "非零跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); jnz_rel(0); } 返 1; }
     若 (strcmp(mn, "调用") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 0); call_rel(0); } 返 1; }
@@ -238,6 +311,20 @@
     若 (strcmp(mn, "加栈") == 0) { 整 v = NUM(); add_rsp_imm(v); 返 1; }
     若 (strcmp(mn, "对齐栈") == 0) { b(0x48); b(0x83); b(0xE4); b(0xF0); 返 1; }
     若 (strcmp(mn, "调系统") == 0) { 整 s = NUM(); call_iat(s); 返 1; }
+若 (strcmp(mn, "清进位") == 0) { b(0xF8); 返 1; } /* clc（P1） */
+若 (strcmp(mn, "置进位") == 0) { b(0xF9); 返 1; } /* stc（P1） */
+若 (strcmp(mn, "翻进位") == 0) { b(0xF5); 返 1; } /* cmc（P1） */
+若 (strcmp(mn, "清方向") == 0) { b(0xFC); 返 1; } /* cld（P1） */
+若 (strcmp(mn, "置方向") == 0) { b(0xFD); 返 1; } /* std（P1） */
+若 (strcmp(mn, "取标志") == 0) { b(0x9F); 返 1; } /* lahf（P1） */
+若 (strcmp(mn, "存标志") == 0) { b(0x9E); 返 1; } /* sahf（P1） */
+若 (strcmp(mn, "压标志") == 0) { rex(1, 0, 0, 0); b(0x9C); 返 1; } /* pushfq（P1） */
+若 (strcmp(mn, "弹标志") == 0) { rex(1, 0, 0, 0); b(0x9D); 返 1; } /* popfq（P1） */
+若 (strcmp(mn, "中断") == 0) { SK(); 整 v = NUM(); b(0xCD); b(v & 0xff); 返 1; } /* int imm8（P1） */
+若 (strcmp(mn, "中断返") == 0) { rex(1, 0, 0, 0); b(0xCF); 返 1; } /* iretq（P1） */
+若 (strcmp(mn, "系统调用") == 0) { b(0x0F); b(0x05); 返 1; } /* syscall（P1） */
+若 (strcmp(mn, "取Cpu") == 0) { b(0x0F); b(0xA2); 返 1; } /* cpuid（P1） */
+若 (strcmp(mn, "取时钟") == 0) { b(0x0F); b(0x31); 返 1; } /* rdtsc（P1） */
     若 (strcmp(mn, "取参") == 0) { mov_eax_mr13(); 返 1; }
     若 (strcmp(mn, "取参64") == 0) { mov_rax_mr13(); 返 1; }
     若 (strcmp(mn, "写字节") == 0) { SK(); 若 (gp[0] == '[') { gp = gp + 1; 整 br = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 vr = RG(); 若 (br == 8 && vr == 0) { b(0x41); b(0x88); modrm(0, 0, 0); } 否 若 (br == 9 && vr == 0) { b(0x41); b(0x88); modrm(0, 0, 1); } 否 若 (br == 8 && vr == 9) { b(0x45); b(0x88); modrm(0, 1, 0); } 否 若 (br == 9 && vr == 2) { b(0x41); b(0x88); modrm(0, 2, 1); } 否 mov_r12_cl(); } 否 mov_r12_cl(); 返 1; }
@@ -246,6 +333,13 @@
     若 (strcmp(mn, "自减") == 0) { 整 r = RG(); 若 (r >= 8) b(0x41); 若 (r >= 0) { b(0xFF); modrm(3, 1, r & 7); } 返 1; }
     若 (strcmp(mn, "写字符") == 0) { mov_r12_al(); 返 1; }
     若 (strcmp(mn, "非负跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x89); b4(0); } 返 1; }
+若 (strcmp(mn, "负跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x88); b4(0); } 返 1; } /* js rel32（P0） */
+若 (strcmp(mn, "大跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8F); b4(0); } 返 1; } /* jg rel32（P0） */
+若 (strcmp(mn, "小跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8C); b4(0); } 返 1; } /* jl rel32（P0） */
+若 (strcmp(mn, "溢跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x80); b4(0); } 返 1; } /* jo rel32（P0） */
+若 (strcmp(mn, "不溢跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x81); b4(0); } 返 1; } /* jno rel32（P0） */
+若 (strcmp(mn, "奇跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8A); b4(0); } 返 1; } /* jp rel32（P0） */
+若 (strcmp(mn, "偶跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8B); b4(0); } 返 1; } /* jnp rel32（P0） */
     若 (strcmp(mn, "大于等跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8D); b4(0); } 返 1; }
     若 (strcmp(mn, "小于等跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x8E); b4(0); } 返 1; }
     若 (strcmp(mn, "高于等跳") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 2, li, 1); b(0x0F); b(0x83); b4(0); } 返 1; }

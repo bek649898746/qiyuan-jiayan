@@ -20,6 +20,7 @@ static void b4(int v) { b(v&0xff); b((v>>8)&0xff); b((v>>16)&0xff); b((v>>24)&0x
 static void modrm(int mod, int reg, int rm) { b((mod<<6)|((reg&7)<<3)|(rm&7)); }
 static void rex(int w, int r, int x, int bv) { b(0x40|(w?8:0)|(r?4:0)|(x?2:0)|(bv?1:0)); }
 static void b4_at(int pos, int v) { code[pos]=v&0xff;code[pos+1]=(v>>8)&0xff;code[pos+2]=(v>>16)&0xff;code[pos+3]=(v>>24)&0xff; }
+static void b_at(int pos, int v) { code[pos]=v&0xff; }
 
 static void mov_r_imm(int reg, int imm) { if(reg&8)b(0x41); b(0xB8|(reg&7)); b4(imm); } /* REX.B for r8-r15 (fix 2026-08-03) */
 static void mov_rr64(int d, int s) { rex(1,s&8,0,d&8); b(0x89); modrm(3,s&7,d&7); }
@@ -88,8 +89,8 @@ static void call_rel(int rel) { b(0xE8);b4(rel); }
 static void jmp_rel(int rel) { b(0xE9);b4(rel); }
 static void jz_rel(int rel) { b(0x0F);b(0x84);b4(rel); }
 static void jnz_rel(int rel) { b(0x0F);b(0x85);b4(rel); }
-static void call_iat(int slot) { int at=cp;b(0xFF);b(0x15);b4((data_rva_base+8+8*slot)-(0x1000+at+6)); }
-static void resolve_patches(void) { for(int i=0;i<pn;i++){ if(!labels[patches[i].target].defined){fprintf(stderr,"[ERR] asm_zh: undefined label '%s' at line %d\n",labels[patches[i].target].name,labels[patches[i].target].line);exit(1);} int t=labels[patches[i].target].pos;int at=patches[i].at;int v=t-(at+4);b4_at(at,v);} } /* fix 2026-08-05: undefined label → clean error instead of a garbage jump */
+static void call_iat(int slot) { int at=cp; int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); b(0xFF);b(0x15);b4((data_rva_base+iat_off)-(0x1000+at+6)); } /* IAT1@+0x08 / IAT2@+0x50（fix 2026-08-06 BUG-1） */
+static void resolve_patches(void) { for(int i=0;i<pn;i++){ if(!labels[patches[i].target].defined){fprintf(stderr,"[ERR] asm_zh: undefined label '%s' at line %d\n",labels[patches[i].target].name,labels[patches[i].target].line);exit(1);} int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label → clean error */
 /* Data section buffer */
 static unsigned char *sdat; static int sdp, sdc;
 /* string-address back-patch: STR{n} marker in "移动 r0, STRn" */
@@ -108,8 +109,7 @@ static void w8(FILE *f, int v) { w4(f,v);w4(f,0); }
 static void w2(FILE *f, int v) { fputc(v&0xff,f);fputc((v>>8)&0xff,f); }
 
 static void write_pe(FILE *f, int entry_rva) {
-    const int ns[8]={0xC0,0xCE,0xDA,0xE8,0xF2,0x100,0x110,0x11D}; /* hint/name slots (match qcc) */
-    int ts=((cp+4095)&~4095); if(ts<512)ts=512;
+        int ts=((cp+4095)&~4095); if(ts<512)ts=512;
     int tf=0x200, dr=data_rva_base;
     int isz=dr+0x5000000+0x1000, df=tf+ts;
     fputc('M',f);fputc('Z',f);pad(f,58);w4(f,64);
@@ -119,22 +119,40 @@ static void write_pe(FILE *f, int entry_rva) {
     w8(f,0x400000);w4(f,0x1000);w4(f,0x200);w2(f,6);w2(f,0);w2(f,0);w2(f,0);w2(f,6);w2(f,0);
     w4(f,0);w4(f,isz);w4(f,0x200);w4(f,0);w2(f,3);w2(f,0x8100);
     w8(f,0x100000);w8(f,0x400000);w8(f,0x100000);w8(f,0x1000);w4(f,0);w4(f,16);
-    w4(f,0);w4(f,0);w4(f,dr+0x98);w4(f,40);
+    w4(f,0);w4(f,0);w4(f,dr+0x1A8);w4(f,60); /* import dir: desc@+0x1A8（fix 2026-08-06 BUG-1） */
     for(int di=2;di<16;di++){w4(f,0);w4(f,0);}
     fwrite(".text\0\0\0",1,8,f);w4(f,ts);w4(f,0x1000);w4(f,ts);w4(f,tf);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0x60000020);
     fwrite(".data\0\0\0",1,8,f);w4(f,0x5000000);w4(f,dr);w4(f,0x4000);w4(f,df);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0xC0000040);
     int pos=(int)ftell(f);while(pos<tf)fputc(0,f),pos++;fwrite(code,1,cp,f);pos=(int)ftell(f);while(pos<df)fputc(0,f),pos++;
-    /* .data header (match qcc layout): heap counter@+0 (8B), IAT@+8, ILT@+0x50,
-       desc@+0x98, hint/names@+0xC0, dll@+0x12F, statics@+0x140.
-       heap_start = statics_start + 4*stc_n + 2560; stc_n=0 for tests (no static vars). */
-    w8(f, 0x400000 + dr + 0x140 + 4 * asm_stc_n + 2560); /* heap counter (qcc: +4*stc_n+2560) */
-    int iat=dr+8;for(int i=0;i<8;i++)w8(f,dr+ns[i]);w8(f,0);
-    int ilt=dr+0x50;for(int i=0;i<8;i++)w8(f,dr+ns[i]);w8(f,0);
-    w4(f,ilt);w4(f,0);w4(f,0);w4(f,dr+0x12F);w4(f,iat);for(int di=0;di<5;di++)w4(f,0);
-    /* hint/names at qcc's hardcoded slots: fseek to df+slot, write hint+name */
+    /* .data header (match qcc fix 2026-08-06 BUG-1): heap counter@+0 (8B),
+       IAT1@+8 (8 kernel32 + term), IAT2@+0x50 (16 msvcrt + term),
+       ILT1@+0xD8, ILT2@+0x120, desc@+0x1A8, names@+0x1E4, statics@+0x300. */
+    w8(f, 0x400000 + dr + 0x300 + 4 * asm_stc_n + 2560); /* heap counter */
+    int nslot[24];
+    /* IAT/ILT 占位 */
+    fseek(f, df + 0x08, SEEK_SET); for(int i=0;i<9;i++)w8(f,0);
+    fseek(f, df + 0x50, SEEK_SET); for(int i=0;i<17;i++)w8(f,0);
+    fseek(f, df + 0xD8, SEEK_SET); for(int i=0;i<9;i++)w8(f,0);
+    fseek(f, df + 0x120, SEEK_SET); for(int i=0;i<17;i++)w8(f,0);
+    /* names（hint 2B + name + \0）逐个写 */
     const char *nm[]={"GetStdHandle","WriteFile","CreateFileA","ReadFile","VirtualAlloc","SetFilePointer","ExitProcess","GetCommandLineA"};
-    for(int i=0;i<8;i++){fseek(f,df+ns[i],SEEK_SET);w2(f,0);fputs(nm[i],f);fputc(0,f);}
-    fseek(f,df+0x12F,SEEK_SET);fputs("kernel32.dll",f);fputc(0,f);
+    const char *mn[]={"pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs"};
+    fseek(f, df + 0x1E4, SEEK_SET);
+    for(int i=0;i<8;i++){nslot[i]=(int)ftell(f)-df;w2(f,0);fputs(nm[i],f);fputc(0,f);}
+    for(int i=0;i<16;i++){nslot[8+i]=(int)ftell(f)-df;w2(f,0);fputs(mn[i],f);fputc(0,f);}
+    int kdll=(int)ftell(f)-df;fputs("kernel32.dll",f);fputc(0,f);
+    int mdll=(int)ftell(f)-df;fputs("msvcrt.dll",f);fputc(0,f);
+    /* 回填 IAT1/IAT2 */
+    fseek(f, df + 0x08, SEEK_SET); for(int i=0;i<8;i++)w8(f,dr+nslot[i]); w8(f,0);
+    fseek(f, df + 0x50, SEEK_SET); for(int i=0;i<16;i++)w8(f,dr+nslot[8+i]); w8(f,0);
+    /* 回填 ILT1/ILT2 */
+    fseek(f, df + 0xD8, SEEK_SET); for(int i=0;i<8;i++)w8(f,dr+nslot[i]); w8(f,0);
+    fseek(f, df + 0x120, SEEK_SET); for(int i=0;i<16;i++)w8(f,dr+nslot[8+i]); w8(f,0);
+    /* desc: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
+    fseek(f, df + 0x1A8, SEEK_SET);
+    w4(f,dr+0xD8);w4(f,0);w4(f,0);w4(f,dr+kdll);w4(f,dr+0x08);
+    w4(f,dr+0x120);w4(f,0);w4(f,0);w4(f,dr+mdll);w4(f,dr+0x50);
+    for(int di=0;di<5;di++)w4(f,0);
     fseek(f,0,SEEK_END);
     pos=(int)ftell(f);while(pos<df+0x4000)fputc(0,f),pos++;fseek(f,0,SEEK_END);
 }
@@ -189,6 +207,15 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"扩字")){rex(1,0,0,0);b(0x98);} /* cdqe (fix 2026-08-05) */
         else if(!strcmp(mn,"扩八字")){rex(1,0,0,0);b(0x99);} /* cqo (fix 2026-08-05) */
         else if(!strcmp(mn,"串拷")){b(0xF3);b(0xA4);} /* rep movsb (fix 2026-08-05) */
+     else if(!strcmp(mn,"串比")){b(0xA6);} /* cmpsb (P1) */
+     else if(!strcmp(mn,"串比双")){b(0xA7);} /* cmpsd (P1) */
+     else if(!strcmp(mn,"串扫")){b(0xAE);} /* scasb (P1) */
+     else if(!strcmp(mn,"串扫双")){b(0xAF);} /* scasd (P1) */
+     else if(!strcmp(mn,"串载")){b(0xAC);} /* lodsb (P1) */
+     else if(!strcmp(mn,"串载双")){b(0xAD);} /* lodsd (P1) */
+     else if(!strcmp(mn,"串存")){b(0xAA);} /* stosb (P1) */
+     else if(!strcmp(mn,"串存双")){b(0xAB);} /* stosd (P1) */
+     else if(!strcmp(mn,"串拷双")){b(0xF3);b(0xA5);} /* rep movsd (P1) */
         else if(!strcmp(mn,"交还")){SK;int m=RG;SK;if(*p==',')p++;SK;int r=RG;if(m>=0&&r>=0){b(0x0F);b(0xB1);modrm(3,r&7,m&7);}} /* cmpxchg r/m32,r32 (fix 2026-08-05) */
         else if(!strcmp(mn,"条移等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x44);modrm(3,d&7,s&7);}} /* cmove (fix 2026-08-05) */
         else if(!strcmp(mn,"条移不等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x45);modrm(3,d&7,s&7);}} /* cmovne */
@@ -199,27 +226,64 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"条移小")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4C);modrm(3,d&7,s&7);}} /* cmovl */
         else if(!strcmp(mn,"条移小等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4E);modrm(3,d&7,s&7);}} /* cmovle */
         else if(!strcmp(mn,"条移大")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4F);modrm(3,d&7,s&7);}} /* cmovg */
-        else if(!strcmp(mn,"条移大等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4D);modrm(3,d&7,s&7);}} /* cmovge */
+        else if(!strcmp(mn,"条移负")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x48);modrm(3,d&7,s&7);}} /* cmovs (P0) */
+     else if(!strcmp(mn,"条移非负")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x49);modrm(3,d&7,s&7);}} /* cmovns (P0) */
+     else if(!strcmp(mn,"条移溢")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x40);modrm(3,d&7,s&7);}} /* cmovo (P0) */
+     else if(!strcmp(mn,"条移不溢")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x41);modrm(3,d&7,s&7);}} /* cmovno (P0) */
+     else if(!strcmp(mn,"条移奇")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x4A);modrm(3,d&7,s&7);}} /* cmovp (P0) */
+     else if(!strcmp(mn,"条移偶")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0x4B);modrm(3,d&7,s&7);}} /* cmovnp (P0) */
+     else if(!strcmp(mn,"条移大等")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){if(d>=8||s>=8)rex(0,s&8,0,d&8);b(0x0F);b(0x4D);modrm(3,d&7,s&7);}} /* cmovge */
         else if(!strcmp(mn,"移动64")){SK;int r=RG;SK;if(*p==',')p++;int lo=NUM;SK;if(*p==',')p++;int hi=NUM;if(r>=0){b(0x48);b(0xB8);b4(lo);b4(hi);}} /* mov rax,imm64 (LL; fix 2026-08-05) */
      else if(!strcmp(mn,"移动")){SK;int r=RG;SK;if(*p==',')p++;SK;if(!strncmp(p,"STR",3)){p+=3;int si=atoi(p);if(r>=0&&spn2<2048){mov_r_imm(r,0);str_patches2[spn2].at=cp-4;str_patches2[spn2].idx=si;spn2++;}}else if(!strncmp(p,"FN:",3)){p+=3;int li=LR;if(r>=0&&fnpn2<2048&&li>=0){mov_r_imm(r,0);fn_patches2[fnpn2].at=cp-4;fn_patches2[fnpn2].label=li;fnpn2++;}}else{int v=NUM;if(r>=0)mov_r_imm(r,v);}}
         else if(!strcmp(mn,"移64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)mov_rr64(d,s);}
         else if(!strcmp(mn,"移32")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)mov_rr(d,s);}
+     else if(!strcmp(mn,"交换")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x87);modrm(3,d&7,s&7);}} /* xchg r32,r/m32 (P0) */
+     else if(!strcmp(mn,"交换64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x87);modrm(3,d&7,s&7);}} /* xchg r64,r/m64 (P0) */
         else if(!strcmp(mn,"与64")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x21);modrm(3,s&7,d&7);}} /* and r64,r64 (LL; fix 2026-08-05) */
      else if(!strcmp(mn,"与")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x21);modrm(3,s&7,d&7);}} /* and r32,r32 */
         else if(!strcmp(mn,"右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r32, cl */
         else if(!strcmp(mn,"算术右移64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r64, cl (LL; fix 2026-08-05) */
      else if(!strcmp(mn,"逻辑右移64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,5,r&7);}} /* shr r64, cl (LL; fix 2026-08-05) */
+     else if(!strcmp(mn,"循环左移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,0,r&7);b(v&0xff);}} /* rol r,imm8 (P0) */
+     else if(!strcmp(mn,"循环左移cl")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xD3);modrm(3,0,r&7);}} /* rol r,cl (P0) */
+     else if(!strcmp(mn,"循环右移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,1,r&7);b(v&0xff);}} /* ror r,imm8 (P0) */
+     else if(!strcmp(mn,"循环右移cl")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xD3);modrm(3,1,r&7);}} /* ror r,cl (P0) */
+     else if(!strcmp(mn,"带进左移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,2,r&7);b(v&0xff);}} /* rcl r,imm8 (P0) */
+     else if(!strcmp(mn,"带进左移cl")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xD3);modrm(3,2,r&7);}} /* rcl r,cl (P0) */
+     else if(!strcmp(mn,"带进右移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,3,r&7);b(v&0xff);}} /* rcr r,imm8 (P0) */
+     else if(!strcmp(mn,"带进右移cl")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xD3);modrm(3,3,r&7);}} /* rcr r,cl (P0) */
+     else if(!strcmp(mn,"循环左移64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);b(0xC1);modrm(3,0,r&7);b(v&0xff);}} /* rol r64,imm8 (P0) */
+     else if(!strcmp(mn,"循环左移64cl")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,0,r&7);}} /* rol r64,cl (P0) */
+     else if(!strcmp(mn,"循环右移64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);b(0xC1);modrm(3,1,r&7);b(v&0xff);}} /* ror r64,imm8 (P0) */
+     else if(!strcmp(mn,"循环右移64cl")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,1,r&7);}} /* ror r64,cl (P0) */
+     else if(!strcmp(mn,"带进左移64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);b(0xC1);modrm(3,2,r&7);b(v&0xff);}} /* rcl r64,imm8 (P0) */
+     else if(!strcmp(mn,"带进左移64cl")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,2,r&7);}} /* rcl r64,cl (P0) */
+     else if(!strcmp(mn,"带进右移64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);b(0xC1);modrm(3,3,r&7);b(v&0xff);}} /* rcr r64,imm8 (P0) */
+     else if(!strcmp(mn,"带进右移64cl")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,3,r&7);}} /* rcr r64,cl (P0) */
      else if(!strcmp(mn,"算术右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r32, cl (fix 2026-08-05) */
         else if(!strcmp(mn,"逻辑右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,5,r&7);}} /* shr r32, cl (fix 2026-08-05: unsigned >>) */
         else if(!strcmp(mn,"乘64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,d&8,0,s&8);b(0x0F);b(0xAF);modrm(3,d&7,s&7);}} /* imul r64,r64 */
         else if(!strcmp(mn,"乘32")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){if(s>=8){b(0x41);}b(0xF7);b(0xE0|(s&7));}} /* mul r32 (eax=eax*src), no REX for low regs */
         else if(!strcmp(mn,"取反")){SK;int r=RG;if(r>=0){if(r>=8){b(0x41);}b(0xF7);b(0xD8|(r&7));}} /* neg r32, no REX for low regs */
         else if(!strcmp(mn,"按位反")){SK;int r=RG;if(r>=0){if(r>=8){b(0x41);}b(0xF7);b(0xD0|(r&7));}} /* not r32, no REX for low regs */
+     else if(!strcmp(mn,"自增64")){int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xFF);modrm(3,0,r&7);}} /* inc r64 (P0) */
+     else if(!strcmp(mn,"自减64")){int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xFF);modrm(3,1,r&7);}} /* dec r64 (P0) */
+     else if(!strcmp(mn,"取反64")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xF7);modrm(3,3,r&7);}} /* neg r64 (P0) */
+     else if(!strcmp(mn,"乘无64")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xF7);modrm(3,4,r&7);}} /* mul r64 (P0) */
+     else if(!strcmp(mn,"乘即")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,d&8,0,s&8);if(v>=-128&&v<=127){b(0x6B);modrm(3,d&7,s&7);b(v&0xff);}else{b(0x69);modrm(3,d&7,s&7);b4(v);}}} /* imul r64,r64,imm (P0) */
         else if(!strcmp(mn,"加指针")){SK;if(!strncmp(p,"rax",3)){p+=3;SK;if(*p==',')p++;int v=NUM;if(v>=-128&&v<=127){rex(1,0,0,0);b(0x83);modrm(3,0,0);b(v&0xff);}else{rex(1,0,0,0);b(0x05);b4(v);}}} /* add rax,imm */
         else if(!strcmp(mn,"浮取参")){b(0xF2);b(0x41);b(0x0F);b(0x10);b(0x45);b(0x00);} /* movsd xmm0,[r13] */
         else if(!strcmp(mn,"扩展符号")){b(0x48);b(0x99);} /* CQO */
         else if(!strcmp(mn,"减即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0x83);modrm(3,5,r&7);b(v);}} /* sub r,imm8 */
-        else if(!strcmp(mn,"运即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,0,r&7);b(v&0xff);}else{b(0x81);modrm(3,0,r&7);b4(v);}}} /* add r,imm8/imm32 (fix 2026-08-03: handler was MISSING → -S path dropped 运即; imm8-only sign-extended 128→-128) */
+        else if(!strcmp(mn,"运即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,0,r&7);b(v&0xff);}else{b(0x81);modrm(3,0,r&7);b4(v);}}}
+     else if(!strcmp(mn,"加带进")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x11);modrm(3,s&7,d&7);}} /* adc r32,r32 (P0) */
+     else if(!strcmp(mn,"加带进64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x11);modrm(3,s&7,d&7);}} /* adc r64,r64 (P0) */
+     else if(!strcmp(mn,"减带借")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x19);modrm(3,s&7,d&7);}} /* sbb r32,r32 (P0) */
+     else if(!strcmp(mn,"减带借64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x19);modrm(3,s&7,d&7);}} /* sbb r64,r64 (P0) */
+     else if(!strcmp(mn,"加带进即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,2,r&7);b(v&0xff);}else{b(0x81);modrm(3,2,r&7);b4(v);}}} /* adc r,imm (P0) */
+     else if(!strcmp(mn,"减带借即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,3,r&7);b(v&0xff);}else{b(0x81);modrm(3,3,r&7);b4(v);}}} /* sbb r,imm (P0) */
+     else if(!strcmp(mn,"加带进即64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);if(v>=-128&&v<=127){b(0x83);modrm(3,2,r&7);b(v&0xff);}else{b(0x81);modrm(3,2,r&7);b4(v);}}} /* adc r64,imm (P0) */
+     else if(!strcmp(mn,"减带借即64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);if(v>=-128&&v<=127){b(0x83);modrm(3,3,r&7);b(v&0xff);}else{b(0x81);modrm(3,3,r&7);b4(v);}}} /* sbb r64,imm (P0) */ /* add r,imm8/imm32 (fix 2026-08-03: handler was MISSING → -S path dropped 运即; imm8-only sign-extended 128→-128) */
         else if(!strcmp(mn,"清零")){SK;int r=RG;if(r==2){b(0x31);b(0xD2);}} /* xor edx,edx */
         else if(!strcmp(mn,"除32")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,6,r&7);}} /* div r */
         else if(!strcmp(mn,"除64")){SK;int r=RG;if(r>=0){b(0x48);b(0x99);b(0x48);b(0xF7);modrm(3,7,r&7);}} /* cqo; idiv r64 (LL; fix 2026-08-05) */
@@ -228,12 +292,27 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"无符号除")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,6,r&7);}} /* div r (unsigned; fix 2026-08-05: qcc emit_hex_digits emits it for %x, was missing → -S path silently dropped it) */
         else if(!strcmp(mn,"加字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,0,r&7);b(v);}} /* add r8,imm8 */
         else if(!strcmp(mn,"减字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,5,r&7);b(v);}} /* sub r8,imm8 */
+     else if(!strcmp(mn,"双左移")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xA4);modrm(3,s&7,d&7);b(v&0xff);}} /* shld r/m32,r32,imm8 (P0) */
+     else if(!strcmp(mn,"双左移64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xA4);modrm(3,s&7,d&7);b(v&0xff);}} /* shld r/m64,r64,imm8 (P0) */
+     else if(!strcmp(mn,"双右移")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xAC);modrm(3,s&7,d&7);b(v&0xff);}} /* shrd r/m32,r32,imm8 (P0) */
+     else if(!strcmp(mn,"双右移64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xAC);modrm(3,s&7,d&7);b(v&0xff);}} /* shrd r/m64,r64,imm8 (P0) */
         else if(!strcmp(mn,"比较字节即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r==0){b(0x3C);b(v);}else if(r>=0){b(0x80);modrm(3,7,r&7);b(v);}} /* cmp al,imm8 short form */
         else if(!strcmp(mn,"减64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x29);modrm(3,s&7,d&7);}} /* sub r64,r64 */
         else if(!strcmp(mn,"比较64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x39);modrm(3,s&7,d&7);}} /* cmp r64,r64 */
         else if(!strcmp(mn,"比较无")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){b(0x39);modrm(3,s&7,d&7);}} /* cmp r32,r32 NO REX */
         else if(!strcmp(mn,"取浮标")){SK;if(!strncmp(p,"r0",2)){p+=2;SK;if(*p==',')p++;SK;b(0x66);b(0x48);b(0x0F);b(0x7E);b(0xC0);}} /* movq rax,xmm0 */
         else if(!strcmp(mn,"测试位")){SK;if(!strncmp(p,"r0",2)){p+=2;SK;if(*p==',')p++;int v=NUM;rex(1,0,0,0);b(0x0F);b(0xBA);b(0xE0);b(v);}} /* bt rax,imm8 */
+     else if(!strcmp(mn,"测试位64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xA3);modrm(3,s&7,d&7);}} /* bt r64,r64 (P0) */
+     else if(!strcmp(mn,"位测置")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xAB);modrm(3,s&7,d&7);}} /* bts r32,r32 (P0) */
+     else if(!strcmp(mn,"位测置64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xAB);modrm(3,s&7,d&7);}} /* bts r64,r64 (P0) */
+     else if(!strcmp(mn,"位测清")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xB3);modrm(3,s&7,d&7);}} /* btr r32,r32 (P0) */
+     else if(!strcmp(mn,"位测清64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xB3);modrm(3,s&7,d&7);}} /* btr r64,r64 (P0) */
+     else if(!strcmp(mn,"位测翻")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBB);modrm(3,s&7,d&7);}} /* btc r32,r32 (P0) */
+     else if(!strcmp(mn,"位测翻64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xBB);modrm(3,s&7,d&7);}} /* btc r64,r64 (P0) */
+     else if(!strcmp(mn,"扫零位")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBC);modrm(3,d&7,s&7);}} /* bsf r32,r/m32 (P0) */
+     else if(!strcmp(mn,"扫零位64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xBC);modrm(3,d&7,s&7);}} /* bsf r64,r/m64 (P0) */
+     else if(!strcmp(mn,"扫置位")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBD);modrm(3,d&7,s&7);}} /* bsr r32,r/m32 (P0) */
+     else if(!strcmp(mn,"扫置位64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xBD);modrm(3,d&7,s&7);}} /* bsr r64,r/m64 (P0) */
         else if(!strcmp(mn,"存零")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int r=RG;if(r>=0&&m>=0){b(0x89);modrm(0,r&7,m&7);}} /* mov [m],r32 NO REX */
         else if(!strcmp(mn,"存浮")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0xF2);b(0x0F);b(0x11);modrm(0,0,3);}} /* movsd [rbx],xmm0 */
         else if(!strcmp(mn,"存字节")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0x40);b(0x88);modrm(0,0,3);}} /* mov [rbx],al */
@@ -244,6 +323,13 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"存指8")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x88);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],al */
 else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0x40);b(0x89);modrm(0,0,3);}} /* mov [rbx],eax */
         else if(!strcmp(mn,"非负跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x89),b4(0);} /* jns rel32 */
+     else if(!strcmp(mn,"负跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x88),b4(0);} /* js rel32 (P0) */
+     else if(!strcmp(mn,"大跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8F),b4(0);} /* jg rel32 (P0) */
+     else if(!strcmp(mn,"小跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8C),b4(0);} /* jl rel32 (P0) */
+     else if(!strcmp(mn,"溢跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x80),b4(0);} /* jo rel32 (P0) */
+     else if(!strcmp(mn,"不溢跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x81),b4(0);} /* jno rel32 (P0) */
+     else if(!strcmp(mn,"奇跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8A),b4(0);} /* jp rel32 (P0) */
+     else if(!strcmp(mn,"偶跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8B),b4(0);} /* jnp rel32 (P0) */
         else if(!strcmp(mn,"大于等跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8D),b4(0);} /* jge rel32 */
         else if(!strcmp(mn,"小于等跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x8E),b4(0);} /* jle rel32 */
         else if(!strcmp(mn,"高于等跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),b(0x0F),b(0x83),b4(0);} /* jae rel32 */
@@ -277,7 +363,9 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"置小等")){setcc(22);}
         else if(!strcmp(mn,"置大等")){setcc(23);}
         else if(!strcmp(mn,"置条件")){setcc(8);}
-        else if(!strcmp(mn,"零扩展")){SK;if(!strncmp(p,"SIB",3)){b(0x43);b(0x0F);b(0xB6);b(0x04);b(0x1A);}else{int dst=-1;if(!strncmp(p,"eax",3)){dst=0;p+=3;}else if(!strncmp(p,"ecx",3)){dst=1;p+=3;}else if(!strncmp(p,"edx",3)){dst=2;p+=3;}if(dst>=0){SK;if(*p==',')p++;SK;if(*p=='['){p++;int br=RG;SK;if(br>=8){b(0x41);}b(0x0F);b(0xB6);modrm(0,dst,br&7);}else{if(dst==0)movzx_eax_al();else if(dst==1){b(0x0F);b(0xB6);modrm(3,1,1);}else{b(0x0F);b(0xB6);modrm(3,2,2);}}}else movzx_eax_al();}}
+        else if(!strcmp(mn,"取符号字节")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBE);modrm(3,d&7,s&7);}} /* movsx r32,r/m8 (P0) */
+     else if(!strcmp(mn,"取符号字")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBF);modrm(3,d&7,s&7);}} /* movsx r32,r/m16 (P0) */
+     else if(!strcmp(mn,"零扩展")){SK;if(!strncmp(p,"SIB",3)){b(0x43);b(0x0F);b(0xB6);b(0x04);b(0x1A);}else{int dst=-1;if(!strncmp(p,"eax",3)){dst=0;p+=3;}else if(!strncmp(p,"ecx",3)){dst=1;p+=3;}else if(!strncmp(p,"edx",3)){dst=2;p+=3;}if(dst>=0){SK;if(*p==',')p++;SK;if(*p=='['){p++;int br=RG;SK;if(br>=8){b(0x41);}b(0x0F);b(0xB6);modrm(0,dst,br&7);}else{if(dst==0)movzx_eax_al();else if(dst==1){b(0x0F);b(0xB6);modrm(3,1,1);}else{b(0x0F);b(0xB6);modrm(3,2,2);}}}else movzx_eax_al();}}
 
         else if(!strcmp(mn,"零扩展字")){SK;if(!strncmp(p,"r0",2))p+=2;SK;if(*p==',')p++;int v=MEM;b(0x0F);b(0xB7);b(0x85);b4(v);} /* movzx eax,word[rbp+disp32] */
         else if(!strcmp(mn,"零扩展字节")){SK;if(!strncmp(p,"r0",2))p+=2;SK;if(*p==',')p++;int v=MEM;b(0x0F);b(0xB6);b(0x85);b4(v);} /* movzx eax,byte[rbp+disp32] */
@@ -289,6 +377,15 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"存字节rax")){b(0x40);b(0x88);b(0x18);} /* MOV [rax],bl (char array write) */
         else if(!strcmp(mn,"存栈索引")){b(0x4F);b(0x89);b(0x04);b(0xF4);} /* mov [r12+r14*8],r8 */
         else if(!strcmp(mn,"跳转")){int li=LR;if(li>=0)patch_label(cp+1,li,2),jmp_rel(0);}
+     else if(!strcmp(mn,"跳转短")){int li=LR;if(li>=0)patch_label(cp+1,li,3),b(0xEB),b(0);} /* jmp rel8 (P0) */
+     else if(!strcmp(mn,"环跳")){int li=LR;if(li>=0)patch_label(cp+1,li,3),b(0xE2),b(0);} /* loop rel8 (P0) */
+     else if(!strcmp(mn,"环等跳")){int li=LR;if(li>=0)patch_label(cp+1,li,3),b(0xE1),b(0);} /* loope rel8 (P0) */
+     else if(!strcmp(mn,"环不等跳")){int li=LR;if(li>=0)patch_label(cp+1,li,3),b(0xE0),b(0);} /* loopne rel8 (P0) */
+     else if(!strcmp(mn,"间跳")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xFF);modrm(3,4,r&7);}} /* jmp r64 (P0) */
+     else if(!strcmp(mn,"无操作")){b(0x90);} /* nop (P0) */
+     else if(!strcmp(mn,"无操作3")){b(0x0F);b(0x1F);b(0x00);} /* 3-byte nop (P1) */
+     else if(!strcmp(mn,"无操作4")){b(0x0F);b(0x1F);b(0x40);b(0x00);} /* 4-byte nop (P1) */
+     else if(!strcmp(mn,"无操作9")){b(0x0F);b(0x1F);b(0x84);b(0x00);b(0x00);b(0x00);b(0x00);b(0x00);b(0x00);} /* 9-byte nop (P1) */
         else if(!strcmp(mn,"为零跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),jz_rel(0);}
         else if(!strcmp(mn,"非零跳")){int li=LR;if(li>=0)patch_label(cp+2,li,1),jnz_rel(0);}
         else if(!strcmp(mn,"调用")){int li=LR;if(li>=0)patch_label(cp+1,li,0),call_rel(0);}
@@ -297,6 +394,20 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"加栈")){int v=NUM;add_rsp_imm(v);}
         else if(!strcmp(mn,"对齐栈")){b(0x48);b(0x83);b(0xE4);b(0xF0);} /* and rsp,-16 (Win64 ABI) */
         else if(!strcmp(mn,"调系统")){int s=NUM;call_iat(s);}
+     else if(!strcmp(mn,"清进位")){b(0xF8);} /* clc (P1) */
+     else if(!strcmp(mn,"置进位")){b(0xF9);} /* stc (P1) */
+     else if(!strcmp(mn,"翻进位")){b(0xF5);} /* cmc (P1) */
+     else if(!strcmp(mn,"清方向")){b(0xFC);} /* cld (P1) */
+     else if(!strcmp(mn,"置方向")){b(0xFD);} /* std (P1) */
+     else if(!strcmp(mn,"取标志")){b(0x9F);} /* lahf (P1) */
+     else if(!strcmp(mn,"存标志")){b(0x9E);} /* sahf (P1) */
+     else if(!strcmp(mn,"压标志")){rex(1,0,0,0);b(0x9C);} /* pushfq (P1) */
+     else if(!strcmp(mn,"弹标志")){rex(1,0,0,0);b(0x9D);} /* popfq (P1) */
+     else if(!strcmp(mn,"中断")){SK;int v=NUM;b(0xCD);b(v&0xff);} /* int imm8 (P1) */
+     else if(!strcmp(mn,"中断返")){rex(1,0,0,0);b(0xCF);} /* iretq (P1) */
+     else if(!strcmp(mn,"系统调用")){b(0x0F);b(0x05);} /* syscall (P1) */
+     else if(!strcmp(mn,"取Cpu")){b(0x0F);b(0xA2);} /* cpuid (P1) */
+     else if(!strcmp(mn,"取时钟")){b(0x0F);b(0x31);} /* rdtsc (P1) */
         else if(!strcmp(mn,"取参")){mov_eax_mr13();}
         else if(!strcmp(mn,"取参64")){mov_rax_mr13();}
         else if(!strcmp(mn,"写字节")){SK;if(*p=='['){p++;int br=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int vr=RG;if(br==8&&vr==0){b(0x41);b(0x88);modrm(0,0,0);}else if(br==9&&vr==0){b(0x41);b(0x88);modrm(0,0,1);}else if(br==8&&vr==9){b(0x45);b(0x88);modrm(0,1,0);} /* mov byte[r8],r9b */else if(br==9&&vr==2){b(0x41);b(0x88);modrm(0,2,1);} /* mov [r9],dl */else mov_r12_cl();}else mov_r12_cl();}
