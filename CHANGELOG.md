@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 3a94b788 (2026-08-06)
+**%llx 64 位十六进制 + (long long)int 符号扩展 + LL 数组 8 字节元素：新不动点 3a94b788**
+
+- %llx/%llX：新增 emit_ll_hex_digits()（64 位无符号十六进制 div rcx）+ %x 处理器 ll_cnt>=2 跃迁（lx32 回退），镜像 %lld/%llu 模式
+- (long long)int 符号扩展：int 变量加载后若 nll 且非 unsigned 加 movsxd（48 63 C0）；asm_zh.c/jy 新增 符号扩展 助记符；局部+静态双路径
+  - **jy 坑**：`否 mov_eax_rip(...); 若 (...) {...}` 没花括号 → 甲言 若 落在 否 外**无条件执行** → LL 全局被 movsxd 覆盖（-1294967296 错误）；修复加 `否 { }` 花括号
+- LL 数组：数组 esz 只认 fnptr/指针/char/double→8，其他一律 4 → `long long a[3]` 元素 4 字节重叠错位；修 is_ll→8 + 局部/静态数组设 is_ll 标志（读写 64 位自动生效）
+- ll_rest 探针 16 例 15/16（仅剩 struct sizeof 对齐）；%lld/%llu 双端回归 8/8
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_3A94B788_seed.exe
+
 ## 01134780 (2026-08-06)
 **%llu unsigned long long 打印 + ULL 变量声明修复：新不动点 01134780**
 

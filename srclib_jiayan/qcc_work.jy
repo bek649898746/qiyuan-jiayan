@@ -2913,7 +2913,7 @@ __attribute__((unused))
             }
             若 (tt[tk] == VR) { 字 vn[32]; strcpy(vn, tn[tk]); tk++;
             若 (tt[tk] == LB) { /* array (static char names[3][16] too) */
-                整 esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_double ? 8 : 4))); /* fnptr typedef 数组：8 字节指针元素（fix 2026-08-05） */
+                整 esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_double ? 8 : (is_ll ? 8 : 4)))); /* fnptr typedef 数组：8 字节指针元素；long long 数组：8 字节（fix 2026-08-06: 原 4 字节 → 元素重叠错位） */
                 若 (ltd_si >= 0) { esz = stypes[ltd_si].sz; } /* typedef'd struct 数组元素大小（C 原版 2244） */
                 整 cnt = 1; 整 first = 1; 整 dims = 0;
                 循环 (tt[tk] == LB) {
@@ -2940,6 +2940,7 @@ __attribute__((unused))
                 若 (is_static) {
                     var_static_arr(vn, 0, esz, cnt); /* esz = ELEMENT byte size (slots = cnt*esz/4) */
                     vars[vcnt - 1].p_esz = esz; /* element byte size for 2D outer scale (cg_mem_frow) */
+                    若 (is_ll) vars[vcnt - 1].is_ll = 1; /* static long long 数组（fix 2026-08-06） */
                     若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double 返回 fnptr 数组（fix 2026-08-05） */
                     若 (dims > 1 && first > 0) vars[vcnt - 1].arr_esz = (cnt / first) * esz; /* row byte size for 2D+ */
                     若 (dims >= 1) { vars[vcnt - 1].frows[dims - 1] = esz; 遍 (整 fi = dims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * adimv[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
@@ -2948,6 +2949,7 @@ __attribute__((unused))
                     若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; /* typedef'd struct 数组（C 原版 2250） */
                 } 否 {
                     var_array(vn, cnt, esz);
+                    若 (is_ll) vars[vcnt - 1].is_ll = 1; /* long long 数组: 8 字节元素（fix 2026-08-06） */
                     若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double 返回 fnptr 数组（fix 2026-08-05） */
                     若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; /* typedef'd struct 数组（C 原版 2253） */
                     若 (dims > 1 && first > 0) {
@@ -4264,6 +4266,36 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     jnz_rel(-1); patch_label(cp-4, lcpd, 3);
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
+/* %llx/%llX: 64-bit unsigned hex digits into [r12] (rbx = value, base 16, lowercase a-f),
+   then jmp tail（fix 2026-08-06）。div rcx 无符号 64 位。 */
+静 空 emit_ll_hex_digits(整 tail) {
+    整 ldig = new_label(), lcpd = new_label(), l0a = new_label(), lchx = new_label();
+    lea_r_mbrp(8, scratch_base + 192 + 24 - cur_frame_sz); /* r8 = temp end（复用 ll 临时区 [rbp-56]） */
+    mov_rr64(9, 8); /* r9 = temp end (advancing) */
+    set_label(ldig);
+    asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
+    mov_r_imm(1, 16); /* ecx = 16 */
+    asm_emit("    无符号除64 r1\n", 0, 0, 0); b(0x48); b(0xF7); modrm(3, 6, 1); /* div rcx */
+    asm_emit("    比较字节即 r2, 10\n", 0, 0, 0); b(0x80); b(0xFA); b(10); /* cmp dl, 10 */
+    b(0x0F); b(0x82); b4(0); patch_label(cp-4, l0a, 8); /* jb l0a (dl is 0-15 unsigned) */
+    asm_emit("    加字节 r2, 0x57\n", 0, 0, 0); b(0x80); b(0xC2); b(0x57); /* add dl, 0x57 = 'a'-10 */
+    jmp_rel(-1); patch_label(cp-4, lchx, 2);
+    set_label(l0a);
+    asm_emit("    加字节 r2, 0x30\n", 0, 0, 0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
+    set_label(lchx);
+    asm_emit("    自减 r9\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9 */
+    asm_emit("    写字节 [r9], r2\n", 0, 0, 0); rex(0,0,0,1); b(0x88); modrm(0, 2, 1); /* mov [r9], dl */
+    asm_emit("    测试64 r0, r0\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x85); modrm(3, 0, 0); /* test rax, rax */
+    jnz_rel(-1); patch_label(cp-4, ldig, 3);
+    set_label(lcpd);
+    asm_emit("    读字节 r0, [r9]\n", 0, 0, 0); rex(0,0,0,1); b(0x8A); modrm(0, 0, 1); /* mov al, [r9] */
+    mov_r12_al(); /* mov [r12], al */
+    asm_emit("    自增 r9\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9 */
+    asm_emit("    自增 r12\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    比较64 r9, r8\n", 0, 0, 0); rex(1,1,0,1); b(0x39); modrm(3, 0, 1); /* cmp r9, r8 */
+    jnz_rel(-1); patch_label(cp-4, lcpd, 3);
+    jmp_rel(-1); patch_label(cp-4, tail, 2);
+}
 
 静 整 emit_fmt_loop(整 bound_disp) {
     整 ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label(), lsnoprec = new_label();
@@ -4276,7 +4308,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     整 lfdot = new_label(); /* %.0f: N==0 时不输出 '.' */
     整 lpfmt = new_label(); /* %% -> 字面 '%' */
     整 lcnt = new_label(), lcnt2 = new_label(), lcntd = new_label(), lpad = new_label(), lwdone = new_label(); /* %Nd 宽度填充 */
-    整 ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(); /* fix 2026-08-06: %lld/%llu 64 位 (ll_cnt=计数, lld32/lu32=32 位回退) */
+    整 ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(), lx32 = new_label(); /* fix 2026-08-06: %lld/%llu/%llx 64 位 (ll_cnt=计数, lld32/lu32/lx32=32 位回退) */
     set_label(lfmt);
     asm_emit("    零扩展 ecx, [r11]\n", 0, 0, 0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, ldone, 1);
@@ -4445,6 +4477,14 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     emit_digits(lfmt); /* %d: print ebx, return to fmt loop */
     set_label(lx); /* %x/%X：无符号十六进制（fix 2026-08-05） */
     asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
+    /* %llx/%llX: 64-bit unsigned hex（fix 2026-08-06）— sc+244 >= 2 → 64 位路径 */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 244); /* eax = ll_cnt */
+    mov_r_imm(1, 2); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8C); b4(0); patch_label(cp-4, lx32, 10); /* cmp eax,2; jl lx32 (小跳) */
+    mov_rax_mr13(); /* rax = [r13] (64-bit) */
+    asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
+    mov_rr64(3, 0); /* rbx = 64-bit value */
+    emit_ll_hex_digits(lfmt); /* %llx: print rbx 64 位 unsigned hex, return to fmt loop */
+    set_label(lx32);
     mov_eax_mr13(); /* eax = [r13] */
     asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
     mov_rr(3, 0); /* ebx = value */
@@ -4780,7 +4820,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     否 若 (var_pesz(vn) > 0) mov_rax_rip64(stc_disp(off) - 1);
                     否 若 (var_small_struct(vn)) mov_rax_rip64(stc_disp(off) - 1); /* struct value: full 8 bytes */
                     否 若 (var_is_ll(vn)) { mov_rax_rip64(stc_disp(off) - 1); nll[n] = 1; } /* long long: 全 64 位静态读取（fix 2026-08-05） */
-                    否 mov_eax_rip(stc_disp(off));
+                    否 { mov_eax_rip(stc_disp(off)); 若 (nll[n] && !nuns[n]) { asm_emit("    符号扩展 r0, r0\n", 0, 0, 0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* (long long)static int: sign-extend（fix 2026-08-06: 必须花括号，否则 若 落在 否 外无条件执行 → LL 全局被 movsxd 覆盖） */
                 } 否 {
                     /* check if array �?LEA. MUST resolve to the SAME var var_lookup found:
                        the forward search matched any same-named array (e.g. a `char fn[32]`
@@ -4797,7 +4837,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     否 若 (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit（fix 2026-08-05） */
                     否 若 (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     否 若 (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
-                    否 { mov_reg_mbrp(0, off - cur_frame_sz); }
+                    否 { mov_reg_mbrp(0, off - cur_frame_sz); 若 (nll[n] && !nuns[n]) { asm_emit("    符号扩展 r0, r0\n", 0, 0, 0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* (long long)int: sign-extend 32→64（fix 2026-08-06: 原 mov eax 零扩展） */
                 }
             }
         } 断;
