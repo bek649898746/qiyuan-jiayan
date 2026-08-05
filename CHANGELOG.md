@@ -3,6 +3,18 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 9931ab80 (2026-08-06)
+**行为正确性测试体系 + printf %- 左对齐 + LL 数组 nll 传播：新不动点 9931ab80**
+
+- **行为测试体系**（任务单最重要项）：新增 tests/behavior/（10 用例 + run_behavior.py），编译+运行+断言 stdout==expected，防"编译过但全错"；覆盖 LL 打印/数组/cast/unsigned/数学/指针/结构/全局/fib/printf
+  - 立即暴露 3 个真 bug：LL 数组链式加法 32 位、%-5d 左对齐缺失、printf 宽度路径崩溃
+- **printf %-5d 左对齐**：'-' flag 解析 + sc+252 标志槽 + %d 双路径（右对齐先空格后数字 / 左对齐先数字后空格）
+  - **最大坑：r10 是 printf 内建的 handle**，%d padding 用 r10 当临时寄存器 → 破坏 handle → WriteFile 空输出（症状 w5 空输出，调试 3 轮才定位）
+  - 修复：pad 先存 edx，left flag 检查用 eax（不碰 r10）
+- **LL 数组 nll 传播**：case 14 数组读取 esz==8 设 nll[n]=1（LL 数组元素链式 a[0]+a[1]+a[2] 此前走 32 位加法得 0）
+- 行为测试 13/13（C 端 + v1 端）；ll_rest 15/16 + 任务单 16/16
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_9931AB80_seed.exe
+
 ## fbe6ceae (2026-08-06)
 **unsigned 变量 nuns 传播（(long long)u 零扩展）：任务单复测 16/16 全绿**
 
