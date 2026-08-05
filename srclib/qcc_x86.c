@@ -313,6 +313,97 @@ static int pp_eval(const char *e) {
     int mv = macro_find(e); if (mv >= 0) return mv;
     return 0;
 }
+
+/* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
+static char *pp_read_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    if (sz < 0) { fclose(f); return 0; }
+    char *buf = malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return 0; }
+    size_t rd = fread(buf, 1, (size_t)sz, f);
+    buf[rd] = 0; fclose(f);
+    return buf;
+}
+static char *pp_include_expand(const char *src, int depth) {
+    if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
+    int cap = (int)strlen(src) + 16384;
+    char *out = malloc(cap); int oi = 0;
+    const char *p = src;
+    int if_skip = 0, if_n = 0;
+    int if_parent_skip[64], if_taken[64];
+    while (*p) {
+        const char *le = p; while (*le && *le != '\n') le++;
+        int llen = (int)(le - p);
+        if (*p == '#') {
+            int is_ifdef = !strncmp(p, "#ifdef", 6);
+            int is_ifndef = !strncmp(p, "#ifndef", 7);
+            int is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
+            int is_elif = !strncmp(p, "#elif", 5);
+            int is_else = !strncmp(p, "#else", 5);
+            int is_endif = !strncmp(p, "#endif", 6);
+            int is_include = !strncmp(p, "#include", 8);
+            if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
+                int parent = if_skip; int cond = 0;
+                if (is_ifdef || is_ifndef) {
+                    char nm[32]; int ni = 0; const char *q = p + (is_ifdef ? 6 : 7);
+                    while (*q == ' ' || *q == '\t') q++;
+                    while (isalnum(*q) || *q == '_' || ((unsigned char)*q >= 0x80)) { if (ni < 31) nm[ni++] = *q; q++; }
+                    nm[ni] = 0;
+                    int def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    cond = is_ifdef ? def : !def;
+                } else if (is_if || is_elif) {
+                    char expr[512]; int ei = 0; const char *q = p + (is_if ? 3 : 5);
+                    while (*q == ' ' || *q == '\t') q++;
+                    while (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
+                    while (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
+                    expr[ei] = 0;
+                    cond = pp_eval(expr);
+                }
+                if (is_if || is_ifdef || is_ifndef) {
+                    if (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; }
+                } else if (is_elif) {
+                    if (if_n > 0) { if (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = cond; if_skip = if_parent_skip[if_n-1] || !cond; } else if_skip = 1; }
+                } else if (is_else) {
+                    if (if_n > 0) { if (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = 1; if_skip = if_parent_skip[if_n-1]; } else if_skip = 1; }
+                } else if (is_endif) {
+                    if (if_n > 0) { if_n--; if_skip = if_n > 0 ? if_parent_skip[if_n-1] : 0; }
+                }
+                memcpy(out + oi, p, llen + 1); oi += llen + 1;
+            } else if (is_include && !if_skip) {
+                const char *q = p + 8;
+                while (*q == ' ' || *q == '\t') q++;
+                if (*q != '"') { memcpy(out + oi, p, llen + 1); oi += llen + 1; } /* <系统头> 跳过（自包含） */
+                else {
+                    char fname[512]; int fi = 0;
+                    q++; while (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
+                    fname[fi] = 0;
+                    if (fi > 0) {
+                        char *fc = pp_read_file(fname);
+                        if (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        char *exp = pp_include_expand(fc, depth + 1);
+                        free(fc);
+                        int el = (int)strlen(exp);
+                        if (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
+                        memcpy(out + oi, exp, el); oi += el;
+                        out[oi++] = '\n';
+                        free(exp);
+                    }
+                }
+            } else {
+                memcpy(out + oi, p, llen + 1); oi += llen + 1;
+            }
+        } else {
+            memcpy(out + oi, p, llen + 1); oi += llen + 1;
+        }
+        if (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        p = *le ? le + 1 : le;
+    }
+    out[oi] = 0;
+    return out;
+}
+
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
@@ -3269,7 +3360,10 @@ static int parse(const char *s) {
     memset(ndbl, 0, sizeof(ndbl)); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, sizeof(nuns)); /* per-node unsigned flags (fix 2026-08-05) */
     fvn = 0; /* reset per-function var-range table */
-    memset(tt, 0, TS * 4); lex(s);
+    memset(tt, 0, TS * 4);
+    char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
+    lex(exp_src);
+    free(exp_src);
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
     int p = Nd(3); if (p < 0) return -1;
     
