@@ -999,7 +999,7 @@ static struct { int patch_at; int target_label; int is_jmp; } patches[16384]; in
 static struct { int patch_at; int str_idx; } str_patches[2048]; int strpn;
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
-static int ginit[128]; static int ginit_n; /* global variable initializer nodes (emitted at main entry) */
+static int ginit[4096]; static int ginit_n; /* global variable initializer nodes (emitted at main entry); fix 2026-08-06: 128→4096 + 溢出报错（原 >128 静默丢初始值） */
 static int ndbl[ASZ]; /* per-node flag: expression yields a double (floating) */
 static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
@@ -2723,11 +2723,13 @@ static int expr(void) { return asgn(); }
 static int gi_idx[8];  /* 全局多维初始化游标 (fix 2026-08-05) */
 static int str_row = 0; /* string-init row counter: char rows filled in order (fix 2026-08-05) */
 
+static int arr_init_leaf_n; /* fix 2026-08-06: 数组初始化器叶子计数（块节点 256 子槽上限） */
 static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
        本函数自管 { } 配平 (fix 2026-08-05) */
+    if (depth == 0) arr_init_leaf_n = 0; /* fix 2026-08-06: 每次顶层调用重置计数器 */
     if (tt[tk] == FK) tk++; /* 本层 '{' */
     int has_nested = (tt[tk] == FK); /* 本层是否为嵌套行模式 */
     while (tt[tk] != UK) {
@@ -2778,6 +2780,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
             continue;
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
+        if (++arr_init_leaf_n > 256) { fprintf(stderr, "[ERR] 数组初始化器超过 256 元素上限 (fix 2026-08-06: 原静默丢弃，块节点仅 256 子槽)\n"); exit(1); }
         int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32);
         int node = idn;
         for (int i = 0; i < nd; i++) {
@@ -3167,7 +3170,7 @@ static int blk(void) {
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
                 continue;
-            } else if (is_static && ginit_n < 128) {
+            } else if (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
                 int decl = Nd(7); memcpy((char*)(nn + decl), (char*)(nn + d), 32);
@@ -3982,14 +3985,15 @@ static int parse(const char *s) {
                     else if (g_is_double) { var_static(gname, 4); vars[vcnt - 1].is_dbl = 1; } /* global double: 8-byte .data slot */
                     else var_static(gname, pesz);
                     if (tt[tk] == AK) { /* = init */
+                        if (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
                         tk++;
                         if (tt[tk] == FK && g_stidx >= 0) { /* struct G g = { a, b, c }; — brace init */
                             tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
                             int blkinit = brace_fields(g_stidx, idn);
                             if (tt[tk] == UK) tk++;
-                            if (ginit_n < 128) ginit[ginit_n++] = blkinit; /* the block IS the initializer */
-                        } else if (tt[tk] == FK && gcnt > 0 && ginit_n < 128) {
+                            if (ginit_n < 4096) ginit[ginit_n++] = blkinit; /* the block IS the initializer */
+                        } else if (tt[tk] == FK && gcnt > 0 && ginit_n < 4096) {
                             /* global ARRAY init incl. multi-dim braces: garr[N] = { a, b, c }; / int m[2][2][2] = {{{1,2},{3,4}},...}
                                → brace_arr_init expands to garr[i][j][k]=... (fix 2026-08-05: flat-only loop choked on nested '{{' → main never parsed) */
                             int blk = Nd(5);
@@ -3997,8 +4001,8 @@ static int parse(const char *s) {
                             for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                             str_row = 0; /* string-init row counter (fix 2026-08-05) */
                             brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0); /* 自管 { } 配平 */
-                            if (ginit_n < 128) ginit[ginit_n++] = blk;
-                        } else if (ginit_n < 128) {
+                            if (ginit_n < 4096) ginit[ginit_n++] = blk;
+                        } else if (ginit_n < 4096) {
                             int decl = Nd(7); memcpy((char*)(nn + decl), gname, 32);
                             Nc(decl, expr());
                             ginit[ginit_n++] = decl;
