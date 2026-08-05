@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 启元 · 甲言 一键构建 + 自举验证
 # 用法: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 # 功能: 编译宿主 → 自举三代 → 校验不动点 → 跑 128 测试
@@ -32,9 +32,9 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = '8FB282E0CF341D87'
+$expected = 'A5328650721C87DBB94A99D43D71F80C3A6417D25C239FCCAE47AD17508D86CC'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: 8fb282e0cf341d87" -ForegroundColor Green
+    Write-Host "[OK] 自举不动点达成: a5328650721c87db" -ForegroundColor Green
 } else {
     Write-Host "[WARN] 三代一致但哈希与仓库记录不同：$h1" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
