@@ -4240,7 +4240,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     jnz_rel(-1); patch_label(cp-4, lcpd, 3);
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
-静 空 emit_hex_digits(整 tail) {
+静 空 emit_hex_digits(整 tail, 整 upper) {
     整 ldig = new_label(), lcpd = new_label(), l0a = new_label(), lchx = new_label();
     lea_r_mbrp(8, scratch_base + 248 + 12 - cur_frame_sz); /* r8 = temp end */
     mov_rr64(9, 8); /* r9 = temp end (advancing) */
@@ -4250,7 +4250,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     asm_emit("    无符号除 r1\n", 0, 0, 0); b(0xF7); b(0xF1); /* div ecx: eax=quot, edx=rem */
     asm_emit("    比较字节即 r2, 10\n", 0, 0, 0); b(0x80); b(0xFA); b(10); /* cmp dl, 10（fix 2026-08-05：原 比较字节 在 asm_zh 生成 38 D0 → H2 错位） */
     b(0x0F); b(0x82); b4(0); patch_label(cp-4, l0a, 8); /* jb l0a（dl 0-15 无符号，jb==jl；is_jmp=8=低于跳 与 asm_zh 的 0F 82 一致——fix 2026-08-05） */
-    asm_emit("    加字节 r2, 0x57\n", 0, 0, 0); b(0x80); b(0xC2); b(0x57); /* add dl, 0x57 = 'a'-10 */
+    若 (upper) { asm_emit("    加字节 r2, 0x37\n", 0, 0, 0); b(0x80); b(0xC2); b(0x37); /* add dl, 0x37 = 'A'-10 (%X) */ }
+    否 { asm_emit("    加字节 r2, 0x57\n", 0, 0, 0); b(0x80); b(0xC2); b(0x57); /* add dl, 0x57 = 'a'-10 */ }
     jmp_rel(-1); patch_label(cp-4, lchx, 2);
     set_label(l0a);
     asm_emit("    加字节 r2, 0x30\n", 0, 0, 0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
@@ -4269,7 +4270,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 }
 /* %llx/%llX: 64-bit unsigned hex digits into [r12] (rbx = value, base 16, lowercase a-f),
    then jmp tail（fix 2026-08-06）。div rcx 无符号 64 位。 */
-静 空 emit_ll_hex_digits(整 tail) {
+静 空 emit_ll_hex_digits(整 tail, 整 upper) {
     整 ldig = new_label(), lcpd = new_label(), l0a = new_label(), lchx = new_label();
     lea_r_mbrp(8, scratch_base + 192 + 24 - cur_frame_sz); /* r8 = temp end（复用 ll 临时区 [rbp-56]） */
     mov_rr64(9, 8); /* r9 = temp end (advancing) */
@@ -4279,7 +4280,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     asm_emit("    无符号除64 r1\n", 0, 0, 0); b(0x48); b(0xF7); modrm(3, 6, 1); /* div rcx */
     asm_emit("    比较字节即 r2, 10\n", 0, 0, 0); b(0x80); b(0xFA); b(10); /* cmp dl, 10 */
     b(0x0F); b(0x82); b4(0); patch_label(cp-4, l0a, 8); /* jb l0a (dl is 0-15 unsigned) */
-    asm_emit("    加字节 r2, 0x57\n", 0, 0, 0); b(0x80); b(0xC2); b(0x57); /* add dl, 0x57 = 'a'-10 */
+    若 (upper) { asm_emit("    加字节 r2, 0x37\n", 0, 0, 0); b(0x80); b(0xC2); b(0x37); /* add dl, 0x37 = 'A'-10 (%X) */ }
+    否 { asm_emit("    加字节 r2, 0x57\n", 0, 0, 0); b(0x80); b(0xC2); b(0x57); /* add dl, 0x57 = 'a'-10 */ }
     jmp_rel(-1); patch_label(cp-4, lchx, 2);
     set_label(l0a);
     asm_emit("    加字节 r2, 0x30\n", 0, 0, 0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
@@ -4310,7 +4312,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     整 lpfmt = new_label(); /* %% -> 字面 '%' */
     整 lcnt = new_label(), lcnt2 = new_label(), lcntd = new_label(), lpad = new_label(), lwdone = new_label(); /* %Nd 宽度填充 */
     整 lminus = new_label(), ldleft = new_label(), lleft = new_label(), llpad = new_label(); /* '-' 左对齐 flag + 数字后 padding（fix 2026-08-06） */
-    整 ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(), lx32 = new_label(); /* fix 2026-08-06: %lld/%llu/%llx 64 位 (ll_cnt=计数, lld32/lu32/lx32=32 位回退) */
+    整 ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(), lx32 = new_label(), lxU = new_label(), lxU32 = new_label(); /* fix 2026-08-06: %lld/%llu/%llx/%llX 64 位 (ll_cnt=计数, *32=32 位回退; lxU=%X 大写) */
     set_label(lfmt);
     asm_emit("    零扩展 ecx, [r11]\n", 0, 0, 0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, ldone, 1);
@@ -4392,7 +4394,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_r_imm(0, 'c'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lch, 1);
     mov_r_imm(0, 'f'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lf, 1);
     mov_r_imm(0, 'x'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lx, 1); /* %x 十六进制（fix 2026-08-05） */
-    mov_r_imm(0, 'X'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lx, 1);
+    mov_r_imm(0, 'X'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lxU, 1); /* %X 大写十六进制（fix 2026-08-06） */
     mov_r_imm(0, 'u'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lu, 1); /* %u unsigned 十进制 (fix 2026-08-05) */
     mov_r_imm(0, '%'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lpfmt, 1); /* %% -> 字面 % */
     asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11: unknown spec, skip */
@@ -4501,20 +4503,34 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     asm_emit("    自减 r2\n", 0, 0, 0); b(0xFF); b(0xCA); /* dec edx */
     jnz_rel(-1); patch_label(cp-4, llpad, 3);
     jmp_rel(-1); patch_label(cp-4, lfmt, 2);
-    set_label(lx); /* %x/%X：无符号十六进制（fix 2026-08-05） */
+    set_label(lx); /* %x：无符号十六进制小写（fix 2026-08-05） */
     asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
-    /* %llx/%llX: 64-bit unsigned hex（fix 2026-08-06）— sc+244 >= 2 → 64 位路径 */
+    /* %llx: 64-bit unsigned hex（fix 2026-08-06）— sc+244 >= 2 → 64 位路径 */
     mov_reg_mbrp(0, scratch_base - cur_frame_sz + 244); /* eax = ll_cnt */
     mov_r_imm(1, 2); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8C); b4(0); patch_label(cp-4, lx32, 10); /* cmp eax,2; jl lx32 (小跳) */
     mov_rax_mr13(); /* rax = [r13] (64-bit) */
     asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
     mov_rr64(3, 0); /* rbx = 64-bit value */
-    emit_ll_hex_digits(lfmt); /* %llx: print rbx 64 位 unsigned hex, return to fmt loop */
+    emit_ll_hex_digits(lfmt, 0); /* %llx 小写 */
     set_label(lx32);
     mov_eax_mr13(); /* eax = [r13] */
     asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
     mov_rr(3, 0); /* ebx = value */
-    emit_hex_digits(lfmt);
+    emit_hex_digits(lfmt, 0);
+    set_label(lxU); /* %X：无符号十六进制大写（fix 2026-08-06） */
+    asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
+    /* %llX: 64-bit uppercase hex */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 244); /* eax = ll_cnt */
+    mov_r_imm(1, 2); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8C); b4(0); patch_label(cp-4, lxU32, 10); /* cmp eax,2; jl lxU32 */
+    mov_rax_mr13(); /* rax = [r13] (64-bit) */
+    asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
+    mov_rr64(3, 0); /* rbx = 64-bit value */
+    emit_ll_hex_digits(lfmt, 1); /* %llX 大写 */
+    set_label(lxU32);
+    mov_eax_mr13(); /* eax = [r13] */
+    asm_emit("    减即 r13, 8\n", 0, 0, 0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
+    mov_rr(3, 0); /* ebx = value */
+    emit_hex_digits(lfmt, 1); /* %X 大写 32 位回退 */
     /* %f: double arg → int part via ldnum, then '.' + 6 fractional digits */
     set_label(lu); /* %u: unsigned 十进制 (fix 2026-08-05) */
     asm_emit("    自增 r11\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
@@ -5488,7 +5504,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-05: p++ 加 1 → *p 读到垃圾) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].p_esz != 0) step = vars[vi].p_esz; 断; }
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 断; }
                 若 (var_isstatic(vn)) mov_eax_rip(stc_disp(off));
                 否 mov_reg_mbrp(0, off - cur_frame_sz);
                 push_r(0); /* save old value */
@@ -5530,7 +5546,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-05) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].p_esz != 0) step = vars[vi].p_esz; 断; }
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 断; }
                 mov_r_imm(1, is_dec ? -step : step); /* ecx = ±step */
                 若 (var_isstatic(vn)) { mov_eax_rip(stc_disp(off)); alu_rr(T_PK, 0, 1); mov_rip_eax(stc_disp(off)); }
                 否 { mov_reg_mbrp(0, off - cur_frame_sz); alu_rr(T_PK, 0, 1); mov_mbrp_reg(off - cur_frame_sz, 0); }
