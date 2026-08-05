@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-06 自举不动点 fa8e6540 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
+ * 2026-08-06 自举不动点 523799c7 —— 自己生自己，与宿主逐字节一致（H2 修复后收敛）
  */
 
 
@@ -2049,7 +2049,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             整 k = kw(tn[ti]);            若 (k == NK) { 整 mv = macro_find(tn[ti]); 若 (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; 续; } tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
-        若 (s[i] == '"') { i++; 整 j = 0; 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i++; 续; }
+        若 (s[i] == '"') { i++; 整 j = 0; 循环 (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 若 (s[i] == '0') str_tbl[str_cnt][j++] = 0; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } i++; 整 ni = i; 循环 (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; 若 (s[ni] == '"') { i = ni + 1; 续; } 断; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; 续; }
         若 (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; 整 cv = s[i];
             若 (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
