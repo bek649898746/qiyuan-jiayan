@@ -32,9 +32,9 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = 'A5328650721C87DBB94A99D43D71F80C3A6417D25C239FCCAE47AD17508D86CC'
+$expected = '918E6A5FDD65281F6D37AA5DF5A2637CF870CFF856580F2A43252448AEDB1999'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: a5328650721c87db" -ForegroundColor Green
+    Write-Host "[OK] 自举不动点达成: 918e6a5fdd65281f" -ForegroundColor Green
 } else {
     Write-Host "[WARN] 三代一致但哈希与仓库记录不同：$h1" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
