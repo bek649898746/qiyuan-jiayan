@@ -190,7 +190,7 @@
     若 (strcmp(mn, "减") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) alu_rr(6, d, s); 返 1; }
     若 (strcmp(mn, "乘") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) alu_rr(7, d, s); 返 1; }
     若 (strcmp(mn, "比较") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); 若 (d >= 0 && s >= 0) alu_rr(8, d, s); 返 1; }
-    若 (strcmp(mn, "测试") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) test_rr(d, s); 返 1; }
+    若 (strcmp(mn, "测试") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) test_rr(d, s); 返 1; } 若 (strcmp(mn, "测试64") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(1, s & 8, 0, d & 8); b(0x85); modrm(3, s & 7, d & 7); } 返 1; } /* test r64 (fix 2026-08-06 %lld) */
     若 (strcmp(mn, "测试al") == 0) { b(0x84); b(0xC0); 返 1; }
     若 (strcmp(mn, "置等") == 0) { setcc(8); 返 1; }
     若 (strcmp(mn, "置不等") == 0) { setcc(10); 返 1; }
