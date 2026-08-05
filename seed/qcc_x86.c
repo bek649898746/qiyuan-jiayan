@@ -598,6 +598,7 @@ static int e_lookup(const char *n) {
 /* ?????????? double ??????????? */
 static int dbl_hi[1024]; static int dbl_lo[1024]; static int dbl_n;
 static int g_uns_shift; /* set by cg() before alu_rr: T_SR operand is unsigned → SHR (fix 2026-08-05) */
+static int g_uns_div;   /* set by cg() before alu_rr: T_DV/T_MD operand(s) unsigned → DIV (fix 2026-08-06 M1) */
 /* parse a floating literal at s[*i] (digits [ . digits] [e[+-]digits]) into its
    IEEE-754 bit pattern; advances *i past the literal. Self-host has NO real
    long long (it's a 32-bit int), so the 8-byte pattern is returned as two
@@ -734,10 +735,16 @@ static void alu_rr(int op, int dst, int src) {
         return;
     }
     if (op == T_DV || op == T_MD) {
+        int use_udiv = g_uns_div; g_uns_div = 0; /* fix 2026-08-06 M1: unsigned 除法 */
         mov_rr(9, 0); /* r9d = divisor */
         mov_rr(0, dst); /* eax = dividend */
-        asm_emit("    扩展符号\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x99); /* CQO */
-        asm_emit("    整除 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 7, 1); /* IDIV r9d (REX.B=1 for rm=r9) */
+        if (use_udiv) {
+            asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); /* xor edx, edx */
+            asm_emit("    无符号除 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 6, 1); /* DIV r9d */
+        } else {
+            asm_emit("    扩展符号\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x99); /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 检查 RAX 位63，32位负值高32位为0 → RDX=0 → 变无符号除法! -7/2 误算 2147483644) */
+            asm_emit("    整除 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 7, 1); /* IDIV r9d (REX.B=1 for rm=r9) */
+        }
         if (op == T_MD) mov_rr(0, 2); /* remainder �?eax */
         mov_rr(dst, 0); /* result �?dst for mov_rr(0,dst) in caller */
         return;
@@ -928,6 +935,18 @@ static void setcc(int op) {
     else if (op == T_GK) { cc = 0x9F; asm_emit("    置大 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
     else if (op == T_HK) { cc = 0x9E; asm_emit("    置小等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
     else if (op == T_YK) { cc = 0x9D; asm_emit("    置大等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else { cc = 0x94; asm_emit("    置条件 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    b(0x0F); b(cc); modrm(3, 0, 0);
+}
+/* unsigned setcc (fix 2026-08-06 M1): < → setb(0x92), > → seta(0x97), <= → setbe(0x96), >= → setae(0x93) */
+static void setcc_u(int op) {
+    unsigned char cc;
+    if (op == T_QK) { cc = 0x94; asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else if (op == T_XK) { cc = 0x95; asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else if (op == T_LK) { cc = 0x92; asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else if (op == T_GK) { cc = 0x97; asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else if (op == T_HK) { cc = 0x96; asm_emit("    置低等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
+    else if (op == T_YK) { cc = 0x93; asm_emit("    置高等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
     else { cc = 0x94; asm_emit("    置条件 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); }
     b(0x0F); b(cc); modrm(3, 0, 0);
 }
@@ -4201,7 +4220,8 @@ static void cgc(int n) {
     pop_r(3);  /* ebx = lhs */
     alu_rr(T_QK, 3, 0); /* cmp ebx(lhs), eax(rhs) ??flags = lhs - rhs */
     int o = nv[n];
-    setcc(o); /* setcc al */
+    if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); /* fix 2026-08-06 M1: unsigned 比较 */
+    else setcc(o); /* setcc al */
     movzx_eax_al();
 }
 
@@ -4977,8 +4997,8 @@ static void cg(int n) {
                     if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); } /* add rax, rbx (REX.R=0: rbx bit3=0) */
                     else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); } /* sub rax, rbx */
                     else if (o == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); } /* imul rax, rbx (IMUL r64,r/m64: reg=dest rax, r/m=src rbx) */
-                    else if (o == DV) { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } /* cqo; idiv rbx */
-                    else if (o == MD) { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } /* cqo; idiv rbx; rax = rdx (remainder) */
+                    else if (o == DV) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); } else { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } } /* xor edx,edx; div rbx (unsigned, fix 2026-08-06 M1) / cqo; idiv rbx */
+                    else if (o == MD) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); } else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } } /* unsigned remainder / cqo; idiv rbx; rax=rdx */
                     nll[n] = 1;
                     break;
                 }
@@ -5006,12 +5026,7 @@ static void cg(int n) {
                     cg(n1[n]); mov_rr64(3, 0);
                     pop_r64(0);
                     asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx (fix 2026-08-05: rex 已含 48，双 REX 破坏 H1==H2) */
-                    if (o == T_LK) { asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9C); modrm(3, 0, 0); } /* setl (signed) */
-                    else if (o == T_GK) { asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9F); modrm(3, 0, 0); } /* setg */
-                    else if (o == T_QK) { asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3, 0, 0); } /* sete */
-                    else if (o == T_XK) { asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x95); modrm(3, 0, 0); } /* setne */
-                    else if (o == T_HK) { asm_emit("    置低等于 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9E); modrm(3, 0, 0); } /* setle */
-                    else { asm_emit("    置高等于 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x9D); modrm(3, 0, 0); } /* setge */
+                    if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); else setcc(o); /* fix 2026-08-06 M1: unsigned 用 setcc_u，并修正旧文本-字节不配对（置低=0x92 却发 0x9C setl） */
                     movzx_eax_al();
                     break;
                 }
@@ -5062,6 +5077,7 @@ static void cg(int n) {
             cg(n0[n]); push_r(0); cg(n1[n]); pop_r(3);
             if (pscale > 1) { mov_rr(10, 0); mov_r_imm(0, pscale); asm_emit("    乘 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); } /* eax = index * row size (REX.B=1 → rm=r10; fix 2026-08-03: text said r2) */
             if (o == T_SR) g_uns_shift = expr_is_unsigned(n0[n]); /* unsigned >> → SHR (fix 2026-08-05) */
+            if (o == T_DV || o == T_MD) g_uns_div = expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* fix 2026-08-06 M1 */
             alu_rr(o, 3, 0); mov_rr(0, 3);
             if (psub_div > 1) { /* eax = (p - q) / 元素大小 (idiv: edx:eax / ecx) */
                 mov_r_imm(1, psub_div);

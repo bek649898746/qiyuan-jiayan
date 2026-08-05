@@ -273,7 +273,7 @@ static int asm_assemble(const char *src, int base, int emit_data) {
      else if(!strcmp(mn,"乘即")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,d&8,0,s&8);if(v>=-128&&v<=127){b(0x6B);modrm(3,d&7,s&7);b(v&0xff);}else{b(0x69);modrm(3,d&7,s&7);b4(v);}}} /* imul r64,r64,imm (P0) */
         else if(!strcmp(mn,"加指针")){SK;if(!strncmp(p,"rax",3)){p+=3;SK;if(*p==',')p++;int v=NUM;if(v>=-128&&v<=127){rex(1,0,0,0);b(0x83);modrm(3,0,0);b(v&0xff);}else{rex(1,0,0,0);b(0x05);b4(v);}}} /* add rax,imm */
         else if(!strcmp(mn,"浮取参")){b(0xF2);b(0x41);b(0x0F);b(0x10);b(0x45);b(0x00);} /* movsd xmm0,[r13] */
-        else if(!strcmp(mn,"扩展符号")){b(0x48);b(0x99);} /* CQO */
+        else if(!strcmp(mn,"扩展符号")){b(0x99);} /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负数高32位为0 → 变无符号除法) */
         else if(!strcmp(mn,"减即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0x83);modrm(3,5,r&7);b(v);}} /* sub r,imm8 */
         else if(!strcmp(mn,"运即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,0,r&7);b(v&0xff);}else{b(0x81);modrm(3,0,r&7);b4(v);}}}
      else if(!strcmp(mn,"加带进")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x11);modrm(3,s&7,d&7);}} /* adc r32,r32 (P0) */
@@ -290,6 +290,8 @@ static int asm_assemble(const char *src, int base, int emit_data) {
      else if(!strcmp(mn,"除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0x99);b(0x48);b(0xF7);modrm(3,7,r&7);}} /* cqo; idiv r64（qcc 文本自带「移64 r0, r2」取余数；fix 2026-08-05） */
      else if(!strcmp(mn,"整除")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,7,r&7);}} /* idiv r */
         else if(!strcmp(mn,"无符号除")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,6,r&7);}} /* div r (unsigned; fix 2026-08-05: qcc emit_hex_digits emits it for %x, was missing → -S path silently dropped it) */
+else if(!strcmp(mn,"无符号除64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);modrm(3,6,r&7);}} /* div r64 (unsigned LL; fix 2026-08-06 M1) */
+else if(!strcmp(mn,"无符号除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);modrm(3,6,r&7);}} /* div r64, rax=rdx 取余（qcc 文本自带「移64 r0, r2」; fix 2026-08-06 M1） */
         else if(!strcmp(mn,"加字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,0,r&7);b(v);}} /* add r8,imm8 */
         else if(!strcmp(mn,"减字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,5,r&7);b(v);}} /* sub r8,imm8 */
      else if(!strcmp(mn,"双左移")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xA4);modrm(3,s&7,d&7);b(v&0xff);}} /* shld r/m32,r32,imm8 (P0) */
