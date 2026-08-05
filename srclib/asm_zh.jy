@@ -199,6 +199,8 @@
     若 (strcmp(mn, "异或") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x31); modrm(3, s & 7, d & 7); } 返 1; }
     若 (strcmp(mn, "与") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 s = RG(); 若 (d >= 0 && s >= 0) { rex(0, s & 8, 0, d & 8); b(0x21); modrm(3, s & 7, d & 7); } 返 1; }
     若 (strcmp(mn, "右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 7, r & 7); } 返 1; }
+    若 (strcmp(mn, "算术右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 7, r & 7); } 返 1; } /* sar (fix 2026-08-05) */
+    若 (strcmp(mn, "逻辑右移") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (r >= 0) { rex(0, 0, 0, r & 8); b(0xD3); modrm(3, 5, r & 7); } 返 1; } /* shr (fix 2026-08-05: unsigned >>) */
     若 (strcmp(mn, "按位反") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (r >= 8) b(0x41); b(0xF7); b(0xD0 | (r & 7)); } 返 1; }
     若 (strcmp(mn, "加指针") == 0) { SK(); 若 (strncmp(gp, "rax", 3) == 0) { gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (v >= -128 && v <= 127) { rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 0); b(v & 0xff); } 否 { rex(1, 0, 0, 0); b(0x05); b4(v); } } 返 1; }
     若 (strcmp(mn, "扩展符号") == 0) { b(0x48); b(0x99); 返 1; }
