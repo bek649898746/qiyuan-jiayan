@@ -205,6 +205,8 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"移32")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)mov_rr(d,s);}
         else if(!strcmp(mn,"与")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x21);modrm(3,s&7,d&7);}} /* and r32,r32 */
         else if(!strcmp(mn,"右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r32, cl */
+        else if(!strcmp(mn,"算术右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r32, cl (fix 2026-08-05) */
+        else if(!strcmp(mn,"逻辑右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,5,r&7);}} /* shr r32, cl (fix 2026-08-05: unsigned >>) */
         else if(!strcmp(mn,"乘64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,d&8,0,s&8);b(0x0F);b(0xAF);modrm(3,d&7,s&7);}} /* imul r64,r64 */
         else if(!strcmp(mn,"乘32")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){if(s>=8){b(0x41);}b(0xF7);b(0xE0|(s&7));}} /* mul r32 (eax=eax*src), no REX for low regs */
         else if(!strcmp(mn,"取反")){SK;int r=RG;if(r>=0){if(r>=8){b(0x41);}b(0xF7);b(0xD8|(r&7));}} /* neg r32, no REX for low regs */
