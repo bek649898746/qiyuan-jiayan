@@ -21,12 +21,14 @@ int main(void) {
     if ((int)sizeof(struct SB) != 8) return 6;
     if ((int)((char*)&sd.i - (char*)&sd) != 8) return 7;
     if ((int)sizeof(struct SD) != 12) return 8;
-    /* 字段写读回 (char/int 已支持宽度) */
+    /* 字段写读回 (char/int/short 已支持宽度 — short 16 位存取 fix 2026-08-06) */
     sa.c = 1; sa.i = 0x12345678;
     if (sa.c != 1 || sa.i != 0x12345678) return 9;
-    sb.a = 9; sb.b = 8; sb.i = 0xDEAD;
-    if (sb.a != 9 || sb.b != 8 || sb.i != 0xDEAD) return 10;
+    sb.a = 9; sb.b = 8; sb.s = 300; sb.i = 0xDEAD;
+    if (sb.a != 9 || sb.b != 8 || sb.s != 300 || sb.i != 0xDEAD) return 10;
     sd.i = 7; if (sd.i != 7) return 11;
+    /* short 字段: 写短值不踩相邻字段 (原 32 位存取踩 i) */
+    sb.s = 0x7FFF; if (sb.i != 0xDEAD) return 15;
     /* 结构体数组: 元素 stride = sizeof */
     struct SA arr[3];
     arr[0].i = 10; arr[1].i = 20; arr[2].i = 30;
