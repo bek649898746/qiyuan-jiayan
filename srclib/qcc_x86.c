@@ -5199,6 +5199,30 @@ static void emit_fileio(const char *fname) {
     }
 }
 
+/* struct 逐块拷贝: rax=源地址, rbx=目标地址, csz 字节 (8/4 块; fix 2026-08-06 struct 值赋值)
+   每步带 asm_emit 文本 —— 否则 -S 缺指令, H1==H2 崩 (fix 2026-08-06 route_learn 四核验证抓到) */
+static void cg_struct_copy(int csz) {
+    int k = 0;
+    while (csz - k >= 8) {
+        mov_reg_mreg64(1, 0); /* rcx = [rax] */
+        asm_emit("    存64 [r3], r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        rex(1, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], rcx */
+        add_rax_imm8(8);
+        asm_emit("    加即64 r3, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(8); /* add rbx, 8 (64 位) */
+        k += 8;
+    }
+    if (csz - k >= 4) {
+        mov_reg_mreg(1, 0); /* ecx = [rax] */
+        asm_emit("    存零 [r3], r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        b(0x89); modrm(0, 1, 3); /* mov [rbx], ecx (去冗余 REX 0x40, 与存零文本一致) */
+        add_rax_imm8(4);
+        asm_emit("    加即64 r3, 4\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(4);
+        k += 4;
+    }
+}
+
 static void cg(int n) {
     if (n < 0) return;
     if (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
@@ -5850,6 +5874,20 @@ static void cg(int n) {
                     if (len > arr_sz) len = arr_sz;
                     for (int i = 0; i < len; i++)
                         mov_byte_mbrp_imm(base + i - cur_frame_sz, (unsigned char)sv[i]);
+                } else if (sti >= 0 && stypes[sti].sz > 8) {
+                    /* struct 值初始化: 构 学生 暂存 = 班级[j]; — 逐块拷贝 (fix 2026-08-06) */
+                    int csz = stypes[sti].sz;
+                    if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else lea_r_mbrp(0, var_sbase(vname, off) - cur_frame_sz);
+                    push_r(0); /* &目标 */
+                    if (nt[n0[n]] == 1) { /* 源是变量: &var */
+                        char *srn = (char*)(nn + n0[n]);
+                        int sro = var_lookup(srn);
+                        if (var_isstatic(srn)) mov_rax_rip64(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz);
+                    } else { /* 源是表达式 (数组元素等): cg_no_deref 求地址 */
+                        cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0;
+                    }
+                    pop_r(3); /* rbx = 目标, rax = 源 */
+                    cg_struct_copy(csz);
                 } else {
                 if (ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } else cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS */
                 if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); else mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
@@ -6109,6 +6147,24 @@ static void cg(int n) {
                 } /* end var.field else */
             } else if (nt[n0[n]] == 14) { /* arr[i] = expr */
                 int ac = n0[n]; char*vn=(char*)(nn+arr_base_node(ac));
+                int asi_el = var_stidx(vn);
+                /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06).
+                   守卫: 仅当 LHS 是直接 arr[i] (n0[n] 的基是名字节点 nt==1)。
+                   tbl[0].name[0] = 'X' 的基是 case-15 字段链 → 不能当整结构体拷贝 (fix 2026-08-06: probe_sg 崩) */
+                if (asi_el >= 0 && stypes[asi_el].sz > 8 && nt[n0[n0[n]]] == 1) { /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06) */
+                    int csz = stypes[asi_el].sz;
+                    cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0; /* rax = &arr[i] (目标) */
+                    push_r(0);
+                    if (nt[n1[n]] == 1) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) */
+                        char *srn = (char*)(nn + n1[n]);
+                        int sro = var_lookup(srn);
+                        if (var_isstatic(srn)) mov_rax_rip64(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz);
+                    } else {
+                        cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; /* rax = &rhs (源) */
+                    }
+                    pop_r(3); /* rbx = 目标, rax = 源 */
+                    cg_struct_copy(csz);
+                } else {
                 /* double array, or double* POINTER VAR (p_dbl). NOT fnptr arrays: p_dbl there
                    means double-return, elements are pointers (64-bit stores). */
                 int arr_dbl = var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0);
@@ -6197,6 +6253,7 @@ static void cg(int n) {
                     else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
+            } /* end struct-array-element else (fix 2026-08-06) */
             } else if (nt[n0[n]] == 12) { /* *ptr = expr — store by pointer element width (char*→1B, int*→4B, fnptr→8B, double*→movsd) */
                 int pnode = n0[n0[n]];
                 int pe = 4;
@@ -6233,19 +6290,7 @@ static void cg(int n) {
                         push_r(0); /* &b */
                         if (var_isstatic(srcn)) mov_rax_rip64(coff_static_disp(soff, 1) - 1); else lea_r_mbrp(0, var_sbase(srcn, soff) - cur_frame_sz);
                         pop_r(3); /* rbx = &b (目标), rax = &a (源) */
-                        int k = 0;
-                        while (csz - k >= 8) {
-                            mov_reg_mreg64(1, 0); /* rcx = [rax] */
-                            rex(1, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], rcx (REX 只 W 位; R/B=0 — rcx/rbx 均 <8) */
-                            add_rax_imm8(8); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(8); /* add rbx, 8 (64 位; REX.B=0 — rbx<8, B=1 会变 r11!) */
-                            k += 8;
-                        }
-                        if (csz - k >= 4) {
-                            mov_reg_mreg(1, 0); /* ecx = [rax] */
-                            rex(0, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], ecx */
-                            add_rax_imm8(4); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(4); /* add rbx, 4 (64 位) */
-                            k += 4;
-                        }
+                        cg_struct_copy(csz);
                         /* csz 是 algn(4/8) 的倍数, 8+4 覆盖; 1 字节尾部不出现 */
                     }
                 } else {
@@ -6411,6 +6456,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     int fty = st_field_ty_idx(stypes[s].name, fn);
                     if (fty >= 0 && fsz <= 8) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* struct field value: 8 bytes */
                     else if (fty == -2 || fty == -3) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */
+                    else if (fsz > 8) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); cg_mem_frow = st_field_row(stypes[s].name, fn); } /* 数组/嵌套 struct 字段 → 地址 (数组衰减 fix 2026-08-06: 原 32 位读当 int, a.姓名 作函数参数崩) */
                     else if (fsz == 1) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* char field read: movzx byte (fix 2026-08-03: was a 4-byte read bleeding into neighbours) */
                 else if (fsz == 2) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx word (short field) */
                     else { mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */

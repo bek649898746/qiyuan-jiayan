@@ -122,7 +122,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| 自举不动点 GEN1==GEN2==GEN3 | `b49f8ad8` |
+| 自举不动点 GEN1==GEN2==GEN3 | `f2dc029b` |
 | GEN1 与宿主逐字节一致 | ✅ |
 | 167 编译测试 + 167 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
