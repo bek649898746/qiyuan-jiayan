@@ -1826,6 +1826,7 @@ __attribute__((unused))
     若 (!strcmp(s, "extern")) 返 VK;
     若 (!strcmp(s, "static")) 返 VK; /* treat as type modifier */
     若 (!strcmp(s, "const")) 返 VK;
+    若 (!strcmp(s, "volatile")) 返 VK; /* 类型修饰符（fix 2026-08-06: 内核 MMIO 需要） */
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "FILE") || !strcmp(s, "long")) 返 VK; /* builtin types used by self-host */
     若 (!strcmp(s, "enum")) 返 EN;
