@@ -2033,6 +2033,7 @@ static int kw(const char *s) {
     if (!strcmp(s, "unsigned")) return VK;
     if (!strcmp(s, "int") || !strcmp(s, "double")) return VK;
     if (!strcmp(s, "char")) return VK;
+    if (!strcmp(s, "short")) return VK; /* fix 2026-08-06: short 缺词法分类 → struct 字段被当标识符注册成幻影字段, 布局错乱 (回归测试 regress_struct_align 暴露) */
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "sizeof")) return BK;
     return NK;

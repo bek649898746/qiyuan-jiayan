@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* typedef struct 数组：只测元素访问求和（无指针运算）*/
 typedef struct P { int a; int b; } P;
 

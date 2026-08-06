@@ -29,3 +29,7 @@ seed/_BOOTSTRAP.md
 
 # 种子二进制（开源仓库只传种子：允许提交 seed/*_seed.exe）
 !seed/*_seed.exe
+
+# 调试/测试工作目录（本地保留，不上传）
+scratch_test/
+scratch_main/

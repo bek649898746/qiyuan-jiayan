@@ -1845,6 +1845,7 @@ __attribute__((unused))
     若 (!strcmp(s, "unsigned")) 返 VK;
     若 (!strcmp(s, "int") || !strcmp(s, "double")) 返 VK;
     若 (!strcmp(s, "char")) 返 VK;
+    若 (!strcmp(s, "short")) 返 VK; /* fix 2026-08-06: 镜像 qcc_x86.c — short 缺词法分类 → struct 字段当标识符注册成幻影字段 (回归测试 regress_struct_align 暴露) */
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "sizeof")) 返 BK;
     返 NK;

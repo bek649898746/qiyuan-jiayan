@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_global.c — 全局变量声明(标量) 探测 */
 int g_count = 7;
 int g_zero;

@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int main() {
     char buf[16];
     int i = 0;

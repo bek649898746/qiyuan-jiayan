@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int main() {
     int x[5000];
     int i;
