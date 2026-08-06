@@ -33,3 +33,18 @@ seed/_BOOTSTRAP.md
 # 调试/测试工作目录（本地保留，不上传）
 scratch_test/
 scratch_main/
+
+# 调试临时源/产物（本地保留，不上传）
+_dbg*.c
+_gd.txt
+_m*.c
+_m[0-9]*
+_m[0-9]*.asm
+_mkbom.py
+_patch_bom*.py
+_pp*.c
+_pp[sv]
+_pp[sv].asm
+_t[0-9]*.c
+_thr.py
+_v2jy*
