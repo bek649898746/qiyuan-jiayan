@@ -362,7 +362,7 @@ __attribute__((unused))
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-静 构 { 字 name[32]; 字 fnames[32][32]; 整 foffs[32]; 整 fsizes[32]; 整 frows[32]; 整 ftypes[32]; 整 fbits[32]; 整 fbitof[32]; 字 fdbls[32]; 字 fsgn[32]; 整 fn; 整 sz; } stypes[64]; 静 整 st_n;
+静 构 { 字 name[32]; 字 fnames[32][32]; 整 foffs[32]; 整 fsizes[32]; 整 frows[32]; 整 ftypes[32]; 整 fbits[32]; 整 fbitof[32]; 字 fdbls[32]; 字 fsgn[32]; 整 fn; 整 sz; 整 algn; } stypes[64]; /* algn: struct 最大对齐（fix 2026-08-06） */ 静 整 st_n;
 
 静 整 bit_slot = -1, bit_pos = 0; /* 位域打包状态：当前 int 槽 foffs + 槽内位偏移（fix 2026-08-05） */
 静 整 st_find(常 字 *n) {
@@ -371,13 +371,20 @@ __attribute__((unused))
 }
 静 整 st_add(常 字 *n) {
     若 (st_n >= 64) 返 -1;
-    strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0;
+    strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* 新结构体重置位域打包 */
     返 st_n++;
 }
 静 空 st_field_sz_r(整 si, 常 字 *fn, 整 fsz, 整 frow) {
     若 (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2)\n"); exit(1); }
     整 idx = stypes[si].fn;
+    /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
+       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。 */
+    整 align = 1;
+    若 (frow >= 8) align = 8;
+    否 若 (frow >= 4) align = 4;
+    否 若 (frow >= 2) align = 2;
+    若 (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
     stypes[si].fsizes[idx] = fsz;
@@ -386,7 +393,9 @@ __attribute__((unused))
     stypes[si].fbits[idx] = 0; stypes[si].fbitof[idx] = 0; /* 非位域（fix 2026-08-05） */
     stypes[si].fsgn[idx] = 0; /* 非位域：符号位无关（fix 2026-08-05） */
     bit_slot = -1; bit_pos = 0; /* 非位域终止任何进行中的位域段 */
-    stypes[si].sz += fsz; stypes[si].fn = stypes[si].fn + 1;
+    stypes[si].sz += fsz;
+    若 (align > stypes[si].algn) stypes[si].algn = align; /* 记录 struct 最大对齐（总大小 round up） */
+    stypes[si].fn = stypes[si].fn + 1;
 }
 静 空 st_field_bit(整 si, 常 字 *fn, 整 fsz, 整 frow, 整 bitw, 整 uns) {
     /* 真实位域语义：连续位域打包进共享 int 槽。
@@ -2383,6 +2392,7 @@ __attribute__((unused))
                     若 (tt[tk] == SK) tk++;
                 }
                 若 (tt[tk] == UK) tk++; /* } */
+                若 (stypes[si].algn > 1) { 整 m = stypes[si].sz % stypes[si].algn; 若 (m) stypes[si].sz += stypes[si].algn - m; } /* fix 2026-08-06: struct 总大小 round up 到最大对齐 */
                 整 sz = stypes[si].sz;
                 若 (tt[tk] == KK) tk++; /* ) */
                 整 n = Nd(0); nv[n] = sz; 返 n;

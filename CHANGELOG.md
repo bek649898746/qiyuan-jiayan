@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 22d3df9f (2026-08-06)
+**struct sizeof 对齐填充：新不动点 22d3df9f（ll_rest 16/16 全绿）**
+
+- st_field_sz_r 加字段对齐：对齐单位由 frow（元素/行大小）推导（frow>=8→8, >=4→4, >=2→2）——`struct{char;int}` 从 5 变 8
+  - 数组字段 frow=元素大小（char[16]→1, int[4]→4, double[2]→8）
+- stypes 加 algn（最大对齐）；struct 总大小 round up 到 algn
+- 字段偏移 pad 到对齐 → 字段访问 st_off 自动一致
+- **关键验证**：struct 布局改动**不像 switch 那样破坏 v1**（qcc_work.jy 内部 struct 布局改变但 C/jy 镜像一致 → v1 稳定）——ll_rest 16/16 + 行为测试 19/20（C/v1 双端）
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_22D3DF9F_seed.exe
+
 ## ee0755a8 (2026-08-06)
 **指针自增 step 修复 + switch fall-through 尝试 + %X 大写：新不动点 ee0755a8**
 
