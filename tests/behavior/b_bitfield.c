@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:5 17 200
 int printf(const char*, ...);
 struct Flags { unsigned int a : 3; unsigned int b : 5; unsigned int c : 8; };
 int main() {

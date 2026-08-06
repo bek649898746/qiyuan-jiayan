@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:42 hello Z
 int printf(const char*, ...);
 int main() {
     printf("%d %s %c\n", 42, "hello", 'Z');

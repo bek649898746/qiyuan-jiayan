@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* str_tbl 2048 回归: >510 字符单个字面量不再报错 (fix 2026-08-06) */
 #include <stdio.h>
 

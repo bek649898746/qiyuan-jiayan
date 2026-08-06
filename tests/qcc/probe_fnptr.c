@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_fnptr.c — 函数指针 探测 */
 int add(int a, int b) { return a + b; }
 int sub(int a, int b) { return a - b; }

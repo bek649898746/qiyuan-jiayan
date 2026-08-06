@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 static struct { int is_param; int pstk; int p_esz; int preg; int pdisp; int rsp_off; } vars[16];
 static int vcnt, cur_frame_sz;
 static void f(int x, int y) {}

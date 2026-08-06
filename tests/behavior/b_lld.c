@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:3000000000
 int printf(const char*, ...);
 int main() {
     printf("%lld\n", 3000000000LL);

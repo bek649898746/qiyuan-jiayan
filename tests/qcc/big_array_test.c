@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* 数组初始化器块链回归: >256 元素不再静默丢失 (fix 2026-08-06) */
 #include <stdio.h>
 
