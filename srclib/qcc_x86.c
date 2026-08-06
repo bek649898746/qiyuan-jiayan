@@ -6223,6 +6223,31 @@ static void cg(int n) {
                 } else if (var_is_dbl(vname)) {
                     if (var_isstatic(vname)) { cg_f(n1[n]); movsd_rip_xmm0(coff_static_disp(off, 2) - 2); } /* static double assign */
                     else { cg_f(n1[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
+                } else if (sti >= 0 && stypes[sti].sz > 8 && off >= 0 && nt[n1[n]] == 1) {
+                    /* struct 值赋值 b = a (big struct): 逐 8/4 字节拷贝 (fix 2026-08-06: 原只拷首 4 字节 → 姓名拷了分数没拷/崩溃) */
+                    int csz = stypes[sti].sz;
+                    char *srcn = (char*)(nn + n1[n]);
+                    int soff = var_lookup(srcn);
+                    if (soff >= 0) {
+                        if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else lea_r_mbrp(0, var_sbase(vname, off) - cur_frame_sz);
+                        push_r(0); /* &b */
+                        if (var_isstatic(srcn)) mov_rax_rip64(coff_static_disp(soff, 1) - 1); else lea_r_mbrp(0, var_sbase(srcn, soff) - cur_frame_sz);
+                        pop_r(3); /* rbx = &b (目标), rax = &a (源) */
+                        int k = 0;
+                        while (csz - k >= 8) {
+                            mov_reg_mreg64(1, 0); /* rcx = [rax] */
+                            rex(1, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], rcx (REX 只 W 位; R/B=0 — rcx/rbx 均 <8) */
+                            add_rax_imm8(8); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(8); /* add rbx, 8 (64 位; REX.B=0 — rbx<8, B=1 会变 r11!) */
+                            k += 8;
+                        }
+                        if (csz - k >= 4) {
+                            mov_reg_mreg(1, 0); /* ecx = [rax] */
+                            rex(0, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], ecx */
+                            add_rax_imm8(4); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(4); /* add rbx, 4 (64 位) */
+                            k += 4;
+                        }
+                        /* csz 是 algn(4/8) 的倍数, 8+4 覆盖; 1 字节尾部不出现 */
+                    }
                 } else {
                 if (ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS */
                 else cg(n1[n]);
