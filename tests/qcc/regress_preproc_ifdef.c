@@ -31,16 +31,24 @@
 #define ISPOS 0
 #endif
 
+#define NEG_TEST -5
+#if NEG_TEST < 0
+#define ISNEG 1
+#else
+#define ISNEG 0
+#endif
+
 int main(void) {
     if (strcmp(TAG, "A") != 0) return 1;  /* #if defined+比较 → A */
     if (HASX != 1) return 2;          /* #ifdef FEAT_X → 1 */
     if (HASY != 0) return 3;          /* #ifndef FEAT_Y → 0 */
     if (ISPOS != 1) return 4;         /* #if 宏数值比较 → 1 */
+    if (ISNEG != 1) return 5;         /* #if 负数宏 → 1 (fix 2026-08-06: 负值宏与未找到混淆) */
     /* #if 与运算 */
 #if defined(FEAT_X) && !defined(FEAT_Z)
     printf("PASS\n");
 #else
-    return 5;
+    return 6;
 #endif
     return 0;
 }
