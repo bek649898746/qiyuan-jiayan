@@ -2010,6 +2010,7 @@ static int kw(const char *s) {
     if (!strcmp(s, "extern")) return VK;
     if (!strcmp(s, "static")) return VK; /* treat as type modifier */
     if (!strcmp(s, "const")) return VK;
+    if (!strcmp(s, "volatile")) return VK; /* 类型修饰符（fix 2026-08-06: 内核 MMIO 需要; 当普通 VK 跳过, 语义同 int） */
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "FILE") || !strcmp(s, "long")) return VK; /* builtin types used by self-host */
     if (!strcmp(s, "enum")) return EN;
