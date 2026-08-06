@@ -32,7 +32,7 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = '7186A7F0DB0E995988ECC44226A2CB63154CDA95556AEAC5CF13DB99BB45BB19'
+$expected = '3A453EBAEA7BC71F75650C12CE20EACE1D55BFDAA8A5F038B79C3A6447D7E020'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: 9e2233dc" -ForegroundColor Green
 } else {
@@ -40,8 +40,8 @@ if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
-# 4. 跑 128 编译测试（直发，验证不崩溃且可执行）
-Write-Host "[4/4] 跑 tests/qcc 128 测试 ..." -ForegroundColor Yellow
+# 4. 跑 143 编译测试（直发，验证不崩溃且可执行）
+Write-Host "[4/4] 跑 tests/qcc 143 测试 ..." -ForegroundColor Yellow
 $pass = 0; $fail = 0
 Get-ChildItem tests\qcc\*.c | ForEach-Object {
     $out = "$($_.BaseName)_test.exe"

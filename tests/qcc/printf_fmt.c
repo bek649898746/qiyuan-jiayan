@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int main() {
     int a;
     int b;

@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int add2(int a, int b) { return a + b; }
 int main() {
     int x[6];

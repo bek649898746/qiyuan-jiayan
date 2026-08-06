@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_brk.c — continue/break 单层+嵌套探测 */
 int main() {
     int i;

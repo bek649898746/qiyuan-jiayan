@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int f(int n) {
     static int calls;
     calls = calls + 1;

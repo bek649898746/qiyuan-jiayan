@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_sg.c — static struct 数组综合测试: 写入 + char数组字段 */
 static struct { char name[32]; int val; } tbl[8];
 static int g_n;

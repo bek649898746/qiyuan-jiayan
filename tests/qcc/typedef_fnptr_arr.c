@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 #include <stdio.h>
 /* typedef 函数指针 — 标量 + 数组 + 参数（根治 2026-08-03）
    镜像直接声明 int (*tbl[3])(int,int) 的 8 字节元素路径 */

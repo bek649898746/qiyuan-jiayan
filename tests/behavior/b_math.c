@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:1024.0
 int printf(const char*, ...);
 double pow(double, double);
 double fabs(double);

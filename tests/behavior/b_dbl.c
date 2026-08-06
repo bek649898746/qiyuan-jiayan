@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:3.75
 int printf(const char*, ...);
 double add(double a, double b) { return a + b; }
 double mul(double a, double b) { return a * b; }

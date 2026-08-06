@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 struct S { int x; int y; };
 void set(struct S *p) { p->x = 5; p->y = 7; }
 int main() {

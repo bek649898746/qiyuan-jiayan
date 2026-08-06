@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int compute(int n) {
     int s;
     int i;

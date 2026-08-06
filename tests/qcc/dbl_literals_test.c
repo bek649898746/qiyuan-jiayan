@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* M3 regression: 大量 double 字面量（>512 个）不再静默变 0.0 (fix 2026-08-06) */
 #include <stdio.h>
 

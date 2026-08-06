@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:1
 int printf(const char*, ...);
 int main() {
     printf("%d\n", 0xFFFFFFFFu >= 1u);

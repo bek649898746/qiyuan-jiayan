@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:3 4
 int printf(const char*, ...);
 struct Point { int x; int y; };
 struct Rect { struct Point tl; struct Point br; };

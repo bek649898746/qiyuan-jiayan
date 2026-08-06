@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:3.14
 int printf(const char*, ...);
 int main() {
     printf("%.2f\n", 3.14159);

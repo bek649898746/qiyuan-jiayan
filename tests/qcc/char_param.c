@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 void set(char *r) { r[1] = 'x'; }
 int main() {
     char buf[8];

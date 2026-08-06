@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* 浮点调用对齐回归: 数学函数调用结果直接作为 printf 参数 (fix 2026-08-06) */
 #include <stdio.h>
 
