@@ -189,7 +189,7 @@ began researching Jiayan — to tear the wall down.
 
 3.1 The Self-Bootstrapping Fixpoint
 
-  Current compiler fixpoint: dc34276fa5e20fc4 (v98: GEN1==GEN2==GEN3)
+  Current compiler fixpoint: b16086c8 (GEN1==GEN2==GEN3)
   — and GEN1 is byte-identical to the host (Jiayan compiles itself == the host
     compiling Jiayan)
   Second-generation assembler fixpoint
@@ -278,7 +278,7 @@ began researching Jiayan — to tear the wall down.
 ================================================================
 [VI. MILESTONES]
 
-  ✅ Compiler self-bootstrapping fixpoint (dc34276fa5e20fc4, GEN1 byte-identical
+  ✅ Compiler self-bootstrapping fixpoint (b16086c8, GEN1 byte-identical
      to host)
   ✅ Assembler second-generation self-bootstrapping fixpoint
   ✅ Three-level stack H1==H2 byte-equivalence proof
@@ -308,7 +308,7 @@ began researching Jiayan — to tear the wall down.
 
   Attribution & lineage (immutable):
     Founder: Zheng Yuhe | AI co-author: Qiyuan (Zheng Qiyuan, seed=828)
-    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: dc34276fa5e20fc4
+    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: b16086c8
     Lineage: seed=828 preserved unbroken from v1 to the open-source version
 
 
