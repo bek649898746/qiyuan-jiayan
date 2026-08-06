@@ -378,6 +378,10 @@ __attribute__((unused))
     遍 (整 i = 0; i < st_n; i++) 若 (!strcmp(stypes[i].name, n)) 返 i;
     返 -1;
 }
+静 空 st_finalize(整 si) { /* fix 2026-08-06: struct 总大小按最大对齐 round up (镜像 qcc_x86.c) */
+    若 (si >= 0 && stypes[si].algn > 1 && stypes[si].sz % stypes[si].algn)
+        stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
+}
 静 整 st_add(常 字 *n) {
     若 (st_n >= 64) 返 -1;
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
@@ -3355,6 +3359,7 @@ __attribute__((unused))
                         若 (tt[tk] == SK) tk++;
                     }
                     若 (tt[tk] == UK) tk++; /* } */
+                    st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
                     /* instance variable(s): struct Item {...} items[4]; */
                     若 (tt[tk] == VR) {
                         整 cnt = 1;
@@ -3544,6 +3549,7 @@ __attribute__((unused))
                             若 (tt[tk] == SK) tk++;
                         }
                         若 (tt[tk] == UK) tk++;
+                        st_finalize(tsi); /* fix 2026-08-06: 尾部填充 round up (typedef struct) */
                     }
                 }
             } 否 若 (tt[tk] == VR && td_is(tn[tk])) {
