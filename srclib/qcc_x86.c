@@ -438,6 +438,10 @@ static int st_find(const char *n) {
     return -1;
 }
 static int bit_slot = -1, bit_pos = 0;  /* bit-field packing state: current int-slot foffs + bit offset inside it */
+static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大对齐 round up — 原只记 algn 未应用, SC{int,char}=5 应为 8 (数组 stride/sret 一致性) */
+    if (si >= 0 && stypes[si].algn > 1 && stypes[si].sz % stypes[si].algn)
+        stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
+}
 static int st_add(const char *n) {
     if (st_n >= 64) return -1;
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
@@ -3583,6 +3587,7 @@ static int parse(const char *s) {
                         if (tt[tk] == SK) tk++;
                     }
                     if (tt[tk] == UK) tk++; /* } */
+                    st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
                     /* instance variable(s): struct Item {...} items[4]; */
                     if (tt[tk] == VR) {
                         int cnt = 1;
@@ -3804,6 +3809,7 @@ static int parse(const char *s) {
                             if (tt[tk] == SK) tk++;
                         }
                         if (tt[tk] == UK) tk++;
+                        st_finalize(tsi); /* fix 2026-08-06: 尾部填充 round up (typedef struct) */
                     }
                 }
             } else if (tt[tk] == VR && td_is(tn[tk])) {

@@ -4,7 +4,7 @@
 /* 回归: 结构体对齐/填充字节
    SA{char,int}:          c@0 i@4 sizeof=8   (M2 fix: char+int 应 8 非 5)
    SB{char,char,short,int}: a@0 b@1 s@2 i@4 sizeof=8 (标准 ABI; short 词法分类修复 2026-08-06)
-   SD{double,int}:        d@0 i@8 sizeof=12  (qcc 布局: 无尾部填充取整) */
+   SD{double,int}:        d@0 i@8 sizeof=16  (尾部填充 round up fix 2026-08-06: 原 12 未按 algn 取整) */
 struct SA { char c; int i; };
 struct SB { char a; char b; short s; int i; };
 struct SD { double d; int i; };
@@ -20,7 +20,7 @@ int main(void) {
     if ((int)((char*)&sb.i - (char*)&sb) != 4) return 5;
     if ((int)sizeof(struct SB) != 8) return 6;
     if ((int)((char*)&sd.i - (char*)&sd) != 8) return 7;
-    if ((int)sizeof(struct SD) != 12) return 8;
+    if ((int)sizeof(struct SD) != 16) return 8;
     /* 字段写读回 (char/int/short 已支持宽度 — short 16 位存取 fix 2026-08-06) */
     sa.c = 1; sa.i = 0x12345678;
     if (sa.c != 1 || sa.i != 0x12345678) return 9;
