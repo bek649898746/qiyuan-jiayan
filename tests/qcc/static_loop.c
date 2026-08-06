@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int counter(void) {
     static int n;
     n = n + 1;

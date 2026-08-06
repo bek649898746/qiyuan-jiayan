@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:3000000000 -3000000000 1099511627776
 int printf(const char*, ...);
 int main() {
     long long a[3];

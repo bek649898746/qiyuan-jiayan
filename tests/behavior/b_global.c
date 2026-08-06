@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:10
 int printf(const char*, ...);
 int g = 10;
 long long gl = 3000000000LL;

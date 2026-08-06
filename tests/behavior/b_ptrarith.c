@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:99
 int printf(const char*, ...);
 int main() {
     int n = 5;

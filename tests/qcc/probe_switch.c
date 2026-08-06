@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_switch.c — switch/case/default 探测 */
 int main() {
     int x = 2;

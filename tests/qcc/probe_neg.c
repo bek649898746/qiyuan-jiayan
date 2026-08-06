@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_neg.c — 一元负号 + return -1 探测 */
 int f(void) {
     return -1;

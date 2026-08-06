@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 static struct { char name[32]; int val; } tbl[8];
 int main(void) {
     tbl[0].val = 10;

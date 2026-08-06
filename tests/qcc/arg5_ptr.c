@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int set5(int a, int b, int c, int d, int e, int *r) {
     r[e] = a + b + c + d + e;
     return r[e];

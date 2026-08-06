@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 static struct { char name[32]; int label; int defined; } func_tbl[64];
 static int func_n;
 static int strcmp2(const char *a, const char *b) {
