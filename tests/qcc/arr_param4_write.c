@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 void set(int a, int b, int c, int *r) { r[2] = 42; }
 int main() {
     int x[5];

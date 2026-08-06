@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int main() {
     int *p;
     int i;

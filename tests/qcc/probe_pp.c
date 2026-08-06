@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* probe_pp.c — 后置自增/自减测试 */
 int main(void) {
     int i = 0;

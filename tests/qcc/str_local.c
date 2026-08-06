@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int strlen2(char *s) { int n; n = 0; while (s[n] != 0) { n = n + 1; } return n; }
 int main() {
     char msg[16];

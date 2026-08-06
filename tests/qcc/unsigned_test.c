@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 /* M1 regression: unsigned comparison/division/modulo semantics (fix 2026-08-06) */
 #include <stdio.h>
 

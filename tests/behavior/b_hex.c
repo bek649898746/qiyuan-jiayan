@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:BEEF
 int printf(const char*, ...);
 int main() {
     printf("%X\n", 48879);
