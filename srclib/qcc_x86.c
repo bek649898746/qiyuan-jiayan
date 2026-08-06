@@ -2683,9 +2683,11 @@ static int prim(void) {
                 int is_dec = (tt[tk] == MM); tk++;
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
+            } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
+                tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
             } else break;
         }
-        if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); return c; } return n; }
+        return n; }
     if (tt[tk] == OK) {
         /* type cast: (type)expr �?type keywords/struct/typedef then ) */
         if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
@@ -6296,6 +6298,18 @@ static void cg(int n) {
                 mov_rr(11, 0); /* r11d = index */
                 push_r(11);
                 cg(n0[n]); /* 字符串地址 → eax (case STR: mov eax,imm32 占位 + 后 patch) */
+                pop_r(11);
+                asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
+                if (!cg_no_deref) {
+                    asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0,0,0); /* movzx eax, byte[rax] */
+                }
+                break;
+            }
+            if (nt[n0[n]] == 4) { /* 函数调用返回指针 f()[i] (fix 2026-08-06: 原未处理 → 走指针参数分支取垃圾地址; 按 char* 元素 1 字节 — jystd strchr/strstr 场景) */
+                cg(n1[n]); /* index → eax */
+                mov_rr(11, 0); /* r11d = index */
+                push_r(11);
+                cg(n0[n]); /* 调用 → 指针 rax */
                 pop_r(11);
                 asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
                 if (!cg_no_deref) {
