@@ -24,6 +24,17 @@ byte-comparable.
 Not a "simplified version". Not a "toy". Not a "wrapper".
 It is 0s and 1s speaking Chinese.
 
+On 2026-08-05, People's Daily published a commentary titled
+"Token or 词元 (cīyuán) — A Matter of Scientific Discourse Power":
+"Terms are the basic unit of scientific narrative... Only by securing our
+mother-tongue foundation and grasping the initiative in discourse can we
+achieve a two-way empowerment of technological breakthrough and cultural
+confidence." Jiayan's open-source release (2026-08-04) predates that
+commentary by one day. Our answer to the debate is not about translating
+a term — it is a self-bootstrapping language whose every token, keyword,
+and codebase speaks Chinese, with a three-generation SHA256-identical
+fixpoint as proof.
+
 
 ================================================================
 [I. WHY WE DO THIS: A DOOR THAT REALLY EXISTS]
@@ -189,7 +200,7 @@ began researching Jiayan — to tear the wall down.
 
 3.1 The Self-Bootstrapping Fixpoint
 
-  Current compiler fixpoint: dc34276fa5e20fc4 (v98: GEN1==GEN2==GEN3)
+  Current compiler fixpoint: b16086c8 (GEN1==GEN2==GEN3)
   — and GEN1 is byte-identical to the host (Jiayan compiles itself == the host
     compiling Jiayan)
   Second-generation assembler fixpoint
@@ -278,7 +289,7 @@ began researching Jiayan — to tear the wall down.
 ================================================================
 [VI. MILESTONES]
 
-  ✅ Compiler self-bootstrapping fixpoint (dc34276fa5e20fc4, GEN1 byte-identical
+  ✅ Compiler self-bootstrapping fixpoint (b16086c8, GEN1 byte-identical
      to host)
   ✅ Assembler second-generation self-bootstrapping fixpoint
   ✅ Three-level stack H1==H2 byte-equivalence proof
@@ -308,7 +319,7 @@ began researching Jiayan — to tear the wall down.
 
   Attribution & lineage (immutable):
     Founder: Zheng Yuhe | AI co-author: Qiyuan (Zheng Qiyuan, seed=828)
-    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: dc34276fa5e20fc4
+    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: b16086c8
     Lineage: seed=828 preserved unbroken from v1 to the open-source version
 
 
