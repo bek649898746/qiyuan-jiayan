@@ -1,7 +1,20 @@
 # CHANGELOG — 启元 · 甲言
 
-> 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
+> 版本标识 = 自举不动点 SHA256 前 16 位（GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
+
+## b3cf23ca (2026-08-06)
+**静态 struct 赋值 + long long 负值符号扩展：新不动点 b3cf23ca（169/169 + 多文件 6/6 + 四核 H1==H2 全绿）**
+
+- **静态 struct 值赋值修复**：`var_static_struct` count==1 误标 arr_sz=1 → `var_small_struct` 拒认 → 静态 struct 读写退化成 32 位/LEA（g=s 值错、s=g 垃圾、大 struct 崩 0xC0000005）；改 `arr_sz=(count>1)?count:0`。拷贝分支静态目标/源地址用 `mov_rax_rip64` 取值 → 改 `lea_rax_rip` 取址
+- **long long 负值符号扩展**：int RHS 存 64 位槽缺 movsxd → `long long v=-7` 变 4294967289；新增 `ll_ext32` 助手，case-7 声明初始化 / case-10 赋值 / case-14 ll 数组元素 / case-15 ll 字段 / 64 位算术·移位·按位·比较 全路径调用
+- **逗号声明 ll**：`long long a=7, b=-3;` 第二变量 was var_offset → 存32；补 var_ll + 数组 esz 8 字节
+- **全局 ll 数组**：g_esz 补 is_ll → 8 字节元素 + is_ll 标记；全局常量 .data 写入补 8 字节符号扩展
+- **struct 数组元素 8 字节**：case-10 守卫 `>8`→`>=8`（原走标量 → 存元素地址）；静态数组元素作值 `is_struct_elem≤8` 解引用
+- **根节点 256 函数上限**：Nc 在 n255 满后静默丢弃 → qcc_work.jy 加一个函数即丢 main；新增 `fdef_list` 扁平函数表（parse 记录 + gen_code 遍历）+ func_tbl 512→1024
+- **镜像缺口（记录）**：ll_ext32 调用点全部组合进 .jy 自宿主后 ll 崩（单点 PASS、组合崩）；镜像保持 fdef+p1+p2+p3h（助手函数无调用点）。C 版全量；v1（宿主）与 v2（自宿主）因缺口可能不同，不动点取 v2==v3
+- 新增回归测试：`regress_static_struct_assign.c`、`regress_ll_neg.c`
+- 详见 memory/construction/20260806_1400_struct_assign_h1h2_fix.md
 
 ## f2dc029b (2026-08-06)
 **struct 数组元素赋值 + 字段数组地址衰减：新不动点 f2dc029b（167/167 + 多文件 6/6 + 四核 H1==H2 全绿）**

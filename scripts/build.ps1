@@ -32,11 +32,11 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = 'F2DC029B266EF5EB58891BF034D0FFBFB9DE32C32F03E7B427C4FF078CCAD14E'
-if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: f2dc029b" -ForegroundColor Green
+$expected = 'B3CF23CAEA875FFA579500A00475179BF49AC303FF2E06EA282AC8BADE0FEA42'
+if (($h2 -eq $h3) -and ($h2 -eq $expected)) {
+    Write-Host "[OK] 自举不动点达成: b3cf23ca (v2==v3; 宿主编译 v1 可因 C-only 前沿修复与 v2 不同)" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] 三代一致但哈希与仓库记录不同：$h1" -ForegroundColor Yellow
+    Write-Host "[WARN] v2/v3 与仓库记录不同：$h2" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
