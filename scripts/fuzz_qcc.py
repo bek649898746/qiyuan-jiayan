@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """qcc_x86 fuzz 测试 v2: 修正 struct 字段复用 + 函数实参个数 + 除数非零。
-用法: python scripts/fuzz_qcc.py [轮数] [种子]"""
+用法: python scripts/fuzz_qcc.py [轮数] [种子] [qcc|v2]
+   第三个参数选编译器: qcc = qcc_x86 (宿主), v2 = 自宿主编译器 (攻镜像缺口用)。"""
 import os, random, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -134,6 +135,33 @@ class Gen:
         main_lines.append('while (%s < %s) { %s = %s + %s; }' % (
             wl, self.int_lit(), wl, wl, self.int_lit(nonzero=True)))
         main_lines.append('printf("%%d\\n", %s);' % wl)
+        # for loop
+        if r.random() < 0.6:
+            fv = self.ident('k', used); used.add(fv)
+            acc2 = self.ident('su', used); used.add(acc2)
+            main_lines.append('int %s = 0;' % acc2)
+            main_lines.append('for (int %s = 0; %s < %s; %s = %s + 1) { %s = %s + %s; }' % (
+                fv, fv, self.int_lit(nonzero=True), fv, fv, acc2, acc2, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %s);' % acc2)
+        # switch
+        if r.random() < 0.6:
+            sw = self.ident('sw', used); used.add(sw)
+            main_lines.append('int %s = %s;' % (sw, self.int_lit()))
+            case_v = self.int_lit()
+            main_lines.append('switch (%s %% 4) { case 0: printf("%%d\\n", %s); break; case 1: printf("%%d\\n", %s + 1); break; case 2: printf("%%d\\n", %s + 2); break; default: printf("%%d\\n", %s + 3); }' % (
+                sw, case_v, case_v, case_v, case_v))
+        # 2D array
+        if r.random() < 0.4:
+            m2 = self.ident('m', used); used.add(m2)
+            main_lines.append('int %s[2][3];' % m2)
+            main_lines.append('%s[0][0] = %s;' % (m2, self.int_lit()))
+            main_lines.append('%s[1][2] = %s;' % (m2, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %s[0][0] + %s[1][2]);' % (m2, m2))
+        # unsigned arithmetic
+        if r.random() < 0.5:
+            uv = self.ident('u', used); used.add(uv)
+            main_lines.append('unsigned %s = %s;' % (uv, self.int_lit()))
+            main_lines.append('printf("%%u\\n", %s * 3);' % uv)
         # helper call with exact arity
         if self.fns:
             fname, arity = r.choice(self.fns)
@@ -149,14 +177,14 @@ class Gen:
         parts.append('\n'.join(main_lines))
         return '\n'.join(parts)
 
-def run_qcc(workdir):
+def run_compiler(compiler, workdir, tag):
     exe = os.path.join(workdir, 'q.exe')
-    r = subprocess.run([QCC, os.path.join(workdir, 't.c'), '-o', exe],
+    r = subprocess.run([compiler, os.path.join(workdir, 't.c'), '-o', exe],
                        capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
-        return ('QCC-COMPILE-FAIL', r.stderr[:300], None)
+        return (tag + '-COMPILE-FAIL', r.stderr[:300], None)
     r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
-    return ('QCC-RUN', r.returncode, r.stdout)
+    return (tag + '-RUN', r.returncode, r.stdout)
 
 def run_gcc(workdir):
     exe = os.path.join(workdir, 'g.exe')
@@ -170,6 +198,12 @@ def run_gcc(workdir):
 def main():
     rounds = int(sys.argv[1]) if len(sys.argv) > 1 else 200
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 828
+    # 第三个参数可选: 指定编译器 (默认 qcc_x86; 'v2' = 自宿主编译器)
+    which = sys.argv[3] if len(sys.argv) > 3 else 'qcc'
+    compiler = QCC
+    if which == 'v2':
+        compiler = os.path.join(ROOT, 'v2.exe')
+    tag = 'v2' if which == 'v2' else 'qcc'
     rng = random.Random(seed)
     workdir = os.path.join(ROOT, 'scratch_test', 'fuzz')
     os.makedirs(workdir, exist_ok=True)
@@ -179,13 +213,13 @@ def main():
         prog = Gen(rng).gen_program()
         with open(os.path.join(workdir, 't.c'), 'w', encoding='utf-8') as f:
             f.write(prog)
-        qr = run_qcc(workdir)
-        if qr[0] == 'QCC-COMPILE-FAIL':
+        qr = run_compiler(compiler, workdir, tag)
+        if qr[0] == tag + '-COMPILE-FAIL':
             # 编译器拒绝的合法程序 = 真 bug
             fails += 1
-            print('=== 第 %d 轮: qcc 编译失败 ===' % (i + 1))
+            print('=== 第 %d 轮: %s 编译失败 ===' % (i + 1, tag))
             print(prog)
-            print('qcc :', qr[1])
+            print(tag, ':', qr[1])
             if fails >= 5:
                 break
             continue
@@ -198,11 +232,11 @@ def main():
             fails += 1
             print('=== 第 %d 轮: 输出/退出码差异 ===' % (i + 1))
             print(prog)
-            print('qcc :', qr)
+            print(tag, ':', qr)
             print('gcc :', gr)
             if fails >= 5:
                 break
-    print('共 %d 轮, 差异 %d 个, gcc 拒绝 %d (seed=%d)' % (rounds, fails, skipped, seed))
+    print('共 %d 轮, 差异 %d 个, gcc 拒绝 %d (seed=%d, compiler=%s)' % (rounds, fails, skipped, seed, tag))
     sys.exit(1 if fails else 0)
 
 if __name__ == '__main__':
