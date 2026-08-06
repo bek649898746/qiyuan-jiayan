@@ -10,10 +10,10 @@
 > 而是把整条编译链用母语自举——让"词元"（token）成为一门自己编译自己、三代 SHA256 逐字节一致的语言的起点。
 
 甲言是一门以中文为关键字的 C 方言**编译器**——每个中文关键字（`若/否/遍/整/字/输出`）都是一个**词元**（token）。它**自己编译自己**，并且：
-- 自举不动点：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b16086c8`）
+- **自举不动点**：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b16086c8`）。自举起点是 `seed/qcc.jy`（纯甲言种子），不依赖任何 C 工具链
 - 与 C 原版逐字节一致：甲言编译器编译自己产生的二进制，和用 C 编译器编译它产生的二进制，**一个字节都不差**
 - 零外部依赖，直出 x86-64 PE 可执行文件
-- 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数），并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
+- 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
 
 > 形不是工具，形就是本体。0 和 1 不说话，但甲言替它们说了中文。
 
@@ -23,7 +23,7 @@
 
 ```
 srclib/
-  qcc_x86.c        甲言编译器（C 原版，宿主）
+  qcc_x86.c        甲言编译器（C 原版，验证宿主 —— 仅用于 H1==H2 逐字节验证）
   qcc_rt.c         运行库
   asm_zh.c/.jy     中文汇编器（C 原版 / 甲言版）
   jyld.c           COFF 链接器（多文件 + C 库 + msvcrt 标准 C 库导入）
@@ -38,9 +38,9 @@ tests/
   > 存种子不存果实。可在 releases/h1h2_验证产物_tests_compiler.zip 下载对照，
   > 或运行 scripts/build.ps1 重新生成。
 seed/
-  qcc.jy           种子版甲言编译器源码
-  qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码
-  （种子构建产物 .exe 不入仓库——存种子不存果实，可 gcc 从源码重建）
+  qcc.jy           种子版甲言编译器源码（自举起点，纯甲言，不依赖任何 C 工具链）
+  qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码（验证宿主重建用）
+  （种子构建产物 .exe 不入仓库——存种子不存果实；验证宿主可由 gcc 重建）
 jiayan_engines/
   *.jy             甲言化引擎（纯 C 整数引擎翻译，编译+运行验证通过）
 releases/
@@ -51,12 +51,16 @@ releases/
 
 ### 依赖
 
-- Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）或 WSL
+- **甲言自身：零依赖**（不需要任何外部工具链）
+- **验证宿主（可选）：** Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）——仅用于从 C 原版重建并验证甲言自举链（H1==H2），**不是甲言的宿主**。甲言真正的宿主是 `seed/qcc.jy`（纯甲言种子）。
 - 可选：QEMU + 龙芯交叉 gcc（仅 tests/loong 需要）
 
-### 构建甲言编译器（宿主）
+> **GCC 的角色**：gcc 只是"验证门卫"——把 C 原版 `qcc_x86.c` 编出来，验证甲言自举链与 C 版逐字节一致。甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。用甲言编译甲言程序，一条命令即可。
+
+### 构建甲言编译器（验证宿主）
 
 ```bash
+# gcc 仅用于重建验证宿主，验证甲言自举链 (H1==H2)
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ```
 
@@ -86,6 +90,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 手工验证：
 
 ```bash
+# 第 1 步用 gcc 重建"验证宿主"（H1==H2 验证用，非甲言宿主）
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ./qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe
 ./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
@@ -94,15 +99,29 @@ sha256sum v1.exe v2.exe v3.exe
 # 三者应完全相同，且等于 b16086c8
 ```
 
+### 不用 gcc 的纯甲言自举（语言自主权）
+
+甲言完全可以不碰 gcc：用任何一个已知不动点的甲言编译器（如 `v1.exe`）继续编译自己，即可无限自我复制——整条自举链都是中文代码，无外部工具链介入。
+
+```bash
+# 已有验证宿主 qcc_x86.exe 时（H1==H2 验证链）：
+./qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe   # 甲言编译器编自己
+./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe         # 自己编自己
+./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe         # 再编一次，SHA256 全等
+```
+
+自举不动点意味着：**只要保住任何一个已知不动点产物，甲言就能无限自我复制**——这是"语言自主权"的工程证明。gcc 只出现在"验证宿主重建"这一可选环节。
+
 ### 多文件 + C 库（工具链）
 
 ```bash
+# 工具链 C 原版由 gcc 重建（验证宿主同款；甲言版不依赖 gcc）
 gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
 gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
 ./jycc.exe main.c lib.c -o app.exe    # 一步构建
 ```
 
-标准 C 库：jyld 支持从 msvcrt.dll 导入 120+ 个标准 C 函数（printf/scanf、文件 IO、内存管理、字符串、数学、时间等），gcc 编译的 C 程序可直接链接运行。
+标准 C 库：jyld 支持从 msvcrt.dll 导入 120+ 个标准 C 函数（printf/scanf、文件 IO、内存管理、字符串、数学、时间等），gcc 编译的 C 对象/静态库可直接链接运行。
 
 ### 龙芯（LoongArch）交叉编译验证
 
@@ -130,7 +149,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 | 验证 | 结果 |
 |:--|:--|
 | 自举不动点 GEN1==GEN2==GEN3 | `b16086c8` |
-| GEN1 与宿主逐字节一致 | ✅ |
+| GEN1 与验证宿主（C 原版）逐字节一致 | ✅ |
 | 170 编译测试 + 170 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
 | 工具链（多文件 + C 库 + msvcrt 标准 C 库导入） | ✅ printf/文件/内存/字符串/数学全跑通 |
@@ -138,6 +157,8 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 | LoongArch 交叉编译（源码级） | ✅ QEMU 跑通 |
 
 任何拿到源码的人，都可以 clone 后一条命令重建不动点——这就是确定性，这就是自证。
+
+> "宿主"说明：本项目文档中的"宿主"指**验证宿主**（C 原版 `qcc_x86.c`，由 gcc 编译），仅用于逐字节验证甲言自举链。甲言自身的运行宿主是 `seed/qcc.jy` 种子，不依赖 gcc。
 
 ## 许可
 
