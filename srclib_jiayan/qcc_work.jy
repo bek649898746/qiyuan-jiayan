@@ -5901,6 +5901,30 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 } 否 若 (var_is_dbl(vname)) {
                     若 (var_isstatic(vname)) { cg_f(n1[n]); movsd_rip_xmm0(stc_disp(off) - 2); } /* static double assign */
                     否 { cg_f(n1[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
+                } 否 若 (sti >= 0 && stypes[sti].sz > 8 && off >= 0 && nt[n1[n]] == 1) {
+                    /* struct 值赋值 b = a (big struct): 逐 8/4 字节拷贝 (fix 2026-08-06 镜像 qcc_x86.c) */
+                    整 csz = stypes[sti].sz;
+                    字 *srcn = (字*)(nn + n1[n]);
+                    整 soff = var_lookup(srcn);
+                    若 (soff >= 0) {
+                        若 (var_isstatic(vname)) mov_rax_rip64(stc_disp(off) - 1); 否 lea_r_mbrp(0, var_sbase(vname, off) - cur_frame_sz);
+                        push_r(0); /* &b */
+                        若 (var_isstatic(srcn)) mov_rax_rip64(stc_disp(soff) - 1); 否 lea_r_mbrp(0, var_sbase(srcn, soff) - cur_frame_sz);
+                        pop_r(3); /* rbx = &b, rax = &a */
+                        整 k = 0;
+                        循环 (csz - k >= 8) {
+                            mov_reg_mreg64(1, 0); /* rcx = [rax] */
+                            rex(1, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], rcx */
+                            add_rax_imm8(8); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(8); /* add rbx, 8 (64位) */
+                            k += 8;
+                        }
+                        若 (csz - k >= 4) {
+                            mov_reg_mreg(1, 0); /* ecx = [rax] */
+                            rex(0, 0, 0, 0); b(0x89); modrm(0, 1, 3); /* mov [rbx], ecx */
+                            add_rax_imm8(4); rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 3); b(4);
+                            k += 4;
+                        }
+                    }
                 } 否 {
                 若 (ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS */
                 否 cg(n1[n]);
