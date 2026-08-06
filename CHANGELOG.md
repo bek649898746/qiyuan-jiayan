@@ -3,6 +3,15 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 7186a7f0 (2026-08-06)
+**struct long long 字段（64 位读写）：新不动点 7186a7f0**
+
+- struct 字段解析加 `long long`（fsz=8, frow=8）+ fll 标记（ftypes=-3）——此前 fsz 默认 4，LL 字段错/字段名丢失
+- 字段读 64 位化：箭头 ptr->field / static struct / 本地 struct 字段（fty==-3 → mov_reg_mreg64）；字段写 fsz==8 已 64 位
+- 验证：负值 LL 字段 / LL 数组字段 / sizeof(char+LL)=16 / 箭头访问 全 PASS（C/v1 双端）
+- **教训**：jy 镜像必须单处逐步加（上次批量脚本 patch 溢出 [PATCH-OVERFLOW] 16384；本次只改 struct Name 主路径 + 字段注册 + 字段读 3 处 → v1 稳定）
+- C/jy 双版；三代自举 + 133/133 + H1==H2 133/133；种子 qcc_7186A7F0_seed.exe
+
 ## 17e8c484 (2026-08-06)
 **volatile 关键字支持（内核前置）：新不动点 17e8c484**
 

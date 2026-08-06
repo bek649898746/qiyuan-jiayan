@@ -2386,7 +2386,7 @@ __attribute__((unused))
                             循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
-                            若 (fdbl) st_field_dbl(si, fn);
+                            若 (fdbl) st_field_dbl(si, fn); 若 (fll) st_field_ty(si, fn, -3);
                         }
                     }
                     若 (tt[tk] == CK) tk++;
@@ -3257,8 +3257,8 @@ __attribute__((unused))
                     tk++;
                     整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
                     循环 (tk < TS && tt[tk] != UK) {
-                        整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* int/char/double */
+                        整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0; 整 fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
+                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         否 若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             若 (tt[tk] == VR) {
@@ -3328,7 +3328,7 @@ __attribute__((unused))
                             否 frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             若 (is_union) st_union_field(si, fn, fsz);
                             否 st_field_sz_r(si, fn, fsz, frow);
-                            若 (fdbl) st_field_dbl(si, fn);
+                            若 (fdbl) st_field_dbl(si, fn); 若 (fll) st_field_ty(si, fn, -3);
                             }
                         }
                         若 (tt[tk] == CK) tk++; /* comma between fields */
@@ -3633,7 +3633,7 @@ __attribute__((unused))
                         否 {
                             若 (unsized) { fsz = 0; frow = 4; } /* 柔性数组: 不占 struct 空间, 元素大小保留 */
                             st_field_sz_r(si, fn, fsz, frow);
-                            若 (fdbl) st_field_dbl(si, fn);
+                            若 (fdbl) st_field_dbl(si, fn); 若 (fll) st_field_ty(si, fn, -3);
                         }
                     }
                     若 (tt[tk] == CK) tk++;
@@ -5954,6 +5954,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     整 fsz = st_field_size(stypes[s].name, fn);
                     整 fty = st_field_ty_idx(stypes[s].name, fn);
                     若 (fty >= 0 && fsz <= 8) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* struct field value: 8 bytes */
+                    否 若 (fty == -2 || fty == -3) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr(-2)/long long(-3) 字段 64 位 (fix 2026-08-06) */
                     否 { mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
                     }
                 }
