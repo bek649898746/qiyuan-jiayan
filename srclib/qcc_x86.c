@@ -1083,9 +1083,12 @@ static void coff_dbl_add(const uint8_t *p, int n) {
 }
 static int coff_slot_sym(int slot) {
     for (int i = vs_n() - 1; i >= 0; i--) {
-        if (vars[i].is_static && vars[i].rsp_off == slot) {
+        if (vars[i].rsp_off == slot) {
             int s = csym_find(vars[i].name);
-            if (s < 0) s = csym_add(vars[i].name, 4 * slot, 4, 2, 0);
+            if (s < 0) {
+                if (slot < 0) s = csym_add(vars[i].name, 0, 0, 2, 0); /* extern: sec=0 未定义, scl=2 全局 (fix 2026-08-06 多 .o 链接) */
+                else s = csym_add(vars[i].name, 4 * slot, 4, 2, 0);
+            }
             return s;
         }
     }
@@ -1122,6 +1125,10 @@ static int coff_static_disp(int idx, int k) {
         int s = coff_slot_sym(idx);
         if (s >= 0) coff_crel(cp + 2 + k, 0x0004, s, 0);
         return k;
+    }
+    if (idx < 0) { /* extern 无定义: 单文件编译无法解析 (fix 2026-08-06) */
+        for (int i = vs_n() - 1; i >= 0; i--) if (vars[i].rsp_off == idx) { fprintf(stderr, "[ERR] extern 变量 '%s' 无定义 — 多文件请用 qcc -c + jyld 链接\n", vars[i].name); exit(1); }
+        fprintf(stderr, "[ERR] extern 变量无定义\n"); exit(1);
     }
     return stc_disp(idx);
 }
@@ -1288,7 +1295,23 @@ static int var_static(const char *n, int pesz) {
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
-    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_ll = 0; vars[vcnt].is_static = 1;
+    return vars[vcnt++].rsp_off;
+}
+/* extern 全局变量声明: 负槽标记 (rsp_off < 0), 无 .data 分配, is_static=1 走 RIP 相对
+   codegen; coff_mode 下 coff_slot_sym 生成 sec=0 未定义符号 + REL32 重定位 (Task 5.1 多 .o) */
+static int var_extern(const char *n, int is_char, int is_dbl, int pesz, int is_ll) {
+    static int extern_n = 2;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].rsp_off < 0 && var_codegen_visible(i)) return vars[i].rsp_off;
+    if (vcnt >= 4000) exit(1);
+    strcpy(vars[vcnt].name, n);
+    vars[vcnt].rsp_off = -extern_n; extern_n++;
+    vars[vcnt].is_param = 0; vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
+    vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0;
+    vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1;
+    vars[vcnt].is_dbl = is_dbl; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = is_char;
+    vars[vcnt].is_uns = 0; vars[vcnt].is_ll = is_ll; vars[vcnt].is_static = 1;
     return vars[vcnt++].rsp_off;
 }
 static int var_isstatic(const char *n) {
@@ -1426,7 +1449,13 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
     return vars[vcnt++].rsp_off;
 }
 static int var_lookup(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].rsp_off; /* backward: latest shadows */
+    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+        if (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06) */
+            for (int j = i - 1; j >= 0; j--) if (!strcmp(vars[j].name, n) && vars[j].rsp_off >= 0 && var_codegen_visible(j)) return vars[j].rsp_off;
+            return vars[i].rsp_off; /* 无定义: extern 槽 (coff_mode 外部符号) */
+        }
+        return vars[i].rsp_off; /* backward: latest shadows */
+    }
     return -1;
 }
 static int var_stidx(const char *n) {
@@ -3653,8 +3682,23 @@ static int parse(const char *s) {
             }
             continue;
         }
-        /* extern variable declarations �?skip silently */
-        if (tt[tk] == VK && !strcmp(tn[tk], "extern")) { tk++; while(tk<TS&&tt[tk]!=SK&&tt[tk]!=EK)tk++; if(tk<TS&&tt[tk]==SK)tk++; continue; }
+        /* extern variable declarations — 注册外部符号 (Task 5.1 多 .o 链接 fix 2026-08-06:
+           原静默跳过 → 单独 -c 编译时引用被当局部变量; 现在注册 extern 负槽, coff_mode 生成未定义符号) */
+        if (tt[tk] == VK && !strcmp(tn[tk], "extern")) {
+            tk++; /* skip extern */
+            int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
+            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
+            if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 跨文件函数已工作, 跳过 */
+                while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                if (tk < TS && tt[tk] == SK) tk++;
+                continue;
+            }
+            while (tt[tk] == DK) { e_pesz = e_pesz ? e_pesz : 4; tk++; } /* 指针 */
+            if (tt[tk] == VR) { char ename[32]; strcpy(ename, tn[tk]); tk++; var_extern(ename, e_char, e_dbl, e_pesz, e_ll); }
+            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+            if (tk < TS && tt[tk] == SK) tk++;
+            continue;
+        }
         /* typedef: typedef int Name; or typedef struct Name Alias; */
         if (tt[tk] == VR && !strcmp(tn[tk], "typedef")) {
             tk++; /* skip typedef */
@@ -5177,7 +5221,7 @@ static void cg(int n) {
         } break;
         case 1: { /* variable ????????????? */
             int off = var_lookup((char*)(nn + n));
-            if (off < 0) {
+            if (off == -1) { /* fix 2026-08-06: off<-1 是 extern 负槽, 走 static 读生成外部符号; 只有 -1 (未定义) 才走函数/参数 */
                 int ffi = func_find((char*)(nn + n));
                 if (ffi >= 0 && func_tbl[ffi].defined) {
                     /* function name as value �?absolute VA (patched in PE output) */
@@ -7034,11 +7078,26 @@ static void write_coff_obj(FILE *f) {
     strcpy(secs[0].name, ".text"); secs[0].size = cp; secs[0].data = code; secs[0].chars = 0x60000020;
     strcpy(secs[1].name, ".rstr"); secs[1].size = coff_str_len; secs[1].data = coff_str_data; secs[1].chars = 0x40300040;
     strcpy(secs[2].name, ".rdbl"); secs[2].size = coff_dbl_len; secs[2].data = coff_dbl_data; secs[2].chars = 0x40300040;
-    strcpy(secs[3].name, ".bss"); secs[3].size = stc_n * 4; secs[3].data = NULL; secs[3].chars = 0xC0000080;
+    /* Task 5.1 (fix 2026-08-06): 全局初始值入 .data — 原 .bss 无内容, 常量初始值 (ginit) 在 -c 多 .o 链接时
+       挂在第一个函数入口不执行 → counter=100 丢成 0。改 .data 段含初始值; 未初始化全局写 0 (语义等价 .bss 清零) */
+    strcpy(secs[3].name, ".data"); secs[3].size = stc_n * 4; secs[3].chars = 0xC0300080;
+    uint8_t *ddata = (uint8_t*)calloc(stc_n ? stc_n : 1, 4);
+    secs[3].data = ddata;
+    for (int gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) */
+        int gn = ginit[gi];
+        int val_node = -1;
+        if (gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 0) val_node = n0[gn];
+        else if (gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 0) val_node = n1[gn];
+        if (val_node >= 0) {
+            char *vn = (char*)(nn + gn);
+            int off = var_lookup(vn);
+            if (off >= 0 && off < stc_n) { int v = nv[val_node]; memcpy(ddata + 4 * off, &v, 4); }
+        }
+    }
     if (!coff_text_sym) coff_text_sym = csym_add(".text", 0, 1, 3, 0);
     if (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
     if (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdbl", 0, 3, 3, 0);
-    if (!coff_bss_sym) coff_bss_sym = csym_add(".bss", 0, 4, 3, 0);
+    if (!coff_bss_sym) coff_bss_sym = csym_add(".data", 0, 4, 3, 0); /* fix 2026-08-06: .bss→.data (全局初始值入 .data) */
     for (int i = 0; i < func_n; i++) {
         if (func_tbl[i].defined) {
             int s = csym_find(func_tbl[i].name);
@@ -7046,7 +7105,7 @@ static void write_coff_obj(FILE *f) {
         }
     }
     for (int i = 0; i < vcnt; i++) {
-        if (vars[i].is_static) {
+        if (vars[i].is_static && vars[i].rsp_off >= 0) { /* extern (rsp_off<0) 不生成 .bss 定义符号 — 由 coff_slot_sym 生成 sec=0 未定义 (fix 2026-08-06) */
             int s = csym_find(vars[i].name);
             if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, 2, 0);
         }

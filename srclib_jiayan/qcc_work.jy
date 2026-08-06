@@ -1125,6 +1125,22 @@ __attribute__((unused))
     vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
     返 vars[vcnt++].rsp_off;
 }
+/* extern 全局变量声明: 负槽标记 (rsp_off<0), 无 .data 分配, is_static=1 走 RIP 相对 codegen;
+   coff_mode 下 coff_slot_sym 生成 sec=0 未定义符号 + REL32 重定位 (Task 5.1 多 .o, 镜像 qcc_x86.c) */
+静 整 var_extern(常 字 *n, 整 is_char, 整 is_dbl, 整 pesz, 整 is_ll) {
+    静 整 extern_n = 2;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].rsp_off < 0 && var_codegen_visible(i)) 返 vars[i].rsp_off;
+    若 (vcnt >= 4000) exit(1);
+    strcpy(vars[vcnt].name, n);
+    vars[vcnt].rsp_off = -extern_n; extern_n++;
+    vars[vcnt].is_param = 0; vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
+    vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0;
+    vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1;
+    vars[vcnt].is_dbl = is_dbl; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = is_char;
+    vars[vcnt].is_uns = 0; vars[vcnt].is_ll = is_ll; vars[vcnt].is_static = 1;
+    返 vars[vcnt++].rsp_off;
+}
 静 整 var_isstatic(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_static;
     返 0;
@@ -1271,7 +1287,13 @@ __attribute__((unused))
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_lookup(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].rsp_off; /* backward: latest shadows */
+    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+        若 (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06 镜像) */
+            遍 (整 j = i - 1; j >= 0; j--) 若 (!strcmp(vars[j].name, n) && vars[j].rsp_off >= 0 && var_codegen_visible(j)) 返 vars[j].rsp_off;
+            返 vars[i].rsp_off; /* 无定义: extern 槽 */
+        }
+        返 vars[i].rsp_off; /* backward: latest shadows */
+    }
     返 -1;
 }
 静 整 var_stidx(常 字 *n) {
@@ -3426,7 +3448,21 @@ __attribute__((unused))
             续;
         }
         /* extern variable declarations �?skip silently */
-        若 (tt[tk] == VK && !strcmp(tn[tk], "extern")) { tk++; 循环(tk<TS&&tt[tk]!=SK&&tt[tk]!=EK)tk++; 若(tk<TS&&tt[tk]==SK)tk++; 续; }
+        若 (tt[tk] == VK && !strcmp(tn[tk], "extern")) { /* fix 2026-08-06: 注册 extern 外部符号 (Task 5.1 多 .o 链接, 镜像 qcc_x86.c) */
+        tk++; /* skip extern */
+        整 e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
+        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
+        若 (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明: 跳过 */
+            循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+            若 (tk < TS && tt[tk] == SK) tk++;
+            续;
+        }
+        循环 (tt[tk] == DK) { e_pesz = e_pesz ? e_pesz : 4; tk++; } /* 指针 */
+        若 (tt[tk] == VR) { 字 ename[32]; strcpy(ename, tn[tk]); tk++; var_extern(ename, e_char, e_dbl, e_pesz, e_ll); }
+        循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+        若 (tk < TS && tt[tk] == SK) tk++;
+        续;
+    }
         /* typedef: typedef int Name; or typedef struct Name Alias; */
         若 (tt[tk] == VR && !strcmp(tn[tk], "typedef")) {
             tk++; /* skip typedef */
@@ -4892,7 +4928,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         } 断;
         例 1: { /* variable ????????????? */
             整 off = var_lookup((字*)(nn + n));
-            若 (off < 0) {
+            若 (off == -1) { /* fix 2026-08-06: off<-1 是 extern 负槽, 走 static 读 (镜像 qcc_x86.c) */
                 整 ffi = func_find((字*)(nn + n));
                 若 (ffi >= 0 && func_tbl[ffi].defined) {
                     /* function name as value — absolute VA (patched in PE output) */
