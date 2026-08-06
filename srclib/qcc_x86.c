@@ -54,7 +54,8 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量 */ int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
-static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096]; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
+static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
+static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
 static int root_global, g_lc_save, g_rsp_save, entry_rva_global;
@@ -1041,6 +1042,10 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 /* ==================== COFF 对象输出（-c 模式） ==================== */
 static int stc_disp(int idx);
 static struct { char name[32]; int label; int defined; int ret_si; } func_tbl[512];
+/* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
+static char fn_static_names[512][32]; static int fn_static_n;
+static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
+static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static int func_n = 0;
 static int coff_mode = 0;
 static int coff_ginit_done = 0; /* -c: ginit emitted once per object */
@@ -1094,19 +1099,23 @@ static int coff_slot_sym(int slot) {
             int s = csym_find(vars[i].name);
             if (s < 0) {
                 if (slot < 0) s = csym_add(vars[i].name, 0, 0, 2, 0); /* extern: sec=0 未定义, scl=2 全局 (fix 2026-08-06 多 .o 链接) */
-                else s = csym_add(vars[i].name, 4 * slot, 4, 2, 0);
+                else s = csym_add(vars[i].name, 4 * slot, 4, var_static_kw[i] ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 */
             }
             return s;
         }
     }
     return -1;
 }
+static int coff_is_builtin(const char *n); /* 前向声明 (fix 2026-08-06) */
 static int coff_func_label_sym(int label) {
     for (int i = 0; i < func_n; i++) {
         if (func_tbl[i].label == label) {
             int s = csym_find(func_tbl[i].name);
-            if (s < 0) s = csym_add(func_tbl[i].name, func_tbl[i].defined ? label_pos[label] : 0,
-                                    func_tbl[i].defined ? 1 : 0, 2, 0x20);
+            if (s < 0) {
+                int fsc = (fn_static_is(func_tbl[i].name) || coff_is_builtin(func_tbl[i].name)) ? 3 : 2; /* fix 2026-08-06: static/内建 → 局部符号 */
+                s = csym_add(func_tbl[i].name, func_tbl[i].defined ? label_pos[label] : 0,
+                             func_tbl[i].defined ? 1 : 0, fsc, 0x20);
+            }
             return s;
         }
     }
@@ -1303,6 +1312,7 @@ static int var_static(const char *n, int pesz) {
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_ll = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-06: 函数内 static 变量 → scl=3 局部符号 */
     return vars[vcnt++].rsp_off;
 }
 /* extern 全局变量声明: 负槽标记 (rsp_off < 0), 无 .data 分配, is_static=1 走 RIP 相对
@@ -4159,7 +4169,8 @@ static int parse(const char *s) {
         }
         /* function definition */
         int fn_ret_dbl = 0;
-        while (tt[tk] == VK) { if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; tk++; } /* skip type keywords, catch double return */
+        int fn_is_static = 0; /* fix 2026-08-06: static 函数 → 局部符号 (scl=3), 多 .o 头库不冲突 */
+        while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; tk++; } /* skip type keywords, catch double return */
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
@@ -4197,6 +4208,7 @@ static int parse(const char *s) {
         }
         if (fn_ok) {
             int tfi = func_find((char*)(nn + fdef)); /* register return type BEFORE parsing params */
+            if (fn_is_static) fn_static_mark((char*)(nn + fdef)); /* fix 2026-08-06: static 标记 (scl=3 局部符号) */
             func_tbl[tfi].ret_si = fn_ret_si;
             fn_ret_si_map[tfi] = fn_ret_si; /* survives gen_code's func_n=0 reset */
             fn_ret_name_put((char*)(nn + fdef), fn_ret_si); /* name-keyed: survives func_tbl index renumbering */
@@ -6829,6 +6841,8 @@ void gen_code(void) {
     parse_base = 0; /* codegen lookups use vs_end (=fve[gfn]), not the parse-time floor */
     /* per-function LOCAL frames (root-cause 2026-08-03): recomputed in the loop below */
 
+    int last_fn_i = -1; for (int k = 0; k < 256; k++) { int ck = child_i(root_global, k); if (ck > 0) last_fn_i = k; } /* fix 2026-08-06: coff 模式 ginit 挂最后一个函数 (所有函数已 parse, 函数内 static 变量已注册) */
+
     for (int i = 0; i < 256; i++) {
         int c = child_i(root_global, i);
         if (c <= 0) continue;
@@ -6885,7 +6899,7 @@ void gen_code(void) {
         /* epilogue label: return jumps here */
         epi_label = new_label();
 
-        if ((coff_mode && !coff_ginit_done) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主")))) { /* emit global initializers at program entry (甲言: 主() = main()) */
+        if ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主")))) { /* emit global initializers at program entry (甲言: 主() = main()); coff 模式挂最后一个函数 — 原挂第一个, 函数内 static 变量未注册 DCL-MISS (fix 2026-08-06) */
             cg_ginit_ctx = 1; /* ginit decls must NOT be skipped by case-7's local-static check */
             for (int gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
             cg_ginit_ctx = 0;
@@ -7108,13 +7122,16 @@ static void write_coff_obj(FILE *f) {
     for (int i = 0; i < func_n; i++) {
         if (func_tbl[i].defined) {
             int s = csym_find(func_tbl[i].name);
-            if (s < 0) s = csym_add(func_tbl[i].name, label_pos[func_tbl[i].label], 1, 2, 0x20);
+            if (s < 0) {
+                int fsc = (fn_static_is(func_tbl[i].name) || coff_is_builtin(func_tbl[i].name)) ? 3 : 2; /* static/内建 → 局部符号 scl=3 (fix 2026-08-06: 多 .o 头库不冲突) */
+                s = csym_add(func_tbl[i].name, label_pos[func_tbl[i].label], 1, fsc, 0x20);
+            }
         }
     }
     for (int i = 0; i < vcnt; i++) {
         if (vars[i].is_static && vars[i].rsp_off >= 0) { /* extern (rsp_off<0) 不生成 .bss 定义符号 — 由 coff_slot_sym 生成 sec=0 未定义 (fix 2026-08-06) */
             int s = csym_find(vars[i].name);
-            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, 2, 0);
+            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, var_static_kw[i] ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 局部 */
         }
     }
 
