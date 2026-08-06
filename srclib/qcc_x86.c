@@ -422,7 +422,7 @@ static char *pp_include_expand(const char *src, int depth) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[32]; char fnames[32][32]; int foffs[32]; int fsizes[32]; int frows[32]; int ftypes[32]; int fbits[32]; int fbitof[32]; char fdbls[32]; char fsgn[32]; int fn; int sz; } stypes[64]; static int st_n;
+static struct { char name[32]; char fnames[32][32]; int foffs[32]; int fsizes[32]; int frows[32]; int ftypes[32]; int fbits[32]; int fbitof[32]; char fdbls[32]; char fsgn[32]; int fn; int sz; int algn; } stypes[64]; static int st_n; /* algn: struct 最大对齐（fix 2026-08-06） */
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) return i;
@@ -431,13 +431,20 @@ static int st_find(const char *n) {
 static int bit_slot = -1, bit_pos = 0;  /* bit-field packing state: current int-slot foffs + bit offset inside it */
 static int st_add(const char *n) {
     if (st_n >= 64) return -1;
-    strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0;
+    strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     return st_n++;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     if (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2: 原溢出写进 stypes[si+1] 字段表，多结构互相踩崩溃)\n"); exit(1); }
     int idx = stypes[si].fn;
+    /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
+       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。 */
+    int align = 1;
+    if (frow >= 8) align = 8;
+    else if (frow >= 4) align = 4;
+    else if (frow >= 2) align = 2;
+    if (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
     stypes[si].fsizes[idx] = fsz;
@@ -446,7 +453,9 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     stypes[si].fbits[idx] = 0; stypes[si].fbitof[idx] = 0; /* non bit-field */
     stypes[si].fsgn[idx] = 0; /* non bit-field: signedness irrelevant (fix 2026-08-05) */
     bit_slot = -1; bit_pos = 0; /* a non-bit-field ends any pending bit run */
-    stypes[si].sz += fsz; stypes[si].fn = stypes[si].fn + 1;
+    stypes[si].sz += fsz;
+    if (align > stypes[si].algn) stypes[si].algn = align; /* 记录 struct 最大对齐（总大小 round up） */
+    stypes[si].fn = stypes[si].fn + 1;
 }
 static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, int uns) {
     /* real bit-field semantics: pack consecutive bit-fields into shared int slots.
@@ -2570,6 +2579,7 @@ static int prim(void) {
                     if (tt[tk] == SK) tk++;
                 }
                 if (tt[tk] == UK) tk++; /* } */
+                if (stypes[si].algn > 1) { int m = stypes[si].sz % stypes[si].algn; if (m) stypes[si].sz += stypes[si].algn - m; } /* fix 2026-08-06: struct 总大小 round up 到最大对齐 */
                 int sz = stypes[si].sz;
                 if (tt[tk] == KK) tk++; /* ) */
                 int n = Nd(0); nv[n] = sz; return n;
