@@ -1008,7 +1008,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 #define MAX_LABELS 16384
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
-static struct { int patch_at; int target_label; int is_jmp; } patches[16384]; int patch_n;
+static struct { int patch_at; int target_label; int is_jmp; } patches[65536]; int patch_n; /* fix 2026-08-06: 16384→65536 — qcc_work.jy 编译 patch_n=16380 贴上限, 加 STR 下标后缀链后超 4 个溢出; 自举大文件余量 */
 static struct { int patch_at; int str_idx; } str_patches[2048]; int strpn;
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
@@ -1128,7 +1128,7 @@ static void patch_label(int at, int l, int is_jmp) {
         }
         return;
     }
-    if (patch_n >= 16384) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d\n", patch_n); abort(); }
+    if (patch_n >= 65536) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d (at label %d)\n", patch_n, l); abort(); }
     /* Emit the jump mnemonic into the asm text using the REAL label id (l),
        not the placeholder rel value. Fix 2026-08-03: -S output previously
        used jz_rel's rel (always 1 for forward refs), so asm_zh could never
@@ -2726,7 +2726,13 @@ static int prim(void) {
         }
         int n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); return n;
     }
-    if (tt[tk] == STR) { int n = Nd(0); nv[n] = tv[tk]; /* str index �?treated as immediate for codegen */ nt[n] = STR; tk++; return n; }
+    if (tt[tk] == STR) { int n = Nd(0); nv[n] = tv[tk]; /* str index → treated as immediate for codegen */ nt[n] = STR; tk++;
+        while (tt[tk] == LB) { /* 字符串字面量下标 "abc"[i] (fix 2026-08-06: 原 STR 分支无 suffix chain → 实参 `f("A"[0])` 解析卡在 `[` 死循环; 赋值场景留下未消费的 `[` 生成垃圾值) */
+            tk++; /* [ */
+            int m = Nd(14); Nc(m, n); Nc(m, expr()); if (tt[tk] == RB) tk++; /* ] */
+            n = m;
+        }
+        return n; }
     return -1;
 }
 
@@ -6273,7 +6279,19 @@ static void cg(int n) {
             }}
             } /* end n0-is-array else */
         } break;
-        case 14: { /* array access �?local array / local pointer var / pointer param */
+        case 14: { /* array access — local array / local pointer var / pointer param */
+            if (nt[n0[n]] == STR) { /* 字符串字面量下标 "abc"[i]: 字符串地址 + i, movzx byte (fix 2026-08-06: 原走指针参数分支 load_param_val("A") 取垃圾地址 → 值错) */
+                cg(n1[n]); /* index → eax */
+                mov_rr(11, 0); /* r11d = index */
+                push_r(11);
+                cg(n0[n]); /* 字符串地址 → eax (case STR: mov eax,imm32 占位 + 后 patch) */
+                pop_r(11);
+                asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
+                if (!cg_no_deref) {
+                    asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0,0,0); /* movzx eax, byte[rax] */
+                }
+                break;
+            }
             char *vname = (char*)(nn + n0[n]);
             int off = var_lookup(vname);
             int pesz = var_pesz(vname);

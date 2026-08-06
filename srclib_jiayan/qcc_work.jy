@@ -969,7 +969,7 @@ __attribute__((unused))
 #define MAX_LABELS 16384
 静 整 label_pos[MAX_LABELS];
 静 整 label_set[MAX_LABELS];
-静 构 { 整 patch_at; 整 target_label; 整 is_jmp; } patches[16384]; 整 patch_n;
+静 构 { 整 patch_at; 整 target_label; 整 is_jmp; } patches[65536]; 整 patch_n; /* fix 2026-08-06: 16384→65536 镜像 qcc_x86.c — qcc_work.jy 编译贴上限 */
 静 构 { 整 patch_at; 整 str_idx; } str_patches[2048]; 整 strpn;
 静 构 { 整 patch_at; 整 dbl_idx; } dbl_patches[2048]; 整 dbl_patch_n; /* double-literal rip-relative disp32 patches */
 静 构 { 整 patch_at; 整 label; } fn_patches[2048]; 整 fnpn; /* function-address imm32 patches */
@@ -983,7 +983,7 @@ __attribute__((unused))
 静 整 new_label(空) { 若 (lc >= MAX_LABELS) { fprintf(stderr, "[LABEL-OVERFLOW] lc=%d\n", lc); abort(); } 整 l = lc++; label_set[l] = 0; 返 l; }
 静 空 set_label(整 l) { label_pos[l] = cp; label_set[l] = 1; asm_emit(".L%d:\n", (字*)(长)(整)l, 0, 0); }
 静 空 patch_label(整 at, 整 l, 整 is_jmp) {
-    若 (patch_n >= 16384) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d\n", patch_n); abort(); }
+    若 (patch_n >= 65536) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d\n", patch_n); abort(); }
     /* 跳转文本由 patch_label 统一发射（带真实标签号 .L%d，asm_zh 才能解析） */
     若 (is_jmp == 0) asm_emit("    调用 .L%d\n", (字*)(长)(整)l, 0, 0);
     否 若 (is_jmp == 1) asm_emit("    为零跳 .L%d\n", (字*)(长)(整)l, 0, 0);
@@ -2527,7 +2527,13 @@ __attribute__((unused))
         }
         整 n = Nd(2); nv[n] = MK; Nc(n, Nd(0)); nv[n0[n]] = 0; Nc(n, prim()); 返 n;
     }
-    若 (tt[tk] == STR) { 整 n = Nd(0); nv[n] = tv[tk]; /* str index �?treated as immediate for codegen */ nt[n] = STR; tk++; 返 n; }
+    若 (tt[tk] == STR) { 整 n = Nd(0); nv[n] = tv[tk]; /* str index → treated as immediate for codegen */ nt[n] = STR; tk++;
+        while (tt[tk] == LB) { /* 字符串字面量下标 "abc"[i] (fix 2026-08-06: 原无 suffix chain → 实参解析卡死循环) */
+            tk++; /* [ */
+            整 m = Nd(14); Nc(m, n); Nc(m, expr()); 若 (tt[tk] == RB) tk++; /* ] */
+            n = m;
+        }
+        返 n; }
     返 -1;
 }
 
@@ -5962,7 +5968,19 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             }}
             } /* end n0-is-array else */
         } 断;
-        例 14: { /* array access �?local array / local pointer var / pointer param */
+        例 14: { /* array access — local array / local pointer var / pointer param */
+            若 (nt[n0[n]] == STR) { /* 字符串字面量下标 "abc"[i] (fix 2026-08-06: 镜像 qcc_x86.c — 原走指针参数分支取垃圾地址) */
+                cg(n1[n]); /* index → eax */
+                mov_rr(11, 0); /* r11d = index */
+                push_r(11);
+                cg(n0[n]); /* 字符串地址 → eax (case STR: mov eax,imm32 占位) */
+                pop_r(11);
+                asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
+                若 (!cg_no_deref) {
+                    asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0,0,0); /* movzx eax, byte[rax] */
+                }
+                断;
+            }
             字 *vname = (字*)(nn + n0[n]);
             整 off = var_lookup(vname);
             整 pesz = var_pesz(vname);
