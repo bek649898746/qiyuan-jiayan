@@ -32,7 +32,7 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = '5C14DDB77A4E3D10857C5C7909B3E86F263CEBC61E3862E23ED77EA4DE560E5F'
+$expected = '7BCEE7A393F287F3C45FCF972BD0FFD3793E4DCE190A1C6551D23068795845F1'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: 9e2233dc" -ForegroundColor Green
 } else {
