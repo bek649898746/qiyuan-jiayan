@@ -267,6 +267,7 @@
 若 (strcmp(mn, "乘无64") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { rex(1, 0, 0, r & 8); b(0xF7); modrm(3, 4, r & 7); } 返 1; } /* mul r64（P0） */
 若 (strcmp(mn, "乘即") == 0) { SK(); 整 d = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 s = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (d >= 0 && s >= 0) { rex(1, d & 8, 0, s & 8); 若 (v >= -128 && v <= 127) { b(0x6B); modrm(3, d & 7, s & 7); b(v & 0xff); } 否 { b(0x69); modrm(3, d & 7, s & 7); b4(v); } } 返 1; } /* imul r64,r64,imm（P0） */
     若 (strcmp(mn, "加指针") == 0) { SK(); 若 (strncmp(gp, "rax", 3) == 0) { gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (v >= -128 && v <= 127) { rex(1, 0, 0, 0); b(0x83); modrm(3, 0, 0); b(v & 0xff); } 否 { rex(1, 0, 0, 0); b(0x05); b4(v); } } 返 1; }
+    若 (strcmp(mn, "加即64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); 若 (r >= 0) { rex(1, 0, 0, r & 8); 若 (v >= -128 && v <= 127) { b(0x83); modrm(3, 0, r & 7); b(v & 0xff); } 否 { b(0x81); modrm(3, 0, r & 7); b4(v); } } 返 1; } /* add r64,imm8/imm32 (fix 2026-08-06 cg_struct_copy add rbx,8) */
     若 (strcmp(mn, "扩展符号") == 0) { b(0x99); 返 1; } /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负值高32位为0 → 变无符号除法!) */
     若 (strcmp(mn, "清零") == 0) { SK(); 整 r = RG(); 若 (r == 2 || r < 0) { b(0x31); b(0xD2); } 返 1; }
     若 (strcmp(mn, "测试位") == 0) { SK(); 若 (strncmp(gp, "r0", 2) == 0) { gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = NUM(); rex(1, 0, 0, 0); b(0x0F); b(0xBA); b(0xE0); b(v); } 返 1; }
@@ -293,7 +294,7 @@
     若 (strcmp(mn, "存字节0") == 0) { b(0x41); b(0xC6); modrm(1, 0, 5); b(0); b(0); 返 1; }
     若 (strcmp(mn, "自增") == 0) { 整 r = RG(); 若 (r >= 8) b(0x41); 若 (r >= 0) { b(0xFF); modrm(3, 0, r & 7); } 返 1; }
     若 (strcmp(mn, "存32rax") == 0) { b(0x40); b(0x89); b(0x18); 返 1; }
-    若 (strcmp(mn, "存64") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 v = RG(); 若 (m == 0 && v == 3) { b(0x48); b(0x89); modrm(0, 3, 0); } 否 若 (m == 3) { b(0x48); b(0x89); modrm(0, 0, 3); } 返 1; }
+    若 (strcmp(mn, "存64") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 v = RG(); 若 (m == 0 && v == 3) { b(0x48); b(0x89); modrm(0, 3, 0); } 否 若 (m == 3 && v == 1) { b(0x48); b(0x89); modrm(0, 1, 3); } 否 若 (m == 3) { b(0x48); b(0x89); modrm(0, 0, 3); } 返 1; } /* mov [rax],rbx / mov [rbx],rcx / mov [rbx],rax (fix 2026-08-06 cg_struct_copy) */
     若 (strcmp(mn, "存字节rax") == 0) { b(0x40); b(0x88); b(0x18); 返 1; }
     若 (strcmp(mn, "存字rax") == 0) { b(0x40); b(0x66); b(0x89); b(0x18); 返 1; } /* MOV [rax],bx (short field write fix 2026-08-06) */
     若 (strcmp(mn, "存栈索引") == 0) { b(0x4F); b(0x89); b(0x04); b(0xF4); 返 1; }
