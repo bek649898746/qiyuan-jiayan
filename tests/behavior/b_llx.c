@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:123456789abcdef0
 int printf(const char*, ...);
 int main() {
     printf("%llx\n", 0x123456789abcdef0LL);

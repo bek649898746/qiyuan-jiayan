@@ -295,6 +295,7 @@
     若 (strcmp(mn, "存32rax") == 0) { b(0x40); b(0x89); b(0x18); 返 1; }
     若 (strcmp(mn, "存64") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 v = RG(); 若 (m == 0 && v == 3) { b(0x48); b(0x89); modrm(0, 3, 0); } 否 若 (m == 3) { b(0x48); b(0x89); modrm(0, 0, 3); } 返 1; }
     若 (strcmp(mn, "存字节rax") == 0) { b(0x40); b(0x88); b(0x18); 返 1; }
+    若 (strcmp(mn, "存字rax") == 0) { b(0x40); b(0x66); b(0x89); b(0x18); 返 1; } /* MOV [rax],bx (short field write fix 2026-08-06) */
     若 (strcmp(mn, "存栈索引") == 0) { b(0x4F); b(0x89); b(0x04); b(0xF4); 返 1; }
     若 (strcmp(mn, "跳转") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 2); jmp_rel(0); } 返 1; }
 若 (strcmp(mn, "跳转短") == 0) { 整 li = LR(); 若 (li >= 0) { patch_label(cp + 1, li, 3); b(0xEB); b(0); } 返 1; } /* jmp rel8（P0） */
@@ -382,7 +383,7 @@
     若 (strcmp(mn, "存指32") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 整 sg = 1; 若 (gp[0] == '+') gp = gp + 1; 否 若 (gp[0] == '-') { sg = -1; gp = gp + 1; } 整 ov = NUM() * sg; SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 rr = RG(); 若 (m == 1 && rr == 0) { b(0x89); modrm(1, 0, 1); b(ov); } 返 1; } /* mov [rcx+disp8],eax */
     若 (strcmp(mn, "存指64") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 整 sg = 1; 若 (gp[0] == '+') gp = gp + 1; 否 若 (gp[0] == '-') { sg = -1; gp = gp + 1; } 整 ov = NUM() * sg; SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 rr = RG(); 若 (m == 1 && rr == 0) { b(0x48); b(0x89); modrm(1, 0, 1); b(ov); } 返 1; } /* mov [rcx+disp8],rax (sret copy) */
     若 (strcmp(mn, "存浮") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (m == 3) { b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 3); } 返 1; } /* movsd [rbx],xmm0 */
-    若 (strcmp(mn, "零扩展字") == 0) { SK(); 若 (!strncmp(gp, "r0", 2)) gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = MEM(); b(0x0F); b(0xB7); b(0x85); b4(v); 返 1; } /* movzx eax,word[rbp+disp32] */
+    若 (strcmp(mn, "零扩展字") == 0) { SK(); 若 (!strncmp(gp, "r0", 2)) { gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = MEM(); b(0x0F); b(0xB7); b(0x85); b4(v); } 否 { 整 dst = -1; 若 (!strncmp(gp, "eax", 3)) { dst = 0; gp = gp + 3; } 否 若 (!strncmp(gp, "ecx", 3)) { dst = 1; gp = gp + 3; } 否 若 (!strncmp(gp, "edx", 3)) { dst = 2; gp = gp + 3; } SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 若 (gp[0] == '[') { gp = gp + 1; 整 br = RG(); SK(); 若 (br >= 8) b(0x41); b(0x0F); b(0xB7); modrm(0, dst, br & 7); } 否 { 整 v = MEM(); b(0x0F); b(0xB7); b(0x85); b4(v); } } 返 1; } /* movzx eax,word[rbp+disp32] / eax,word[reg] (short field fix 2026-08-06) */
     若 (strcmp(mn, "零扩展字节") == 0) { SK(); 若 (!strncmp(gp, "r0", 2)) gp = gp + 2; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 v = MEM(); b(0x0F); b(0xB6); b(0x85); b4(v); 返 1; } /* movzx eax,byte[rbp+disp32] */
 
 若 (strcmp(mn, "存32") == 0) { SK(); 若 (gp[0] == '[') gp = gp + 1; 整 m = RG(); SK(); 若 (gp[0] == ']') gp = gp + 1; SK(); 若 (gp[0] == ',') gp = gp + 1; SK(); 整 r = RG(); 若 (r >= 0 && m >= 0) { rex(0, r & 8, 0, m & 8); b(0x89); 若 (m == 4 || m == 12) { modrm(0, r & 7, m & 7); b(0x24); } 否 modrm(0, r & 7, m & 7); } 返 1; }

@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:hi
 int printf(const char*, ...);
 int strcmp2(const char* a, const char* b) {
     while (*a && *a == *b) { a++; b++; }

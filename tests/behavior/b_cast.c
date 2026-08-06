@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:-7
 int printf(const char*, ...);
 int main() {
     int i = -7;

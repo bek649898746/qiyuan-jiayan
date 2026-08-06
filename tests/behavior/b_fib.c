@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:55
 int printf(const char*, ...);
 int fib(int n) { if (n < 2) return n; return fib(n - 1) + fib(n - 2); }
 int fact(int n) { int r = 1, i; for (i = 2; i <= n; i++) r = r * i; return r; }

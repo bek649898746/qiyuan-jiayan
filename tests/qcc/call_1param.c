@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int get(int a) { return 7; }
 int main() {
     int x[5];

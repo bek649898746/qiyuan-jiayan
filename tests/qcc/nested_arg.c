@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int g(int x) { return x; }
 int f(int n) {
     return g(n - 1) + 1;

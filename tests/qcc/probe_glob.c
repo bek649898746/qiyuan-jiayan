@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 static unsigned char *code;
 static int cp, cc;
 static int lc;

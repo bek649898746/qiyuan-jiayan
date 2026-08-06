@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 int get(int a, int b, int *r) { return r[2]; }
 int main() {
     int x[5];

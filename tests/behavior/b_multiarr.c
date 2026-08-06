@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:0 1 2 3
 int printf(const char*, ...);
 int main() {
     int m[3][4];

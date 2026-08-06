@@ -1,3 +1,4 @@
+// @EXPECTED exit:nonzero
 int main() {
     int x[5];
     x[0] = 0x12345678;

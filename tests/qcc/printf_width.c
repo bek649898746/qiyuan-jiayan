@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 #include <stdio.h>
 /* printf %d 宽度填充 + %% 字面输出（根治 2026-08-03） */
 int main() {

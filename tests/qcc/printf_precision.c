@@ -1,3 +1,4 @@
+// @EXPECTED exit:0
 #include <stdio.h>
 /* printf %f 精度 + (int)double调用 转型（根治 2026-08-03）
    覆盖: 精度解析 / 舍入进位 / %.0f / 负数 / 直接与 fnptr double 调用 */
