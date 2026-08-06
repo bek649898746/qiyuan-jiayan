@@ -6919,6 +6919,13 @@ static char *read_file(const char *path) {
             b = malloc(sz + 1);
             fread(b, 1, sz, f);
             b[sz] = 0;
+            /* skip UTF-8 BOM (EF BB BF): qcc lexed it as a CJK identifier
+               (e.g. "主"), corrupting the first token and swallowing main
+               (fix 2026-08-06: `unsigned a>=b; if(...){printf;return;}` crashed) */
+            if (sz >= 3 && (unsigned char)b[0] == 0xEF && (unsigned char)b[1] == 0xBB && (unsigned char)b[2] == 0xBF) {
+                memmove(b, b + 3, sz - 3);
+                b[sz - 3] = 0;
+            }
         }
         fclose(f);
     }
