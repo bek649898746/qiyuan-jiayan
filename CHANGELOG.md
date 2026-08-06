@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## a237624e (2026-08-06)
+**PE .text/.data 重叠修复（fuzz 抓出）+ fuzz 测试体系：新不动点 a237624e（169/169 + 多文件 6/6 + 四核 H1==H2 全绿，fuzz 1100 轮对比 gcc 零差异）**
+
+- **新增 scripts/fuzz_qcc.py**：随机生成 C 子集程序（struct/数组/ll/double/控制流/printf），qcc_x86 vs gcc 输出+退出码对比。审计 P1a 落地
+- **fuzz 抓出真 bug（PE 重叠）**：特定程序（struct double 字段 + %.1f + 数组 + while 组合）产出无效 PE（WinError 193）
+  - 根因：稳定循环在 pass-2 cp 适配基址时 break，但 `gen_final=1` 最终代与稳定循环的代有细微状态差异（call 帧分配 push/sub 变体、RIP 位移编码切换，实测 +11 字节）→ 最终 cp 越过 data_rva_base → .text（0x1000..0x8000）与 .data（0x7000）重叠
+  - 修复：最终代后复查越界，越界则提高基址静默重稳定 + 截断重发最终代（-S 文本只留一份）；C/jy 双版
+- **生成器防误报**：struct 字段复用同一名字、函数实参按 arity、初始化全部读取元素、char 值限 0..127（qcc 的 char 是 unsigned 约定，实现定义差异已记录）
+- **已知镜像缺口（记录）**：.jy 自宿主编译器 double 字面量/字段存储崩溃（`double d = 3.5` 即崩，基线存在，C 版正常）
+
 ## ebd2b49f (2026-08-06)
 **镜像缺口闭合：GEN1==GEN2==GEN3 全等恢复（P0 修复）**
 

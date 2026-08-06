@@ -1212,6 +1212,7 @@ __attribute__((unused))
 }
 /* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 静 整 data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
+静 字 asm_name[512]; /* -S 模式 asm 文件名 (最终代越界重稳定时截断重开用, fix 2026-08-06) */
 静 整 stc_disp(整 idx) { 返 (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
 静 整 iat_disp_at(整 at, 整 slot) { 整 iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); 返 (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32 / IAT2@+0x50 msvcrt（fix 2026-08-06 BUG-1） */
@@ -6887,6 +6888,7 @@ __attribute__((unused))
     若 (asm_mode) {
         字 af[512]; strcpy(af, outf);
         strcat(af, ".asm"); /* fix 2026-08-05：原去掉 .exe 再拼 .asm → `qcc -S f.c` 写 a.asm 却打印 a.exe.asm；现统一 outf+".asm" */
+        strcpy(asm_name, af); /* fix 2026-08-06: 最终代越界重稳定时截断重开 asm 文件 */
         asm_out = fopen(af, "wb");
     }
 
@@ -7004,6 +7006,21 @@ __attribute__((unused))
     gen_final = 1;
     gen_code();
     gen_final = 0;
+    /* fix 2026-08-06: gen_final=1 最终代与稳定循环的代可有细微状态差异 (call 帧分配
+       push/sub 变体、RIP 位移编码切换, 实测可 +11 字节) → cp 越过 data_rva_base →
+       .text 与 .data 重叠 → 生成无效 PE (WinError 193). 越界则提高基址重稳定,
+       并截断重发最终代 (asm 文本必须只留一份). */
+    遍 (整 it = 0; it < 8; it++) {
+        整 nb = (0x1000 + cp + 4095) & ~4095;
+        若 (nb < 0x2000) nb = 0x2000;
+        若 (nb == data_rva_base) 断;
+        data_rva_base = nb;
+        gen_code(); /* 静默重稳定 (gen_final=0, 不写 asm 文本) */
+        gen_final = 1;
+        若 (asm_name[0]) { 若 (asm_out) fclose(asm_out); asm_out = fopen(asm_name, "wb"); } /* 截断: 只留最终一份 -S 文本 */
+        gen_code();
+        gen_final = 0;
+    }
     asm_pass = 0;
 
     /* ??PE */
