@@ -289,6 +289,13 @@ __attribute__((unused))
     返 0;
 }
 
+/* 第N行: 计算源码 pos 处的行号 (fix 2026-08-06 Task 5.3 中文诊断, 镜像 qcc_x86.c) */
+静 整 rt_line_skip = 0; /* prepend 的 qcc_rt.c 行数 (用户源码行号校正) */
+静 整 line_at(常 字 *s, 整 pos) {
+    整 ln = 1;
+    遍 (整 k = 0; k < pos && s[k]; k++) 若 (s[k] == '\n') ln++;
+    返 ln - rt_line_skip;
+}
 /* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
 静 字 *pp_include_expand(常 字 *src, 整 depth) {
     若 (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
@@ -345,7 +352,7 @@ __attribute__((unused))
                     fname[fi] = 0;
                     若 (fi > 0) {
                         字 *fc = read_file(fname);
-                        若 (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        若 (!fc) { fprintf(stderr, "[ERR] 第%d行 #include: 找不到文件 '%s'\n", line_at(src, (整)(p - src)), fname); exit(1); } /* fix 2026-08-06 Task 5.3: 行号定位 */
                         字 *exp = pp_include_expand(fc, depth + 1);
                         free(fc);
                         整 el = strlen(exp);
@@ -1976,7 +1983,7 @@ __attribute__((unused))
                 字 em[512]; 整 ei = 0;
                 循环 (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
                 em[ei] = 0;
-                fprintf(stderr, "[ERR] #error: %s\n", em);
+                fprintf(stderr, "[ERR] 第%d行 #error: %s\n", line_at(s, i), em); /* fix 2026-08-06 Task 5.3: 行号定位 */
                 exit(1);
             }
             若 (is_def) {
@@ -6805,6 +6812,7 @@ __attribute__((unused))
         若 (rtb) {
             整 rl = (整)strlen(rtb);
             整 al = (整)strlen(src);
+            rt_line_skip = 1; 遍 (整 rk = 0; rk < rl; rk++) 若 (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
             字 *combined2 = malloc(rl + al + 2);
             memcpy(combined2, rtb, rl);
             combined2[rl] = '\n';

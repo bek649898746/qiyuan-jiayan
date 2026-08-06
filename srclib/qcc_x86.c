@@ -350,6 +350,13 @@ static char *pp_read_file(const char *path) {
     buf[rd] = 0; fclose(f);
     return buf;
 }
+/* 第N行: 计算源码 pos 处的行号 (fix 2026-08-06 Task 5.3 中文诊断) */
+static int rt_line_skip = 0; /* prepend 的 qcc_rt.c 行数 (用户源码行号校正) */
+static int line_at(const char *s, int pos) {
+    int ln = 1;
+    for (int k = 0; k < pos && s[k]; k++) if (s[k] == '\n') ln++;
+    return ln - rt_line_skip;
+}
 static char *pp_include_expand(const char *src, int depth) {
     if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
     int cap = (int)strlen(src) + 16384;
@@ -405,7 +412,7 @@ static char *pp_include_expand(const char *src, int depth) {
                     fname[fi] = 0;
                     if (fi > 0) {
                         char *fc = pp_read_file(fname);
-                        if (!fc) { fprintf(stderr, "[ERR] #include: 找不到文件 '%s'\n", fname); exit(1); }
+                        if (!fc) { fprintf(stderr, "[ERR] 第%d行 #include: 找不到文件 '%s'\n", line_at(src, (int)(p - src)), fname); exit(1); } /* fix 2026-08-06 Task 5.3: 行号定位 */
                         char *exp = pp_include_expand(fc, depth + 1);
                         free(fc);
                         int el = (int)strlen(exp);
@@ -2164,7 +2171,7 @@ static void lex(const char *s) {
                 char em[512]; int ei = 0;
                 while (s[p] && s[p] != '\n' && ei < 510) em[ei++] = s[p++];
                 em[ei] = 0;
-                fprintf(stderr, "[ERR] #error: %s\n", em);
+                fprintf(stderr, "[ERR] 第%d行 #error: %s\n", line_at(s, i), em); /* fix 2026-08-06 Task 5.3: 行号定位 */
                 exit(1);
             }
             if (is_def) {
@@ -7303,6 +7310,7 @@ int main(int argc, char **argv) {
         if (rtb) {
             int rl = (int)strlen(rtb);
             int al = (int)strlen(src);
+            rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
             char *combined2 = malloc(rl + al + 2);
             memcpy(combined2, rtb, rl);
             combined2[rl] = '\n';
