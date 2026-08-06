@@ -1366,6 +1366,7 @@ static int var_static_struct(const char *n, int si, int count) {
 }
 /* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
 static int data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
+static char asm_name[512]; /* -S 模式 asm 文件名 (最终代越界重稳定时截断重开用, fix 2026-08-06) */
 static int stc_disp(int idx) { return (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
 static int iat_disp_at(int at, int slot) { int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); return (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32 / IAT2@+0x50 msvcrt（fix 2026-08-06 BUG-1） */
@@ -7399,6 +7400,7 @@ int main(int argc, char **argv) {
     if (asm_mode) {
         char af[512]; strcpy(af, outf);
         strcat(af, ".asm"); /* fix 2026-08-05: was stripping ".exe" then appending → `qcc -S f.c` wrote a.asm but printed a.exe.asm (misleading); now always outf+".asm" */
+        strcpy(asm_name, af); /* fix 2026-08-06: 最终代越界重稳定时需截断重开 asm 文件 */
         asm_out = fopen(af, "wb");
     }
 
@@ -7524,6 +7526,21 @@ int main(int argc, char **argv) {
         gen_final = 1;
         gen_code();
         gen_final = 0;
+        /* fix 2026-08-06: gen_final=1 最终代与稳定循环的代可有细微状态差异 (call 帧分配
+           push/sub 变体、RIP 位移编码切换, 实测可 +11 字节) → cp 越过 data_rva_base →
+           .text 与 .data 重叠 → 生成无效 PE (WinError 193). 越界则提高基址重稳定,
+           并截断重发最终代 (asm 文本必须只留一份). */
+        for (int it = 0; it < 8; it++) {
+            int nb = (0x1000 + cp + 4095) & ~4095;
+            if (nb < 0x2000) nb = 0x2000;
+            if (nb == data_rva_base) break;
+            data_rva_base = nb;
+            gen_code(); /* 静默重稳定 (gen_final=0, 不写 asm 文本) */
+            gen_final = 1;
+            if (asm_name[0]) { if (asm_out) fclose(asm_out); asm_out = fopen(asm_name, "wb"); } /* 截断: 只留最终一份 -S 文本 */
+            gen_code();
+            gen_final = 0;
+        }
         asm_pass = 0;
     }
 

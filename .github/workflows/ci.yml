@@ -4,9 +4,9 @@ name: qiyuan-ci
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, main ]
 
 jobs:
   build-verify:
@@ -24,7 +24,7 @@ jobs:
       - name: 编译器自检
         run: qcc_x86.exe --test
 
-      - name: 167 行为断言
+      - name: 170 行为断言
         run: python scripts/run_tests.py
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
