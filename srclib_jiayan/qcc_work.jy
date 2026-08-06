@@ -2522,7 +2522,8 @@ __attribute__((unused))
                 整 m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } 否 若 (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 镜像 qcc_x86.c — f()[0] 的 [0] 原悬空) */
-                tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                整 callee1 = n; tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                若 (nt[callee1] == 1 && fn_dbl_get_ret((字*)(nn + callee1))) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 qcc_x86.c, 跨 .o 参数判断) */
             } 否 断;
         }
         返 n; }
@@ -2564,7 +2565,9 @@ __attribute__((unused))
             否 若 (tt[tk] == DT || tt[tk] == AR) {
                 整 ar = (tt[tk] == AR); tk++;
                 若 (tt[tk] == VR) { 整 m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((字*)(nn + m), tn[tk], 32); tk++; n = m; } 否 断;
-            } 否 若 (tt[tk] == OK) { tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c; }
+            } 否 若 (tt[tk] == OK) { 整 callee2 = n; tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                若 (nt[callee2] == 1 && fn_dbl_get_ret((字*)(nn + callee2))) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像) */
+            }
             否 断;
         }
         返 n;
