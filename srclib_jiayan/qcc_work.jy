@@ -2488,9 +2488,11 @@ __attribute__((unused))
                 整 is_dec = (tt[tk] == MM); tk++;
                 整 m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
+            } 否 若 (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 镜像 qcc_x86.c — f()[0] 的 [0] 原悬空) */
+                tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
             } 否 断;
         }
-        若 (tt[tk] == OK) { tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); 返 c; } 返 n; }
+        返 n; }
     若 (tt[tk] == OK) {
         /* type cast: (type)expr �?type keywords/struct/typedef then ) */
         若 (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
@@ -5985,6 +5987,18 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 mov_rr(11, 0); /* r11d = index */
                 push_r(11);
                 cg(n0[n]); /* 字符串地址 → eax (case STR: mov eax,imm32 占位) */
+                pop_r(11);
+                asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
+                若 (!cg_no_deref) {
+                    asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0,0,0); /* movzx eax, byte[rax] */
+                }
+                断;
+            }
+            若 (nt[n0[n]] == 4) { /* 函数调用返回指针 f()[i] (fix 2026-08-06: 镜像 qcc_x86.c — 按 char* 元素) */
+                cg(n1[n]); /* index → eax */
+                mov_rr(11, 0); /* r11d = index */
+                push_r(11);
+                cg(n0[n]); /* 调用 → 指针 rax */
                 pop_r(11);
                 asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
                 若 (!cg_no_deref) {
