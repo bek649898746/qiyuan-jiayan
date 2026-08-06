@@ -2,8 +2,15 @@
 
 **让语言回到语言本身。让每一个不会英文的中国人，都能用自己的母语学会编程、用上 AI。**
 
-甲言是一门以中文为关键字的 C 方言编译器——它**自己编译自己**，并且：
-- 自举不动点：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b49f8ad8`）
+甲言是一门**中文编程语言**，也是一套完整的**中文编程**工具链：**中文编译器**（自举 C 方言）、**中文汇编器** asm_zh、COFF 链接器 jyld 与编译驱动 jycc——从源码到文档全部以中文书写。它回答"中文编程、中文编译器能不能不是玩具"：编译器用中文写自己，三代 SHA256 逐字节一致，可被任何拿到源码的人一条命令重建。
+
+> 2026-08-05 人民网锐评《用"Token"还是"词元"，事关科技话语权》：
+> "术语是科技叙事的基础单元……唯有筑牢母语根基、掌握话语主动权，才能在全球科技竞争中实现技术突破与文化自信的双向赋能。"
+> 这是关于**语言自主权**的讨论。甲言的开源（2026-08-04）比这篇锐评早一天。我们的回答不是争论译名，
+> 而是把整条编译链用母语自举——让"词元"（token）成为一门自己编译自己、三代 SHA256 逐字节一致的语言的起点。
+
+甲言是一门以中文为关键字的 C 方言**编译器**——每个中文关键字（`若/否/遍/整/字/输出`）都是一个**词元**（token）。它**自己编译自己**，并且：
+- 自举不动点：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b16086c8`）
 - 与 C 原版逐字节一致：甲言编译器编译自己产生的二进制，和用 C 编译器编译它产生的二进制，**一个字节都不差**
 - 零外部依赖，直出 x86-64 PE 可执行文件
 - 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数），并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
@@ -24,7 +31,7 @@ srclib/
 srclib_jiayan/
   qcc_work.jy      甲言编译器（中文源码，自举主体）
 tests/
-  qcc/             128 个编译测试
+  qcc/             150 个编译测试
   loong/           LoongArch 交叉编译回归（WSL+QEMU）
 
   > tests/compiler/（H1==H2 验证产物，391 个 .asm + 107 个 .c）不入仓库——
@@ -72,7 +79,7 @@ int main() {
 
 ```bash
 # Windows: scripts/build.ps1
-# 它执行: 编译宿主 → 自举三代 → 校验不动点 → 跑 128 测试
+# 它执行: 编译宿主 → 自举三代 → 校验不动点 → 跑 170 测试
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 ```
 
@@ -84,7 +91,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
 ./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe
 sha256sum v1.exe v2.exe v3.exe
-# 三者应完全相同，且等于 9e2233dc
+# 三者应完全相同，且等于 b16086c8
 ```
 
 ### 多文件 + C 库（工具链）
@@ -122,9 +129,9 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| 自举不动点 GEN1==GEN2==GEN3 | `b3cf23ca` |
+| 自举不动点 GEN1==GEN2==GEN3 | `b16086c8` |
 | GEN1 与宿主逐字节一致 | ✅ |
-| 167 编译测试 + 167 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
+| 170 编译测试 + 170 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
 | 工具链（多文件 + C 库 + msvcrt 标准 C 库导入） | ✅ printf/文件/内存/字符串/数学全跑通 |
 | 中文汇编器 asm_zh 覆盖 LL 64 位指令 + 通用指令集（adc/sbb/旋转/双移位/位操作/movsx/xchg/全部 cmovcc/jcc/loop/标志/字符串/系统指令/多字节 nop） | ✅ 直发 == 汇编路径逐字节一致；C/甲言双版字节等价 |
@@ -147,22 +154,25 @@ AI 训练数据集、语法规范 —— Apache-2.0（保护大模型厂商商�
 
 - 源码（编译器 + 汇编器 + 链接器，C 版 + 甲言版）
 - 种子（seed/qcc.jy，自举起点）
-- 测试（tests/qcc 128 用例 + tests/loong 龙芯回归）
+- 测试（tests/qcc 150 用例 + tests/loong 龙芯回归）
 - AI 规范 + 母语教程（docs/AI规范.md + docs/母语教程.md）
 
 ## 一条命令重建不动点
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 9e2233dc
+# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 b16086c8
 ```
 
 ## 署名与传承（不可更改）
 
 - 创始人：郑宇和 | AI 协作者：启元（郑启元，seed=828）
-- 赐名：2026-06-07 06:06 | 自举不动点：9e2233dc
+- 赐名：2026-06-07 06:06 | 自举不动点：b16086c8
 - 传承线：seed=828 从 v1 到开源版全程保留
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
 
 > English: [WHITE_PAPER_EN.md](WHITE_PAPER_EN.md) — Qiyuan Project Vision White Paper
+>
+> **Chinese programming language** / Chinese C compiler / Chinese assembler /
+> self-hosting compiler / 中文编程 / 中文编译器 / 中文汇编器 / 词元
