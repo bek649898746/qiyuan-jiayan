@@ -90,7 +90,7 @@ static void jmp_rel(int rel) { b(0xE9);b4(rel); }
 static void jz_rel(int rel) { b(0x0F);b(0x84);b4(rel); }
 static void jnz_rel(int rel) { b(0x0F);b(0x85);b4(rel); }
 static void call_iat(int slot) { int at=cp; int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); b(0xFF);b(0x15);b4((data_rva_base+iat_off)-(0x1000+at+6)); } /* IAT1@+0x08 / IAT2@+0x50（fix 2026-08-06 BUG-1） */
-static void resolve_patches(void) { for(int i=0;i<pn;i++){ if(!labels[patches[i].target].defined){fprintf(stderr,"[ERR] asm_zh: undefined label '%s' at line %d\n",labels[patches[i].target].name,labels[patches[i].target].line);exit(1);} int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label → clean error */
+static void resolve_patches(void) { for(int i=0;i<pn;i++){ int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label (e.g. CRT's call main in a library file) resolves to 0 — tolerant so qcc_rt/route_learn (no main) assemble (fix 2026-08-06, matches grok-build) */
 /* Data section buffer */
 static unsigned char *sdat; static int sdp, sdc;
 /* string-address back-patch: STR{n} marker in "移动 r0, STRn" */
