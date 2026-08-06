@@ -737,9 +737,13 @@ static void alu_rr(int op, int dst, int src) {
     else if (op == 48) asm_emit("    异或 r%d, r%d\n", (char*)(long long)(dst), (char*)(long long)(src), (char*)(long long)0);
     else if (op == T_DV || op == T_MD) { /* 除: expanded as 扩展符号 + 整除 r9 (explicit texts) */ }
     if (op == T_SH || op == T_SR) {
-        /* fix: ASM text order must match byte order (mov ecx,eax emitted first) */
+        /* fix: ASM text order must match byte order (mov ecx,eax emitted first).
+           T_SR: emit ONE text+byte pair below (逻辑右移/SHR or 算术右移/SAR) — the
+           generic `右移` line here would DOUBLE the text (H2 emitted 2× SAR → H1≠H2,
+           fix 2026-08-06, matches grok-build's single emission). */
         mov_rr(1, 0); /* ecx = shift count */
         if (op == T_SH) asm_emit("    左移 r%d, cl\n", (char*)(long long)(dst), (char*)(long long)0, (char*)(long long)0);
+        else if (op == T_SR) { /* fallthrough to the SHR/SAR line below */ }
         else asm_emit("    右移 r%d, cl\n", (char*)(long long)(dst), (char*)(long long)0, (char*)(long long)0);
         /* unsigned operand >> → SHR (logical); signed → SAR (fix 2026-08-05: always SAR) */
         if (op == T_SR) {
