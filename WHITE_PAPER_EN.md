@@ -24,6 +24,17 @@ byte-comparable.
 Not a "simplified version". Not a "toy". Not a "wrapper".
 It is 0s and 1s speaking Chinese.
 
+On 2026-08-05, People's Daily published a commentary titled
+"Token or 词元 (cīyuán) — A Matter of Scientific Discourse Power":
+"Terms are the basic unit of scientific narrative... Only by securing our
+mother-tongue foundation and grasping the initiative in discourse can we
+achieve a two-way empowerment of technological breakthrough and cultural
+confidence." Jiayan's open-source release (2026-08-04) predates that
+commentary by one day. Our answer to the debate is not about translating
+a term — it is a self-bootstrapping language whose every token, keyword,
+and codebase speaks Chinese, with a three-generation SHA256-identical
+fixpoint as proof.
+
 
 ================================================================
 [I. WHY WE DO THIS: A DOOR THAT REALLY EXISTS]
