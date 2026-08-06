@@ -273,7 +273,7 @@ static int asm_assemble(const char *src, int base, int emit_data) {
      else if(!strcmp(mn,"乘即")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,d&8,0,s&8);if(v>=-128&&v<=127){b(0x6B);modrm(3,d&7,s&7);b(v&0xff);}else{b(0x69);modrm(3,d&7,s&7);b4(v);}}} /* imul r64,r64,imm (P0) */
         else if(!strcmp(mn,"加指针")){SK;if(!strncmp(p,"rax",3)){p+=3;SK;if(*p==',')p++;int v=NUM;if(v>=-128&&v<=127){rex(1,0,0,0);b(0x83);modrm(3,0,0);b(v&0xff);}else{rex(1,0,0,0);b(0x05);b4(v);}}} /* add rax,imm */
         else if(!strcmp(mn,"浮取参")){b(0xF2);b(0x41);b(0x0F);b(0x10);b(0x45);b(0x00);} /* movsd xmm0,[r13] */
-        else if(!strcmp(mn,"扩展符号")){b(0x48);b(0x99);} /* CQO */
+        else if(!strcmp(mn,"扩展符号")){b(0x99);} /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负数高32位为0 → 变无符号除法) */
         else if(!strcmp(mn,"减即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0x83);modrm(3,5,r&7);b(v);}} /* sub r,imm8 */
         else if(!strcmp(mn,"运即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);if(v>=-128&&v<=127){b(0x83);modrm(3,0,r&7);b(v&0xff);}else{b(0x81);modrm(3,0,r&7);b4(v);}}}
      else if(!strcmp(mn,"加带进")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x11);modrm(3,s&7,d&7);}} /* adc r32,r32 (P0) */
@@ -290,6 +290,8 @@ static int asm_assemble(const char *src, int base, int emit_data) {
      else if(!strcmp(mn,"除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0x99);b(0x48);b(0xF7);modrm(3,7,r&7);}} /* cqo; idiv r64（qcc 文本自带「移64 r0, r2」取余数；fix 2026-08-05） */
      else if(!strcmp(mn,"整除")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,7,r&7);}} /* idiv r */
         else if(!strcmp(mn,"无符号除")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);b(0xF7);modrm(3,6,r&7);}} /* div r (unsigned; fix 2026-08-05: qcc emit_hex_digits emits it for %x, was missing → -S path silently dropped it) */
+else if(!strcmp(mn,"无符号除64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);modrm(3,6,r&7);}} /* div r64 (unsigned LL; fix 2026-08-06 M1) */
+else if(!strcmp(mn,"无符号除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);modrm(3,6,r&7);}} /* div r64, rax=rdx 取余（qcc 文本自带「移64 r0, r2」; fix 2026-08-06 M1） */
         else if(!strcmp(mn,"加字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,0,r&7);b(v);}} /* add r8,imm8 */
         else if(!strcmp(mn,"减字节")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){b(0x80);modrm(3,5,r&7);b(v);}} /* sub r8,imm8 */
      else if(!strcmp(mn,"双左移")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xA4);modrm(3,s&7,d&7);b(v&0xff);}} /* shld r/m32,r32,imm8 (P0) */
@@ -348,7 +350,8 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"减")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(6,d,s);}
         else if(!strcmp(mn,"乘")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(7,d,s);}
         else if(!strcmp(mn,"比较")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(8,d,s);}
-        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);}
+        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);} else if(!strcmp(mn,"测试64")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x85);modrm(3,s&7,d&7);}} /* test r64,r64 (fix 2026-08-06 %lld) */
+        else if(!strcmp(mn,"符号扩展")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){b(0x48);b(0x63);modrm(3,d&7,s&7);}} /* movsxd r64,r32 (fix 2026-08-06 (long long)int) */
         else if(!strcmp(mn,"测试al")){b(0x84);b(0xC0);}
         else if(!strcmp(mn,"置等")){setcc(8);}
         else if(!strcmp(mn,"置不等")){setcc(10);}
@@ -452,7 +455,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,".堆计")){int v=NUM;if(v>0)asm_stc_n=v;}
         else if(!strcmp(mn,".布局")){SK;if(!strncmp(p,"code_end=",9)){p+=9;exp_code_end=NUM;}SK;if(!strncmp(p,"data_base=0x",12)||!strncmp(p,"data_base=0X",12)){p+=12;exp_data_base=(int)strtoul(p,NULL,16);}}
         else if(!strcmp(mn,".字串")){SK;if(*p=='"'){if(str_cnt2<1024)str_offs2[str_cnt2++]=sdp;p++;while(*p&&*p!='"'){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=*p;if(*p=='\\'&&p[1]&&p[1]=='n'){p++;sdp--;sdat[sdp++]=10;}else if(*p=='\\'&&p[1]&&p[1]=='t'){p++;sdp--;sdat[sdp++]=9;}else if(*p=='\\'&&p[1]&&p[1]=='"'){p++;sdp--;sdat[sdp++]=34;}else if(*p=='\\'&&p[1]&&p[1]=='\\'){p++;sdp--;sdat[sdp++]=92;}p++;}sdat[sdp++]=0;if(*p=='"')p++;}}
-        else if(!strcmp(mn,".浮点")){while(sdp%8!=0){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=0;}if(dbl_cnt2<1024)dbl_offs2[dbl_cnt2++]=sdp;SK;double v=0;int sign=1;if(*p=='-'){sign=-1;p++;}while(*p>='0'&&*p<='9'){v=v*10+(*p-'0');p++;}if(*p=='.'){p++;double fr=0.1;while(*p>='0'&&*p<='9'){v+=(*p-'0')*fr;fr*=0.1;p++;}}v*=sign;unsigned char*db=(unsigned char*)&v;for(int k=0;k<8;k++){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=db[k];}}
+        else if(!strcmp(mn,".浮点")){while(sdp%8!=0){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=0;}if(dbl_cnt2<1024)dbl_offs2[dbl_cnt2++]=sdp;SK;double v=0;int sign=1;if(*p=='-'){sign=-1;p++;}while(*p>='0'&&*p<='9'){v=v*10+(*p-'0');p++;}if(*p=='.'){p++;double fr=0,sc=1;while(*p>='0'&&*p<='9'){fr=fr*10+(*p-'0');sc*=10;p++;}v+=fr/sc;/* fix 2026-08-06: 整数累加+单次除法，消除 fr*=0.1 累积误差（与 qcc fp_parse 同构）。6.123000 再解析 = ...CB 与直发一致，旧法 ...CA 差 1 ULP */}v*=sign;unsigned char*db=(unsigned char*)&v;for(int k=0;k<8;k++){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=db[k];}}
         else { fprintf(stderr, "[ERR] asm_zh: unknown instruction '%s' at line %d\n", mn, line_no); exit(1); } /* fix 2026-08-05: unknown mnemonics were silently dropped → broken exe */
         while(*p&&*p!='\n'){p++;} if(*p=='\n'){p++;line_no++;}
     }
