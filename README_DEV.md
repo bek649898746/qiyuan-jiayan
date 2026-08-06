@@ -5,13 +5,14 @@
 ## 1. 一句话看懂架构
 
 ```
-srclib/qcc_x86.c        ← 编译器 C 原版（宿主，gcc 编译）
+srclib/qcc_x86.c        ← 编译器 C 原版（验证宿主，gcc 编译，用于 H1==H2 验证）
 srclib_jiayan/qcc_work.jy ← 编译器甲言版（中文关键字，自举主体）
 ```
 
 **这两个文件是逐字节逻辑镜像**：同一份编译器，两种语言外壳。
-qcc_x86.c 由 gcc 编译成宿主 qcc_x86.exe；qcc_x86.exe 编译 qcc_work.jy 生成 cf_1；
+qcc_x86.c 由 gcc 编译成验证宿主 qcc_x86.exe；qcc_x86.exe 编译 qcc_work.jy 生成 cf_1；
 cf_1 再编译 qcc_work.jy 生成 cf_2 —— cf_1 == cf_2 == cf_3（SHA 一致）= 自举不动点。
+甲言真正的宿主是 seed/qcc.jy 种子，gcc 只用于重建验证宿主。
 
 ## 2. 铁律（违反任何一条 = 破坏不动点）
 
