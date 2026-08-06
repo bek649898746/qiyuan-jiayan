@@ -350,8 +350,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"减")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(6,d,s);}
         else if(!strcmp(mn,"乘")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(7,d,s);}
         else if(!strcmp(mn,"比较")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(8,d,s);}
-        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);} else if(!strcmp(mn,"测试64")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x85);modrm(3,s&7,d&7);}} /* test r64,r64 (fix 2026-08-06 %lld) */
-        else if(!strcmp(mn,"符号扩展")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){b(0x48);b(0x63);modrm(3,d&7,s&7);}} /* movsxd r64,r32 (fix 2026-08-06 (long long)int) */
+        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);}
         else if(!strcmp(mn,"测试al")){b(0x84);b(0xC0);}
         else if(!strcmp(mn,"置等")){setcc(8);}
         else if(!strcmp(mn,"置不等")){setcc(10);}
