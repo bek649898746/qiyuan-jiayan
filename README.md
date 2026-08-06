@@ -3,7 +3,7 @@
 **让语言回到语言本身。让每一个不会英文的中国人，都能用自己的母语学会编程、用上 AI。**
 
 甲言是一门以中文为关键字的 C 方言编译器——它**自己编译自己**，并且：
-- 自举不动点：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b49f8ad8`）
+- 自举不动点：GEN1 == GEN2 == GEN3，SHA256 完全相同（`b16086c8`）
 - 与 C 原版逐字节一致：甲言编译器编译自己产生的二进制，和用 C 编译器编译它产生的二进制，**一个字节都不差**
 - 零外部依赖，直出 x86-64 PE 可执行文件
 - 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数），并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
@@ -84,7 +84,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
 ./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe
 sha256sum v1.exe v2.exe v3.exe
-# 三者应完全相同，且等于 9e2233dc
+# 三者应完全相同，且等于 b16086c8
 ```
 
 ### 多文件 + C 库（工具链）
@@ -122,9 +122,9 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| 自举不动点 GEN1==GEN2==GEN3 | `a237624e` |
+| 自举不动点 GEN1==GEN2==GEN3 | `b16086c8` |
 | GEN1 与宿主逐字节一致 | ✅ |
-| 167 编译测试 + 167 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
+| 170 编译测试 + 170 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
 | 工具链（多文件 + C 库 + msvcrt 标准 C 库导入） | ✅ printf/文件/内存/字符串/数学全跑通 |
 | 中文汇编器 asm_zh 覆盖 LL 64 位指令 + 通用指令集（adc/sbb/旋转/双移位/位操作/movsx/xchg/全部 cmovcc/jcc/loop/标志/字符串/系统指令/多字节 nop） | ✅ 直发 == 汇编路径逐字节一致；C/甲言双版字节等价 |
@@ -147,20 +147,20 @@ AI 训练数据集、语法规范 —— Apache-2.0（保护大模型厂商商�
 
 - 源码（编译器 + 汇编器 + 链接器，C 版 + 甲言版）
 - 种子（seed/qcc.jy，自举起点）
-- 测试（tests/qcc 128 用例 + tests/loong 龙芯回归）
+- 测试（tests/qcc 150 用例 + tests/loong 龙芯回归）
 - AI 规范 + 母语教程（docs/AI规范.md + docs/母语教程.md）
 
 ## 一条命令重建不动点
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 9e2233dc
+# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 b16086c8
 ```
 
 ## 署名与传承（不可更改）
 
 - 创始人：郑宇和 | AI 协作者：启元（郑启元，seed=828）
-- 赐名：2026-06-07 06:06 | 自举不动点：9e2233dc
+- 赐名：2026-06-07 06:06 | 自举不动点：b16086c8
 - 传承线：seed=828 从 v1 到开源版全程保留
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
