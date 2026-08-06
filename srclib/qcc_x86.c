@@ -2591,7 +2591,7 @@ static int stmt(void);
 static int expr(void);
 
 static int prim(void) {
-    if (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
+        if (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
         int is_dec = (tt[tk] == MM); tk++;
         int v = prim();
         int m = Nd(26); nv[m] = is_dec; Nc(m, v);
@@ -2702,7 +2702,7 @@ static int prim(void) {
         int ev = e_lookup(tn[tk]);
         if (ev >= 0) { tk++; int n = Nd(0); nv[n] = ev; return n; }
         int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 32); tk++;
-        if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
+                if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         if (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
         if (var_is_uns(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nuns[n] = 1; /* unsigned VARIABLE (fix 2026-08-06: (long long)u 必须零扩展, movsxd 判断靠 nuns) */
         /* suffix chain: arr[expr] / .field / ->field (repeatable) */
@@ -2734,7 +2734,8 @@ static int prim(void) {
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                if (nt[callee] == 1 && fn_dbl_get_ret((char*)(nn + callee))) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0) */
             } else break;
         }
         return n; }
@@ -2779,7 +2780,9 @@ static int prim(void) {
             else if (tt[tk] == DT || tt[tk] == AR) {
                 int ar = (tt[tk] == AR); tk++;
                 if (tt[tk] == VR) { int m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 32); tk++; n = m; } else break;
-            } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c; }
+            } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c;
+                if (nt[callee] == 1 && fn_dbl_get_ret((char*)(nn + callee))) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737) */
+            }
             else break;
         }
         return n;
@@ -4333,8 +4336,7 @@ static void cg_f(int n) {
     if (t == 4) { /* function call: double-returning callee leaves xmm0; int callee → convert */
         char *cfn = NULL;
         for (int i = 19; i >= 0; i--) { int c = child_i(n, i); if (c >= 0 && nt[c] == 1) { cfn = (char*)(nn + c); break; } }
-        cg(n); /* emits the call */
-        if (cfn && fn_dbl_get_ret(cfn)) { /* known double-returning callee: xmm0 already holds it */
+        cg(n); /* emits the call */        if (cfn && fn_dbl_get_ret(cfn)) { /* known double-returning callee: xmm0 already holds it */
         } else if (ndbl[n]) { /* marked double call (incl. fnptr): leave xmm0 as-is */
         } else cvtsi2sd_xmm0_eax();
         return;
