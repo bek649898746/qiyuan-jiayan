@@ -32,7 +32,8 @@ tests/
   > 或运行 scripts/build.ps1 重新生成。
 seed/
   qcc.jy           种子版甲言编译器源码
-  *_seed.exe       种子构建产物（历史不动点证据）
+  qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码
+  （种子构建产物 .exe 不入仓库——存种子不存果实，可 gcc 从源码重建）
 jiayan_engines/
   *.jy             甲言化引擎（纯 C 整数引擎翻译，编译+运行验证通过）
 releases/
