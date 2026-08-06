@@ -2709,7 +2709,16 @@ static int prim(void) {
                codegen (root-cause 2026-08-03: ndbl[ce] alone missed them → no-op cast). */
             if (cast_ty && !strcmp(cast_ty, "int") && (ndbl[ce] || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; return m; }
             if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
-            
+            /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
+            while (1) {
+                if (tt[tk] == LB) {
+                    tk++; int m = Nd(14); Nc(m, ce); Nc(m, expr()); if (tt[tk] == RB) tk++; ce = m;
+                } else if (tt[tk] == DT || tt[tk] == AR) {
+                    int ar = (tt[tk] == AR); tk++;
+                    if (tt[tk] == VR) { int m = Nd(15); Nc(m, ce); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 32); tk++; ce = m; } else break;
+                } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, ce); ce = c; }
+                else break;
+            }
             return ce; /* cast is no-op: value unchanged */
         }
         tk++; int n = expr();
@@ -2718,10 +2727,14 @@ static int prim(void) {
            (f(a, b)) must stay separate (the call parser consumes the CK). */
         while (tt[tk] == CK) { tk++; int a = Nd(2); nv[a] = CK; Nc(a, n); Nc(a, expr()); n = a; }
         tk++;
-        if (tt[tk] == OK) { /* call on a parenthesized expr: (*fp)(x) */
-            tk++; int c = Nd(4);
-            while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); }
-            tk++; Nc(c, n); return c;
+        /* 后缀链: (expr)->field / (expr)[i] / (expr)(args) (fix 2026-08-06: 原只处理 (expr)(args), ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m 错) */
+        while (1) {
+            if (tt[tk] == LB) { tk++; int m = Nd(14); Nc(m, n); Nc(m, expr()); if (tt[tk] == RB) tk++; n = m; }
+            else if (tt[tk] == DT || tt[tk] == AR) {
+                int ar = (tt[tk] == AR); tk++;
+                if (tt[tk] == VR) { int m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 32); tk++; n = m; } else break;
+            } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK) { if (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c; }
+            else break;
         }
         return n;
     }
@@ -6166,12 +6179,17 @@ static void cg(int n) {
                 char *fn = (char*)(nn + mc);     /* field name */
                 int off = var_lookup(vn);
                 int si = var_stidx(vn);
-                if (off >= 0 && si >= 0) {
+                int is_arrow = (nt0 == 15 && nv[mc] == 1);
+                if (off >= 0 && si >= 0 && !(is_arrow && var_pesz(vn) > 0)) { /* struct 变量 base: &sa.i — 槽位+foff (指针 base 不走这里) */
                     int foff = st_off(stypes[si].name, fn);
                     if (foff >= 0) {
                         if (var_isstatic(vn)) lea_rax_rip(coff_static_disp(off, 1) + foff - 1); /* static struct field addr via RIP (7-byte lea) */
                         else { int base = off - stypes[si].sz; lea_r_mbrp(0, base + foff - cur_frame_sz); }
                     }
+                } else if (is_arrow) { /* 指针 base: &p->i / &((T*)0)->i — 走 case 15 取址 (解引用指针+foff) (fix 2026-08-06: 原按 struct 槽位算地址, 指针解引用被跳过) */
+                    cg_no_deref = 1;
+                    cg(n0[n]);
+                    cg_no_deref = 0;
                 }
             } else if (nt0 == 14) { /* &arr[i] — yield the element ADDRESS */
                 cg_no_deref = 1;
@@ -6247,7 +6265,8 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 for(int i=0;i<st_n;i++){fo=st_off(stypes[i].name,fn);if(fo>=0){si=i;break;}}
                 if(si>=0){ /* found struct */
                     if(o>=0){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(o, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, o - cur_frame_sz); else mov_reg_mbrp(0, o - cur_frame_sz); } /* rax = ptr */
-                    else if(o<0){load_param_val(vn);} /* param in register or stack */
+                    else if (o < 0 && nt[n0[n]] == 1) { load_param_val(vn); } /* param in register or stack */
+                    else if (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 / 函数调用结果 — 求值得指针 (fix 2026-08-06: 原 load_param_val 对非参数加载垃圾, offsetof 惯用法 ((T*)0)->m 错) */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += offset */
                     if (!cg_no_deref) { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 }

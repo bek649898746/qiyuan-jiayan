@@ -2512,6 +2512,15 @@ __attribute__((unused))
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si) */
             若 (cast_ty && !strcmp(cast_ty, "int") && ndbl[ce]) { 整 m = Nd(19); Nc(m, ce); ndbl[m] = 0; 返 m; }
             若 (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64 位操作数（fix 2026-08-05） */
+            /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 镜像 qcc_x86.c — ((T*)0)->i 的 ->i 原悬空) */
+            循环 (1) {
+                若 (tt[tk] == LB) { tk++; 整 m = Nd(14); Nc(m, ce); Nc(m, expr()); 若 (tt[tk] == RB) tk++; ce = m; }
+                否 若 (tt[tk] == DT || tt[tk] == AR) {
+                    整 ar = (tt[tk] == AR); tk++;
+                    若 (tt[tk] == VR) { 整 m = Nd(15); Nc(m, ce); nv[m] = ar; memcpy((字*)(nn + m), tn[tk], 32); tk++; ce = m; } 否 断;
+                } 否 若 (tt[tk] == OK) { tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, ce); ce = c; }
+                否 断;
+            }
             返 ce; /* cast is no-op: value unchanged */
         }
         tk++; 整 n = expr();
@@ -2520,10 +2529,14 @@ __attribute__((unused))
            (f(a, b)) must stay separate (the call parser consumes the CK). */
         循环 (tt[tk] == CK) { tk++; 整 a = Nd(2); nv[a] = CK; Nc(a, n); Nc(a, expr()); n = a; }
         tk++;
-        若 (tt[tk] == OK) { /* call on a parenthesized expr: (*fp)(x) */
-            tk++; 整 c = Nd(4);
-            循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); }
-            tk++; Nc(c, n); 返 c;
+        /* 后缀链: (expr)->field / (expr)[i] / (expr)(args) (fix 2026-08-06: 镜像 qcc_x86.c — 原只处理 (expr)(args), ((T*)0)->i 悬空) */
+        循环 (1) {
+            若 (tt[tk] == LB) { tk++; 整 m = Nd(14); Nc(m, n); Nc(m, expr()); 若 (tt[tk] == RB) tk++; n = m; }
+            否 若 (tt[tk] == DT || tt[tk] == AR) {
+                整 ar = (tt[tk] == AR); tk++;
+                若 (tt[tk] == VR) { 整 m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((字*)(nn + m), tn[tk], 32); tk++; n = m; } 否 断;
+            } 否 若 (tt[tk] == OK) { tk++; 整 c = Nd(4); 循环 (tt[tk] != KK) { 若 (tt[tk] == CK) tk++; Nc(c, expr()); } tk++; Nc(c, n); n = c; }
+            否 断;
         }
         返 n;
     }
@@ -5863,12 +5876,17 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 字 *fn = (字*)(nn + mc);     /* field name */
                 整 off = var_lookup(vn);
                 整 si = var_stidx(vn);
-                若 (off >= 0 && si >= 0) {
+                整 is_arrow = (nt0 == 15 && nv[mc] == 1);
+                若 (off >= 0 && si >= 0 && !(is_arrow && var_pesz(vn) > 0)) { /* struct 变量 base: &sa.i (指针 base 不走这里) */
                     整 foff = st_off(stypes[si].name, fn);
                     若 (foff >= 0) {
                         整 base = off - stypes[si].sz;
                         lea_r_mbrp(0, base + foff - cur_frame_sz);
                     }
+                } 否 若 (is_arrow) { /* 指针 base: &p->i / &((T*)0)->i — 走 case 15 取址 (fix 2026-08-06: 镜像 qcc_x86.c) */
+                    cg_no_deref = 1;
+                    cg(n0[n]);
+                    cg_no_deref = 0;
                 }
             } 否 若 (nt0 == 14) { /* &arr[i] — yield the element ADDRESS */
                 cg_no_deref = 1;
@@ -5941,7 +5959,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 遍(整 i=0;i<st_n;i++){fo=st_off(stypes[i].name,fn);若(fo>=0){si=i;断;}}
                 若(si>=0){ /* found struct */
                     若(o>=0){ 若 (var_pesz(vn) > 0) mov_reg_mbrp64(0, o - cur_frame_sz); 否 mov_reg_mbrp(0, o - cur_frame_sz); } /* rax = ptr */
-                    否 若(o<0){load_param_val(vn);} /* param in register or stack */
+                    否 若 (o < 0 && nt[n0[n]] == 1) { load_param_val(vn); } /* param in register or stack */
+                    否 若 (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 — 求值得指针 (fix 2026-08-06: 镜像 qcc_x86.c, offsetof 惯用法) */
                     若(fo!=0){add_rax_imm8(fo);} /* rax += offset */
                     若 (!cg_no_deref) { mov_reg_mreg(0,0); 若 (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 }
