@@ -6818,6 +6818,19 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             b = malloc(sz + 1);
             fread(b, 1, sz, f);
             b[sz] = 0;
+            /* 跳过 UTF-8 BOM (EF BB BF): 原当 CJK 标识符 (如 "主") 吃掉 → 首个 token 坏 → main 被吞 (fix 2026-08-06 镜像 qcc_x86.c)。
+               用嵌套 if 而非 && 链 —— qcc 对复杂条件链生成"自比较"错码 (lexer 同款注释)；循环移位避免 memmove 在自宿主下未内建 */
+            若 (sz >= 3) {
+                若 ((无 字)b[0] == 0xEF) {
+                    若 ((无 字)b[1] == 0xBB) {
+                        若 ((无 字)b[2] == 0xBF) {
+                            整 bk;
+                            遍 (bk = 0; bk < sz - 3; bk++) b[bk] = b[bk + 3];
+                            b[sz - 3] = 0;
+                        }
+                    }
+                }
+            }
         }
         fclose(f);
     }
