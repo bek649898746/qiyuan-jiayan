@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
 
         if (!strcmp(argv[argi], "--help")) {
 
-            printf("jycc — 启元编译驱动\nUsage: jycc [-o out.exe] file1.c [file2.c ...] [lib.a ...]\n");
+            printf("jycc — 启元编译驱动\nUsage: jycc [-o out.exe] file1.c [file2.jy ...] [lib.a ...]\n  支持 .c / .jy (甲言) 源码 + .o / .a 库文件\n");
 
             return 0;
 
@@ -68,7 +68,9 @@ int main(int argc, char **argv) {
 
         int len = (int)strlen(f);
 
-        if (len > 2 && !strcmp(f + len - 2, ".c")) {
+        int is_src = (len > 2 && !strcmp(f + len - 2, ".c")) || (len > 3 && !strcmp(f + len - 3, ".jy")); /* fix 2026-08-06: .jy 甲言源码支持 (Task 5.2) */
+
+        if (is_src) {
 
             /* 生成 .o 名: basename.o */
 
@@ -78,7 +80,9 @@ int main(int argc, char **argv) {
 
             const char *base = slash ? slash + 1 : f;
 
-            snprintf(objname[i], sizeof(objname[i]), "%.*s.o", (int)(strlen(base) - 2), base);
+            int ext = (f[len - 1] == 'c') ? 2 : 3; /* .c → 最后字符 c → 2 字符; .jy → 3 字符 (fix 2026-08-06: 原 f[len-2] 取倒数第二字符 '.' → ext 恒 3, .c 文件 .o 名截错) */
+
+            snprintf(objname[i], sizeof(objname[i]), "%.*s.o", (int)(strlen(base) - ext), base);
 
             snprintf(cmd, sizeof(cmd), "qcc_x86.exe -c %s -o %s", f, objname[i]);
 
