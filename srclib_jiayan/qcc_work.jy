@@ -88,6 +88,12 @@ __attribute__((unused))
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
 静 构 { 字 name[32]; 字 params[8][16]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n;
+静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
+    遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
+    遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 1;
+    遍 (整 i = 0; i < fn_macro_n; i++) 若 (!strcmp(fn_macros[i].name, n)) 返 1;
+    返 0;
+}
 /* #undef：从数字/字符串/函数三个宏表删除（fix 2026-08-05） */
 静 空 macro_remove(常 字 *n) {
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) { 遍 (整 j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n = macro_n - 1; 返; }
@@ -225,7 +231,7 @@ __attribute__((unused))
         字 nm[32]; 整 ni = 0; 整 p = 8;
         循环 (isalnum(e[p]) || e[p] == '_' || ((无 字)e[p] >= 0x80)) { 若 (ni < 31) nm[ni++] = e[p]; p++; }
         nm[ni] = 0;
-        返 (macro_find(nm) >= 0 || str_macro_find(nm) != 0) ? 1 : 0;
+        返 macro_exists(nm) ? 1 : 0; /* fix 2026-08-06: 原 macro_find>=0 对负值宏判假 */
     }
     若 (e[0] == '!') 返 pp_eval(e + 1) ? 0 : 1;
     遍 (整 i = 0, dp = 0; e[i]; i++) {
@@ -271,12 +277,15 @@ __attribute__((unused))
             若 (op == 6) 返 x > y;
         }
     }
+    整 negv = 0; /* fix 2026-08-06: 支持负数字面量 #if -5 < 0 (镜像 qcc_x86.c) */
+    若 (e[0] == '-') { negv = 1; e++; }
     若 (e[0] == '0' && (e[1] == 'x' || e[1] == 'X')) {
         整 v = 0; 整 p = 2; 循环 (isxdigit((无 字)e[p])) { 整 c = e[p]; v = v * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); p++; }
-        返 v;
+        返 negv ? -v : v;
     }
-    若 (isdigit((无 字)e[0])) { 整 v = 0; 整 p = 0; 循环 (isdigit((无 字)e[p])) v = v * 10 + (e[p++] - '0'); 返 v; }
-    整 mv = macro_find(e); 若 (mv >= 0) 返 mv;
+    若 (isdigit((无 字)e[0])) { 整 v = 0; 整 p = 0; 循环 (isdigit((无 字)e[p])) v = v * 10 + (e[p++] - '0'); 返 negv ? -v : v; }
+    若 (negv) 返 0; /* -名字: 不支持 */
+    若 (macro_exists(e)) 返 macro_find(e); /* fix 2026-08-06: 原 mv>=0 把负值宏当未找到 → 0 */
     返 0;
 }
 
@@ -306,7 +315,7 @@ __attribute__((unused))
                     循环 (*q == ' ' || *q == '\t') q++;
                     循环 (isalnum(*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (ni < 31) nm[ni++] = *q; q++; }
                     nm[ni] = 0;
-                    整 def = (macro_find(nm) >= 0 || str_macro_find(nm) != 0);
+                    整 def = macro_exists(nm); /* fix 2026-08-06: 原 macro_find>=0 对负值宏判假 */
                     cond = is_ifdef ? def : !def;
                 } 否 若 (is_if || is_elif) {
                     字 expr[512]; 整 ei = 0; 常 字 *q = p + (is_if ? 3 : 5);
@@ -1894,7 +1903,7 @@ __attribute__((unused))
                     循环 (s[p2] == ' ' || s[p2] == '\t') p2++;
                     循环 (isalnum(s[p2]) || s[p2] == '_' || ((无 字)s[p2] >= 0x80)) { 若 (ni < 31) { nm[ni] = s[p2]; ni++; } p2++; }
                     nm[ni] = 0;
-                    整 def = (macro_find(nm) >= 0);
+                    整 def = macro_exists(nm); /* fix 2026-08-06: 原 macro_find>=0 判假 */
                     cond = is_ifdef ? def : !def;
                 } 否 若 (is_if || is_elif) {
                     cond = pp_eval(expr);
@@ -1956,9 +1965,11 @@ __attribute__((unused))
                     续;
                 }
                 整 mval = 0;
+                整 msign = 1; /* fix 2026-08-06: #define NEG -5 负号丢弃 → NEG=0 (镜像 qcc_x86.c) */
+                若 (s[i] == '-') { msign = -1; i++; }
                 若 (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) { i += 2; 循环 (isxdigit(s[i])) { 整 c = s[i]; 若 (c >= '0' && c <= '9') mval = mval * 16 + (c - '0'); 否 若 (c >= 'a' && c <= 'f') mval = mval * 16 + (c - 'a' + 10); 否 mval = mval * 16 + (c - 'A' + 10); i++; } }
                 否 { 循环 (isdigit(s[i])) { mval = mval * 10 + (s[i++] - '0'); } }
-                macro_add(mname, mval);
+                macro_add(mname, msign * mval);
             }
             循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; } /* skip line incl. \ continuations */
             续;
@@ -2061,7 +2072,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
             否 若 (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            整 k = kw(tn[ti]);            若 (k == NK) { 整 mv = macro_find(tn[ti]); 若 (mv >= 0) { tt[ti] = NK; tv[ti] = mv; ti++; 续; } tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
+            整 k = kw(tn[ti]);            若 (k == NK) { 字 *sm = str_macro_find(tn[ti]); 若 (sm) { 若 (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 整 k2 = 0; 循环 (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } 若 (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } 整 found_num = 0, nvv = 0; 遍 (整 mi = 0; mi < macro_n; mi++) 若 (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; 断; } 若 (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; 续; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 */ tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
         若 (s[i] == '"') { i++; 整 j = 0; 循环 (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 若 (s[i] == '0') str_tbl[str_cnt][j++] = 0; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } i++; 整 ni = i; 循环 (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; 若 (s[ni] == '"') { i = ni + 1; 续; } 断; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; 续; }
         若 (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; 整 cv = s[i];
