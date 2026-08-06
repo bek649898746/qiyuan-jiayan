@@ -3462,8 +3462,9 @@ static int parse(const char *s) {
                     tk++;
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
-                        int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* int/char/double */
+                        int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
+                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
+                            if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         else if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             if (tt[tk] == VR) {
@@ -3551,6 +3552,7 @@ static int parse(const char *s) {
                             if (is_union) st_union_field(si, fn, fsz);
                             else st_field_sz_r(si, fn, fsz, frow);
                             if (fdbl) st_field_dbl(si, fn);
+                            if (fll) st_field_ty(si, fn, -3); /* long long 字段标记: 64 位访问 (fix 2026-08-06) */
                             }
                         }
                         if (tt[tk] == CK) tk++; /* comma between fields */
@@ -6218,7 +6220,7 @@ static void cg(int n) {
                     if(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     int afsz = st_field_size(stypes[s].name, fn);
                     if (cg_no_deref) { /* address only (fix 2026-08-05) */ }
-                    else if (afsz > 4) { if (afsz == 8 && st_field_ty_idx(stypes[s].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field: 64-bit value */ }
+                    else if (afsz > 4) { if (afsz == 8 && (st_field_ty_idx(stypes[s].name, fn) == -2 || st_field_ty_idx(stypes[s].name, fn) == -3)) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */ }
                     else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                     else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 } else if (var_isstatic(vn)) {
@@ -6231,7 +6233,7 @@ static void cg(int n) {
                     lea_rax_rip(coff_static_disp(o, 1) + fo - 1);
                     if (st_field_is_dbl(stypes[s].name, fn)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
                     else if (fsz > 4) {
-                        if (fsz == 8 && st_field_ty_idx(stypes[s].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field (fty==-2): 64-bit value (fix 2026-08-03) */
+                        if (fsz == 8 && (st_field_ty_idx(stypes[s].name, fn) == -2 || st_field_ty_idx(stypes[s].name, fn) == -3)) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */
                     } else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
                     else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
                     }
@@ -6258,7 +6260,7 @@ static void cg(int n) {
                     int fsz = st_field_size(stypes[s].name, fn);
                     int fty = st_field_ty_idx(stypes[s].name, fn);
                     if (fty >= 0 && fsz <= 8) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* struct field value: 8 bytes */
-                    else if (fty == -2) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr field (fty==-2): 64-bit value (fix 2026-08-03) */
+                    else if (fty == -2 || fty == -3) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */
                     else if (fsz == 1) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* char field read: movzx byte (fix 2026-08-03: was a 4-byte read bleeding into neighbours) */
                     else { mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
                     }
