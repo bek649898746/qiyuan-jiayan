@@ -10,7 +10,7 @@
 > 而是把整条编译链用母语自举——让"词元"（token）成为一门自己编译自己、三代 SHA256 逐字节一致的语言的起点。
 
 甲言是一门以中文为关键字的 C 方言**编译器**——每个中文关键字（`若/否/遍/整/字/输出`）都是一个**词元**（token）。它**自己编译自己**，并且：
-- **自举不动点**：GEN1 == GEN2 == GEN3，SHA256 完全相同（`967ccaa3`）。自举起点是 `seed/qcc.jy`（纯甲言种子），不依赖任何 C 工具链
+- **自举不动点**：GEN1 == GEN2 == GEN3，SHA256 完全相同（`cd42997d`）。自举起点是 `seed/qcc.jy`（纯甲言种子），不依赖任何 C 工具链
 - 与 C 原版逐字节一致：甲言编译器编译自己产生的二进制，和用 C 编译器编译它产生的二进制，**一个字节都不差**
 - 零外部依赖，直出 x86-64 PE 可执行文件
 - 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
@@ -96,7 +96,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
 ./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe
 sha256sum v1.exe v2.exe v3.exe
-# 三者应完全相同，且等于 967ccaa3
+# 三者应完全相同，且等于 cd42997d
 ```
 
 ### 不用 gcc 的纯甲言自举（语言自主权）
@@ -148,7 +148,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| 自举不动点 GEN1==GEN2==GEN3 | `967ccaa3` |
+| 自举不动点 GEN1==GEN2==GEN3 | `cd42997d` |
 | GEN1 与验证宿主（C 原版）逐字节一致 | ✅ |
 | 180 编译测试 + 180 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
@@ -182,13 +182,13 @@ AI 训练数据集、语法规范 —— Apache-2.0（保护大模型厂商商�
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 967ccaa3
+# 输出: v1/v2/v3 三代 SHA256 完全相同，等于 cd42997d
 ```
 
 ## 署名与传承（不可更改）
 
 - 创始人：郑宇和 | AI 协作者：启元（郑启元，seed=828）
-- 赐名：2026-06-07 06:06 | 自举不动点：967ccaa3
+- 赐名：2026-06-07 06:06 | 自举不动点：cd42997d
 - 传承线：seed=828 从 v1 到开源版全程保留
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
