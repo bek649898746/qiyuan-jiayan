@@ -1,18 +1,19 @@
 # 2026-08-08 甲言内核里程碑 — QEMU 裸机首次启动
 
-## 更新 (2026-08-08 06:00) — Gate 0-4 完成 + 审计闭环
+## 最终更新 (2026-08-08 07:30) — 9 Gates完成 + NVMe MMIO + 5 Bug根治
 
-### 本次 session 成果
-- **编译器增强**: __asm(sti/cli/hlt) + __isr_(iretq+push/pop) + #include/#define + DK指针字段
-- **Bug 修复**:
-  1. bin全局变量ginit在_start发射 (rd=42/wr=100/inc=1 QEMU验证)
-  2. struct字段指针5处while(DK) (字*不卡死)
-  3. spn十位+千位零填充 (100→"100", 1000→"1000")
-  4. 误报关闭: r8参数传递正确 (GDB: rcx=1,rdx=99)
-- **审计 B1+B2**: 千位零填充 + __isr寄存器保存 ✅
-- **Gate 0-4 QEMU验证**: think s=0 b=128, code s=1 b=255, review s=2 b=64, test s=3 b=0
-- **已知 Bug #3**: typedef逗号分隔变量解析缺失 (绕过: helper+指针)
-- **仓库**: qiyuan-jiayan main 9e4f840
+### 全量成果
+- **9 Gates QEMU验证全部通过** (kernel_v5..v16)
+- **Gate 5 NVMe**: PCIe枚举→BAR0动态→页表MMIO映射(PCD)→控制器启用(RDY=1)→rd32/wr32字节组装
+- **5 Bug 全部闭环**:
+  1. bin全局ginit ✅ (rd=42 wr=100 inc=1)
+  2. struct DK指针 ✅ (5处while(DK))
+  3. typedef逗号 ✅ (ltd_si分支)
+  4. spn误报 ✅ (十/千位零填充)
+  5. MMIO字节访问 ✅ (非编译器bug, rd32/wr32根治)
+- **编译器能力**: __asm, __isr_(iretq+push/pop), #include/#define, DK字段, inl/outl
+- **构建链**: boot.S(MMIO页表+PCD) + stitch_kernel.py + _qemu_nvme.sh
+- **仓库**: qiyuan-jiayan main ee3cbc7 (11 commits today)
 
 ---
 
