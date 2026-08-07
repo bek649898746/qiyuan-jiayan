@@ -24,20 +24,23 @@ _start:
     movl %cr4, %eax
     orl  $0x20, %eax
     movl %eax, %cr4
-    /* 3. 初始化 identity-map 页表 (2MB 大页, 覆盖前 1GB) */
+    /* 3. 初始化 identity-map 页表 (2MB 大页, 前128MB) + NVMe MMIO */
     movl $pd, %edi
     movl $0x83, %esi            /* present | writable | PS (2MB page) */
-    movl $512, %ecx             /* 512 个大页 = 1GB */
+    movl $64, %ecx              /* 64 个大页 = 128MB RAM */
 1:  movl %esi, (%edi)
     addl $0x200000, %esi
     addl $8, %edi
     loop 1b
+    /* NVMe MMIO: 0xFE000000 → PD index 496 */
+    movl $0xFE000083, pd + 496*8
     movl $pdpt, %eax
     orl  $3, %eax
-    movl %eax, pml4
+    movl %eax, pml4              /* pml4[0] = pdpt | 3 */
     movl $pd, %eax
     orl  $3, %eax
-    movl %eax, pdpt
+    movl %eax, pdpt              /* pdpt[0] = pd | 3 */
+    movl %eax, pdpt + 3*8        /* pdpt[3] = pd | 3 (VA 3-4GB → NVMe MMIO) */
     /* 4. 载入页表基址 (CR3) */
     movl $pml4, %eax
     movl %eax, %cr3
