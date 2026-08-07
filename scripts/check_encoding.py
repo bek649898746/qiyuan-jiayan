@@ -6,6 +6,8 @@
 """
 import os, sys
 
+sys.stdout.reconfigure(encoding='utf-8')  # CI windows-latest locale=cp1252, 中文输出否则 UnicodeEncodeError (fix 2026-08-07)
+
 EXTS = ('.c', '.h', '.jy', '.py')
 SKIP_DIRS = ('.git', 'node_modules', 'target', 'quarantine', '_archived',
              '_retired', 'scratch', 'memory', '.openclaw', '__pycache__')
