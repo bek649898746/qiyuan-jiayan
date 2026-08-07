@@ -3,6 +3,15 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## f40326df (2026-08-07)
+**技术债清理：镜像/源结构对齐 + 静态数组元素按值传参别名 bug + extern 检查对齐（host+v1 172/172 全绿）**
+
+- **静态结构体数组元素按值传参别名 bug（C 源+镜像）**：case-4 `nt==14` 分支的 `!var_isstatic(an)` 排除静态数组 → 元素走"留地址"捷径 → 被调方修改影响原数组（gcc 按值 3 vs qcc 100）。去掉排除，静态数组元素走 bigarr 拷贝
+- **fn_macro_expand_to 结构对齐（镜像）**：全局缓冲（g_mout/g_mcap/g_mo/g_m_self）→ C 源 5 参数版本（outp/o/cap/self_fmi），tmp 缓冲 2048→8192 对齐。消除镜像/源结构性分歧（单份维护）
+- **镜像 stc_disp 补 extern 无定义检查**（对齐 C 源 coff_static_disp 非 coff 分支）
+- fuzz 生成器再加静态数组元素传参+被调方修改场景
+- 验证: v1==v2==v3=F40326DF, host+v1 172/172, multifile 6/6, sqlite3 OK, fuzz 150 轮 0 差异 0 拒绝
+
 ## 3ce8c2a9 (2026-08-07)
 **Gate-1 sqlite3 混合链接打通 + 镜像/源分歧深挖修复（host+v1 172/172 全绿，fuzz 200 轮零差异零拒绝）**
 

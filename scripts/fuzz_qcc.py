@@ -161,6 +161,17 @@ class Gen:
             main_lines.append('%s[1].d = %.1f;' % (lav, dv + 1.0))
             main_lines.append('%s[1].v[0] = %d;' % (lav, iv + 1))
             main_lines.append('printf("%%d\\n", %s(%s[1]));' % (tfn, lav))
+            # 静态数组元素按值传参 + 被调方修改不破坏原数组 (2026-08-07 别名 bug)
+            if r.random() < 0.5:
+                sar = self.ident('gbar', set())
+                parts.append('struct Sbig %s[2];' % sar)
+                self.fn_count += 1
+                mfn = 'tset%d' % self.fn_count
+                parts.append('void %s(struct Sbig s) { s.v[0] = 999; }' % mfn)
+                main_lines.append('%s[1].d = %.1f;' % (sar, dv))
+                main_lines.append('%s[1].v[0] = %d;' % (sar, iv))
+                main_lines.append('%s(%s[1]);' % (mfn, sar))
+                main_lines.append('printf("%%d\\n", %s[1].v[0]);' % sar)
         # ll
         if r.random() < 0.6:
             ll = self.ident('x', used); used.add(ll)

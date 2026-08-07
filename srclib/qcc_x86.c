@@ -5731,7 +5731,8 @@ static void cg(int n) {
                 } else if (nt[c] == 14) {
                     char *an = (char*)(nn + n0[c]); /* array variable name */
                     int asi = var_stidx(an);
-                    if (asi >= 0 && stypes[asi].sz > 8 && !var_isstatic(an)) { bigsz = stypes[asi].sz; bigarr = 1; }
+                    /* fix 2026-08-07: 去掉 !var_isstatic — 静态数组元素按值传参也走 bigarr 拷贝 (原被排除 → 留地址捷径 → 被调方改的是原数组 = 别名 bug) */
+                    if (asi >= 0 && stypes[asi].sz > 8) { bigsz = stypes[asi].sz; bigarr = 1; }
                 }
                 if (bigsz > 0) {
                     int aoff = var_lookup((char*)(nn + c));

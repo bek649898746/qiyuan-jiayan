@@ -9,6 +9,7 @@ struct Sbig g_big;                 /* static struct */
 static struct Sbig *g_ptr;         /* static ptr arrow rw */
 
 int take_big(struct Sbig s) { return (int)s.d + s.v[0]; }  /* big struct by value */
+void tset_big(struct Sbig s) { s.v[0] = 999; }            /* 按值修改: 不影响原数组 */
 
 int main(void) {
     double x = g_cnt * 1.0;
@@ -36,6 +37,16 @@ int main(void) {
 
     g_big.d = 4.25;
     if (take_big(g_big) != 46) return 8;
+
+    /* 静态结构体数组元素按值传参: 被调方修改不得影响原数组 (fix 2026-08-07 别名 bug) */
+    {
+        static struct Sbig sg[2];
+        sg[1].v[0] = 11;
+        tset_big(sg[1]);
+        if (sg[1].v[0] != 11) return 11;
+        sg[1].d = 2.0; sg[1].v[0] = 6;
+        if (take_big(sg[1]) != 8) return 12;
+    }
 
     if (g_big.d * 2.0 != 8.5) return 9;
 
