@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
@@ -5790,7 +5790,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 nargs = 0;
             遍 (整 i = 0; i < 20; i++) { 整 c = kids[i]; 若 (c == fn || c < 0) 续; nargs++; }
             整 extra = nargs > 4 ? nargs - 4 : 0;
-            整 is_user = (fi >= 0 && func_tbl[fi].defined);
+            整 is_user;
+            若 (fi >= 0) { 若 (func_tbl[fi].defined) is_user = 1; 否 若 (coff_mode && !coff_is_builtin(fname)) is_user = 1; 否 is_user = 0; }
+            否 若 (coff_mode && !coff_is_builtin(fname)) is_user = 1; /* extern call in -c mode also user call (fix 2026-08-07 镜像 C 源) */
+            否 is_user = 0;
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
                cg_sret_off; the callee writes the result straight into it (Win64 hidden ptr). */
             整 sret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
@@ -7276,6 +7279,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        各 var 落在 [rsp + (off-fr_start)]。避免全局累计帧导致超大栈帧 → 深递归栈溢出。 */
 
 
+    整 last_fn_i = -1; 遍 (整 k = 0; k < fdef_n; k++) { 整 ck = fdef_list[k]; 若 (ck > 0) last_fn_i = k; } /* fix 2026-08-07 镜像 C 源: coff 模式 ginit 挂最后一个函数 (所有函数已 parse, 函数内 static 变量已注册) */
+
     遍 (整 i = 0; i < fdef_n; i++) {
         整 c = fdef_list[i];
         若 (c <= 0) 续;
@@ -7327,10 +7332,11 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         /* epilogue label: return jumps here */
         epi_label = new_label();
 
-        若 (!strcmp(fname, "main") || !strcmp(fname, "主")) { /* emit global initializers at program entry (甲言: 主() = main()) */
+        若 ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主")))) { /* emit global initializers at program entry (甲言: 主() = main()); coff 模式挂最后一个函数 — 原挂第一个, 函数内 static 变量未注册 DCL-MISS (fix 2026-08-07 镜像 C 源) */
             cg_ginit_ctx = 1; /* ginit decls must NOT be skipped by case-7's local-static check */
             遍 (整 gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
             cg_ginit_ctx = 0;
+            coff_ginit_done = 1;
         }
 
         cg(n0[c]); /* function body */
@@ -7564,6 +7570,21 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     若 (coff_str_len > 0) fwrite(coff_str_data, 1, coff_str_len, f);
     若 (coff_dbl_len > 0) fwrite(coff_dbl_data, 1, coff_dbl_len, f);
     字 *ddata = calloc(stc_n ? stc_n : 1, 4);
+    遍 (整 gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) (fix 2026-08-07 镜像 C 源: 原 calloc 全零 → 跨文件常量初始值丢 0) */
+        整 gn = ginit[gi];
+        整 val_node = -1;
+        若 (gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 0) val_node = n0[gn];
+        否 若 (gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 0) val_node = n1[gn];
+        若 (val_node >= 0) {
+            字 *vn = (字*)(nn + gn);
+            整 off = var_lookup(vn);
+            若 (off >= 0 && off < stc_n) {
+                整 v = nv[val_node];
+                若 (var_is_ll(vn)) { long long lv = (long long)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 */
+                否 memcpy(ddata + 4 * off, &v, 4);
+            }
+        }
+    }
     若 (stc_n > 0) fwrite(ddata, 1, stc_n * 4, f);
     free(ddata);
     /* relocation tables */
@@ -7672,6 +7693,21 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     若 (coff_str_len > 0) fwrite(coff_str_data, 1, coff_str_len, f);
     若 (coff_dbl_len > 0) fwrite(coff_dbl_data, 1, coff_dbl_len, f);
     字 *ddata = calloc(stc_n ? stc_n : 1, 4);
+    遍 (整 gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) (fix 2026-08-07 镜像 C 源: 原 calloc 全零 → 跨文件常量初始值丢 0) */
+        整 gn = ginit[gi];
+        整 val_node = -1;
+        若 (gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 0) val_node = n0[gn];
+        否 若 (gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 0) val_node = n1[gn];
+        若 (val_node >= 0) {
+            字 *vn = (字*)(nn + gn);
+            整 off = var_lookup(vn);
+            若 (off >= 0 && off < stc_n) {
+                整 v = nv[val_node];
+                若 (var_is_ll(vn)) { long long lv = (long long)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 */
+                否 memcpy(ddata + 4 * off, &v, 4);
+            }
+        }
+    }
     若 (stc_n > 0) fwrite(ddata, 1, stc_n * 4, f);
     free(ddata);
     /* relocation tables */
@@ -7780,6 +7816,21 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     若 (coff_str_len > 0) fwrite(coff_str_data, 1, coff_str_len, f);
     若 (coff_dbl_len > 0) fwrite(coff_dbl_data, 1, coff_dbl_len, f);
     字 *ddata = calloc(stc_n ? stc_n : 1, 4);
+    遍 (整 gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) (fix 2026-08-07 镜像 C 源: 原 calloc 全零 → 跨文件常量初始值丢 0) */
+        整 gn = ginit[gi];
+        整 val_node = -1;
+        若 (gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 0) val_node = n0[gn];
+        否 若 (gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 0) val_node = n1[gn];
+        若 (val_node >= 0) {
+            字 *vn = (字*)(nn + gn);
+            整 off = var_lookup(vn);
+            若 (off >= 0 && off < stc_n) {
+                整 v = nv[val_node];
+                若 (var_is_ll(vn)) { long long lv = (long long)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 */
+                否 memcpy(ddata + 4 * off, &v, 4);
+            }
+        }
+    }
     若 (stc_n > 0) fwrite(ddata, 1, stc_n * 4, f);
     free(ddata);
     /* relocation tables */
@@ -8059,7 +8110,7 @@ __attribute__((unused))
     /* ??PE */
     FILE *f = fopen(outf, "wb");
     若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
-    若 (coff_mode) write_coff_obj(f); 否 若 (coff_mode) write_coff_obj(f); 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+    若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
     fclose(f);
     若 (asm_out) { fclose(asm_out); asm_out = 0; }
 
