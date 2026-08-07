@@ -30,9 +30,11 @@ jobs:
 
       - name: CI 诊断 (PE 头 + 手动运行, 临时)
         if: always()
+        continue-on-error: true
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
+          Remove-Item scratch_test/_diag.exe -Force -ErrorAction SilentlyContinue
           Write-Host "=== 编译 arg4 ==="
           .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1
           Write-Host "编译 rc=$LASTEXITCODE"
