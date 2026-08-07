@@ -63,7 +63,12 @@ for name in tests:
         p = subprocess.run([h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
         rc = p.returncode
         out = (p.stdout or '').strip()
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as te:
+        # 超时后必须 kill: 崩溃/卡死进程残留会锁住 _H1.exe, 下次覆盖写失败 (fix 2026-08-08)
+        try:
+            te.kill()  # 杀整个进程组 (包含可能的子进程)
+        except Exception:
+            pass
         rc = 'TIMEOUT'; out = ''
     except Exception as e:
         rc = 'ERR'; out = str(e)

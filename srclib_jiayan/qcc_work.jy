@@ -7003,7 +7003,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     fputc('.', f); fputc('d', f); fputc('a', f); fputc('t', f); fputc('a', f); fputc(0, f); fputc(0, f); fputc(0, f);
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, 0x4000);      /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, 0x4403000);  /* SizeOfRawData = 72MB 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7092,7 +7092,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
-    整 data_end = data_foff + 0x4000;
+    整 data_end = data_foff + 0x4403000; /* fix 2026-08-08 镜像 C 源: 覆盖栈顶 */
     循环 (pos < data_end) { fputc(0, f); pos++; }
 }
 

@@ -7049,7 +7049,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fwrite(".data", 1, 5, f); pad(f, 3); /* ".data\0\0\0" — split write (see .text note) */
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, 0x4000);      /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, 0x4403000);  /* SizeOfRawData = 72MB 覆盖自切栈顶 (fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7118,7 +7118,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
-    int data_end = data_foff + 0x4000;
+    int data_end = data_foff + 0x4403000; /* fix 2026-08-08: 覆盖栈顶 */
     while (pos < data_end) { fputc(0, f); pos++; }
 }
 
