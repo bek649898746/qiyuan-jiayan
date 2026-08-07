@@ -4,22 +4,19 @@ name: qiyuan-ci
 
 on:
   push:
-    branches: [ master, main, ci-fix ]
+    branches: [ master, main ]
   pull_request:
     branches: [ master, main ]
 
 jobs:
   build-verify:
     runs-on: windows-latest
-    permissions:
-      contents: read
-      issues: write   # 诊断结果发 PR 评论 (临时, 修绿后移除)
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'   # 临时改 3.11 验证: 3.12 subprocess 兼容性假设 (fix 2026-08-07)
+          python-version: '3.12'
 
       - name: 编译宿主编译器 (gcc 零警告)
         run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
@@ -32,67 +29,6 @@ jobs:
 
       - name: 行为断言 (180+)
         run: python scripts/run_tests.py
-
-      - name: CI 诊断 (环境 + 失败详情) — 临时, 修绿后移除
-        if: always()
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: |
-          $diag = @()
-          $diag += "=== gcc 版本 ==="
-          $diag += (gcc --version | Select-Object -First 1)
-          $diag += "=== Python 版本 ==="
-          $diag += (python --version)
-          $diag += "=== 编译 arg4.c ==="
-          .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1 | ForEach-Object { $diag += $_ }
-          $diag += "编译 rc=$LASTEXITCODE"
-          if (Test-Path scratch_test/_diag.exe) {
-            $diag += "=== objdump PE 头 ==="
-            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|StackReserve|StackCommit|HeapReserve|entry|DLL Name' | ForEach-Object { $diag += $_.Line }
-            $diag += "=== cmd 直接运行 ==="
-            $out = cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%" 2>&1
-            $diag += ($out -join ' | ')
-            $diag += "=== subprocess 模式对比 (关键) ==="
-            $pyout = python -c "import subprocess
-exe = r'scratch_test\_diag.exe'
-tests = [
-  ('capture_output', dict(capture_output=True)),
-  ('inherit', dict()),
-  ('stdin-devnull', dict(stdin=subprocess.DEVNULL)),
-  ('stdout-pipe', dict(stdout=subprocess.PIPE)),
-  ('CREATE_NO_WINDOW', dict(creationflags=subprocess.CREATE_NO_WINDOW)),
-  ('shell=True', dict(shell=True)),
-]
-for name, kw in tests:
-    try:
-        p = subprocess.run([exe], timeout=15, **kw)
-        print(name, 'rc=', p.returncode)
-    except Exception as e:
-        print(name, 'ERR:', type(e).__name__, str(e)[:80])
-"
-            $pyout | ForEach-Object { $diag += $_ }
-          }
-          $diag | Set-Content -Path scratch_test/_ci_diag.txt -Encoding UTF8
-          $diag | ForEach-Object { Write-Host $_ }
-          # 发 PR 评论 (issues API, 保证结果可获取)
-          try {
-            $body = @{ body = ("CI 诊断结果 (commit $env:GITHUB_SHA)`n`n```" + "`n" + ($diag -join "`n") + "`n" + "```") } | ConvertTo-Json
-            $prnum = if ($env:GITHUB_REF -match 'pull/(\d+)') { $matches[1] } else { $null }
-            if ($prnum) {
-              Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/bek649898746/qiyuan-jiayan/issues/$prnum/comments" -Headers @{'User-Agent'='shrimp';'Authorization'='token ${{ secrets.GITHUB_TOKEN }}'} -Body $body -ContentType 'application/json' | Out-Null
-              Write-Host "诊断已发到 PR#$prnum 评论"
-            } else {
-              Write-Host "非 PR 上下文, 跳过评论 (ref=$env:GITHUB_REF)"
-            }
-          } catch { Write-Host "发评论失败: $_" }
-
-      - name: 上传诊断结果 (临时)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-diag
-          path: scratch_test/_ci_diag.txt
-          if-no-files-found: ignore
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
