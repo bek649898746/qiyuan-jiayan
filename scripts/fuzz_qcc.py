@@ -12,6 +12,8 @@ class Gen:
         self.r = rng
         self.fn_count = 0
         self.fns = []          # (name, arity)
+        self.has_big = False
+        self.big_ctx = None
 
     def ident(self, base, used=set()):
         while True:
@@ -78,12 +80,24 @@ class Gen:
 
     def gen_program(self):
         r = self.r
-        parts = ['#include <stdio.h>']
+        parts = ['#include <stdio.h>', '#include <string.h>']
         gsz = r.randrange(3, 9)
         parts.append('static int garr[%d] = {%s};' % (
             gsz, ', '.join(self.int_lit() for _ in range(gsz))))
         if r.random() < 0.5:
             parts.append('static long long gll = %s;' % self.int_lit())
+        # nested struct: Inner {int x; int y;}, Outer { Inner in; int z; }
+        self.has_outer = False
+        if r.random() < 0.5:
+            parts.append('struct Inner { int x; int y; };')
+            parts.append('struct Outer { struct Inner in; int z; };')
+            self.has_outer = True
+        # recursive function (small fib-like)
+        if r.random() < 0.4:
+            self.fn_count += 1
+            rf = 'rf%d' % self.fn_count
+            self.fns.append((rf, 1))
+            parts.append('int %s(int n) { if (n < 2) return n; return %s(n - 1) + %s(n - 2); }' % (rf, rf, rf))
         # struct: fields generated ONCE, reuse the SAME names
         sfields = []
         used_fields = set()
@@ -91,6 +105,19 @@ class Gen:
             ft = r.choice(['int', 'int', 'long long', 'char', 'double'])
             sfields.append((ft, self.ident('f', used_fields)))
         parts.append('struct S0 { %s };' % ' '.join('%s %s;' % f for f in sfields))
+        # big struct by-value param + static struct (2026-08-07 深挖: cg_f big_param / case-4 静态 bigsz / arr[i].field double)
+        self.has_big = False
+        if r.random() < 0.5:
+            self.has_big = True
+            parts.append('struct Sbig { char name[32]; double d; int v[3]; };')
+            self.fn_count += 1
+            tfn = 'tbig%d' % self.fn_count
+            # NOTE: tbig NOT registered in self.fns — its arity is big-struct, not int,
+            # so generic fn-call generation must not call it with an int literal.
+            parts.append('int %s(struct Sbig s) { return (int)s.d + s.v[0]; }' % tfn)
+            bsv = self.ident('gb', set())
+            parts.append('struct Sbig %s;' % bsv)
+            self.big_ctx = (tfn, bsv)
         helpers = [self.gen_func() for _ in range(r.randrange(0, 3))]
         parts.extend(helpers)
         main_lines = ['int main(void) {']
@@ -121,6 +148,19 @@ class Gen:
         main_lines.append('printf("%%d\\n", %s[%d] + %s[%d]);' % (ai, r.randrange(4), ai, r.randrange(4)))
         # global array read
         main_lines.append('printf("%%d\\n", garr[%d]);' % r.randrange(0, gsz))
+        # big struct by-value call: static struct + local array elem (2026-08-07 深挖回归)
+        if self.has_big:
+            tfn, bsv = self.big_ctx
+            dv = float(r.randrange(0, 20))
+            iv = r.randrange(-20, 20)
+            main_lines.append('%s.d = %.1f;' % (bsv, dv))
+            main_lines.append('%s.v[0] = %d;' % (bsv, iv))
+            main_lines.append('printf("%%d\\n", %s(%s));' % (tfn, bsv))
+            lav = self.ident('ab', used); used.add(lav)
+            main_lines.append('struct Sbig %s[2];' % lav)
+            main_lines.append('%s[1].d = %.1f;' % (lav, dv + 1.0))
+            main_lines.append('%s[1].v[0] = %d;' % (lav, iv + 1))
+            main_lines.append('printf("%%d\\n", %s(%s[1]));' % (tfn, lav))
         # ll
         if r.random() < 0.6:
             ll = self.ident('x', used); used.add(ll)
@@ -162,11 +202,57 @@ class Gen:
             uv = self.ident('u', used); used.add(uv)
             main_lines.append('unsigned %s = %s;' % (uv, self.int_lit()))
             main_lines.append('printf("%%u\\n", %s * 3);' % uv)
-        # helper call with exact arity
+        # pointer deref
+        if r.random() < 0.5:
+            pv = self.ident('pv', used); used.add(pv)
+            pn = self.ident('pn', used); used.add(pn)
+            main_lines.append('int %s = %s;' % (pn, self.int_lit()))
+            main_lines.append('int *%s = &%s;' % (pv, pn))
+            main_lines.append('*%s = %s;' % (pv, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %s);' % pn)
+        # string + strlen
+        if r.random() < 0.5:
+            st = self.ident('st', used); used.add(st)
+            main_lines.append('char *%s = "hello";' % st)
+            main_lines.append('printf("%%d\\n", (int)strlen(%s));' % st)
+        # nested struct usage
+        if self.has_outer and r.random() < 0.5:
+            no = self.ident('no', used); used.add(no)
+            main_lines.append('struct Outer %s;' % no)
+            main_lines.append('%s.in.x = %s;' % (no, self.int_lit()))
+            main_lines.append('%s.in.y = %s;' % (no, self.int_lit()))
+            main_lines.append('%s.z = %s;' % (no, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %s.in.x + %s.in.y + %s.z);' % (no, no, no))
+        # struct pointer (->)
+        if r.random() < 0.4:
+            sp = self.ident('sp', used); used.add(sp)
+            sv2 = self.ident('sv', used); used.add(sv2)
+            main_lines.append('struct S0 %s;' % sv2)
+            main_lines.append('struct S0 *%s = &%s;' % (sp, sv2))
+            ft2, fname2 = r.choice(sfields)
+            if ft2 == 'char':
+                main_lines.append('%s->%s = %d;' % (sp, fname2, r.randrange(0, 128)))
+            else:
+                main_lines.append('%s->%s = %s;' % (sp, fname2, self.int_lit()))
+            if ft2 == 'int':
+                main_lines.append('printf("%%d\\n", %s->%s);' % (sp, fname2))
+            elif ft2 == 'long long':
+                main_lines.append('printf("%%lld\\n", %s->%s);' % (sp, fname2))
+            else:
+                main_lines.append('printf("%%d\\n", %s->%s);' % (sp, fname2))
+        # recursive call (small arg — fib 指数爆炸, 限 5..12)
+        if self.fns and r.random() < 0.4:
+            for (rf, arity) in self.fns:
+                if rf.startswith('rf'):
+                    main_lines.append('printf("%%d\\n", %s(%d));' % (rf, r.randrange(5, 13)))
+                    break
+        # helper call with exact arity (跳过 rf 递归函数 — 有专用小参数块, 防指数爆炸)
         if self.fns:
-            fname, arity = r.choice(self.fns)
-            args = ', '.join(self.int_lit() for _ in range(arity))
-            main_lines.append('printf("%%d\\n", %s(%s));' % (fname, args))
+            non_rf = [f for f in self.fns if not f[0].startswith('rf')]
+            if non_rf:
+                fname, arity = r.choice(non_rf)
+                args = ', '.join(self.int_lit() for _ in range(arity))
+                main_lines.append('printf("%%d\\n", %s(%s));' % (fname, args))
         # char: 只用 0..127 (qcc 的 char 是 unsigned 约定, ≥0x80 与 gcc 符号扩展分歧 — 已知实现定义差异)
         if r.random() < 0.5:
             ch = self.ident('ch', used)
@@ -179,20 +265,32 @@ class Gen:
 
 def run_compiler(compiler, workdir, tag):
     exe = os.path.join(workdir, 'q.exe')
-    r = subprocess.run([compiler, os.path.join(workdir, 't.c'), '-o', exe],
-                       capture_output=True, text=True, timeout=60)
+    try:
+        r = subprocess.run([compiler, os.path.join(workdir, 't.c'), '-o', exe],
+                           capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return (tag + '-COMPILE-TIMEOUT', 'compile timeout', None)
     if r.returncode != 0:
         return (tag + '-COMPILE-FAIL', r.stderr[:300], None)
-    r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
+    try:
+        r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        return (tag + '-RUN-TIMEOUT', 'run timeout', None)
     return (tag + '-RUN', r.returncode, r.stdout)
 
 def run_gcc(workdir):
     exe = os.path.join(workdir, 'g.exe')
-    r = subprocess.run(['gcc', '-O0', '-w', os.path.join(workdir, 't.c'), '-o', exe],
-                       capture_output=True, text=True, timeout=60)
+    try:
+        r = subprocess.run(['gcc', '-O0', '-w', os.path.join(workdir, 't.c'), '-o', exe],
+                           capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return ('GCC-COMPILE-TIMEOUT', 'gcc timeout', None)
     if r.returncode != 0:
         return ('GCC-COMPILE-FAIL', r.stderr[:300], None)
-    r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
+    try:
+        r = subprocess.run([exe], capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        return ('GCC-RUN-TIMEOUT', 'gcc run timeout', None)
     return ('GCC-RUN', r.returncode, r.stdout)
 
 def main():
@@ -214,22 +312,33 @@ def main():
         with open(os.path.join(workdir, 't.c'), 'w', encoding='utf-8') as f:
             f.write(prog)
         qr = run_compiler(compiler, workdir, tag)
-        if qr[0] == tag + '-COMPILE-FAIL':
-            # 编译器拒绝的合法程序 = 真 bug
+        if qr[0] == tag + '-COMPILE-FAIL' or qr[0] == tag + '-COMPILE-TIMEOUT':
+            # 编译器拒绝/超时的合法程序 = 真 bug
             fails += 1
-            print('=== 第 %d 轮: %s 编译失败 ===' % (i + 1, tag))
+            print('=== 第 %d 轮: %s %s ===' % (i + 1, tag, '编译超时' if 'TIMEOUT' in qr[0] else '编译失败'))
             print(prog)
             print(tag, ':', qr[1])
+            if fails >= 5:
+                break
+            continue
+        if qr[0] == tag + '-RUN-TIMEOUT':
+            fails += 1
+            print('=== 第 %d 轮: %s 运行超时 ===' % (i + 1, tag))
+            print(prog)
             if fails >= 5:
                 break
             continue
         gr = run_gcc(workdir)
         if gr[0] == 'GCC-COMPILE-FAIL':
             skipped += 1
+            with open(os.path.join(workdir, 'gcc_reject_%d.c' % skipped), 'w', encoding='utf-8') as f:
+                f.write(prog)
             continue  # gcc 拒绝(生成器边缘) → 跳过
-        ok = (qr[1] == gr[1] and qr[2] == gr[2])
+        ok = (qr[1] == gr[1] and (qr[2] or '').replace('\r', '') == (gr[2] or '').replace('\r', ''))
         if not ok:
             fails += 1
+            with open(os.path.join(workdir, 'fail_%d.c' % fails), 'w', encoding='utf-8') as f:
+                f.write(prog)
             print('=== 第 %d 轮: 输出/退出码差异 ===' % (i + 1))
             print(prog)
             print(tag, ':', qr)
