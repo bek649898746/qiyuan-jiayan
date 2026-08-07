@@ -31,6 +31,7 @@ jobs:
         run: python scripts/run_tests.py
 
       - name: CI 诊断 (环境 + 失败详情) — 临时, 修绿后移除
+        if: always()
         shell: pwsh
         run: |
           Write-Host "=== gcc 版本 ==="
