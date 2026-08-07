@@ -33,6 +33,7 @@ typedef struct {
     int out_off;          /* 在输出节内的偏移（布局时记录） */
     int rva;              /* 输出节基址 + out_off（布局时记录） */
     int chars;
+    int align;            /* COFF 节对齐要求（位20-23: log2(对齐)+1），fix 2026-08-07 */
 } JSec;
 
 typedef struct {
@@ -70,12 +71,34 @@ typedef struct { char name[NSYMLEN]; int obj; int sym; int defined; } GSym;
 static GSym gsyms[65536];
 static int gsym_n = 0;
 
-/* kernel32 8 槽 IAT（与 qcc write_pe 完全一致） */
-static const char *iat_names[8] = {
+/* kernel32 IAT 动态槽（qcc write_pe 同源 + Gate-1 sqlite3 扩展 60+ 函数, fix 2026-08-07） */
+static const char *k32_names[] = {
     "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile",
-    "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA"
+    "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA",
+    "CloseHandle","CreateFileMappingW","CreateFileW","CreateMutexW",
+    "DeleteFileA","DeleteFileW","FlushFileBuffers","FlushViewOfFile",
+    "FormatMessageA","FormatMessageW","GetCurrentProcessId","GetDiskFreeSpaceA",
+    "GetDiskFreeSpaceW","GetFileAttributesA","GetFileAttributesExW","GetFileAttributesW",
+    "GetFileSize","GetFullPathNameA","GetFullPathNameW","GetLastError",
+    "GetModuleHandleW","GetProcessHeap","GetSystemInfo","GetSystemTime",
+    "GetSystemTimeAsFileTime","GetTempPathA","GetTempPathW","GetTickCount",
+    "HeapAlloc","HeapCompact","HeapCreate","HeapDestroy","HeapFree",
+    "HeapReAlloc","HeapSize","HeapValidate","LocalFree","LockFile","LockFileEx",
+    "MapViewOfFile","MultiByteToWideChar","OutputDebugStringA","OutputDebugStringW",
+    "QueryPerformanceCounter","SetEndOfFile","Sleep","SystemTimeToFileTime",
+    "UnlockFile","UnlockFileEx","UnmapViewOfFile","WaitForSingleObject",
+    "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI"
 };
-static const int iat_offs[8] = { 0xD4, 0xE3, 0xEF, 0xFC, 0x107, 0x116, 0x127, 0x135 };
+#define K32_MAX 128
+static int k32_used[K32_MAX]; /* 槽 → 名字索引 */
+static int k32_off[K32_MAX];  /* 槽 → hint/names .data 偏移 */
+static int k32_n = 0;         /* 使用槽数 */
+static int k32_ilt = 0;       /* kernel32 ILT .data 偏移 (desc OriginalFirstThunk) */
+static int k32_dll_off = 0;   /* "kernel32.dll" .data 偏移 */
+static int kdesc_off = 0;    /* kernel32 导入描述符 .data 偏移 */
+static int mdesc_off = 0;    /* msvcrt 导入描述符 .data 偏移 */
+static int g_pdata_rva = 0;  /* .pdata 异常表 RVA (Exception Directory) */
+static int g_pdata_len = 0;   /* .pdata 总大小 */
 
 /* ---------- 读取文件 ---------- */
 static uint8_t *read_all(const char *path, int *len) {
@@ -156,7 +179,8 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
             s->name[8] = 0;
         }
         s->size = r4(sh + 16);
-        s->chars = r4(sh + 32);
+        s->chars = r4(sh + 36); /* 节特征（fix 2026-08-07: 原读 +32 是重定位数域，节对齐取不到） */
+        { int av = (s->chars >> 20) & 0xF; s->align = av > 0 ? (1 << (av - 1)) : 1; if (s->align > 0x10000) s->align = 0x10000; } /* fix 2026-08-07: COFF 对齐位20-23（.rdata=32, .bss=128, .text=64） */
         int praw = r4(sh + 20);
         s->data = NULL;
         if (s->size > 0 && praw >= 0 && praw + s->size <= len) {
@@ -316,6 +340,7 @@ static void add_builtin_main(void) {
     o->secs[0].data = (uint8_t*)malloc(1);
     o->secs[0].data[0] = 0xC3; /* ret */
     o->secs[0].size = 1;
+    o->secs[0].align = 16; /* 内置 stub：16 对齐即可 */
     memcpy(o->secs[0].name, ".text", 5);
     o->nsym = 1;
     o->syms = (JSym*)calloc(1, sizeof(JSym));
@@ -340,11 +365,20 @@ static GSym *gsym_add(const char *name) {
     return g;
 }
 
-static int iat_symbol(const char *name) {
-    for (int i = 0; i < 8; i++) {
-        char imp[64]; sprintf(imp, "__imp_%s", iat_names[i]);
-        if (!strcmp(name, imp) || !strcmp(name, iat_names[i])) return i;
+static int k32_slot(const char *name) {
+    if (k32_n == 0) { /* qcc CRT stub 固定引用前 8 槽 (fix 2026-08-07: 必须始终有效, 否则 call *IAT 指向 0) */
+        for (int i = 0; i < 8 && i < (int)(sizeof(k32_names)/sizeof(k32_names[0])); i++) k32_used[i] = i;
+        k32_n = 8;
     }
+    const char *mn = name;
+    if (mn[0]=='_' && mn[1]=='_' && mn[2]=='i' && mn[3]=='m' && mn[4]=='p' && mn[5]=='_') mn += 6;
+    for (int i = 0; i < (int)(sizeof(k32_names)/sizeof(k32_names[0])); i++)
+        if (!strcmp(k32_names[i], mn)) {
+            for (int s = 0; s < k32_n; s++) if (k32_used[s] == i) return s;
+            if (k32_n >= K32_MAX) return -1;
+            k32_used[k32_n] = i;
+            return k32_n++;
+        }
     return -1;
 }
 
@@ -357,7 +391,7 @@ static const char *msvcrt_names[] = {
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
-    "memcmp","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
+    "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
     "toupper","tolower","isalpha","isdigit","isalnum","isspace","isupper","islower",
     "isxdigit","isprint","ispunct","iscntrl","isgraph",
     "floor","ceil","sqrt","pow","fabs","fmod","sin","cos","tan","asin","acos","atan",
@@ -370,9 +404,18 @@ static const char *msvcrt_names[] = {
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */
 static int msvcrt_n = 0;                  /* 使用的槽数 */
 static int msvcrt_direct_slot[MSVCRT_MAX]; /* 直接 call 的槽（需 thunk） */
+static int k32_thunk_slot[K32_MAX]; /* kernel32 槽 → thunk 序号 (fix 2026-08-07: gcc 地址引用需可执行 thunk) */
+static int k32_thunk_n = 0;
+static int k32_thunk_idx(int slot) {
+    for (int i = 0; i < k32_thunk_n; i++) if (k32_thunk_slot[i] == slot) return i;
+    if (k32_thunk_n >= K32_MAX) return -1;
+    k32_thunk_slot[k32_thunk_n] = slot;
+    return k32_thunk_n++;
+}
 static int msvcrt_direct_n = 0;
 static int msvcrt_end = 0x140;            /* 导入区结束（bss/OUT_DATA 起点，对齐16） */
-static int msvcrt_iat_off = 0x140;         /* msvcrt IAT 起点（.data 内偏移） */
+static int msvcrt_iat_off = 0x140;
+static int g_text_total = 0; /* text 总大小 (layout 计算, write_pe 使用, fix 2026-08-07: 原 write 误含 OUT_DATA → .text 虚拟区与 .data 重叠 → ERROR_BAD_EXE_FORMAT) */         /* msvcrt IAT 起点（.data 内偏移） */
 
 static int msvcrt_find_slot(int mi) {
     for (int s = 0; s < msvcrt_n; s++) if (msvcrt_used[s] == mi) return s;
@@ -405,7 +448,7 @@ static void collect_defs(void) {
 
 static int resolve_one(GSym *g) {
     if (g->defined) return 0;
-    int iat = iat_symbol(g->name);
+    int iat = k32_slot(g->name);
     if (iat >= 0) { g->obj = -2; g->sym = iat; g->defined = 1; return 0; }
     /* msvcrt: __imp_X → IAT 槽；X（直接 call）→ thunk */
     {
@@ -464,6 +507,9 @@ static int resolve_one(GSym *g) {
 
 static int resolve_all(void) {
     collect_defs();
+    /* fix 2026-08-07 Gate-1: qcc CRT stub 硬编码 call *[data+8+8*i] 引用前 8 个 kernel32 槽
+       (不产生符号引用) — 必须在布局前无条件预注册, 否则 IAT 为空 → call 0 崩 */
+    if (k32_n < 8) { for (int i = k32_n; i < 8 && i < (int)(sizeof(k32_names)/sizeof(k32_names[0])); i++) k32_used[i] = i; if (k32_n < 8) k32_n = 8; }
     /* mingw CRT 依赖：__main（全局构造辅助）。若未定义则提供空 stub */
     {
         GSym *gm = gsym_add("__main");
@@ -511,6 +557,7 @@ static int data_rva_base;
 static int total_stc_n;
 static int bss_rva_base;      /* .bss 区（.data 节内）RVA */
 static int crt_reserve = 0;   /* CRT stub 在 .text 尾部预留长度 */
+static int g_sec_start[NUM_OUT]; /* 输出节偏移（layout 计算，write_pe 复用，fix 2026-08-07） */
 
 static int gen_crt(uint8_t *buf, int base_off, int main_va); /* 前向声明 */
 
@@ -539,6 +586,12 @@ static void out_append(int which, const uint8_t *p, int n) {
     out_len[which] += n;
 }
 
+/* 节对齐填充（fix 2026-08-07: gcc .rdata/.text/.bss 要求 32/64/128 对齐，movdqa 静态读依赖） */
+static void out_pad(int which, int n) {
+    static const uint8_t z[256] = {0};
+    while (n > 0) { int k = n > 256 ? 256 : n; out_append(which, z, k); n -= k; }
+}
+
 static int classify(const char *name) {
     /* gcc 变体节名: .text.startup / .text.unlikely / .text$mn / .data$... / .rdata$zzz
        甲言 -c 对象: .rstr = .rdata$str, .rdbl = .rdata$dbl */
@@ -548,6 +601,8 @@ static int classify(const char *name) {
     if (!strncmp(name, ".rdata$str", 10)) return OUT_STR;
     if (!strncmp(name, ".rdata$dbl", 10)) return OUT_DBL;
     if (!strncmp(name, ".rdata", 6)) return OUT_RDAT;
+    if (!strncmp(name, ".xdata", 6)) return OUT_RDAT; /* 异常展开信息 (fix 2026-08-07) */
+    if (!strncmp(name, ".pdata", 6)) return OUT_RDAT; /* 异常处理函数表 (fix 2026-08-07: FTH 栈回溯依赖) */
     if (!strncmp(name, ".data", 5)) return OUT_DATA;
     if (!strncmp(name, ".bss", 4)) return OUT_BSS;
     return -1;
@@ -555,6 +610,7 @@ static int classify(const char *name) {
 
 static void layout(void) {
     int glob_off[NUM_OUT] = {0, 0, 0, 0, 0, 0};
+    int max_align[NUM_OUT] = {0, 0, 0, 0, 0, 0}; /* fix 2026-08-07: 每类输出节的最大对齐 */
     for (int oi = 0; oi < obj_n; oi++) {
         JObj *o = &objs[oi];
         if (getenv("JYLD_DEBUG")) {
@@ -565,8 +621,14 @@ static void layout(void) {
             int which = classify(o->secs[si].name);
             o->sec_map[si] = which;
             if (which < 0) continue;
-            o->secs[si].out_off = glob_off[which];
-            glob_off[which] += o->secs[si].size;
+            /* fix 2026-08-07 Gate-1: 每节按 COFF 对齐放置。gcc 节内符号用 .balign 与节
+               基址对齐；拼接不补齐会使 .rdata 的 16B 常量落在非 16 对齐地址 → movdqa 崩 */
+            int need = o->secs[si].align; if (need < 1) need = 1;
+            if (need > max_align[which]) max_align[which] = need;
+            int off = (glob_off[which] + need - 1) & ~(need - 1);
+            if (off > glob_off[which] && which != OUT_BSS) out_pad(which, off - glob_off[which]);
+            o->secs[si].out_off = off;
+            glob_off[which] = off + o->secs[si].size;
             if (which == OUT_BSS) {
                 total_stc_n += (o->secs[si].size + 3) / 4;
             } else if (o->secs[si].data) {
@@ -575,35 +637,67 @@ static void layout(void) {
         }
     }
 
+    /* 预注册 k32 thunk (fix 2026-08-07 Gate-1): pass-2b 里才调 k32_thunk_idx 会晚于
+       下面 out_len 预留计算 → k32_thunk_n 此刻=0 → 预留少 59*6 字节 → CRT/thunk 覆盖
+       最后一个函数的尾部（final printf 的 WriteFile call 丢失 → 循环出口跳进 thunk 表崩） */
+    for (int oi = 0; oi < obj_n; oi++) {
+        JObj *o = &objs[oi];
+        for (int si = 0; si < o->nsym; si++) {
+            JSym *s = &o->syms[si];
+            if (s->sec == 0) {
+                GSym *g = gsym_add(s->name);
+                if (g->defined && g->obj == -2) k32_thunk_idx(g->sym);
+            }
+        }
+    }
     /* CRT stub 预留：追加到 .text 末尾（布局后生成），必须先计入尺寸 */
     out_len[OUT_TEXT] += crt_reserve;
     /* msvcrt thunk 预留（每个直接调用的 libc 函数一个 jmp [IAT] = 6 字节） */
     out_len[OUT_TEXT] += msvcrt_direct_n * 6;
+    /* kernel32 thunk 预留 (fix 2026-08-07: gcc 地址引用/直接 call 需 jmp [IAT]) */
+    out_len[OUT_TEXT] += k32_thunk_n * 6;
 
-    /* 只读数据节 16 字节对齐（movdqa/movaps 要求）；写入时补填充。
-       可写 .data（初始化）与 .bss 放 .data 节（IAT 保留区 0x140 之后）。 */
+    /* 只读数据节按最大节对齐（movdqa/movaps 要求）；写入时补填充。
+       可写 .data（初始化）与 .bss 放 .data 节（IAT 保留区 0x140 之后）。
+       fix 2026-08-07: .rdata 节需 32 对齐（gcc COFF 对齐位 = 0x6），基址不足则
+       节内 .balign 16 的常量落错位 → movdqa 崩。 */
+    int aso = max_align[OUT_STR] < 16 ? 16 : max_align[OUT_STR];
+    int ado = max_align[OUT_DBL] < 16 ? 16 : max_align[OUT_DBL];
+    int ard = max_align[OUT_RDAT] < 16 ? 16 : max_align[OUT_RDAT];
     int sec_start[NUM_OUT];
     sec_start[OUT_TEXT] = 0;
-    sec_start[OUT_STR] = (sec_start[OUT_TEXT] + out_len[OUT_TEXT] + 15) & ~15;
-    sec_start[OUT_DBL] = (sec_start[OUT_STR] + out_len[OUT_STR] + 15) & ~15;
-    sec_start[OUT_RDAT] = (sec_start[OUT_DBL] + out_len[OUT_DBL] + 15) & ~15;
+    sec_start[OUT_STR] = (sec_start[OUT_TEXT] + out_len[OUT_TEXT] + aso - 1) & ~(aso - 1);
+    sec_start[OUT_DBL] = (sec_start[OUT_STR] + out_len[OUT_STR] + ado - 1) & ~(ado - 1);
+    sec_start[OUT_RDAT] = (sec_start[OUT_DBL] + out_len[OUT_DBL] + ard - 1) & ~(ard - 1);
+    for (int w = 0; w < NUM_OUT; w++) g_sec_start[w] = sec_start[w]; /* fix 2026-08-07: write_pe 必须与布局一致 */
 
     int text_total = sec_start[OUT_RDAT] + out_len[OUT_RDAT];
+    g_text_total = text_total;
     data_rva_base = (0x1000 + text_total + 4095) & ~4095;
     if (data_rva_base < 0x2000) data_rva_base = 0x2000;
 
-    /* 导入区布局（desc 数组连续 @0x98，kernel32 hint 后移 +0x14）：
+    /* 导入区布局 (fix 2026-08-07 Gate-1: kernel32 动态槽):
+       0x08 kernel32 IAT | term | kernel32 ILT | term |
        0x98 kernel32 desc | 0xAC msvcrt desc | 0xC0 terminator |
-       0xD4 kernel32 hint/names(8) | 0x143 "kernel32.dll" (结束0x150) |
-       0x150 msvcrt hint/names | "msvcrt.dll" | msvcrt IAT | msvcrt ILT */
+       0xD4 kernel32 hint/names(k32_n) | "kernel32.dll" |
+       msvcrt hint/names | "msvcrt.dll" | msvcrt IAT | msvcrt ILT
+       kernel32 IAT 固定 @0x08 (resolved_va = data+8+8*sym), ILT 紧随其后 */
     {
-        int khint_end = 0x154; /* kernel32 hint(8个)+名字结束 */
-        int mhint = khint_end;
+        /* 布局: 0x08 kernel32 IAT | term | ILT | term | desc(k32) | desc(msvcrt) | term |
+           kernel32 hint/names | "kernel32.dll" | msvcrt hint/names | "msvcrt.dll" | msvcrt IAT | ILT
+           (fix 2026-08-07: 62 槽时 IAT/ILT 延伸至 ~0x3F0, desc/hint 必须后移避免被覆盖) */
+        k32_ilt = 0x08 + k32_n * 8 + 8;
+        kdesc_off = k32_ilt + k32_n * 8 + 8;
+        mdesc_off = kdesc_off + 20;
+        int khint = mdesc_off + 40; /* terminator(20) + kernel32 hint 起点 */
+        for (int s = 0; s < k32_n; s++) { k32_off[s] = khint; khint += 2 + (int)strlen(k32_names[k32_used[s]]) + 1; }
+        k32_dll_off = khint;
+        int mhint = khint + 13; /* "kernel32.dll\0" */
         int mhint_end = mhint;
         for (int s = 0; s < msvcrt_n; s++)
             mhint_end += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint_end;
-        int miat = mdll + 11; /* "msvcrt.dll\0" */
+        int miat = (mdll + 11 + 7) & ~7; /* "msvcrt.dll\0" 后 8 对齐 (fix 2026-08-07: 原 miat=mdll+11 奇数地址, IAT 槽错位; loader 能处理但 x64 惯例应 8 对齐) */
         int milt = miat + msvcrt_n * 8;
         int mend = milt + msvcrt_n * 8;
         msvcrt_iat_off = miat;
@@ -616,8 +710,20 @@ static void layout(void) {
     out_base[OUT_DBL] = 0x1000 + sec_start[OUT_DBL];
     out_base[OUT_RDAT] = 0x1000 + sec_start[OUT_RDAT];
     out_base[OUT_DATA] = data_rva_base + msvcrt_end;
-    out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + 15) & ~15;
+    { int abss = max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]; /* fix 2026-08-07: .bss 128 对齐（COFF 位 0x8） */
+      out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
     bss_rva_base = out_base[OUT_BSS];
+    /* .pdata 异常表 RVA (fix 2026-08-07) */
+    g_pdata_rva = 0; g_pdata_len = 0;
+    for (int oi2 = 0; oi2 < obj_n; oi2++) {
+        JObj *o2 = &objs[oi2];
+        for (int si2 = 0; si2 < o2->nsec; si2++) {
+            if (o2->sec_map[si2] == OUT_RDAT && !strncmp(o2->secs[si2].name, ".pdata", 6)) {
+                if (g_pdata_rva == 0) g_pdata_rva = out_base[OUT_RDAT] + o2->secs[si2].out_off;
+                g_pdata_len += o2->secs[si2].size;
+            }
+        }
+    }
 
     /* 第一遍：所有对象节 RVA */
     for (int oi = 0; oi < obj_n; oi++) {
@@ -655,6 +761,7 @@ static void layout(void) {
                 if (g->defined && g->obj >= 0) {
                     s->resolved_va = objs[g->obj].syms[g->sym].resolved_va;
                 } else if (g->defined && g->obj == -2) {
+                    k32_thunk_idx(g->sym); /* fix 2026-08-07: 记录需要 thunk 的 kernel32 槽 */
                     s->resolved_va = 0x400000LL + data_rva_base + 8 + 8LL * g->sym;
                 } else if (g->defined && g->obj == -3) {
                     /* msvcrt: __imp_X → IAT 槽；X → thunk（jmp [IAT]） */
@@ -663,13 +770,8 @@ static void layout(void) {
                     if (is_imp) {
                         s->resolved_va = 0x400000LL + data_rva_base + msvcrt_iat_off + 8LL * slot;
                     } else {
-                        int d = msvcrt_is_direct_slot(slot);
-                        if (d >= 0) {
-                            int thunk_start = out_len[OUT_TEXT] - msvcrt_direct_n * 6;
-                            s->resolved_va = 0x400000LL + 0x1000 + thunk_start + 6LL * d;
-                        } else {
-                            s->resolved_va = 0x400000LL + data_rva_base + msvcrt_iat_off + 8LL * slot;
-                        }
+                        /* fix 2026-08-07: X (direct call) 也暂存 IAT 槽 — thunk 地址在 apply_relocs 统一计算 (crt_reserve 此时未定) */
+                        s->resolved_va = 0x400000LL + data_rva_base + msvcrt_iat_off + 8LL * slot;
                     }
                 } else {
                     s->resolved_va = 0;
@@ -698,6 +800,26 @@ static void apply_relocs(void) {
                 int csym = o->sym_remap[r->sym];
                 if (csym < 0 || csym >= o->nsym) continue;
                 long long target = o->syms[csym].resolved_va;
+                /* 导入符号重定向到 thunk (jmp [IAT]) — gcc 直接 call/取址需要可执行地址。
+                   __imp_X 引用不重定向 (fix 2026-08-07 Gate-1): qcc 的 call *[rip+X] 是
+                   间接调用 — disp 必须指向 IAT 槽(数据), 重定向到 thunk 后 CPU 把 thunk 的
+                   FF 25 指令字节当指针解引用 → 跳垃圾地址崩 (0x...25FF) */
+                const char *rsym_name = o->syms[csym].name;
+                int is_imp_ref = (rsym_name[0]=='_' && rsym_name[1]=='_' && rsym_name[2]=='i' && rsym_name[3]=='m' && rsym_name[4]=='p' && rsym_name[5]=='_');
+                if (!is_imp_ref && target >= 0x400000LL + data_rva_base + 8 && target < 0x400000LL + data_rva_base + 8 + 8LL * k32_n) {
+                    int slot = (int)((target - (0x400000LL + data_rva_base + 8)) / 8);
+                    int tk = k32_thunk_idx(slot);
+                    int th_off = (out_len[OUT_TEXT] - k32_thunk_n * 6) + tk * 6;
+                    target = 0x400000LL + 0x1000 + th_off;
+                } else if (!is_imp_ref && target >= 0x400000LL + data_rva_base + msvcrt_iat_off &&
+                           target < 0x400000LL + data_rva_base + msvcrt_iat_off + 8LL * msvcrt_n) {
+                    int slot = (int)((target - (0x400000LL + data_rva_base + msvcrt_iat_off)) / 8);
+                    int d = msvcrt_is_direct_slot(slot);
+                    if (d >= 0) { /* 直接调用的 libc 函数 → thunk */
+                        int th_off = (out_len[OUT_TEXT] - msvcrt_direct_n * 6 - k32_thunk_n * 6) + d * 6;
+                        target = 0x400000LL + 0x1000 + th_off;
+                    }
+                }
                 if (getenv("JYLD_DEBUG"))
                     fprintf(stderr, "[dbg] reloc %s+%#x -> raw=%d csym=%d (%s) target=%llx type=%#x\n",
                             o->secs[si].name, r->va, r->sym, csym, o->syms[csym].name, target, r->type);
@@ -705,6 +827,9 @@ static void apply_relocs(void) {
                 uint8_t *at = out_data[which] + o->secs[si].out_off + r->va;
                 int addend = (int)r4(at);
                 switch (r->type) {
+                    case 0x0000: /* ABSOLUTE: 值 += 目标 RVA (.pdata BeginAddress/UnwindInfoAddress, fix 2026-08-07) */
+                        w4_at(at, addend + (int)(target - 0x400000LL));
+                        break;
                     case 0x0004: /* REL32 */
                         w4_at(at, (int)(target + addend - (0x400000LL + site + 4)));
                         break;
@@ -889,7 +1014,7 @@ static int gen_crt(uint8_t *buf, int base_off, int main_va) {
 /* ---------- write_pe（移植 qcc） ---------- */
 static void write_pe(FILE *f, int entry_rva) {
     int text_rva = 0x1000;
-    int text_total = out_len[OUT_TEXT] + out_len[OUT_STR] + out_len[OUT_DBL] + out_len[OUT_RDAT] + out_len[OUT_DATA];
+    int text_total = g_text_total;
     int text_size = (text_total + 4095) & ~4095;
     if (text_size < 512) text_size = 512;
     int need = data_rva_base - text_rva;
@@ -916,8 +1041,10 @@ static void write_pe(FILE *f, int entry_rva) {
     w8(f, 0x4000000); w8(f, 0x400000); w8(f, 0x100000); w8(f, 0x1000);
     w4(f, 0); w4(f, 16);
     w4(f, 0); w4(f, 0);
-    w4(f, data_rva_base + 0x98); w4(f, msvcrt_n > 0 ? 60 : 40);
-    for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
+    w4(f, data_rva_base + kdesc_off); w4(f, msvcrt_n > 0 ? 60 : 40);
+    w4(f, 0); w4(f, 0); /* di=2 TLS */
+    w4(f, g_pdata_rva); w4(f, g_pdata_len); /* di=3 Exception Directory (.pdata, fix 2026-08-07) */
+    for (int di = 4; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
     fputs(".text", f); pad(f, 3);
     w4(f, text_size); w4(f, text_rva); w4(f, text_size); w4(f, text_foff);
@@ -930,15 +1057,11 @@ static void write_pe(FILE *f, int entry_rva) {
 
     int pos = (int)ftell(f);
     while (pos < text_foff) { fputc(0, f); pos++; }
-    /* .text 节: 代码 + 只读数据（.rdata 系），各节 16 字节对齐（与布局一致） */
+    /* .text 节: 代码 + 只读数据（.rdata 系），节偏移与布局一致（fix 2026-08-07: 复用 g_sec_start，含节对齐） */
     {
-        int sec_start[4] = {0};
-        sec_start[1] = (out_len[OUT_TEXT] + 15) & ~15;
-        sec_start[2] = (sec_start[1] + out_len[OUT_STR] + 15) & ~15;
-        sec_start[3] = (sec_start[2] + out_len[OUT_DBL] + 15) & ~15;
         int cur = 0;
         for (int w = 0; w <= OUT_RDAT; w++) {
-            while (cur < sec_start[w]) { fputc(0, f); cur++; }
+            while (cur < g_sec_start[w]) { fputc(0, f); cur++; }
             if (out_len[w]) fwrite(out_data[w], 1, out_len[w], f);
             cur += out_len[w];
         }
@@ -950,39 +1073,44 @@ static void write_pe(FILE *f, int entry_rva) {
     fseek(f, data_foff, SEEK_SET);
     int heap_start = 0x400000 + bss_rva_base + 4 * total_stc_n + 2560;
     w4(f, heap_start); w4(f, 0);
-    for (int i = 0; i < 8; i++) w8(f, (long long)(data_rva_base + iat_offs[i]));
+    /* kernel32 IAT @0x08 (resolved_va = data+8+8*sym), ILT 紧随其后 (fix 2026-08-07: 显式 fseek, 与槽数无关) */
+    fseek(f, data_foff + 0x08, SEEK_SET);
+    for (int s = 0; s < k32_n; s++) w8(f, (long long)(data_rva_base + k32_off[s]));
     w8(f, 0);
-    for (int i = 0; i < 8; i++) w8(f, (long long)(data_rva_base + iat_offs[i]));
+    fseek(f, data_foff + k32_ilt, SEEK_SET);
+    for (int s = 0; s < k32_n; s++) w8(f, (long long)(data_rva_base + k32_off[s]));
     w8(f, 0);
-    w4(f, data_rva_base + 0x50); w4(f, 0); w4(f, 0);
-    w4(f, data_rva_base + 0x147); w4(f, data_rva_base + 0x08);
+    /* kernel32 desc (动态位置, fix 2026-08-07) */
+    fseek(f, data_foff + kdesc_off, SEEK_SET);
+    w4(f, data_rva_base + k32_ilt); w4(f, 0); w4(f, 0); /* OriginalFirstThunk=ILT */
+    w4(f, data_rva_base + k32_dll_off); w4(f, data_rva_base + 0x08); /* Name + FirstThunk=IAT */
     for (int di = 0; di < 5; di++) w4(f, 0);
-    for (int i = 0; i < 8; i++) {
-        fseek(f, data_foff + iat_offs[i], SEEK_SET);
+    for (int s = 0; s < k32_n; s++) {
+        fseek(f, data_foff + k32_off[s], SEEK_SET);
         w2(f, 0);
-        fputs(iat_names[i], f);
+        fputs(k32_names[k32_used[s]], f);
         fputc(0, f);
     }
-    fseek(f, data_foff + 0x147, SEEK_SET);
+    fseek(f, data_foff + k32_dll_off, SEEK_SET);
     fputs("kernel32.dll", f); fputc(0, f);
-    /* ===== msvcrt.dll 导入区（desc@0xAC，hint@0x150，IAT/ILT 动态） ===== */
+    /* ===== msvcrt.dll 导入区（desc@0xAC，hint 紧跟 kernel32, IAT/ILT 动态） ===== */
     if (msvcrt_n > 0) {
-        /* 计算 .data 内偏移 */
-        int mhint = 0x154;                    /* kernel32 hint+名字 结束 */
+        /* 计算 .data 内偏移 (fix 2026-08-07: 起点跟随动态 kernel32 hint 区) */
+        int mhint = k32_dll_off + 13;         /* kernel32 hint+名字 结束 */
         for (int s = 0; s < msvcrt_n; s++)
             mhint += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint;                     /* "msvcrt.dll" */
-        int miat = mdll + 11;                 /* msvcrt IAT */
+        int miat = (mdll + 11 + 7) & ~7;                 /* msvcrt IAT (8 对齐, fix 2026-08-07, 与 layout 一致) */
         int milt = miat + msvcrt_n * 8;       /* msvcrt ILT */
-        /* msvcrt 导入描述符 @0xAC */
-        fseek(f, data_foff + 0xAC, SEEK_SET);
+        /* msvcrt 导入描述符 (动态位置, fix 2026-08-07) */
+        fseek(f, data_foff + mdesc_off, SEEK_SET);
         w4(f, data_rva_base + milt); /* OriginalFirstThunk = ILT RVA */
         w4(f, 0); w4(f, 0);
         w4(f, data_rva_base + mdll); /* Name = "msvcrt.dll" RVA */
         w4(f, data_rva_base + miat); /* FirstThunk = IAT RVA */
         w4(f, 0); w4(f, 0); w4(f, 0); w4(f, 0); w4(f, 0); /* terminator descriptor */
-        /* msvcrt hint/names @0x150 */
-        int hoff = 0x154;
+        /* msvcrt hint/names (紧跟 kernel32, fix 2026-08-07) */
+        int hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
             fseek(f, data_foff + hoff, SEEK_SET);
             w2(f, 0);
@@ -994,13 +1122,13 @@ static void write_pe(FILE *f, int entry_rva) {
         fseek(f, data_foff + mdll, SEEK_SET);
         fputs("msvcrt.dll", f); fputc(0, f);
         /* msvcrt IAT + ILT（loader 填真实地址） */
-        hoff = 0x154;
+        hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
             fseek(f, data_foff + miat + s * 8, SEEK_SET);
             w8(f, (long long)(data_rva_base + hoff));
             hoff += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         }
-        hoff = 0x154;
+        hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
             fseek(f, data_foff + milt + s * 8, SEEK_SET);
             w8(f, (long long)(data_rva_base + hoff));
@@ -1061,7 +1189,7 @@ int main(int argc, char **argv) {
     }
     if (main_va < 0) { fprintf(stderr, "jyld: no main() defined\n"); return 1; }
     /* 生成真 CRT（main_va/data_rva_base/stc_n 已定），写入预留位置 */
-    int crt_off = out_len[OUT_TEXT] - crt_reserve - msvcrt_direct_n * 6;
+    int crt_off = out_len[OUT_TEXT] - crt_reserve - msvcrt_direct_n * 6 - k32_thunk_n * 6;
     uint8_t *stub = (uint8_t*)malloc(4096);
     int stub_len = gen_crt(stub, crt_off, (int)main_va);
     if (stub_len != crt_reserve) {
@@ -1079,6 +1207,17 @@ int main(int argc, char **argv) {
             uint8_t *at = out_data[OUT_TEXT] + off;
             at[0] = 0xFF; at[1] = 0x25; /* jmp qword [rip+disp32] */
             int iat_va = 0x400000 + data_rva_base + msvcrt_iat_off + 8 * slot;
+            int disp = iat_va - (0x400000 + 0x1000 + off + 6);
+            w4_at(at + 2, disp);
+        }
+        /* kernel32 thunk (fix 2026-08-07): 在 msvcrt thunk 之后 */
+        int kthunk_start = thunk_start + msvcrt_direct_n * 6;
+        for (int t = 0; t < k32_thunk_n; t++) {
+            int slot = k32_thunk_slot[t];
+            int off = kthunk_start + t * 6;
+            uint8_t *at = out_data[OUT_TEXT] + off;
+            at[0] = 0xFF; at[1] = 0x25; /* jmp qword [rip+disp32] */
+            int iat_va = 0x400000 + data_rva_base + 8 + 8 * slot;
             int disp = iat_va - (0x400000 + 0x1000 + off + 6);
             w4_at(at + 2, disp);
         }

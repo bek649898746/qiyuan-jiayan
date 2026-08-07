@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 3ce8c2a9 (2026-08-07)
+**Gate-1 sqlite3 混合链接打通 + 镜像/源分歧深挖修复（host+v1 172/172 全绿，fuzz 200 轮零差异零拒绝）**
+
+- **Gate-1 sqlite3 混合链接**：qcc 编调用方 `_g1_main.o` + gcc 预编 sqlite3 合并版 + jyld 混合链接 → `_g1_sqlite3.exe` 打印 "sqlite3 OK" exit 0。三个链接器根因：① COFF 节对齐（`.rdata` 需 32 对齐，`movdqa` 静态读崩）；② `__imp_X` 引用不重定向到 thunk（qcc 间接调用须指 IAT 数据槽）；③ k32 thunk 预注册必须在 `out_len` 预留前（否则 CRT/thunk 覆盖末函数尾部）
+- **qcc 调用点 Win64 ABI 16 字节对齐**：`fn_frame` +8 → 基帧 rsp≡0；调用点 `shadow_pad` 奇偶补齐（sret/user/fnptr 三路径）
+- **镜像修 5 处 var_isstatic 缺失**（C=38/mirror=38 已对齐）：cg_f t==1 int 静态 / case-4 bigarr（`else if nt==14` + `arr_sz/p_esz` 守卫）/ case-10 arrow double 字段写 + 非结构体指针写 / case-15 is_arrow&&s<0
+- **C 源 4 个 big struct 传参链 bug**（fuzz 扩展生成器后抓出）：cg_f t==15 缺 var_big_param / case-4 bigsz 检测误排除静态结构体 / case-10 arr[i].field double 存储用 push_r 压 rax 存垃圾 / case-15 var_big_param 分支缺 st_field_2d_setup（数组元素误 movzbl 读 8 位）
+- **杂项**：宏区 `[dbg2]/[dbg3]`/`_expanded.txt` 调试残留清除；pp_read_file 4MB include 上限（镜像原 1MB）；msvcrt IAT 8 对齐；fuzz 生成器扩展 big struct/静态结构体场景
+- **验证**：三代自举 v1==v2==v3=3CE8C2A9；host 172/172 + v1 172/172（新增 regress_deep_static_bigparam.c）；multifile 6/6；sqlite3 OK；fuzz 200 轮 0 差异 0 拒绝
+
 ## b16086c8 (2026-08-07)
 **镜像缺口闭合：read_file 文件级 UTF-8 BOM 跳过同步到 .jy 镜像，新不动点 b16086c8（170/170 行为断言全绿）**
 
