@@ -60,7 +60,9 @@ for name in tests:
     except OSError:
         pass
     try:
-        p = subprocess.run([h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        # 用 cmd /c 运行: Server 2025 上 Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005,
+        # 但 cmd 启动正常 (fix 2026-08-08, 实测 CI 诊断: cmd rc=0, subprocess rc=0xC0000005)
+        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
         rc = p.returncode
         out = (p.stdout or '').strip()
     except subprocess.TimeoutExpired as te:
