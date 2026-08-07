@@ -1,5 +1,6 @@
 # 启元·甲言 CI — 每次 push/PR 自动验证闭环 (Task 3.3)
-# 验证: 编译器构建 (gcc 零警告) → 行为断言 → 多 .o/jycc 验收 → 自举不动点
+# 验证: 编译器构建 (gcc 零警告) → 行为断言 → 自举不动点
+# 拆分 2 job: tests(断言+多文件) + bootstrap(自举), 便于定位失败步骤
 name: qiyuan-ci
 
 on:
@@ -9,7 +10,7 @@ on:
     branches: [ master, main ]
 
 jobs:
-  build-verify:
+  tests:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,6 +33,19 @@ jobs:
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
+
+  bootstrap:
+    runs-on: windows-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: 编译宿主编译器
+        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
       - name: 自举三代不动点
         shell: powershell
