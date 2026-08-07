@@ -1585,6 +1585,7 @@ static int var_struct(const char *n, int si) {
     int sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used;
+    fprintf(stderr, "[STRUCT] %s rsp_off=%d\n", n, rsp_used);
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = sz; vars[vcnt].arr_sz = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
@@ -2809,8 +2810,9 @@ static int prim(void) {
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
                     if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
-                    else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; if (tt[tk] == VR) { char fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
-                    else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
+                    while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field (fix: DK unhandled) */
+                    if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; if (tt[tk] == VR) { char fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
+                    if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                     if (tt[tk] == CL) { /* unnamed bit-field */
                         tk++; int ubw = 0;
                         if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -3142,7 +3144,8 @@ static int blk(void) {
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
                     if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fsz = 1; else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* funs: unsigned prefix marks the bit-field (fix 2026-08-05) */
-                    else if (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
+                    while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field: int *p / char *s / void **pp — 8-byte on 64-bit (fix: DK was unhandled → infinite loop) */
+                    if (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
                         tk++;
                         if (tt[tk] == VR) {
                             int inner_si = st_find(tn[tk]); tk++;
@@ -3618,6 +3621,26 @@ static int blk(void) {
             }
             if (tt[tk] == SK) tk++;
             Nc(b, d);
+            fprintf(stderr, "[DBG] after Nc: tt[%d]=%d('%c')\n", tk, tt[tk], tt[tk]>32?tt[tk]:'?');
+            /* comma-separated: typedef P p1, p2, p3; (fix 2026-08-08: was missing → p2+ silently dropped) */
+            while (tt[tk] == CK) {
+                fprintf(stderr, "[COMMA] found comma, tk=%d tt=%d\n", tk, tt[tk]);
+                tk++;
+                int is_ptr3 = 0;
+                if (tt[tk] == DK) { is_ptr3 = 1; tk++; }
+                if (tt[tk] == VR) {
+                    char vn3[32]; strcpy(vn3, tn[tk]); tk++;
+                    int d3 = Nd(7);
+                    if (is_ptr3) { var_offset_ptr(vn3, 4); if (is_struct) vars[vcnt - 1].st_idx = tsi; }
+                    else if (is_struct) var_struct(vn3, tsi);
+                    else if (tdi_dbl) var_double(vn3);
+                    else var_offset(vn3);
+                    memcpy((char*)(nn + d3), vn3, 32);
+                    if (tt[tk] == AK) { tk++; Nc(d3, expr()); }
+                    Nc(b, d3); b_cnt++;
+                }
+                if (tt[tk] == SK) tk++;
+            }
         }
         else { Nc(b, stmt()); b_cnt++; }
     }
@@ -3801,7 +3824,8 @@ static int parse(const char *s) {
                         int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
                         if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
                             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
-                        else if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
+                        while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
+                        if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             if (tt[tk] == VR) {
                                 char iname[32]; strcpy(iname, tn[tk]); tk++; /* Inner */
@@ -4014,7 +4038,8 @@ static int parse(const char *s) {
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
                         if (tt[tk] == VK) { fdflt = 4; if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
-                        else if (tt[tk] == ST) { /* nested struct field */
+                        while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
+                        if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
                             if (tt[tk] == VR) {
                                 int inner_si = st_find(tn[tk]); tk++;
@@ -4083,7 +4108,8 @@ static int parse(const char *s) {
                         while (tk < TS && tt[tk] != UK) {
                             int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
                             if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
-                            else if (tt[tk] == ST) { /* nested struct field */
+                            while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
+                            if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
                                 if (tt[tk] == VR) {
                                     int inner_si = st_find(tn[tk]); tk++;
@@ -4207,7 +4233,8 @@ static int parse(const char *s) {
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
                     if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
-                    else if (tt[tk] == ST) { /* nested struct field */
+                    while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
+                    if (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
                         if (tt[tk] == VR) {
                             int inner_si = st_find(tn[tk]); tk++;
