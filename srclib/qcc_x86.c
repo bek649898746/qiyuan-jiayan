@@ -1585,7 +1585,6 @@ static int var_struct(const char *n, int si) {
     int sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used;
-    fprintf(stderr, "[STRUCT] %s rsp_off=%d\n", n, rsp_used);
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = sz; vars[vcnt].arr_sz = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
@@ -3548,6 +3547,7 @@ static int blk(void) {
                         if (is_ptr2) var_offset_ptr(vn2, is_char ? 1 : 4);
                         else if (is_ll) { var_ll(vn2); if (is_uns) vars[vcnt - 1].is_uns = 1; } /* fix 2026-08-06: 逗号声明 ll 变量 (原 var_offset → 存32) */
                         else if (is_double) { var_double(vn2); }
+                        else if (ltd_si >= 0) { var_struct(vn2, ltd_si); } /* typedef struct comma var (fix: was missing → p2 as int) */
                         else { var_offset(vn2); if (is_char) vars[vcnt - 1].is_char = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; }
                     }
                     memcpy((char*)(nn + d2), vn2, 32);
@@ -3621,10 +3621,8 @@ static int blk(void) {
             }
             if (tt[tk] == SK) tk++;
             Nc(b, d);
-            fprintf(stderr, "[DBG] after Nc: tt[%d]=%d('%c')\n", tk, tt[tk], tt[tk]>32?tt[tk]:'?');
             /* comma-separated: typedef P p1, p2, p3; (fix 2026-08-08: was missing → p2+ silently dropped) */
             while (tt[tk] == CK) {
-                fprintf(stderr, "[COMMA] found comma, tk=%d tt=%d\n", tk, tt[tk]);
                 tk++;
                 int is_ptr3 = 0;
                 if (tt[tk] == DK) { is_ptr3 = 1; tk++; }
