@@ -7393,12 +7393,12 @@ void gen_code(void) {
     for (int i = 0; i < strpn; i++) {
         int si = str_patches[i].str_idx;
         int off = str_offs[si]; /* byte offset within string data */
-        int rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
+        int rva = (bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + code_end + off; /* bin: 内核加载基址 0x104000 (拼接引导后) + code区 + off */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     for (int i = 0; i < fnpn; i++) {
-        int rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
+        int rva = (bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -7407,8 +7407,9 @@ void gen_code(void) {
     for (int i = 0; i < dbl_patch_n; i++) {
         int di = dbl_patches[i].dbl_idx;
         int off = dbl_offs[di];
-        int rva = IMAGE_BASE + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
+        int base = (bin_mode ? 0x104000 : IMAGE_BASE);
+        int rva = base + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - (base + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     if (sdp > 0) {
