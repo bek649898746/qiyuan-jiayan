@@ -2986,7 +2986,8 @@ static int prim(void) {
            real negative zero; a runtime 0.0 - x would round -0.0 to +0.0) */
         if (tt[tk] == FP) {
             int idx = tv[tk];
-            if (dbl_n < 512) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; }
+            if (dbl_n < 1024) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* fix 2026-08-07: 512→1024 对齐镜像 (dbl_n∈[512,1024) 时原静默不写却 dbl_n++ → 垃圾 double) */
+            if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); }
             int n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double-literal: must be marked ndbl (fix 2026-08-06) */
             return n;
         }
