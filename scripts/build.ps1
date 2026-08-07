@@ -32,9 +32,9 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = 'C129A7547812326BE258F33CF362FE8EE86D5D854A7DF02D00B2BDEA6B4967C3'
+$expected = 'DA5BF647A3A598CC135AB17A8EF5353C4896759A21594DE6E5378E0201FB717F'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: c129a754 (GEN1==GEN2==GEN3 全等)" -ForegroundColor Green
+    Write-Host "[OK] 自举不动点达成: $($h1.Substring(0,8)) (GEN1==GEN2==GEN3 全等)" -ForegroundColor Green
 } else {
     Write-Host "[WARN] 三代哈希与仓库记录不同：$h1" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
