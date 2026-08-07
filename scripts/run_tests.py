@@ -23,6 +23,18 @@ if not os.path.exists(qcc):
     if r.returncode != 0:
         print('[FAIL] 编译宿主失败'); sys.exit(1)
 
+# 清理 scratch_test: CI 多次 run 残留文件会被占用 -> cannot write _H1.exe (fix 2026-08-08)
+import shutil
+st_dir = os.path.join(root, 'scratch_test')
+if os.path.isdir(st_dir):
+    for f in os.listdir(st_dir):
+        try:
+            os.remove(os.path.join(st_dir, f))
+        except OSError:
+            pass
+else:
+    os.makedirs(st_dir, exist_ok=True)
+
 tests = sorted('qcc/' + f for f in os.listdir('tests/qcc') if f.endswith('.c'))
 tests += sorted('behavior/' + f for f in os.listdir('tests/behavior') if f.endswith('.c'))
 pass_n = fail_n = 0
