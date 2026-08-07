@@ -32,7 +32,7 @@ Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 
-$expected = 'DA5BF647A3A598CC135AB17A8EF5353C4896759A21594DE6E5378E0201FB717F'
+$expected = '9900DE15E3073992A601FE00177B3B289D5E1DD4F0FCFFCDC6A120AA59C70EC3'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: $($h1.Substring(0,8)) (GEN1==GEN2==GEN3 全等)" -ForegroundColor Green
 } else {
