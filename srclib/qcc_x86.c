@@ -7340,7 +7340,7 @@ void gen_code(void) {
         /* epilogue label: return jumps here */
         epi_label = new_label();
 
-        if ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主")))) { /* emit global initializers at program entry (甲言: 主() = main()); coff 模式挂最后一个函数 — 原挂第一个, 函数内 static 变量未注册 DCL-MISS (fix 2026-08-06) */
+        if ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主"))) || (bin_mode && !strcmp(fname, "_start"))) { /* bin 模式: ginit 在 _start 发射 (裸机无 CRT) */
             cg_ginit_ctx = 1; /* ginit decls must NOT be skipped by case-7's local-static check */
             for (int gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
             cg_ginit_ctx = 0;
