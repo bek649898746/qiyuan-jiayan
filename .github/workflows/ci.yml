@@ -28,6 +28,25 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
+      - name: CI 诊断 (PE 头 + 手动运行, 临时)
+        if: always()
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Write-Host "=== 编译 arg4 ==="
+          .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1
+          Write-Host "编译 rc=$LASTEXITCODE"
+          if (Test-Path scratch_test/_diag.exe) {
+            Write-Host "=== 文件大小 ==="
+            (Get-Item scratch_test/_diag.exe).Length
+            Write-Host "=== objdump PE 头 ==="
+            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|SizeOfRawData|VirtualSize|SizeOfStack|entry|DLL Name' | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() }
+            Write-Host "=== cmd 直接运行 ==="
+            cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%" 2>&1
+            Write-Host "=== python subprocess 运行 ==="
+            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,text=True,timeout=15); print('rc=',p.returncode)"
+          }
+
       - name: 行为断言 (180+)
         run: python scripts/run_tests.py
 
