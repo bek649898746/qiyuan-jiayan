@@ -3,6 +3,20 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## da5bf647 (2026-08-07)
+**结构体指针字段全家桶 + fnptr 字段支持 + fuzz 生成器防爆（host+v1 178/178 全绿）：**
+
+- **指针字段 frow=1 → frow=8（C 源 + 镜像，5 处）**：struct 指针字段注册 frow 传 1 → brace_fields 判 `frow2>0 && fsz2>frow2` → 指针字段被当数组字段 → `b.next = &a` 走 case-14 嵌套基址字节存 → 递归结构体 `struct LNode b = {4, &a}` 的 next 存 0x80 垃圾 → q->next->v 崩。修：所有指针字段注册点统一 `fptr ? 8 : 1`（本地类型定义/全局 struct/typedef 匿名/typedef 带标签/匿名全局）。
+- **typedef 结构体局部变量 brace 初始化（C 源 + 镜像）**：`LN b = {4, &a}` 原落进 Nc(d,expr()) — expr() 不能解析 '{' → 字段从未写入。修：加 `ltd_si >= 0 && !is_ptr && FK` 分支走 brace_fields。
+- **匿名全局结构体 brace 初始化（C 源 + 镜像）**：`struct {...} b = {4, 0}` 的 `= {...}` 被 while-skip 整体跳过。修：注册后检测 `= {` 走 brace_fields 进 ginit。
+- **静态结构体指针字段读取缺 deref（C 源 + 镜像）**：fsz==8 且 fty 为 struct 索引（非 -2/-3）时 rax 停在字段地址 → `g1.next` 读到 .data 地址。修：`fty >= 0 && stypes[fty].sz != 8` 也 mov_reg_mreg64。箭头 struct-typed 指针同理。
+- **fnptr 单字段 frow=1（C 源）**：`struct S { int (*cb)(int,int); } s = { add }` → frow=1 触发数组路径崩。修：单 fnptr frow=8 + 本地类型定义分支补 st_field_ty(-2) 标记。
+- **镜像缺 fnptr struct 字段解析分支（4 个字段循环）**：`int (*cb)(int,int)` 字段在镜像里 '(' 不被任何分支消费 → 解析死循环（v2 编译挂起）。修：从 C 移植 4 个 fnptr 字段分支（union 检查/fnptr 数组/参数表跳过）。
+- **fuzz 生成器 fnptr 调用排除递归函数**：`fp(rf1)` 传大参数 → rf1 指数递归爆炸 → v2 运行超时误报差异（gcc 同样会挂）。修：fnptr 场景排除 rf*。
+- **Gate-1 sqlite3.o 精确 gcc 参数**（补记忆缺口）：`gcc -O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -c` + chkstk stub 链接。
+- **新增 4 个回归测试**：regress_typedef_ptr_brace / regress_fnptr_brace / regress_anon_struct_brace / regress_local_typedef_ptr。
+- **验证**：自举 v1==v2==v3=DA5BF647，host+v1 178/178，multifile 6/6，sqlite3 OK，fuzz 100 轮 0 差异 0 拒绝。
+
 ## c129a754 (2026-08-07)
 **镜像/源分歧深挖第三轮: expr_is_double + 字符串表满检查 + DCL-MISS 严格报错（host+v1 173/173 全绿）**
 

@@ -579,11 +579,12 @@ __attribute__((unused))
     若 (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2)\n"); exit(1); }
     整 idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
-       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。 */
+       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。
+       fix 2026-08-07: fsz>=8 也 8 对齐 — 指针字段 (struct LNode* next) 传 frow=1 → 原 align=1 → 偏移错位 (镜像 C 源) */
     整 align = 1;
-    若 (frow >= 8) align = 8;
-    否 若 (frow >= 4) align = 4;
-    否 若 (frow >= 2) align = 2;
+    若 (frow >= 8 || fsz >= 8) align = 8;
+    否 若 (frow >= 4 || fsz >= 4) align = 4;
+    否 若 (frow >= 2 || fsz >= 2) align = 2;
     若 (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -1776,6 +1777,7 @@ __attribute__((unused))
         *fsz_out = 4;
         *si_out = var_stidx(vn);
         若 (var_isstatic(vn)) lea_rax_rip(stc_disp(off) - 1);
+        否 若 (var_pesz(vn) > 0) lea_r_mbrp(0, off - cur_frame_sz); /* fix 2026-08-07: 指针变量 root (q->next->v) — lea &q; var_sbase 对 st_idx 减 struct 大小 → 错位 (镜像 C 源) */
         否 lea_r_mbrp(0, var_sbase(vn, off) - cur_frame_sz);
         返 0;
     }
@@ -2098,7 +2100,10 @@ __attribute__((unused))
         整 frow2 = stypes[si].frows[fidx];
         整 mem = Nd(15); memcpy((字*)(nn + mem), fname, 32); nv[mem] = 0;
         Nc(mem, base);
-        若 (fty >= 0) { /* nested struct field: recurse into its fields */
+        /* fix 2026-08-07: 指针字段 (ftype=指向的 struct, 但 fsz=8 ≠ struct size) 不递归 —
+           自引用结构体 struct LNode { int v; struct LNode *next; } 的 next 若递归 → 无限递归死循环 (镜像 C 源) */
+        整 fty_is_ptr = (fty >= 0 && stypes[fty].sz != fsz2);
+        若 (fty >= 0 && !fty_is_ptr) { /* nested struct field: recurse into its fields */
             若 (tt[tk] == FK) tk++; /* explicit nested braces { ... } */
             整 sub = brace_fields(fty, mem);
             若 (tt[tk] == UK) tk++; /* skip closing } */
@@ -3042,13 +3047,39 @@ __attribute__((unused))
                             若 (tt[tk] == DK) { fptr = 1; tk++; }
                             若 (inner_si >= 0 && tt[tk] == VR) {
                                 字 fn[32]; strcpy(fn, tn[tk]); tk++;
-                                st_field_sz_r(nsi, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                st_field_sz_r(nsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (镜像 C 源, 本地类型定义) */
                                 st_field_ty(nsi, fn, inner_si);
                             }
                         }
                         若 (tt[tk] == SK) tk++;
                         续;
                     }
+                        否 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr 字段: int (*cb)(int,int); / int (*cb[3])(int); — 8 字节指针字段 (fix 2026-08-07 镜像 C 源: 原缺失 → '(' 不被消费 → 字段循环死循环) */
+                            tk++; tk++; /* skip ( * */
+                            若 (tt[tk] == VR) {
+                                字 fn[32]; strcpy(fn, tn[tk]); tk++;
+                                整 first = 1, fdims = 0, fsz8 = 8;
+                                循环 (tt[tk] == LB) { /* fnptr 数组字段: (*cb[3]) */
+                                    tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; }
+                                    若 (tt[tk] == RB) tk++;
+                                }
+                                若 (fdims >= 1) st_field_sz_r(nsi, fn, fsz8, fsz8 / first);
+                                否 st_field_sz_r(nsi, fn, 8, 8); /* fix 2026-08-07: 单 fnptr 字段 frow=8 */
+                                st_field_ty(nsi, fn, -2); /* mark fnptr field */
+                                若 (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
+                                若 (tt[tk] == OK) { /* skip (args) */
+                                    整 depth = 0;
+                                    循环 (tk < TS && tt[tk] != EK) {
+                                        若 (tt[tk] == OK) depth++;
+                                        否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } }
+                                        tk++;
+                                    }
+                                }
+                            }
+                            若 (tt[tk] == CK) tk++;
+                            若 (tt[tk] == SK) tk++;
+                            续;
+                        }
                     若 (tt[tk] == CL) { /* 无名位域 ": N" — 占位不注册（fix 2026-08-05） */
                         tk++; 整 ubw = 0;
                         若 (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -3342,6 +3373,18 @@ __attribute__((unused))
                 遍 (整 i = 0; i < 8; i++) gi_idx[i] = 0;
                 str_row = 0; /* 字符串初始化行计数器（fix 2026-08-05） */
                 brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0); /* 自管 { } */
+                循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                若 (tt[tk] == SK) tk++;
+                续;
+            } 否 若 (ltd_si >= 0 && !is_ptr && tt[tk] == FK) {
+                /* typedef'd struct 变量 brace 初始化: LN b = { a, b } (fix 2026-08-07 镜像 C 源: 原 Nc(d,expr()) — expr() 不能解析 '{' → 字段从未写入) */
+                tk++;
+                整 idn = Nd(1); memcpy((字*)(nn + idn), (字*)(nn + d), 32); /* 变量名已在声明节点 d 里 (vn 超出作用域) */
+                整 bi = brace_fields(ltd_si, idn);
+                Nc(b, d); b_cnt++; /* 先声明 */
+                整 bt = Nd(5); Nc(bt, bi);
+                Nc(b, bt); b_cnt++;
+                若 (tt[tk] == UK) tk++;
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 若 (tt[tk] == SK) tk++;
                 续;
@@ -3670,9 +3713,24 @@ __attribute__((unused))
                                 若 (inner_si >= 0 && tt[tk] == VR) {
                                     字 fn[32]; strcpy(fn, tn[tk]); tk++;
                                     若 (is_union) st_union_field(si, fn, fptr ? 8 : stypes[inner_si].sz);
-                                    否 { st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, 1); st_field_ty(si, fn, inner_si); } /* ftype = pointed-to struct even for pointers (n1.next->val) */
+                                    否 { st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); st_field_ty(si, fn, inner_si); } /* fix 2026-08-07: 指针字段 frow=8 (镜像 C 源 — 原 frow=1 → brace_fields 数组路径 → b.next 字节存) */
                                 }
                             }
+                            若 (tt[tk] == SK) tk++;
+                            续;
+                        }
+                        否 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr 字段: int (*cb)(int,int); / (*cb[3]) — 8 字节指针字段 (fix 2026-08-07 镜像 C 源: 原缺失 → '(' 不被消费 → 字段循环死循环) */
+                            tk++; tk++; /* skip ( * */
+                            若 (tt[tk] == VR) {
+                                字 fn[32]; strcpy(fn, tn[tk]); tk++;
+                                整 fsz8 = 8, first = 1, fdims = 0;
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                若 (is_union) st_union_field(si, fn, fsz8);
+                                否 { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); } /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
+                                若 (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
+                                若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
+                            }
+                            若 (tt[tk] == CK) tk++;
                             若 (tt[tk] == SK) tk++;
                             续;
                         }
@@ -3827,11 +3885,24 @@ __attribute__((unused))
                                 若 (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                                 若 (inner_si >= 0 && tt[tk] == VR) {
                                     字 fn[32]; strcpy(fn, tn[tk]); tk++;
-                                    st_field_sz(si, fn, fptr ? 8 : stypes[inner_si].sz);
+                                    st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (镜像 C 源, typedef 匿名结构体) */
                                     st_field_ty(si, fn, inner_si);
                                 }
                             }
                             若 (tt[tk] == SK) tk++;
+                            续;
+                        }
+                        否 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr 字段 (fix 2026-08-07 镜像 C 源: 原缺失 → '(' 不被消费 → 字段循环死循环) */
+                            tk++; tk++; /* skip ( * */
+                            若 (tt[tk] == VR) {
+                                字 fn[32]; strcpy(fn, tn[tk]); tk++;
+                                整 fsz8 = 8, first = 1, fdims = 0;
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
+                                若 (tt[tk] == KK) tk++;
+                                若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
+                            }
+                            若 (tt[tk] == CK) { tk++; } 若 (tt[tk] == SK) tk++;
                             续;
                         }
                         否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++;
@@ -3879,10 +3950,24 @@ __attribute__((unused))
                                     若 (tt[tk] == DK) { fptr = 1; tk++; }
                                     若 (inner_si >= 0 && tt[tk] == VR) {
                                         字 fn[32]; strcpy(fn, tn[tk]); tk++;
-                                        st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                        st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (镜像 C 源, typedef 带标签结构体) */
                                         st_field_ty(tsi, fn, inner_si);
                                     }
                                 }
+                                若 (tt[tk] == SK) tk++;
+                                续;
+                            }
+                            否 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr 字段 (fix 2026-08-07 镜像 C 源: 原缺失 → '(' 不被消费 → 字段循环死循环) */
+                                tk++; tk++; /* skip ( * */
+                                若 (tt[tk] == VR) {
+                                    字 fn[32]; strcpy(fn, tn[tk]); tk++;
+                                    整 fsz8 = 8, first = 1, fdims = 0;
+                                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                    st_field_sz_r(tsi, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(tsi, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
+                                    若 (tt[tk] == KK) tk++;
+                                    若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
+                                }
+                                若 (tt[tk] == CK) tk++;
                                 若 (tt[tk] == SK) tk++;
                                 续;
                             }
@@ -3985,7 +4070,7 @@ __attribute__((unused))
                             若 (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                             若 (inner_si >= 0 && tt[tk] == VR) {
                                 字 fn[32]; strcpy(fn, tn[tk]); tk++;
-                                st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (镜像 C 源, 匿名全局结构体) */
                                 st_field_ty(si, fn, inner_si);
                             }
                         }
@@ -4039,8 +4124,23 @@ __attribute__((unused))
                     整 cnt = 1;
                     若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
                     var_static_struct(tn[tk], si, cnt);
+                    字 vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
                     循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; }
+                    若 (tt[tk] == AK) { /* = init (fix 2026-08-07 镜像 C 源: 原被整体跳过 → 全局匿名结构体字段从未初始化) */
+                        tk++;
+                        若 (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
+                            tk++;
+                            整 idn = Nd(1); memcpy((字*)(nn + idn), vn_anon, 32);
+                            整 blkinit = brace_fields(si, idn);
+                            若 (tt[tk] == UK) tk++;
+                            若 (ginit_n < 4096) ginit[ginit_n++] = blkinit;
+                        } 否 {
+                            整 decl = Nd(7); memcpy((字*)(nn + decl), vn_anon, 32);
+                            Nc(decl, expr());
+                            若 (ginit_n < 4096) ginit[ginit_n++] = decl;
+                        }
+                    }
                 }
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 若 (tt[tk] == SK) tk++;
@@ -6409,7 +6509,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     若(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     整 afsz = st_field_size(stypes[s].name, fn);
                     若 (cg_no_deref) { /* 只取地址 (fix 2026-08-05) */ }
-                    否 若 (afsz > 4) { 若 (afsz == 8 && (st_field_ty_idx(stypes[s].name, fn) == -2 || st_field_ty_idx(stypes[s].name, fn) == -3)) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/long long(-3) 字段: 64 位值 (fix 2026-08-07 镜像 qcc_x86.c: 原无条件 32 位加载 → p->v = -100 读 4294967196) */ }
+                    否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07 镜像 C 源: 原只 fnptr/LL deref, p->next 读成地址) */ }
                     否 若 (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                     否 若 (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short 字段 fix 2026-08-06) */
                     否 { mov_reg_mreg(0,0); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
@@ -6422,7 +6522,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     } 否 {
                     lea_rax_rip(stc_disp(o) + fo - 1);
                     若 (st_field_is_dbl(stypes[s].name, fn)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
-                    否 若 (fsz > 4) { /* array field → address */
+                    否 若 (fsz > 4) {
+                        整 fty = st_field_ty_idx(stypes[s].name, fn);
+                        若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B): 64-bit value (fix 2026-08-07 镜像 C 源: 指针字段原不 deref → 读到字段地址) */
+                        /* else: by-value struct (8B) / array field → address */
                     } 否 若 (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
 否 若 (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax,word[rax] (short fix 2026-08-06) */
                     否 { mov_reg_mreg(0, 0); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */

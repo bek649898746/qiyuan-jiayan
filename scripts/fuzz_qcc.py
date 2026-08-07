@@ -180,6 +180,22 @@ class Gen:
             parts.append('double %s(int x) { return x + 0.5; }' % dfn)
             self.dfn_name = dfn
             main_lines.append('printf("%%d\\n", (int)%s(%s));' % (dfn, self.int_lit()))
+        # function pointer call (2026-08-07: fnptr 场景)
+        fp1 = [f for f in self.fns if f[1] == 1 and not f[0].startswith('rf')]  # 排除递归函数 rf* — fnptr 传大参数 → 指数爆炸挂死 (fix 2026-08-07: 与直接递归调用块同款防爆)
+        if r.random() < 0.4 and fp1:
+            fpv = self.ident('fp', used); used.add(fpv)
+            tfn = fp1[0][0]
+            main_lines.append('int (*%s)(int) = %s;' % (fpv, tfn))
+            main_lines.append('printf("%%d\\n", %s(%s));' % (fpv, self.int_lit()))
+        # recursive struct (linked list node) (2026-08-07)
+        if r.random() < 0.3:
+            parts.append('struct LNode { int v; struct LNode *next; };')
+            n1 = self.ident('la', used); used.add(n1)
+            n2 = self.ident('lb', used); used.add(n2)
+            lv = self.int_lit()
+            main_lines.append('struct LNode %s = {%s, 0};' % (n1, lv))
+            main_lines.append('struct LNode %s = {%s, &%s};' % (n2, self.int_lit(), n1))
+            main_lines.append('printf("%%d\\n", %s.next->v);' % (n2))
         # ll
         if r.random() < 0.6:
             ll = self.ident('x', used); used.add(ll)
