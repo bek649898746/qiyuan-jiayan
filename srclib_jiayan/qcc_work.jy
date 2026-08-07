@@ -5766,12 +5766,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         例 4: { /* function call */
             整 fn = -1;
             整 math_done = 0; /* external math fn IAT call already cleaned rsp (fix 2026-08-06 BUG-1) */
-            遍 (整 i = 19; i >= 0; i--) { 整 c = child_i(n, i); 若 (c >= 0 && nt[c] == 1) { fn = c; 断; } }
-            若 (fn < 0) {
-                /* call through an EXPRESSION (e.g. tbl[i](x), (*fp)(x), f().g(x)): the
-                   LAST child is the callee, everything else is an argument. */
-                遍 (整 i = 19; i >= 0; i--) { 整 c = child_i(n, i); 若 (c >= 0) { fn = c; 断; } }
-            }
+            /* callee 附加在最后 (Nc(c,n) 在实参后追加), 所以最后一个 child 永远是 callee —
+               普通名 (add(1,2)), fnptr 变量 (fp(x)) 和表达式 callee (h.cb(x,y), tbl[i](x)) 都是。
+               旧两段扫描 (先找 nt==1) 会抓到尾参 (h.cb(x,y) 的 y) 当 callee (fix 2026-08-07 镜像 C 源: 08-03 已修 C 版, 镜像漏) */
+            遍 (整 i = 19; i >= 0; i--) { 整 c = child_i(n, i); 若 (c >= 0) { fn = c; 断; } }
             若 (fn < 0) 断;
             若 (nt[fn] == 12) fn = n0[fn]; /* (*fp)(x): deref of a fnptr decays back to the pointer (C rule) */
 
