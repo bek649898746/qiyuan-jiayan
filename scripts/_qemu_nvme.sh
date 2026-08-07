@@ -8,7 +8,7 @@ ld -m elf_i386 -Ttext 0x100000 --defsym kernel_main=0 --oformat binary /tmp/boot
 
 # Stitch (entry point auto)
 KERNEL=$K/scratch_test/kernel_v16.bin
-EP=0x1674
+EP=0x1A4F
 python3 -c "
 import struct,sys
 boot=open('/tmp/boot_k.bin','rb').read()
