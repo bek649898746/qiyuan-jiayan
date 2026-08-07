@@ -5746,7 +5746,7 @@ static void cg(int n) {
             char *fname = (char*)(nn + fn);
             int fi = -1;
             if (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
-            /* 内建 __asm_byte(v): 发射一个字节到 bin 前缀 (Multiboot2 header, fix 2026-08-08) */
+            /* 内建 __asm_byte(v): 发射一个字节到 bin_hdr (Multiboot header/手写内核, fix 2026-08-08) */
             if (nt[fn] == 1 && !strcmp(fname, "__asm_byte") && bin_mode) {
                 int av = n0[n]; /* 第一个实参 (子节点) */
                 if (av >= 0 && nt[av] == 0) {
@@ -7293,8 +7293,9 @@ void gen_code(void) {
            vars[], copying every param into every prologue would clobber live slots. */
         int fv0 = fvb[gfn], fv1 = fve[gfn];
         vs_end = fv1; /* scope var lookups to this function during codegen */
+        int bin_no_params = (bin_mode && i == 0); /* -bin 入口函数: 跳过参数复制/argv 初始化 (裸机无参, codegen ABI 与 Multiboot 不匹配) */
         for (int vi = fv0; vi < fv1; vi++) {
-            if (vars[vi].is_param) {
+            if (vars[vi].is_param && !bin_no_params) {
                 if (vars[vi].is_dbl) {
                     /* double param: xmm[preg→xmm] (reg) or [rbp+pdisp] (stack). 8 bytes. */
                     if (vars[vi].pstk) { movsd_xmm0_mbrp(vars[vi].pdisp); movsd_mbrp_xmm0(vars[vi].rsp_off - cur_frame_sz); }
@@ -7882,24 +7883,23 @@ int main(int argc, char **argv) {
     if (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); return 1; }
     if (bin_mode) {
         if (bin_hdr_n > 0) {
-            /* 手写内核 (__asm_byte): 只输出 bin_hdr, codegen 残留 (return 等) 不入文件 */
+            /* 手写内核 (__asm_byte): 只输出 bin_hdr, codegen 残留不入文件 — SHA256 对齐 */
             fwrite(bin_hdr, 1, bin_hdr_n, f);
         } else {
-            /* codegen 内核: 代码@0x1000, 数据@data_rva_base (RIP 相对位置无关) */
+            /* codegen 内核: 代码@0x1000 + .data (RIP 相对位置无关) */
             int code_off = 0x1000;
             int cur = 0;
             if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
             fwrite(code, 1, cp, f);
             cur += cp;
             if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
-            /* .data: heap counter @+0x0, IAT 区 @+0x8 (填 stub), 静态槽 @+0x300
-               与 PE 布局一致 (codegen 的 heap counter 访问 +0x0, IAT call +0x30) */
+            /* .data: heap counter @+0x0, IAT 区 @+0x8 (填 stub), 静态槽 @+0x300 */
             w4(f, 0); /* heap counter */
             w4(f, 0); /* padding */
             int stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
             int stub_va = 0x100000 + stub_off;
             for (int i = 8; i < 0x300; i += 8) {
-                w4(f, stub_va); w4(f, 0); /* IAT stub 地址 (每 slot) */
+                w4(f, stub_va); w4(f, 0); /* IAT stub 地址 */
             }
             for (int i = 0; i < stc_n; i++) w4(f, 0); /* 静态槽 */
             fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
