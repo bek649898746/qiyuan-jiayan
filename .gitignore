@@ -16,6 +16,7 @@ v3.exe
 Thumbs.db
 
 # 调试结果（不上传，本地保留）
+*.log
 _w.log
 _wextra.log
 _t_min.asm
@@ -48,3 +49,11 @@ _pp[sv].asm
 _t[0-9]*.c
 _thr.py
 _v2jy*
+
+# Python
+__pycache__/
+*.pyc
+
+# Gate-1 sqlite3 第三方 9MB 大文件 (保留磁盘, 不提交)
+_g1_sqlite3.c
+_g1_sqlite3.h

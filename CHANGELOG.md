@@ -3,6 +3,46 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 9900de15 (2026-08-07)
+**匿名全局 fnptr 字段 + static typedef struct 变量（host+v1 180/180 全绿）：**
+
+- **C源+镜像匿名全局结构体循环补 fnptr 字段解析分支**：该循环原缺 (*cb) 处理 → '(' 不被消费 → 解析死循环（host 编译挂起 60s）。修：移植 fnptr 字段分支（fnptr 数组/参数表跳过/frow=8）。
+- **static typedef struct 局部变量（C源+镜像）**：两层 bug：① static LN b 解析时 static 后的 typedef 类型名 LN 被当变量名（ltd_si 只算首 token）→ 补 2nd-token typedef 重算（含 tdi_fnptr_v/tdi_fdbl_v）；② 注册走 var_static → int → 改 var_static_struct；③ = {...} 落进 Nc(decl,expr()) → 加 brace_fields 进 ginit。
+- 新增 2 回归测试：regress_anon_struct_fnptr / regress_static_typedef_struct。
+- **验证**：v1==v2==v3=9900DE15，host+v1 180/180，multifile 6/6，sqlite3 OK，fuzz 60 轮 0 差异 0 拒绝。
+
+## da5bf647 (2026-08-07)
+**结构体指针字段全家桶 + fnptr 字段支持 + fuzz 生成器防爆（host+v1 178/178 全绿）：**
+
+- **指针字段 frow=1 → frow=8（C 源 + 镜像，5 处）**：struct 指针字段注册 frow 传 1 → brace_fields 判 `frow2>0 && fsz2>frow2` → 指针字段被当数组字段 → `b.next = &a` 走 case-14 嵌套基址字节存 → 递归结构体 `struct LNode b = {4, &a}` 的 next 存 0x80 垃圾 → q->next->v 崩。修：所有指针字段注册点统一 `fptr ? 8 : 1`（本地类型定义/全局 struct/typedef 匿名/typedef 带标签/匿名全局）。
+- **typedef 结构体局部变量 brace 初始化（C 源 + 镜像）**：`LN b = {4, &a}` 原落进 Nc(d,expr()) — expr() 不能解析 '{' → 字段从未写入。修：加 `ltd_si >= 0 && !is_ptr && FK` 分支走 brace_fields。
+- **匿名全局结构体 brace 初始化（C 源 + 镜像）**：`struct {...} b = {4, 0}` 的 `= {...}` 被 while-skip 整体跳过。修：注册后检测 `= {` 走 brace_fields 进 ginit。
+- **静态结构体指针字段读取缺 deref（C 源 + 镜像）**：fsz==8 且 fty 为 struct 索引（非 -2/-3）时 rax 停在字段地址 → `g1.next` 读到 .data 地址。修：`fty >= 0 && stypes[fty].sz != 8` 也 mov_reg_mreg64。箭头 struct-typed 指针同理。
+- **fnptr 单字段 frow=1（C 源）**：`struct S { int (*cb)(int,int); } s = { add }` → frow=1 触发数组路径崩。修：单 fnptr frow=8 + 本地类型定义分支补 st_field_ty(-2) 标记。
+- **镜像缺 fnptr struct 字段解析分支（4 个字段循环）**：`int (*cb)(int,int)` 字段在镜像里 '(' 不被任何分支消费 → 解析死循环（v2 编译挂起）。修：从 C 移植 4 个 fnptr 字段分支（union 检查/fnptr 数组/参数表跳过）。
+- **fuzz 生成器 fnptr 调用排除递归函数**：`fp(rf1)` 传大参数 → rf1 指数递归爆炸 → v2 运行超时误报差异（gcc 同样会挂）。修：fnptr 场景排除 rf*。
+- **Gate-1 sqlite3.o 精确 gcc 参数**（补记忆缺口）：`gcc -O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -c` + chkstk stub 链接。
+- **新增 4 个回归测试**：regress_typedef_ptr_brace / regress_fnptr_brace / regress_anon_struct_brace / regress_local_typedef_ptr。
+- **验证**：自举 v1==v2==v3=DA5BF647，host+v1 178/178，multifile 6/6，sqlite3 OK，fuzz 100 轮 0 差异 0 拒绝。
+
+## c129a754 (2026-08-07)
+**镜像/源分歧深挖第三轮: expr_is_double + 字符串表满检查 + DCL-MISS 严格报错（host+v1 173/173 全绿）**
+
+- **镜像缺 expr_is_double（C 源有）**：`(int)` 转换 double 表达式（含 double-returning 调用/fnptr/表达式 callee）——镜像只在 `ndbl[ce]` 时走 node 19 真截断，缺 `expr_is_double` 覆盖。补函数（放 arr_base_node 之后防前向引用）+ cast 处理 `|| expr_is_double(ce)`。新增回归 regress_int_cast_double.c
+- **镜像字符串字面量表满检查缺失**：str_cnt>=1024 时 C 源 abort，镜像越界写 str_tbl。补 [STR-OVERFLOW] 检查
+- **镜像 [DCL-MISS] 用 var_offset 兜底**：C 源已改严格报错（parse 漏注册是编译 bug，杜绝 [rbp+正偏移] 毁帧），镜像未同步。对齐为 var_lookup<0 → [DCL-MISS] + return
+- fuzz 生成器加 double 函数 + `(int)` 转换场景
+- 验证: v1==v2==v3=C129A754, host+v1 173/173, multifile 6/6, sqlite3 OK
+
+## f40326df (2026-08-07)
+**技术债清理：镜像/源结构对齐 + 静态数组元素按值传参别名 bug + extern 检查对齐（host+v1 172/172 全绿）**
+
+- **静态结构体数组元素按值传参别名 bug（C 源+镜像）**：case-4 `nt==14` 分支的 `!var_isstatic(an)` 排除静态数组 → 元素走"留地址"捷径 → 被调方修改影响原数组（gcc 按值 3 vs qcc 100）。去掉排除，静态数组元素走 bigarr 拷贝
+- **fn_macro_expand_to 结构对齐（镜像）**：全局缓冲（g_mout/g_mcap/g_mo/g_m_self）→ C 源 5 参数版本（outp/o/cap/self_fmi），tmp 缓冲 2048→8192 对齐。消除镜像/源结构性分歧（单份维护）
+- **镜像 stc_disp 补 extern 无定义检查**（对齐 C 源 coff_static_disp 非 coff 分支）
+- fuzz 生成器再加静态数组元素传参+被调方修改场景
+- 验证: v1==v2==v3=F40326DF, host+v1 172/172, multifile 6/6, sqlite3 OK, fuzz 150 轮 0 差异 0 拒绝
+
 ## 3ce8c2a9 (2026-08-07)
 **Gate-1 sqlite3 混合链接打通 + 镜像/源分歧深挖修复（host+v1 172/172 全绿，fuzz 200 轮零差异零拒绝）**
 
