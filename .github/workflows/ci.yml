@@ -49,20 +49,30 @@ jobs:
             $diag += "=== cmd 直接运行 ==="
             $out = cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%" 2>&1
             $diag += ($out -join ' | ')
-            $diag += "=== subprocess 模式对比 ==="
+            $diag += "=== subprocess 模式对比 (关键) ==="
             $pyout = python -c "import subprocess
 exe = r'scratch_test\_diag.exe'
-for name, kw in [('capture', dict(capture_output=True)), ('inherit', dict()), ('stdin-devnull', dict(stdin=subprocess.DEVNULL)), ('stdout-pipe', dict(stdout=subprocess.PIPE))]:
+tests = [
+  ('capture_output', dict(capture_output=True)),
+  ('inherit', dict()),
+  ('stdin-devnull', dict(stdin=subprocess.DEVNULL)),
+  ('stdout-pipe', dict(stdout=subprocess.PIPE)),
+  ('CREATE_NO_WINDOW', dict(creationflags=subprocess.CREATE_NO_WINDOW)),
+  ('shell=True', dict(shell=True)),
+]
+for name, kw in tests:
     try:
         p = subprocess.run([exe], timeout=15, **kw)
         print(name, 'rc=', p.returncode)
     except Exception as e:
-        print(name, 'ERR:', e)"
+        print(name, 'ERR:', type(e).__name__, str(e)[:80])
+"
             $pyout | ForEach-Object { $diag += $_ }
           }
           $diag | Set-Content -Path scratch_test/_ci_diag.txt -Encoding UTF8
           $diag | ForEach-Object { Write-Host $_ }
-          Write-Host "::group::诊断摘要已存 scratch_test/_ci_diag.txt"
+          # 同时写入 STEP_SUMMARY (PR 页面可见, 不依赖日志 API)
+          $diag | Set-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Append
 
       - name: 上传诊断结果 (临时)
         if: always()
