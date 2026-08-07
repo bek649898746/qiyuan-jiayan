@@ -33,7 +33,7 @@ _start:
     addl $8, %edi
     loop 1b
     /* NVMe MMIO: 0xFE000000 → PD index 496 */
-    movl $0xFE000083, pd + 496*8
+    movl $0xFE000093, pd + 496*8  /* add PCD(bit4) for uncacheable MMIO */
     movl $pdpt, %eax
     orl  $3, %eax
     movl %eax, pml4              /* pml4[0] = pdpt | 3 */
