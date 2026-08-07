@@ -7892,14 +7892,15 @@ int main(int argc, char **argv) {
             fwrite(code, 1, cp, f);
             cur += cp;
             if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
-            /* .data: IAT 区 (0x0-0x300) 填 stub 地址 (jmp . 死循环) + heap counter + 静态槽
-               bin 模式假设加载基址 0x100000 (Multiboot 标准) — IAT 填 stub 绝对地址 */
-            int stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n; /* stub 在数据区末尾 */
-            int stub_va = 0x100000 + stub_off;
-            for (int i = 0; i < 0x300 / 4; i++) {
-                w4(f, stub_va); /* stub 地址 (低32位, 加载基址 1MB 内) */
-            }
+            /* .data: heap counter @+0x0, IAT 区 @+0x8 (填 stub), 静态槽 @+0x300
+               与 PE 布局一致 (codegen 的 heap counter 访问 +0x0, IAT call +0x30) */
             w4(f, 0); /* heap counter */
+            w4(f, 0); /* padding */
+            int stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
+            int stub_va = 0x100000 + stub_off;
+            for (int i = 8; i < 0x300; i += 8) {
+                w4(f, stub_va); w4(f, 0); /* IAT stub 地址 (每 slot) */
+            }
             for (int i = 0; i < stc_n; i++) w4(f, 0); /* 静态槽 */
             fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
         }
