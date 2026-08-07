@@ -3364,6 +3364,11 @@ static int blk(void) {
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
+            if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
+                if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
+                tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
+                tk++;
+            }
             int is_ptr = (tt[tk] == DK);
             if (is_ptr) tk++; /* skip * for pointers */
             int d = Nd(7);
@@ -3461,6 +3466,7 @@ static int blk(void) {
                 }
             } else if (is_static) {
                 if (is_double) { var_static(vn, 4); vars[vcnt - 1].is_dbl = 1; } /* static double: 8-byte .data slot */
+                else if (ltd_si >= 0 && !is_ptr) { var_static_struct(vn, ltd_si, 1); } /* static typedef'd struct var (fix 2026-08-07: was var_static → int, 字段全错位) */
                 else { var_static(vn, is_ptr ? (is_char ? 1 : 4) : 0); if (is_char) vars[vcnt - 1].is_char = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; } }
             else if (is_ptr) {
                 if (is_double) { var_offset_ptr(vn, 8); vars[vcnt - 1].p_dbl = 1; } /* double*: 8-byte element + p_dbl */
@@ -3498,10 +3504,19 @@ static int blk(void) {
             } else if (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
-                int decl = Nd(7); memcpy((char*)(nn + decl), (char*)(nn + d), 32);
-                Nc(decl, expr());
-                ginit[ginit_n++] = decl;
-                vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07: was Nc(decl,expr()) — expr() 不能解析 '{') */
+                    tk++;
+                    int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32); /* name in decl node d (vn out of scope) */
+                    int blkinit = brace_fields(ltd_si, idn);
+                    if (tt[tk] == UK) tk++;
+                    if (ginit_n < 4096) ginit[ginit_n++] = blkinit;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                } else {
+                    int decl = Nd(7); memcpy((char*)(nn + decl), (char*)(nn + d), 32);
+                    Nc(decl, expr());
+                    ginit[ginit_n++] = decl;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                }
             } else {
                 Nc(d, expr());
             }
@@ -4197,6 +4212,20 @@ static int parse(const char *s) {
                                 st_field_ty(si, fn, inner_si);
                             }
                         }
+                        if (tt[tk] == SK) tk++;
+                        continue;
+                    }
+                    else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr field (fix 2026-08-07: 原缺失 → '(' 不被消费 → 循环死循环) */
+                        tk++; tk++; /* skip ( * */
+                        if (tt[tk] == VR) {
+                            char fn[32]; strcpy(fn, tn[tk]); tk++;
+                            int fsz8 = 8, first = 1, fdims = 0;
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
+                            if (tt[tk] == KK) tk++;
+                            if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
+                        }
+                        if (tt[tk] == CK) tk++;
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
