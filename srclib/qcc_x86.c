@@ -40,6 +40,7 @@ void *host_va_alloc(int n) { return malloc(n); }
 
 /* ?????? ????????????? */
 static unsigned char *code;    /* ????????? */
+static unsigned char bin_hdr[256]; static int bin_hdr_n = 0; /* -bin: __asm_byte 前缀 (Multiboot2 header), fix 2026-08-08 */
 static int cp;             /* cp=?????? */
 static int lc;                 /* ????????*/
 static int epi_label;          /* function epilogue */
@@ -1228,6 +1229,7 @@ static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static int func_n = 0;
 static int coff_mode = 0;
+static int bin_mode = 0; /* -bin: 裸二进制输出 (内核: 无 PE 头/无 CRT/无 .data), fix 2026-08-08 */
 static int coff_ginit_done = 0; /* -c: ginit emitted once per object */
 #define MAX_CREL 131072
 static struct { int site; int type; int sym; int addend; int is_label; int label; } crel[MAX_CREL];
@@ -5744,6 +5746,14 @@ static void cg(int n) {
             char *fname = (char*)(nn + fn);
             int fi = -1;
             if (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
+            /* 内建 __asm_byte(v): 发射一个字节到 bin 前缀 (Multiboot2 header, fix 2026-08-08) */
+            if (nt[fn] == 1 && !strcmp(fname, "__asm_byte") && bin_mode) {
+                int av = n0[n]; /* 第一个实参 (子节点) */
+                if (av >= 0 && nt[av] == 0) {
+                    if (bin_hdr_n < 256) bin_hdr[bin_hdr_n++] = nv[av] & 0xFF;
+                } else { fprintf(stderr, "[ERR] __asm_byte 需整数常量\n"); }
+                break; /* 跳过正常调用逻辑 */
+            }
             if (fi >= 0 && fn_dbl_get_ret(fname)) ndbl[n] = 1; /* double-returning call: node yields xmm0 */
             /* ?????????? ??rcx, rdx, r8, r9 ??arg5+ on stack at [rsp+40+8k]
                Args are evaluated one at a time and PUSHED (8 bytes each): a later
@@ -7261,10 +7271,18 @@ void gen_code(void) {
         scratch_base = cur_frame_sz - 272; /* 状态区 [rbp-272..]，printf 缓冲在其下 [rbp-4368..rbp-273]（emit_print 里 lea -4096） */
         sret_ptr_off = cur_frame_sz - 8;   /* sret slot at [rbp-8] */
 
-        push_r(5);  /* push rbp */
-        push_r(3);  /* push rbx (callee-saved �?used as cross-call temp) */
-        mov_rr64(5, 4); /* mov rbp, rsp */
-        sub_rsp_imm(fn_frame); /* shadow space + locals */
+        /* fix 2026-08-08 -bin: 入口函数 (_start, 第一个) 设栈+设 rbp (函数体帧访问需要), 不分配大帧 */
+        int no_frame = (bin_mode && i == 0);
+        if (no_frame) {
+            mov_ri_ext(4, 0x200000); /* mov rsp, 0x200000 — 内核栈 */
+            mov_rr64(15, 4);         /* r15 = rsp */
+            mov_rr64(5, 4);          /* mov rbp, rsp — 函数体帧访问需要 */
+        } else {
+            push_r(5);  /* push rbp */
+            push_r(3);  /* push rbx (callee-saved �?used as cross-call temp) */
+            mov_rr64(5, 4); /* mov rbp, rsp */
+            sub_rsp_imm(fn_frame); /* shadow space + locals */
+        }
         if (cur_fn_sret) mov_mbrp_reg64(sret_ptr_off - cur_frame_sz, 1); /* save the hidden sret pointer (rcx) — inner calls clobber it */
 
         /* copy incoming params into frame slots (reg params from rcx/rdx/r8/r9,
@@ -7305,12 +7323,13 @@ void gen_code(void) {
 
         /* epilogue */
         set_label(epi_label);
-        add_rsp_imm(fn_frame);
-        pop_r(3); /* pop rbx */
-        pop_r(5); /* pop rbp */
+        if (!no_frame) {
+            add_rsp_imm(fn_frame);
+            pop_r(3); /* pop rbx */
+            pop_r(5); /* pop rbp */
+        }
         ret();
     }
-
     if (coff_mode) {
         /* -c 模式：跳过 CRT 与补丁烘焙；str/fn/dbl 补丁改为 COFF 重定位 */
         for (int i = 0; i < strpn; i++) {
@@ -7356,9 +7375,12 @@ void gen_code(void) {
     }
 
     /* mini-CRT entry stub: provides argc/argv, calls main, exits with its code.
-       Emitted in BOTH passes (pass 2 overwrites pass 1 identically). */
-    asm_emit("\n; === CRT ===\n_入口:\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
-    emit_crt_stub();
+       Emitted in BOTH passes (pass 2 overwrites pass 1 identically).
+       -bin 模式: 无 CRT (内核自备 Multiboot2 header + 入口, fix 2026-08-08) */
+    if (!bin_mode) {
+        asm_emit("\n; === CRT ===\n_入口:\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        emit_crt_stub();
+    }
 
     /* ????????? */
     resolve_patches();
@@ -7660,6 +7682,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS\n"); return 0; }
         if (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; continue; }
         if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
+        if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
         if (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
@@ -7793,7 +7816,22 @@ int main(int argc, char **argv) {
     /* two-pass generation: pass 1 estimates text size �?.data base; pass 2 real */
     g_lc_save = lc; g_rsp_save = rsp_used;
     data_rva_base = 0x2000;
-    if (coff_mode) {
+    if (bin_mode) {
+        /* -bin 模式: 裸二进制 (内核). data_rva_base 动态=代码后对齐 (RIP 相对 disp 位置无关),
+           迭代稳定 (数据紧跟代码, 任意加载基址正确) */
+        data_rva_base = 0x2000;
+        for (int it = 0; it < 8; it++) {
+            asm_pass = 2;
+            gen_final = (it == 7);
+            gen_code();
+            gen_final = 0;
+            int nb = (0x1000 + cp + 4095) & ~4095;
+            if (nb < 0x2000) nb = 0x2000;
+            if (nb == data_rva_base) break;
+            data_rva_base = nb;
+        }
+        asm_pass = 0;
+    } else if (coff_mode) {
         /* -c 模式：对象可重定位，只跑 pass 2（避免重定位/数据重复记录） */
         asm_pass = 2;
         gen_code();
@@ -7842,7 +7880,22 @@ int main(int argc, char **argv) {
     /* ??PE / COFF 对象 */
     FILE *f = fopen(outf, "wb");
     if (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); return 1; }
-    if (coff_mode) {
+    if (bin_mode) {
+        /* -bin: 裸二进制 = bin_hdr(引导) + code + pad到data_rva_base + .data 静态区
+           RIP 相对 disp 假设 代码@0x1000/数据@data_rva_base — bin 保持同样相对布局,
+           加载到任意基址(如0x100000) 相对量不变 → 位置无关 (fix 2026-08-08 内核) */
+        if (bin_hdr_n > 0) fwrite(bin_hdr, 1, bin_hdr_n, f);
+        /* 代码@0x1000, 数据@data_rva_base (动态=代码后对齐, RIP 相对 disp 位置无关) */
+        int code_off = 0x1000;
+        int cur = bin_hdr_n;
+        if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
+        fwrite(code, 1, cp, f);
+        cur += cp;
+        if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
+        /* .data 静态区: heap counter + stc_n 槽 (供 RIP 相对访问) */
+        w4(f, 0); /* heap counter (未用) */
+        for (int i = 0; i < stc_n; i++) w4(f, 0); /* 静态槽 */
+    } else if (coff_mode) {
         write_coff_obj(f);
     } else {
         write_pe(f, entry_rva_global);
