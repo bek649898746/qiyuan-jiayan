@@ -6,12 +6,13 @@ K=/mnt/c/Users/Administrator/Desktop/qiyuan-jiayan
 as --32 $K/tests/kernel/boot.S -o /tmp/boot_k.o
 ld -m elf_i386 -Ttext 0x100000 --defsym kernel_main=0 --oformat binary /tmp/boot_k.o -o /tmp/boot_k.bin
 
-# Stitch
-EP=0x198E
+# Stitch (entry point auto)
+KERNEL=$K/scratch_test/kernel_v16.bin
+EP=0x1674
 python3 -c "
 import struct,sys
 boot=open('/tmp/boot_k.bin','rb').read()
-k=open('$K/scratch_test/kernel_v15.bin','rb').read()
+k=open('$KERNEL','rb').read()
 c=bytearray(boot+k)
 for i in range(len(c)-14):
     if c[i]==0x48 and c[i+1]==0xBC:
@@ -37,8 +38,8 @@ menuentry "JY" { multiboot /boot/kernel.bin; boot; }
 EOF
 grub-mkrescue -o /tmp/knv.iso /tmp/isonv 2>/dev/null
 dd if=/dev/zero of=/tmp/nvme_disk.img bs=1M count=16 2>/dev/null
-echo "=== QEMU + NVMe ==="
-timeout 12 qemu-system-x86_64 -M q35 -cdrom /tmp/knv.iso \
+echo "=== QEMU v16 NVMe ==="
+timeout 15 qemu-system-x86_64 -M q35 -cdrom /tmp/knv.iso \
   -device nvme,drive=nvme0,serial=JIAYAN \
   -drive file=/tmp/nvme_disk.img,format=raw,if=none,id=nvme0 \
   -nographic -no-reboot -m 128M 2>&1
