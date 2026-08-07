@@ -1,10 +1,10 @@
 # 启元·甲言 CI — 每次 push/PR 自动验证闭环 (Task 3.3)
-# 验证: 编译器构建 (gcc 零警告) → 167 行为断言 → 多 .o/jycc 验收 → 自举不动点
+# 验证: 编译器构建 (gcc 零警告) → 行为断言 → 多 .o/jycc 验收 → 自举不动点
 name: qiyuan-ci
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, ci-fix ]
   pull_request:
     branches: [ master, main ]
 
@@ -35,51 +35,42 @@ jobs:
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
-          Write-Host "=== gcc 版本 ==="
-          gcc --version | Select-Object -First 1
-          Write-Host "=== Python 版本 ==="
-          python --version
-          Write-Host "=== 手动编译运行 arg4.c (诊断) ==="
-          .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe
-          Write-Host "编译 rc=$LASTEXITCODE"
+          $diag = @()
+          $diag += "=== gcc 版本 ==="
+          $diag += (gcc --version | Select-Object -First 1)
+          $diag += "=== Python 版本 ==="
+          $diag += (python --version)
+          $diag += "=== 编译 arg4.c ==="
+          .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1 | ForEach-Object { $diag += $_ }
+          $diag += "编译 rc=$LASTEXITCODE"
           if (Test-Path scratch_test/_diag.exe) {
-            Write-Host "=== objdump PE 头 ==="
-            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|StackReserve|StackCommit|HeapReserve|entry|DLL Name'
-            Write-Host "=== 直接运行 (cmd) ==="
-            cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%"
-            Write-Host "=== python subprocess 运行 ==="
-            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('rc=',p.returncode,'out=',repr(p.stdout[:60]),'err=',repr(p.stderr[:60]))"
-            Write-Host "=== 模拟 run_tests.py 完整 (编译 arg4 到 _H1.exe + subprocess) ==="
-            python -c "import subprocess,os; os.remove(r'scratch_test\_diag_H1.exe') if os.path.exists(r'scratch_test\_diag_H1.exe') else None; r=subprocess.run([r'qcc_x86.exe',r'tests/qcc/arg4.c','-o',r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace'); print('compile rc=',r.returncode,'out=',repr(r.stdout[:60])); import os; print('exists=',os.path.exists(r'scratch_test\_diag_H1.exe')); p=subprocess.run([r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('run rc=',p.returncode,'out=',repr(p.stdout[:60]))"
-            Write-Host "=== 虚拟内存检查: 不同 subprocess 模式对比 ==="
-            python -c "
-import subprocess, os
+            $diag += "=== objdump PE 头 ==="
+            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|StackReserve|StackCommit|HeapReserve|entry|DLL Name' | ForEach-Object { $diag += $_.Line }
+            $diag += "=== cmd 直接运行 ==="
+            $out = cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%" 2>&1
+            $diag += ($out -join ' | ')
+            $diag += "=== subprocess 模式对比 ==="
+            $pyout = python -c "import subprocess
 exe = r'scratch_test\_diag.exe'
-# 模式1: capture_output (重定向 stdout)
-try:
-    p = subprocess.run([exe], capture_output=True, timeout=15)
-    print('capture_output rc =', p.returncode)
-except Exception as e:
-    print('capture_output ERR:', e)
-# 模式2: 不重定向 (继承父进程句柄)
-try:
-    p = subprocess.run([exe], timeout=15)
-    print('inherit rc =', p.returncode)
-except Exception as e:
-    print('inherit ERR:', e)
-# 模式3: stdin 重定向但 stdout 继承
-try:
-    p = subprocess.run([exe], stdin=subprocess.DEVNULL, timeout=15)
-    print('stdin-only rc =', p.returncode)
-except Exception as e:
-    print('stdin-only ERR:', e)
-# 模式4: stdout 重定向但 stderr 继承
-try:
-    p = subprocess.run([exe], stdout=subprocess.PIPE, timeout=15)
-    print('stdout-pipe rc =', p.returncode)
-except Exception as e:
-    print('stdout-pipe ERR:', e)
-"
+for name, kw in [('capture', dict(capture_output=True)), ('inherit', dict()), ('stdin-devnull', dict(stdin=subprocess.DEVNULL)), ('stdout-pipe', dict(stdout=subprocess.PIPE))]:
+    try:
+        p = subprocess.run([exe], timeout=15, **kw)
+        print(name, 'rc=', p.returncode)
+    except Exception as e:
+        print(name, 'ERR:', e)"
+            $pyout | ForEach-Object { $diag += $_ }
+          }
+          $diag | Set-Content -Path scratch_test/_ci_diag.txt -Encoding UTF8
+          $diag | ForEach-Object { Write-Host $_ }
+          Write-Host "::group::诊断摘要已存 scratch_test/_ci_diag.txt"
+
+      - name: 上传诊断结果 (临时)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diag
+          path: scratch_test/_ci_diag.txt
+          if-no-files-found: ignore
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
