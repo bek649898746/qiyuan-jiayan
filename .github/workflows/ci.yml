@@ -48,7 +48,9 @@ jobs:
             Write-Host "=== 直接运行 (cmd) ==="
             cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%"
             Write-Host "=== python subprocess 运行 ==="
-            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('rc=',p.returncode,'out=',p.stdout[:50])"
+            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('rc=',p.returncode,'out=',repr(p.stdout[:60]),'err=',repr(p.stderr[:60]))"
+            Write-Host "=== 模拟 run_tests.py 完整 (编译 arg4 到 _H1.exe + subprocess) ==="
+            python -c "import subprocess,os; os.remove(r'scratch_test\_diag_H1.exe') if os.path.exists(r'scratch_test\_diag_H1.exe') else None; r=subprocess.run([r'qcc_x86.exe',r'tests/qcc/arg4.c','-o',r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace'); print('compile rc=',r.returncode,'out=',repr(r.stdout[:60])); import os; print('exists=',os.path.exists(r'scratch_test\_diag_H1.exe')); p=subprocess.run([r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('run rc=',p.returncode,'out=',repr(p.stdout[:60]))"
           }
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
