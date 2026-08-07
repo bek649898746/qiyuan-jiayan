@@ -105,6 +105,12 @@ class Gen:
             ft = r.choice(['int', 'int', 'long long', 'char', 'double'])
             sfields.append((ft, self.ident('f', used_fields)))
         parts.append('struct S0 { %s };' % ' '.join('%s %s;' % f for f in sfields))
+        # bitfield struct (2026-08-07: 扩展位域覆盖)
+        if r.random() < 0.3:
+            parts.append('struct BF { int b0:1; int b1:2; int b2:3; int full; };')
+            self.has_bf = True
+        else:
+            self.has_bf = False
         # big struct by-value param + static struct (2026-08-07 深挖: cg_f big_param / case-4 静态 bigsz / arr[i].field double)
         self.has_big = False
         if r.random() < 0.5:
@@ -275,6 +281,27 @@ class Gen:
                 main_lines.append('printf("%%lld\\n", %s->%s);' % (sp, fname2))
             else:
                 main_lines.append('printf("%%d\\n", %s->%s);' % (sp, fname2))
+        # bitfield usage (2026-08-07: 扩展位域覆盖)
+        if self.has_bf and r.random() < 0.6:
+            bv = self.ident('bf', used); used.add(bv)
+            main_lines.append('struct BF %s;' % bv)
+            bv0 = r.randrange(0, 2)
+            bv1 = r.randrange(0, 4)
+            bv2 = r.randrange(0, 8)
+            bfull = self.int_lit()
+            main_lines.append('%s.b0 = %d;' % (bv, bv0))
+            main_lines.append('%s.b1 = %d;' % (bv, bv1))
+            main_lines.append('%s.b2 = %d;' % (bv, bv2))
+            main_lines.append('%s.full = %s;' % (bv, bfull))
+            main_lines.append('printf("%%d\\n", %s.b0 + %s.b1 + %s.b2 + %s.full);' % (bv, bv, bv, bv))
+        # nested struct chain (inner.in.x -> inner member of outer struct) (2026-08-07)
+        if self.has_outer and r.random() < 0.4:
+            nc = self.ident('nc', used); used.add(nc)
+            main_lines.append('struct Outer %s;' % nc)
+            main_lines.append('struct Outer *%sp = &%s;' % (nc, nc))
+            main_lines.append('%sp->in.x = %s;' % (nc, self.int_lit()))
+            main_lines.append('%sp->in.y = %s;' % (nc, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %sp->in.x + %sp->in.y);' % (nc, nc))
         # recursive call (small arg — fib 指数爆炸, 限 5..12)
         if self.fns and r.random() < 0.4:
             for (rf, arity) in self.fns:
