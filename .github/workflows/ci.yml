@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.11'   # 临时改 3.11 验证: 3.12 subprocess 兼容性假设 (fix 2026-08-07)
 
       - name: 编译宿主编译器 (gcc 零警告)
         run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
