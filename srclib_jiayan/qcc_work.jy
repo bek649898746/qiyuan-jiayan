@@ -1227,6 +1227,17 @@ __attribute__((unused))
 静 字 *coff_dbl_data; 静 整 coff_dbl_len, coff_dbl_cap;
 静 整 coff_text_sym, coff_str_sym, coff_dbl_sym, coff_bss_sym;
 静 整 coff_ginit_done;
+
+#define MAX_CREL 1024
+静 构 { 整 site; 整 type; 整 sym; 整 addend; 整 is_label; 整 label; } crel[MAX_CREL];
+静 整 crel_n;
+#define MAX_CSYM 128
+静 构 { 字 name[64]; 整 value; 整 sec; 整 sc; 整 type; } csym[MAX_CSYM];
+静 整 csym_n;
+静 字 *coff_str_data; 静 整 coff_str_len, coff_str_cap;
+静 字 *coff_dbl_data; 静 整 coff_dbl_len, coff_dbl_cap;
+静 整 coff_text_sym, coff_str_sym, coff_dbl_sym, coff_bss_sym;
+静 整 coff_ginit_done;
 静 整 ndbl[262144]; /* per-node flag: expression yields a double (floating) */
 静 整 nll[262144]; /* per-node flag: expression is a 64-bit long long（fix 2026-08-05） */
 静 整 *nll_hi; /* per-node long long 字面量高 32 — 动态分配（静态 1MB 数组使 cf_1 .data 超限，fix 2026-08-05） */
@@ -1237,6 +1248,18 @@ __attribute__((unused))
 静 空 set_label(整 l) { label_pos[l] = cp; label_set[l] = 1; asm_emit(".L%d:\n", (字*)(长)(整)l, 0, 0); }
 静 空 patch_label(整 at, 整 l, 整 is_jmp) {
     若 (patch_n >= 65536) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d\n", patch_n); abort(); }
+    若 (coff_mode) {
+        整 fs = coff_func_label_sym(l);
+        若 (fs >= 0) {
+            coff_crel(at, 0x0004, fs, 0);
+        } 否 {
+            若 (!coff_text_sym) coff_text_sym = csym_add(".text", 0, 1, 3, 0);
+            coff_crel(at, 0x0004, coff_text_sym, 0);
+            crel[crel_n - 1].is_label = 1;
+            crel[crel_n - 1].label = l;
+        }
+        返;
+    }
     若 (coff_mode) { 整 fs = coff_func_label_sym(l); 若 (fs >= 0) { coff_crel(at, 0x0004, fs, 0); } 否 { 若 (!coff_text_sym) coff_text_sym = csym_add(".text", 0, 1, 3, 0); coff_crel(at, 0x0004, coff_text_sym, 0); crel[crel_n - 1].is_label = 1; crel[crel_n - 1].label = l; } 返; }
     /* 跳转文本由 patch_label 统一发射（带真实标签号 .L%d，asm_zh 才能解析） */
     若 (is_jmp == 0) asm_emit("    调用 .L%d\n", (字*)(长)(整)l, 0, 0);
@@ -1330,6 +1353,84 @@ __attribute__((unused))
     若 (idx < 0) {
         遍 (整 i = vs_n() - 1; i >= 0; i = i - 1) 若 (vars[i].rsp_off == idx) { fprintf(stderr, "[ERR] extern\n"); exit(1); }
         fprintf(stderr, "[ERR] extern\n"); exit(1);
+    }
+    返 stc_disp(idx);
+}
+静 整 csym_find(字 *name) {
+    遍 (整 i = 0; i < csym_n; i = i + 1) 若 (strcmp(csym[i].name, name) == 0) 返 i;
+    返 -1;
+}
+静 整 csym_add(字 *name, 整 value, 整 sec, 整 sc, 整 type) {
+    若 (csym_n >= MAX_CSYM) { fprintf(stderr, "csym overflow\\n"); abort(); }
+    整 i = csym_n; csym_n = csym_n + 1;
+    strncpy(csym[i].name, name, 63); csym[i].name[63] = 0;
+    csym[i].value = value; csym[i].sec = sec; csym[i].sc = sc; csym[i].type = type;
+    返 i;
+}
+静 空 coff_crel(整 site, 整 type, 整 sym, 整 addend) {
+    若 (crel_n >= MAX_CREL) { fprintf(stderr, "crel overflow\\n"); abort(); }
+    crel[crel_n].site = site; crel[crel_n].type = type;
+    crel[crel_n].sym = sym; crel[crel_n].addend = addend;
+    crel[crel_n].is_label = 0; crel[crel_n].label = -1;
+    crel_n = crel_n + 1;
+}
+
+静 空 coff_str_add(字 *p, 整 n) {
+    若 (coff_str_len + n > coff_str_cap) {
+        整 nc = coff_str_cap ? coff_str_cap * 2 : 4096;
+        循环 (nc < coff_str_len + n) nc = nc * 2;
+        coff_str_data = realloc(coff_str_data, nc); coff_str_cap = nc;
+    }
+    memcpy(coff_str_data + coff_str_len, p, n); coff_str_len = coff_str_len + n;
+}
+静 空 coff_dbl_add(字 *p, 整 n) {
+    若 (coff_dbl_len + n > coff_dbl_cap) {
+        整 nc = coff_dbl_cap ? coff_dbl_cap * 2 : 4096;
+        循环 (nc < coff_dbl_len + n) nc = nc * 2;
+        coff_dbl_data = realloc(coff_dbl_data, nc); coff_dbl_cap = nc;
+    }
+    memcpy(coff_dbl_data + coff_dbl_len, p, n); coff_dbl_len = coff_dbl_len + n;
+}
+静 整 coff_slot_sym(整 slot) {
+    遍 (整 i = vs_n() - 1; i >= 0; i = i - 1) {
+        若 (vars[i].rsp_off == slot) {
+            整 s = csym_find(vars[i].name);
+            若 (s < 0) {
+                若 (slot < 0) s = csym_add(vars[i].name, 0, 0, 2, 0);
+                否 s = csym_add(vars[i].name, 4 * slot, 4, 2, 0);
+            }
+            返 s;
+        }
+    }
+    返 -1;
+}
+静 整 coff_func_label_sym(整 label) {
+    遍 (整 i = 0; i < func_n; i = i + 1) {
+        若 (func_tbl[i].label == label) {
+            整 s = csym_find(func_tbl[i].name);
+            若 (s < 0) {
+                s = csym_add(func_tbl[i].name, func_tbl[i].defined ? label_pos[label] : 0,
+                             func_tbl[i].defined ? 1 : 0, 2, 0x20);
+            }
+            返 s;
+        }
+    }
+    返 -1;
+}
+静 整 coff_func_name_sym(字 *name) {
+    整 s = csym_find(name);
+    若 (s < 0) s = csym_add(name, 0, 0, 2, 0x20);
+    返 s;
+}
+静 整 coff_static_disp(整 idx, 整 k) {
+    若 (coff_mode) {
+        整 s = coff_slot_sym(idx);
+        若 (s >= 0) coff_crel(cp + 2 + k, 0x0004, s, 0);
+        返 k;
+    }
+    若 (idx < 0) {
+        遍 (整 i = vs_n() - 1; i >= 0; i = i - 1) 若 (vars[i].rsp_off == idx) { fprintf(stderr, "[ERR] extern\\n"); exit(1); }
+        fprintf(stderr, "[ERR] extern\\n"); exit(1);
     }
     返 stc_disp(idx);
 }
@@ -7235,6 +7336,44 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 si = 0; si < str_cnt; si++) str_place(si); /* 字符串先（C 原版 5137） */
     遍 (整 di = 0; di < dbl_n; di++) dbl_place(di);   /* double 后 */
 
+    若 (coff_mode) {
+        遍 (整 i = 0; i < strpn; i++) {
+            整 si = str_patches[i].str_idx;
+            若 (!coff_str_sym) coff_str_sym = csym_add(".rdata$str", 0, 2, 3, 0);
+            整 off = str_offs[si];
+            b4_at(str_patches[i].patch_at, off);
+            coff_crel(str_patches[i].patch_at, 0x0002, coff_str_sym, off);
+        }
+        遍 (整 i = 0; i < fnpn; i++) {
+            整 fs = coff_func_label_sym(fn_patches[i].label);
+            若 (fs >= 0) {
+                b4_at(fn_patches[i].patch_at, 0);
+                coff_crel(fn_patches[i].patch_at, 0x0002, fs, 0);
+            }
+        }
+        整 str_bytes = 0;
+        遍 (整 i = 0; i < str_cnt; i++) 若 (str_offs[i] >= 0) {
+            整 sz = strlen(str_tbl[i]) + 1;
+            若 (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz;
+        }
+        若 (str_bytes > sdp) str_bytes = sdp;
+        遍 (整 i = 0; i < dbl_patch_n; i++) {
+            整 di = dbl_patches[i].dbl_idx;
+            若 (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdata$dbl", 0, 3, 3, 0);
+            整 off = dbl_offs[di] - str_bytes;
+            b4_at(dbl_patches[i].patch_at, off);
+            coff_crel(dbl_patches[i].patch_at, 0x0004, coff_dbl_sym, off);
+        }
+        若 (sdp > 0) {
+            coff_str_add(sdat, str_bytes);
+            若 (sdp > str_bytes) coff_dbl_add(sdat + str_bytes, sdp - str_bytes);
+        }
+        遍 (整 i = 0; i < crel_n; i++) 若 (crel[i].is_label) {
+            crel[i].addend = label_pos[crel[i].label];
+            b4_at(crel[i].site, label_pos[crel[i].label]);
+        }
+        返;
+    }
     若 (coff_mode) { 遍 (整 i = 0; i < strpn; i++) { 整 si = str_patches[i].str_idx; 若 (!coff_str_sym) coff_str_sym = csym_add(".rdata$str", 0, 2, 3, 0); 整 off = str_offs[si]; b4_at(str_patches[i].patch_at, off); coff_crel(str_patches[i].patch_at, 0x0002, coff_str_sym, off); } 遍 (整 i = 0; i < fnpn; i++) { 整 fs = coff_func_label_sym(fn_patches[i].label); 若 (fs >= 0) { b4_at(fn_patches[i].patch_at, 0); coff_crel(fn_patches[i].patch_at, 0x0002, fs, 0); } } 整 str_bytes = 0; 遍 (整 i = 0; i < str_cnt; i++) 若 (str_offs[i] >= 0) { 整 sz = strlen(str_tbl[i]) + 1; 若 (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz; } 若 (str_bytes > sdp) str_bytes = sdp; 遍 (整 i = 0; i < dbl_patch_n; i++) { 整 di = dbl_patches[i].dbl_idx; 若 (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdata$dbl", 0, 3, 3, 0); 整 off = dbl_offs[di] - str_bytes; b4_at(dbl_patches[i].patch_at, off); coff_crel(dbl_patches[i].patch_at, 0x0004, coff_dbl_sym, off); } 若 (sdp > 0) { coff_str_add(sdat, str_bytes); 若 (sdp > str_bytes) coff_dbl_add(sdat + str_bytes, sdp - str_bytes); } 遍 (整 i = 0; i < crel_n; i++) 若 (crel[i].is_label) { crel[i].addend = label_pos[crel[i].label]; b4_at(crel[i].site, label_pos[crel[i].label]); } 返; } 否 {
     /* ??????????? patch imm32 in mov_r_imm ??actual VA (ImageBase + RVA) */
     整 code_end = cp;
@@ -7331,6 +7470,114 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
    REAL function, NOT a macro: the lexer skips function-like macro definitions
    (#define F(x) ...), so a macro call would compile as an undefined function
    and the self-hosted compiler could never read its input. */
+静 空 write_coff_obj(FILE *f) {
+    若 (!coff_text_sym) coff_text_sym = csym_add(".text", 0, 1, 3, 0);
+    若 (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
+    若 (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdbl", 0, 3, 3, 0);
+    若 (!coff_bss_sym) coff_bss_sym = csym_add(".data", 0, 4, 3, 0);
+    遍 (整 i = 0; i < func_n; i++) {
+        若 (func_tbl[i].defined) {
+            整 s = csym_find(func_tbl[i].name);
+            若 (s < 0) s = csym_add(func_tbl[i].name, label_pos[func_tbl[i].label], 1, 2, 0x20);
+        }
+    }
+    遍 (整 i = 0; i < vcnt; i++) {
+        若 (vars[i].is_static && vars[i].rsp_off >= 0) {
+            整 s = csym_find(vars[i].name);
+            若 (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, 2, 0);
+        }
+    }
+    /* count relocations per section */
+    整 nrel[4]; nrel[0] = 0; nrel[1] = 0; nrel[2] = 0; nrel[3] = 0;
+    遍 (整 i = 0; i < crel_n; i++) {
+        整 rsec = 0;
+        若 (crel[i].site >= cp) {
+            若 (crel[i].site < cp + coff_str_len) rsec = 1;
+            否 rsec = 2;
+        }
+        nrel[rsec] = nrel[rsec] + 1;
+    }
+    /* COFF header */
+    w2(f, 0x8664); w2(f, 4); w4(f, 0);
+    整 sym_off_pos = ftell(f);
+    w4(f, 0); w4(f, 0);
+    w2(f, 0); w2(f, 0);
+    /* section headers */
+    整 raw_off = 20 + 40 * 4;
+    字 nm[9]; 整 rel_offs[4]; 整 i;
+    /* .text */
+    memset(nm, 0, 9); memcpy(nm, ".text", 5);
+    fwrite(nm, 1, 8, f); w4(f, 0); w4(f, 0);
+    w4(f, cp); w4(f, raw_off); raw_off = raw_off + cp;
+    rel_offs[0] = -1; w4(f, 0); w4(f, 0); w2(f, nrel[0]); w2(f, 0); w4(f, 0x60000020);
+    /* .rstr */
+    memset(nm, 0, 9); memcpy(nm, ".rstr", 5);
+    fwrite(nm, 1, 8, f); w4(f, 0); w4(f, 0);
+    w4(f, coff_str_len); w4(f, raw_off); raw_off = raw_off + coff_str_len;
+    rel_offs[1] = -1; w4(f, 0); w4(f, 0); w2(f, nrel[1]); w2(f, 0); w4(f, 0x40300040);
+    /* .rdbl */
+    memset(nm, 0, 9); memcpy(nm, ".rdbl", 5);
+    fwrite(nm, 1, 8, f); w4(f, 0); w4(f, 0);
+    w4(f, coff_dbl_len); w4(f, raw_off); raw_off = raw_off + coff_dbl_len;
+    rel_offs[2] = -1; w4(f, 0); w4(f, 0); w2(f, nrel[2]); w2(f, 0); w4(f, 0x40300040);
+    /* .data */
+    memset(nm, 0, 9); memcpy(nm, ".data", 5);
+    fwrite(nm, 1, 8, f); w4(f, 0); w4(f, 0);
+    w4(f, stc_n * 4); w4(f, raw_off);
+    rel_offs[3] = -1; w4(f, 0); w4(f, 0); w2(f, nrel[3]); w2(f, 0); w4(f, 0xC0300080);
+    /* section data */
+    若 (cp > 0) fwrite(code, 1, cp, f);
+    若 (coff_str_len > 0) fwrite(coff_str_data, 1, coff_str_len, f);
+    若 (coff_dbl_len > 0) fwrite(coff_dbl_data, 1, coff_dbl_len, f);
+    字 *ddata = calloc(stc_n ? stc_n : 1, 4);
+    若 (stc_n > 0) fwrite(ddata, 1, stc_n * 4, f);
+    free(ddata);
+    /* relocation tables */
+    整 rel_base = ftell(f);
+    遍 (i = 0; i < 4; i++) {
+        rel_offs[i] = nrel[i] ? rel_base : 0;
+        rel_base = rel_base + nrel[i] * 10;
+    }
+    遍 (i = 0; i < crel_n; i++) {
+        整 rsec = 0;
+        若 (crel[i].site >= cp) {
+            若 (crel[i].site < cp + coff_str_len) rsec = 1;
+            否 rsec = 2;
+        }
+        w4(f, crel[i].site); w4(f, crel[i].sym); w2(f, crel[i].type);
+    }
+    /* backpatch reloc offsets */
+    遍 (i = 0; i < 4; i++) {
+        fseek(f, 20 + 40 * i + 24, 0);
+        w4(f, rel_offs[i]);
+    }
+    /* symbol table */
+    整 sym_off = rel_base;
+    fseek(f, sym_off, 0);
+    整 strtab_size = 4;
+    遍 (i = 0; i < csym_n; i++) 若 (strlen(csym[i].name) > 8) strtab_size = strtab_size + strlen(csym[i].name) + 1;
+    遍 (i = 0; i < csym_n; i++) {
+        字 *sn = csym[i].name;
+        整 len = strlen(sn);
+        若 (len <= 8) {
+            字 nbuf[8]; memset(nbuf, 0, 8); memcpy(nbuf, sn, len);
+            fwrite(nbuf, 1, 8, f);
+        } 否 {
+            整 o = 4;
+            遍 (整 k = 0; k < i; k++) 若 (strlen(csym[k].name) > 8) o = o + strlen(csym[k].name) + 1;
+            fputc(0, f); fputc(0, f); fputc(0, f); fputc(0, f); w4(f, o);
+        }
+        w4(f, csym[i].value); w2(f, csym[i].sec); w2(f, csym[i].type);
+        fputc(csym[i].sc, f); fputc(0, f);
+    }
+    w4(f, strtab_size);
+    遍 (i = 0; i < csym_n; i++) {
+        若 (strlen(csym[i].name) > 8) { fputs(csym[i].name, f); fputc(0, f); }
+    }
+    fseek(f, sym_off_pos, 0);
+    w4(f, sym_off); w4(f, csym_n);
+}
+
 静 空 write_coff_obj(FILE *f) {
     若 (!coff_text_sym) coff_text_sym = csym_add(".text", 0, 1, 3, 0);
     若 (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
@@ -7668,7 +7915,7 @@ __attribute__((unused))
     /* ??PE */
     FILE *f = fopen(outf, "wb");
     若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
-    若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+    若 (coff_mode) write_coff_obj(f); 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
     fclose(f);
     若 (asm_out) { fclose(asm_out); asm_out = 0; }
 
