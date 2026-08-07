@@ -30,6 +30,27 @@ jobs:
       - name: 行为断言 (180+)
         run: python scripts/run_tests.py
 
+      - name: CI 诊断 (环境 + 失败详情) — 临时, 修绿后移除
+        shell: pwsh
+        run: |
+          Write-Host "=== gcc 版本 ==="
+          gcc --version
+          Write-Host "=== Python 版本 ==="
+          python --version
+          Write-Host "=== 手动编译运行 arg4.c (诊断) ==="
+          qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe
+          Write-Host "编译 rc=$LASTEXITCODE"
+          if (Test-Path scratch_test/_diag.exe) {
+            Write-Host "=== PE 头 (dumpbin) ==="
+            dumpbin /headers scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|SizeOfStack|SizeOfHeap|Subsystem|entry|DLL'
+            Write-Host "=== 直接运行 ==="
+            cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%"
+            Write-Host "=== objdump PE 头 ==="
+            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|StackReserve|StackCommit|HeapReserve|entry'
+            Write-Host "=== 用 python subprocess 运行 ==="
+            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('rc=',p.returncode,'out=',p.stdout[:50])"
+          }
+
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
 
