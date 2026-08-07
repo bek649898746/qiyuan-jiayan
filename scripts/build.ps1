@@ -40,8 +40,8 @@ if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
-# 4. 跑 143 编译测试（直发，验证不崩溃且可执行）
-Write-Host "[4/4] 跑 tests/qcc 143 测试 ..." -ForegroundColor Yellow
+# 4. 跑 160 编译测试（直发，验证不崩溃且可执行）
+Write-Host "[4/4] 跑 tests/qcc 160 测试 ..." -ForegroundColor Yellow
 $pass = 0; $fail = 0
 Get-ChildItem tests\qcc\*.c | ForEach-Object {
     $out = "$($_.BaseName)_test.exe"
