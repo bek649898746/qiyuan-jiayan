@@ -1339,83 +1339,15 @@ __attribute__((unused))
     }
     返 -1;
 }
-静 整 coff_func_label_sym(整 label) {
-    遍 (整 i = 0; i < func_n; i = i + 1) {
-        若 (func_tbl[i].label == label) {
-            整 s = csym_find(func_tbl[i].name);
-            若 (s < 0) {
-                s = csym_add(func_tbl[i].name, func_tbl[i].defined ? label_pos[label] : 0,
-                             func_tbl[i].defined ? 1 : 0, coff_is_builtin(func_tbl[i].name) ? 3 : 2, 0x20);
-            }
-            返 s;
-        }
-    }
-    返 -1;
-}
-静 整 coff_func_name_sym(字 *name) {
-    整 s = csym_find(name);
-    若 (s < 0) s = csym_add(name, 0, 0, 2, 0x20);
-    返 s;
-}
-静 整 coff_static_disp(整 idx, 整 k) {
-    若 (coff_mode) {
-        整 s = coff_slot_sym(idx);
-        若 (s >= 0) coff_crel(cp + 2 + k, 0x0004, s, 0);
-        返 k;
-    }
-    若 (idx < 0) {
-        遍 (整 i = vs_n() - 1; i >= 0; i = i - 1) 若 (vars[i].rsp_off == idx) { fprintf(stderr, "[ERR] extern\n"); exit(1); }
-        fprintf(stderr, "[ERR] extern\n"); exit(1);
-    }
-    返 stc_disp(idx);
-}
-静 整 csym_find(字 *name) {
-    遍 (整 i = 0; i < csym_n; i = i + 1) 若 (strcmp(csym[i].name, name) == 0) 返 i;
-    返 -1;
-}
-静 整 csym_add(字 *name, 整 value, 整 sec, 整 sc, 整 type) {
-    若 (csym_n >= MAX_CSYM) { fprintf(stderr, "csym overflow\\n"); abort(); }
-    整 i = csym_n; csym_n = csym_n + 1;
-    strncpy(csym[i].name, name, 63); csym[i].name[63] = 0;
-    csym[i].value = value; csym[i].sec = sec; csym[i].sc = sc; csym[i].type = type;
-    返 i;
-}
-静 空 coff_crel(整 site, 整 type, 整 sym, 整 addend) {
-    若 (crel_n >= MAX_CREL) { fprintf(stderr, "crel overflow\\n"); abort(); }
-    crel[crel_n].site = site; crel[crel_n].type = type;
-    crel[crel_n].sym = sym; crel[crel_n].addend = addend;
-    crel[crel_n].is_label = 0; crel[crel_n].label = -1;
-    crel_n = crel_n + 1;
-}
-
-静 空 coff_str_add(字 *p, 整 n) {
-    若 (coff_str_len + n > coff_str_cap) {
-        整 nc = coff_str_cap ? coff_str_cap * 2 : 4096;
-        循环 (nc < coff_str_len + n) nc = nc * 2;
-        coff_str_data = realloc(coff_str_data, nc); coff_str_cap = nc;
-    }
-    memcpy(coff_str_data + coff_str_len, p, n); coff_str_len = coff_str_len + n;
-}
-静 空 coff_dbl_add(字 *p, 整 n) {
-    若 (coff_dbl_len + n > coff_dbl_cap) {
-        整 nc = coff_dbl_cap ? coff_dbl_cap * 2 : 4096;
-        循环 (nc < coff_dbl_len + n) nc = nc * 2;
-        coff_dbl_data = realloc(coff_dbl_data, nc); coff_dbl_cap = nc;
-    }
-    memcpy(coff_dbl_data + coff_dbl_len, p, n); coff_dbl_len = coff_dbl_len + n;
-}
-静 整 coff_slot_sym(整 slot) {
-    遍 (整 i = vs_n() - 1; i >= 0; i = i - 1) {
-        若 (vars[i].rsp_off == slot) {
-            整 s = csym_find(vars[i].name);
-            若 (s < 0) {
-                若 (slot < 0) s = csym_add(vars[i].name, 0, 0, 2, 0);
-                否 s = csym_add(vars[i].name, 4 * slot, 4, 2, 0);
-            }
-            返 s;
-        }
-    }
-    返 -1;
+静 整 coff_is_builtin(常 字 *n) { /* -c 模式: builtin 名 (编译器内联发射, 不是外部函数) (fix 2026-08-07 镜像 C 源: 原缺定义 → jy 未定义函数返回 0 → 内置函数全导出 scl=2; 用 if 链避免静态数组初始化) */
+    若 (!strcmp(n, "printf") || !strcmp(n, "fprintf") || !strcmp(n, "sprintf") || !strcmp(n, "snprintf") || !strcmp(n, "putstr")) 返 1;
+    若 (!strcmp(n, "fopen") || !strcmp(n, "fread") || !strcmp(n, "fwrite") || !strcmp(n, "fputc") || !strcmp(n, "fputs")) 返 1;
+    若 (!strcmp(n, "fclose") || !strcmp(n, "fseek") || !strcmp(n, "ftell") || !strcmp(n, "rewind")) 返 1;
+    若 (!strcmp(n, "_va_alloc") || !strcmp(n, "host_va_alloc") || !strcmp(n, "_setpos") || !strcmp(n, "_getpos") || !strcmp(n, "_exit_proc")) 返 1;
+    若 (!strcmp(n, "memset") || !strcmp(n, "memcpy") || !strcmp(n, "strlen") || !strcmp(n, "strcmp") || !strcmp(n, "strcpy")) 返 1;
+    若 (!strcmp(n, "strncpy") || !strcmp(n, "malloc") || !strcmp(n, "calloc") || !strcmp(n, "free") || !strcmp(n, "realloc")) 返 1;
+    若 (!strcmp(n, "isalnum") || !strcmp(n, "isalpha") || !strcmp(n, "exit") || !strcmp(n, "abort")) 返 1;
+    返 0;
 }
 静 整 coff_func_label_sym(整 label) {
     遍 (整 i = 0; i < func_n; i = i + 1) {
