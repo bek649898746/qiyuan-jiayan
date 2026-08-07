@@ -3837,7 +3837,8 @@ __attribute__((unused))
         tk++; /* skip extern */
         整 e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
         若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
-        若 (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明: 跳过 */
+        若 (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明: 记录返回类型后跳过 */
+            若 (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
             循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
             若 (tk < TS && tt[tk] == SK) tk++;
             续;
@@ -4456,7 +4457,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     }
                 }
             }
-            若 (tt[tk] == SK) { tk++; 续; } /* function prototype: register name, no body; call sites auto-register */
+            若 (tt[tk] == SK) { fn_dbl_set_ret((字*)(nn + fdef), fn_ret_dbl); tk++; 续; } /* function prototype: record double return for call sites */
             Nc(fdef, blk());
             若 (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */

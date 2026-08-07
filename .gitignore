@@ -16,6 +16,7 @@ v3.exe
 Thumbs.db
 
 # 调试结果（不上传，本地保留）
+*.log
 _w.log
 _wextra.log
 _t_min.asm
