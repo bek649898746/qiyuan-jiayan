@@ -105,6 +105,12 @@ class Gen:
             ft = r.choice(['int', 'int', 'long long', 'char', 'double'])
             sfields.append((ft, self.ident('f', used_fields)))
         parts.append('struct S0 { %s };' % ' '.join('%s %s;' % f for f in sfields))
+        # bitfield struct (2026-08-07: 扩展位域覆盖)
+        if r.random() < 0.3:
+            parts.append('struct BF { int b0:1; int b1:2; int b2:3; int full; };')
+            self.has_bf = True
+        else:
+            self.has_bf = False
         # big struct by-value param + static struct (2026-08-07 深挖: cg_f big_param / case-4 静态 bigsz / arr[i].field double)
         self.has_big = False
         if r.random() < 0.5:
@@ -161,6 +167,41 @@ class Gen:
             main_lines.append('%s[1].d = %.1f;' % (lav, dv + 1.0))
             main_lines.append('%s[1].v[0] = %d;' % (lav, iv + 1))
             main_lines.append('printf("%%d\\n", %s(%s[1]));' % (tfn, lav))
+            # 静态数组元素按值传参 + 被调方修改不破坏原数组 (2026-08-07 别名 bug)
+            if r.random() < 0.5:
+                sar = self.ident('gbar', set())
+                parts.append('struct Sbig %s[2];' % sar)
+                self.fn_count += 1
+                mfn = 'tset%d' % self.fn_count
+                parts.append('void %s(struct Sbig s) { s.v[0] = 999; }' % mfn)
+                main_lines.append('%s[1].d = %.1f;' % (sar, dv))
+                main_lines.append('%s[1].v[0] = %d;' % (sar, iv))
+                main_lines.append('%s(%s[1]);' % (mfn, sar))
+                main_lines.append('printf("%%d\\n", %s[1].v[0]);' % sar)
+        # double-returning fn + (int) cast (2026-08-07: expr_is_double 场景)
+        self.dfn_name = None
+        if r.random() < 0.5:
+            self.fn_count += 1
+            dfn = 'dfn%d' % self.fn_count
+            parts.append('double %s(int x) { return x + 0.5; }' % dfn)
+            self.dfn_name = dfn
+            main_lines.append('printf("%%d\\n", (int)%s(%s));' % (dfn, self.int_lit()))
+        # function pointer call (2026-08-07: fnptr 场景)
+        fp1 = [f for f in self.fns if f[1] == 1 and not f[0].startswith('rf')]  # 排除递归函数 rf* — fnptr 传大参数 → 指数爆炸挂死 (fix 2026-08-07: 与直接递归调用块同款防爆)
+        if r.random() < 0.4 and fp1:
+            fpv = self.ident('fp', used); used.add(fpv)
+            tfn = fp1[0][0]
+            main_lines.append('int (*%s)(int) = %s;' % (fpv, tfn))
+            main_lines.append('printf("%%d\\n", %s(%s));' % (fpv, self.int_lit()))
+        # recursive struct (linked list node) (2026-08-07)
+        if r.random() < 0.3:
+            parts.append('struct LNode { int v; struct LNode *next; };')
+            n1 = self.ident('la', used); used.add(n1)
+            n2 = self.ident('lb', used); used.add(n2)
+            lv = self.int_lit()
+            main_lines.append('struct LNode %s = {%s, 0};' % (n1, lv))
+            main_lines.append('struct LNode %s = {%s, &%s};' % (n2, self.int_lit(), n1))
+            main_lines.append('printf("%%d\\n", %s.next->v);' % (n2))
         # ll
         if r.random() < 0.6:
             ll = self.ident('x', used); used.add(ll)
@@ -240,6 +281,27 @@ class Gen:
                 main_lines.append('printf("%%lld\\n", %s->%s);' % (sp, fname2))
             else:
                 main_lines.append('printf("%%d\\n", %s->%s);' % (sp, fname2))
+        # bitfield usage (2026-08-07: 扩展位域覆盖)
+        if self.has_bf and r.random() < 0.6:
+            bv = self.ident('bf', used); used.add(bv)
+            main_lines.append('struct BF %s;' % bv)
+            bv0 = r.randrange(0, 2)
+            bv1 = r.randrange(0, 4)
+            bv2 = r.randrange(0, 8)
+            bfull = self.int_lit()
+            main_lines.append('%s.b0 = %d;' % (bv, bv0))
+            main_lines.append('%s.b1 = %d;' % (bv, bv1))
+            main_lines.append('%s.b2 = %d;' % (bv, bv2))
+            main_lines.append('%s.full = %s;' % (bv, bfull))
+            main_lines.append('printf("%%d\\n", %s.b0 + %s.b1 + %s.b2 + %s.full);' % (bv, bv, bv, bv))
+        # nested struct chain (inner.in.x -> inner member of outer struct) (2026-08-07)
+        if self.has_outer and r.random() < 0.4:
+            nc = self.ident('nc', used); used.add(nc)
+            main_lines.append('struct Outer %s;' % nc)
+            main_lines.append('struct Outer *%sp = &%s;' % (nc, nc))
+            main_lines.append('%sp->in.x = %s;' % (nc, self.int_lit()))
+            main_lines.append('%sp->in.y = %s;' % (nc, self.int_lit()))
+            main_lines.append('printf("%%d\\n", %sp->in.x + %sp->in.y);' % (nc, nc))
         # recursive call (small arg — fib 指数爆炸, 限 5..12)
         if self.fns and r.random() < 0.4:
             for (rf, arity) in self.fns:
