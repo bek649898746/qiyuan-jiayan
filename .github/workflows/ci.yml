@@ -12,6 +12,8 @@ on:
 jobs:
   tests:
     runs-on: windows-latest
+    permissions:
+      contents: write   # 诊断结果 push 回 ci-fix (临时)
     steps:
       - uses: actions/checkout@v5
 
@@ -61,6 +63,29 @@ jobs:
           cmd /c "scratch_test\_diag_gcc.exe & echo GCC_CMD_RC=%ERRORLEVEL%" 2>&1
           Write-Host "--- python subprocess ---"
           python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag_gcc.exe'],capture_output=True,timeout=15); print('GCC_DIRECT_RC=',p.returncode)"
+          Write-Host "=== [6] 结果写入仓库 (git commit) ==="
+          $out = @()
+          $out += "=== CI 决定性诊断 $env:GITHUB_SHA ==="
+          $out += Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+          $out += "--- qcc exe SizeOfImage/SizeOfHeaders ---"
+          $out += (objdump -x scratch_test/_diag.exe 2>&1 | Select-String 'SizeOfImage|SizeOfHeaders' | ForEach-Object { $_.Line.Trim() })
+          $out += "--- gcc exe SizeOfImage/SizeOfHeaders ---"
+          $out += (objdump -x scratch_test/_diag_gcc.exe 2>&1 | Select-String 'SizeOfImage|SizeOfHeaders' | ForEach-Object { $_.Line.Trim() })
+          $out += "--- cmd run qcc ---"
+          $out += (cmd /c "scratch_test\_diag.exe & echo CMD_RC=%ERRORLEVEL%" 2>&1)
+          $out += "--- python direct qcc ---"
+          $out += (python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('DIRECT_RC=',p.returncode)")
+          $out += "--- cmd run gcc ---"
+          $out += (cmd /c "scratch_test\_diag_gcc.exe & echo GCC_CMD_RC=%ERRORLEVEL%" 2>&1)
+          $out += "--- python direct gcc ---"
+          $out += (python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag_gcc.exe'],capture_output=True,timeout=15); print('GCC_DIRECT_RC=',p.returncode)")
+          $out | Set-Content ci_diag_result.txt -Encoding UTF8
+          git config user.email "ci@qiyuan.local"
+          git config user.name "ci-bot"
+          git add ci_diag_result.txt
+          git commit -m "ci: 诊断结果 $env:GITHUB_SHA" 2>&1 | Out-Null
+          git push origin HEAD:ci-fix 2>&1 | Out-Null
+          Write-Host "已提交诊断结果到 ci-fix"
 
       - name: 行为断言 (180+)
         run: python scripts/run_tests.py
