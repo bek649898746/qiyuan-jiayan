@@ -1837,10 +1837,10 @@ __attribute__((unused))
     }
 }
 
-/* ?????? ?????(??? CALL ???) ?????? */
-静 构 { 字 name[32]; 整 label; 整 defined; 整 ret_si; } func_tbl[512];
+/* 函数表 (函数 CALL 注册) */
+静 构 { 字 name[32]; 整 label; 整 defined; 整 ret_si; } func_tbl[1024];
 静 整 func_n = 0;
-静 整 fn_ret_si_map[512]; /* return-struct index per func index; survives gen_code's func_n=0 reset */
+静 整 fn_ret_si_map[1024]; /* return-struct index per func index; survives gen_code's func_n=0 reset (fix 2026-08-07: 512→1024 对齐 C 源 func_tbl) */
 /* return-struct type per FUNCTION NAME — func_tbl indexes are REASSIGNED by
    gen_code's func_n=0 reset, so index-based fn_ret_si_map misaligns whenever a
    program adds/removes functions (e.g. printf) between parse and codegen. */
@@ -1895,7 +1895,7 @@ __attribute__((unused))
 静 整 func_find(常 字 *name) {
     遍 (整 i = 0; i < func_n; i++)
         若 (!strcmp(func_tbl[i].name, name)) 返 i;
-    若 (func_n >= 512) 返 -1;
+    若 (func_n >= 1024) 返 -1; /* fix 2026-08-07: 512→1024 对齐 C 源 (C 源 08-06 已扩, 镜像漏) */
     strcpy(func_tbl[func_n].name, name);
     func_tbl[func_n].label = new_label();
     func_tbl[func_n].defined = 0;
@@ -5795,7 +5795,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 is_user = (fi >= 0 && func_tbl[fi].defined);
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
                cg_sret_off; the callee writes the result straight into it (Win64 hidden ptr). */
-            整 sret_si = (fi >= 0 && fi < 512 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
+            整 sret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
             整 is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off != 0);
             整 sret_extra = nargs > 3 ? nargs - 3 : 0;
             /* function pointer variable or expression callee (indirect call). NOTE: no
@@ -7288,7 +7288,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         set_label(func_tbl[fi].label);
         asm_emit("\n; === %s ===\n%s:\n", fname, fname, 0); /* 函数名标签，供 FN:name 补丁解析 */
         func_tbl[fi].defined = 1;
-        cur_ret_si = (fi >= 0 && fi < 512 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
+        cur_ret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
         cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8); /* sret fn: params shift (rcx = hidden ptr); double param k in xmm[k] */
 
         整 fn_frame = (fr_end[gfn] - fr_start[gfn]) + 4368 + 8; /* fix 2026-08-07 Gate-1: +8 → fn_frame≡8(mod16)，调用点 Win64 ABI 16 对齐（gcc sqlite3 混链 movaps 崩根因） */ /* fix 2026-08-06: 272→4096，审计 P1：printf scratch 扩到 4KB（16 对齐） */ /* 本函数局部帧 (C 原版 5172) */
