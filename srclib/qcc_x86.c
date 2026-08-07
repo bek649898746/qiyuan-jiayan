@@ -3359,13 +3359,14 @@ static int blk(void) {
             if (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); } /* no tk++ here — the shared tk++ below skips the type name */
             int tdi2v = tdef_lookup(tn[tk]); int tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); int tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef var/array: ops_t ops[2] / ops_t f (fix 2026-08-05: was registered as int → 4-byte elements, fnptr calls loaded the wrong address; p_dbl=0 broke double-return calls on case-10 assigns) */
             int is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
+            int is_short = (tt[tk] == VK && !strcmp(tn[tk], "short")); /* fix 2026-08-08: 无短 2 字节类型 (VGA 指针) */
             int is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             int is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
-            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "short")) is_short = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
             if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
                 if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
@@ -3417,7 +3418,7 @@ static int blk(void) {
                    st_idx set so arr[i].field resolves (fix 2026-08-03: this branch
                    shadowed the second typedef branch, registering P arr[3] as an
                    INT array with no st_idx → arr[i].a read garbage). */
-                int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_double ? 8 : (is_ll ? 8 : 4)))); /* fnptr typedef array: 8-byte pointer elements; long long array: 8-byte (fix 2026-08-06: 原 4 字节 → 元素重叠错位) */
+                int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))); /* fix 2026-08-08: +is_short 2 字节 (VGA 无短) */
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
                     tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
