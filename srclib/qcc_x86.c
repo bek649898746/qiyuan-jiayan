@@ -7271,12 +7271,15 @@ void gen_code(void) {
         scratch_base = cur_frame_sz - 272; /* 状态区 [rbp-272..]，printf 缓冲在其下 [rbp-4368..rbp-273]（emit_print 里 lea -4096） */
         sret_ptr_off = cur_frame_sz - 8;   /* sret slot at [rbp-8] */
 
-        /* fix 2026-08-08 -bin: 入口函数 (_start, 第一个) 设栈+设 rbp (函数体帧访问需要), 不分配大帧 */
-        int no_frame = (bin_mode && i == 0);
+        /* fix 2026-08-08 -bin: _start 设裸机栈 + 正常序言 (完整帧, 函数体帧访问有效) */
+        int no_frame = (bin_mode && i == 0 && !strcmp(fname, "_start"));
         if (no_frame) {
-            mov_ri_ext(4, 0x200000); /* mov rsp, 0x200000 — 内核栈 */
+            mov_ri_ext(4, 0x200000); /* mov rsp, 0x200000 — 内核栈 (裸机无栈) */
             mov_rr64(15, 4);         /* r15 = rsp */
-            mov_rr64(5, 4);          /* mov rbp, rsp — 函数体帧访问需要 */
+            push_r(5);  /* push rbp */
+            push_r(3);  /* push rbx */
+            mov_rr64(5, 4); /* mov rbp, rsp */
+            sub_rsp_imm(fn_frame); /* 完整帧 */
         } else {
             push_r(5);  /* push rbp */
             push_r(3);  /* push rbx (callee-saved �?used as cross-call temp) */
@@ -7324,11 +7327,9 @@ void gen_code(void) {
 
         /* epilogue */
         set_label(epi_label);
-        if (!no_frame) {
-            add_rsp_imm(fn_frame);
-            pop_r(3); /* pop rbx */
-            pop_r(5); /* pop rbp */
-        }
+        add_rsp_imm(fn_frame);
+        pop_r(3); /* pop rbx */
+        pop_r(5); /* pop rbp */
         ret();
     }
     if (coff_mode) {
@@ -7468,6 +7469,13 @@ void gen_code(void) {
 
     /* ??main ???????? �?mini-CRT stub is the real entry (it calls main) */
     int entry_rva = 0x1000 + crt_entry_off;
+    if (bin_mode) {
+        /* -bin 入口 = _start (用户主函数) 的 label 偏移, 非 CRT stub (bin 跳过 CRT) — fix 2026-08-08 */
+        int si = func_find("_start");
+        if (si < 0 || !func_tbl[si].defined) si = func_find("主");
+        if (si >= 0 && func_tbl[si].defined) entry_rva = 0x1000 + label_pos[func_tbl[si].label]; /* bin 偏移 = code区(0x1000) + 函数偏移 */
+        fprintf(stderr, "[BIN] _start entry offset: 0x%X (code=%d)\n", entry_rva, cp);
+    }
     entry_rva_global = entry_rva;
 }
 
