@@ -51,7 +51,35 @@ jobs:
             python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('rc=',p.returncode,'out=',repr(p.stdout[:60]),'err=',repr(p.stderr[:60]))"
             Write-Host "=== 模拟 run_tests.py 完整 (编译 arg4 到 _H1.exe + subprocess) ==="
             python -c "import subprocess,os; os.remove(r'scratch_test\_diag_H1.exe') if os.path.exists(r'scratch_test\_diag_H1.exe') else None; r=subprocess.run([r'qcc_x86.exe',r'tests/qcc/arg4.c','-o',r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace'); print('compile rc=',r.returncode,'out=',repr(r.stdout[:60])); import os; print('exists=',os.path.exists(r'scratch_test\_diag_H1.exe')); p=subprocess.run([r'scratch_test\_diag_H1.exe'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15); print('run rc=',p.returncode,'out=',repr(p.stdout[:60]))"
-          }
+            Write-Host "=== 虚拟内存检查: 不同 subprocess 模式对比 ==="
+            python -c "
+import subprocess, os
+exe = r'scratch_test\_diag.exe'
+# 模式1: capture_output (重定向 stdout)
+try:
+    p = subprocess.run([exe], capture_output=True, timeout=15)
+    print('capture_output rc =', p.returncode)
+except Exception as e:
+    print('capture_output ERR:', e)
+# 模式2: 不重定向 (继承父进程句柄)
+try:
+    p = subprocess.run([exe], timeout=15)
+    print('inherit rc =', p.returncode)
+except Exception as e:
+    print('inherit ERR:', e)
+# 模式3: stdin 重定向但 stdout 继承
+try:
+    p = subprocess.run([exe], stdin=subprocess.DEVNULL, timeout=15)
+    print('stdin-only rc =', p.returncode)
+except Exception as e:
+    print('stdin-only ERR:', e)
+# 模式4: stdout 重定向但 stderr 继承
+try:
+    p = subprocess.run([exe], stdout=subprocess.PIPE, timeout=15)
+    print('stdout-pipe rc =', p.returncode)
+except Exception as e:
+    print('stdout-pipe ERR:', e)
+"
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
