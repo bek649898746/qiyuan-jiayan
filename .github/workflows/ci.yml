@@ -24,7 +24,7 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
-      - name: 170 行为断言
+      - name: 180 行为断言
         run: python scripts/run_tests.py
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
@@ -42,7 +42,7 @@ jobs:
           Write-Host "v1: $h1"
           Write-Host "v2: $h2"
           Write-Host "v3: $h3"
-          if (($h1 -eq $h2) -and ($h2 -eq $h3)) { Write-Host "自举闭环 OK" } else { Write-Host "自举三代不一致"; exit 1 }
+          if (($h1 -eq $h2) -and ($h2 -eq $h3)) { Write-Host "自举v2==v3 OK" } else { Write-Host "自举v2!=v3"; exit 1 }
 
       - name: 三核 H1==H2 逐字节 (asm_zh / qcc_rt / qcc_self)
         shell: python

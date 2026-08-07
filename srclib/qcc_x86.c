@@ -7016,8 +7016,8 @@ static void write_pe(FILE *f, int entry_rva) {
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
-    w8(f, 0x100000); /* SizeOfStackReserve */
-    w8(f, IMAGE_BASE); /* SizeOfStackCommit �?the self-hosted parse recursion (0x2400 frames) needs far more than 64KB */
+    w8(f, 0x400000); /* SizeOfStackReserve — 自举递归需>64KB; 必须>=StackCommit (CI windows-latest 严格校验) */
+    w8(f, 0x400000); /* SizeOfStackCommit */
     w8(f, 0x100000); /* SizeOfHeapReserve */
     w8(f, 0x1000);   /* SizeOfHeapCommit */
     w4(f, 0);       /* LoaderFlags */
