@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// »Ø¹é: typedef ½á¹¹Ìå±äÁ¿ brace ³õÊ¼»¯º¬Ö¸Õë×Ö¶Î (fix 2026-08-07: Ô­ Nc(d,expr()) ²»ÄÜ½âÎö '{' ¡ú ×Ö¶Î´ÓÎ´Ğ´Èë)
+// å›å½’: typedef ç»“æ„ä½“å˜é‡ brace åˆå§‹åŒ–å«æŒ‡é’ˆå­—æ®µ (fix 2026-08-07: åŸ Nc(d,expr()) ä¸èƒ½è§£æ '{' â†’ å­—æ®µä»æœªå†™å…¥)
 typedef struct LNode { int v; struct LNode *next; } LN;
 int main() {
     struct LNode a = {3, 0};

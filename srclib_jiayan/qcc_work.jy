@@ -3574,6 +3574,7 @@ __attribute__((unused))
             } 否 若 (is_static) {
                 若 (is_double) { var_static(vn, 4); vars[vcnt - 1].is_dbl = 1; } /* static double: 8-byte .data slot */
                 否 若 (ltd_si >= 0 && !is_ptr) { var_static_struct(vn, ltd_si, 1); } /* static typedef'd struct 变量 (fix 2026-08-07 镜像 C 源: 原 var_static → int, 字段全错位) */
+                否 若 (tdi_fnptr_v) { var_static(vn, 4); vars[vcnt - 1].arr_esz = 8; 若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* static typedef'd fnptr 变量：8 字节 .data 槽 (fix 2026-08-07 镜像 C 源) */
                 否 { var_static(vn, is_ptr ? (is_char ? 1 : 4) : 0); 若 (is_char) vars[vcnt - 1].is_char = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; } }
             否 若 (is_ptr) {
                 若 (is_double) { var_offset_ptr(vn, 8); vars[vcnt - 1].p_dbl = 1; } /* double*: 8-byte element + p_dbl */
@@ -4276,10 +4277,11 @@ __attribute__((unused))
         若 (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk])) || tt[tk] == EN || tt[tk] == ST) {
             整 save_tk = tk;
             整 g_stidx = -1; /* struct type index when the declared type is a struct */
+            整 g_tdef = -1; /* typedef 类型索引 (fix 2026-08-07 镜像 C 源: static 前缀把类型名推到第 2 token) */
             若 (tt[tk] == VK && !strcmp(tn[tk], "static")) tk++; /* skip static */
             整 is_type = 0;
             若 (tt[tk] == VK) { 循环 (tt[tk] == VK) tk++; is_type = 1; }
-            否 若 (tt[tk] == VR && td_is(tn[tk])) { is_type = 1; tk++; }
+            否 若 (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd 类型 (fix 2026-08-07 镜像 C 源: 补 g_stidx, 原镜像缺 → typedef struct 全局注册成 int) */
             否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; is_type = 1; }
             否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
             若 (is_type && tt[tk] == VR && tt[tk + 1] == OK) {
@@ -4429,11 +4431,11 @@ __attribute__((unused))
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "char")) g_is_char = 1;
                 整 g_is_double = 0;
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "double")) g_is_double = 1;
-                若 (!g_is_double) { 整 tdi = tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias */
+                若 (!g_is_double) { 整 tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias (fix 2026-08-07 镜像 C 源: g_tdef 覆盖 static 前缀) */
                 整 g_is_ll = 0; /* 全局 long long：8 字节 .data 槽（fix 2026-08-05） */
                 遍 (整 ti2 = save_tk; ti2 + 1 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1;
                 整 g_is_fnptr = 0, g_fptr_dbl = 0; /* typedef'd fnptr 全局：8 字节 .data 槽（C 原版 2895 移植） */
-                { 整 tdi = tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } }
+                { 整 tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } } /* fix 2026-08-07 镜像 C 源: g_tdef 覆盖 static 前缀 */
                 循环 (1) {
                     整 lead_ptr = 0;
                     循环 (tt[tk] == DK) { lead_ptr = 4; tk++; } /* leading * �?pointer */

@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// »Ø¹é: ÄäÃûÈ«¾Ö½á¹¹Ìå brace ³õÊ¼»¯ (fix 2026-08-07: Ô­³õÊ¼»¯±»ÕûÌåÌø¹ı)
+// å›å½’: åŒ¿åå…¨å±€ç»“æ„ä½“ brace åˆå§‹åŒ– (fix 2026-08-07: åŸåˆå§‹åŒ–è¢«æ•´ä½“è·³è¿‡)
 struct LNode { int v; struct LNode *next; };
 struct { int v; struct LNode *next; } b = {4, 0};
 int main() {

@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// »Ø¹é: fnptr ×Ö¶Î brace ³õÊ¼»¯ (fix 2026-08-07: µ¥ fnptr frow=1 ¡ú brace_fields Êı×éÂ·¾¶±À)
+// å›å½’: fnptr å­—æ®µ brace åˆå§‹åŒ– (fix 2026-08-07: å• fnptr frow=1 â†’ brace_fields æ•°ç»„è·¯å¾„å´©)
 int add(int a, int b) { return a + b; }
 struct S { int (*cb)(int, int); };
 int main() {
