@@ -3,6 +3,14 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 9900de15 (2026-08-07)
+**匿名全局 fnptr 字段 + static typedef struct 变量（host+v1 180/180 全绿）：**
+
+- **C源+镜像匿名全局结构体循环补 fnptr 字段解析分支**：该循环原缺 (*cb) 处理 → '(' 不被消费 → 解析死循环（host 编译挂起 60s）。修：移植 fnptr 字段分支（fnptr 数组/参数表跳过/frow=8）。
+- **static typedef struct 局部变量（C源+镜像）**：两层 bug：① static LN b 解析时 static 后的 typedef 类型名 LN 被当变量名（ltd_si 只算首 token）→ 补 2nd-token typedef 重算（含 tdi_fnptr_v/tdi_fdbl_v）；② 注册走 var_static → int → 改 var_static_struct；③ = {...} 落进 Nc(decl,expr()) → 加 brace_fields 进 ginit。
+- 新增 2 回归测试：regress_anon_struct_fnptr / regress_static_typedef_struct。
+- **验证**：v1==v2==v3=9900DE15，host+v1 180/180，multifile 6/6，sqlite3 OK，fuzz 60 轮 0 差异 0 拒绝。
+
 ## da5bf647 (2026-08-07)
 **结构体指针字段全家桶 + fnptr 字段支持 + fuzz 生成器防爆（host+v1 178/178 全绿）：**
 
