@@ -15,10 +15,13 @@
 空 serial_puts(整 com1, 字 *s) { 循环 (*s != 0) { serial_putc(com1, *s); s++; } }
 
 // __isr_ 裸函数: 编译器不生成 push rbp/rbx/sub rsp, iretq 代替 ret
-// 注意: 无栈帧 → 不能声明局部变量, 只能用寄存器和内建函数
+// __isr_ 裸函数: 必须手动保存/恢复寄存器 (编译器不生成 prologue)
 空 __isr_kbd(空) {
-    inb(0x60);        // 读扫描码（丢弃返回值）
-    outb(0x20, 0x20); // EOI
+    __asm(0x50, 0x51, 0x52);  // push rax, rcx, rdx — 保存被 clobber 的寄存器
+    inb(0x60);                 // 读扫描码
+    outb(0x20, 0x20);          // EOI
+    __asm(0x5A, 0x59, 0x58);  // pop rdx, rcx, rax — 恢复 (逆序)
+    // iretq 由编译器自动生成 (__isr_ 前缀函数)
 }
 
 空 _start(空) {
