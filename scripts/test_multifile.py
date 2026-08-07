@@ -27,15 +27,15 @@ def check(name, srcs, expect_out):
         f = f'scratch_test/mf_{i}.c'
         open(f, 'w', encoding='utf-8').write(src)
         o = f'scratch_test/mf_{i}.o'
-        r = subprocess.run(['qcc_x86.exe', '-c', f, '-o', o], capture_output=True, text=True)
+        r = subprocess.run(['qcc_x86.exe', '-c', f, '-o', o], capture_output=True, text=True, encoding='utf-8', errors='replace')
         if r.returncode != 0 or not os.path.exists(o):
             fail_n += 1; fails.append(f'{name}: {i}.c 编译失败'); return
         objs.append(o)
     exe = 'scratch_test/mf_app.exe'
-    r = subprocess.run(['jyld.exe'] + objs + ['-o', exe], capture_output=True, text=True)
+    r = subprocess.run(['jyld.exe'] + objs + ['-o', exe], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if r.returncode != 0:
         fail_n += 1; fails.append(f'{name}: jyld 链接失败: {r.stderr[:200]}'); return
-    r = subprocess.run([exe], capture_output=True, text=True, timeout=15)
+    r = subprocess.run([exe], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
     out = (r.stdout or '').strip()
     if out == expect_out:
         pass_n += 1
@@ -91,7 +91,7 @@ def jycc_case(name, files, expect_out):
     if r.returncode != 0 or not os.path.exists(exe):
         fail_n += 1; fails.append(f'{name}: jycc 失败 rc={r.returncode}')
         return
-    r = subprocess.run([exe], capture_output=True, text=True, timeout=15)
+    r = subprocess.run([exe], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
     out = (r.stdout or '').strip()
     if out == expect_out:
         pass_n += 1
