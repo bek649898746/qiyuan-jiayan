@@ -1,58 +1,94 @@
-# 2026-08-08 甲言内核攻坚 — "甲言能写内核"里程碑
+# 2026-08-08 甲言内核里程碑 — QEMU 裸机首次启动
 
-## 目标
-大哥: 甲言内核必须用甲言写，无懈可击。先打通 -bin 模式 + 裸机引导，内核源码用甲言 codegen。
+## 背景
+大哥的"甲言内核合成实现方案 v3.2"设计了完整路线。Gate 0 裸机存活已有基础（kernel.c→VGA手写），Gate 1 需要串口+中断。
 
-## 达成（验证: qemu + gdb 逐指令，VGA 'A' 绿色写入 0xB8000 = 0x41 0x02）
+## 成果：甲言内核 v5 在 QEMU 裸机成功启动
 
-### 1. -bin 裸机模式 (qcc_x86.c)
-- `-bin` 参数: 裸二进制输出（无 PE/CRT/IAT）
-- `__asm_byte(v)` 内建: 发射字节到 bin_hdr 前缀（Multiboot header）
-- bin 入口函数: 设 rsp=0x200000 + rbp，不分配大帧（no_frame）
-- data_rva_base 动态迭代（数据紧跟代码 → RIP 相对 disp 位置无关）
-- bin 模式 .data: heap counter@+0x0 + IAT stub@+0x8（与 PE 布局一致）
-
-### 2. 引导 (boot_pm.S, 保护模式版)
-- Multiboot1 header (0x1BADB002)
-- 保存 eax(magic)/ebx(ptr) 到 mb_magic/mb_ptr (0x1000de/0x1000e2)
-- 32位: lgdt → PAE → 页表(1GB大页@0x101000) → EFER.LME → cr0.PG
-- ljmp $0x18, long_mode (code64 段，index 3)
-- long_mode: 恢复 rcx/rdx (codegen ABI) → movabs $kernel_code,%rax → jmp *%rax
-
-### 3. 关键修复（每个都 gdb 验证）
-- ljmp $0x08 → $0x18（code64 段选择子，0x08 是 code32）
-- gdtdesc 的 base 需 objcopy 后固定（as 默认地址错）
-- Multiboot 参数 eax/ebx 保存恢复 rcx/rdx（codegen Win64 ABI）
-- 拼接修正: 改"最后一个 48 B8"（kernel 跳转），前面的 48 B8 是 mb_ptr 读取
-- IAT stub: bin .data 填 stub 地址（避免 call 0 崩）
-
-### 4. 调试工具链
-- WSL: qemu-system-x86_64 + gdb-multiarch + grub-mkrescue + xorriso + as/ld
-- gdb 法: qemu -s -S + gdb-multiarch -ex "target remote :1234" -ex "b *0x105000" stepi
-- qemu -d in_asm / -d int 跟踪
-- 关键: qemu -kernel 对 Multiboot ELF 有时进保护模式有时实模式（不稳定），gdb 是可靠验证
-
-## 未完成
-- codegen 内核（*(无 短*)0xB8000 = 0x0241）: 入口生成 _va_alloc 调用（heap counter 递增，参数误用 Multiboot 寄存器）→ 裸机无 malloc → 崩
-- 需深挖 codegen 为什么对 `*(...) = ...; 循环{}` 生成 _va_alloc
-- 键盘回显（0x60 端口）
-- 完整内核（"甲言内核启动。种子:828" 输出）
-
-## 提交记录（ci-fix 分支，32 提交未推送 main）
-- 18dd60b 内核里程碑: 甲言内核 qemu 启动写 VGA 'A'
-- 8c47fdd bin .data IAT stub 布局
-- c295fae codegen 内核源码
-
-## 关键命令
 ```
-# 甲言内核编译
-qcc_x86.exe -bin tests/kernel/kernel.c -o scratch_test/kqcc.bin
-# 拼接引导+内核 (python, 改最后 48 B8)
-# objcopy 包装 ELF32 + ld RWE
-# qemu+gdb 验证
+JIAYAN KERNEL v5
+PIC OK | COM1 OK | SEED:828
+>
 ```
 
-## 下次攻坚（深挖 codegen _va_alloc）
-- 在 qcc_x86.c 搜 _va_alloc 的 codegen 触发点（函数帧分配？）
-- 看 0x1055-0x106a 的 heap counter 递增（_va_alloc bump）
-- 裸机模式应跳过 _va_alloc（函数帧用 sub rsp 直接分配）
+## 关键突破
+
+### 1. 编译器 __asm 内建 (srclib/qcc_x86.c)
+- 新增 `__asm` 内置函数，发射任意字节到代码流
+- 解锁 sti (0xFB) / cli (0xFA) / hlt (0xF4) 等特权指令
+- 同时注册到 coff_is_builtin 列表
+
+### 2. boot.S Multiboot 修复
+- a.out kludge: flags 改为 0x10003（bit16=1 支持 raw binary）
+- `ld -m elf_i386 -Ttext 0x100000 --defsym kernel_main=0` 定基址
+- `jmp kernel_main` 跳转修补：找 48 BC (movabs rsp) + E9 模式，计算正确 rel32
+
+### 3. 内核架构 (tests/kernel/kernel_v5.c)
+- 零全局变量：发现 bin 模式全局变量 RIP-relative 偏移有 bug（写 NULL→Page Fault）
+- 解决方案：所有状态放在栈上（`整 pos=0; 整 com1=0x3F8;`），通过 `&` 传地址
+- 验证：局部变量、字符串常量（sdat）、函数调用、参数传递均正常
+
+### 4. COM1 串口驱动
+- 8250 UART 初始化序列 (IER/DLAB/LCR/FCR/MCR)
+- serial_wait 轮询 LSR bit5 (THRE)
+- serial_putc: \n 自动转 \r\n
+
+### 5. PIC 8259A 中断框架
+- ICW1-4 + OCW1 全屏蔽
+- IRQ0-7→0x20-0x27, IRQ8-15→0x28-0x2F
+- 轮询模式安全（中断屏蔽），框架已就绪
+
+## 已知遗留
+
+| 问题 | 优先级 | 说明 |
+|:--|:--|:--|
+| bin 模式全局变量 NULL 寻址 | P1 | RIP-relative 偏移计算bug，bin 模式下 data_base 不正确 |
+| IDT 未设 | P1 | 中断分发需要 `lidt` + ISR 桩，当前仅 PIC 框架就绪 |
+| 内核无 malloc/堆 | P2 | 方案设计为编译时定死，当前栈+常量够用 |
+| `\r\n` 双 CR | P3 | serial_putc 和字符串字面量都带 \r，输出多一个 CR |
+
+## 构建与验证命令
+
+```powershell
+# 编译编译器（含 __asm 内建）
+gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86_new.exe
+
+# 编译内核
+.\qcc_x86_new.exe -bin tests/kernel/kernel_v5.c -o scratch_test/kernel_v5.bin
+
+# 拼接 + ISO + QEMU (自动)
+python scripts/stitch_kernel.py scratch_test/kernel_v5.bin 0x2EC9
+
+# 或用 shell 脚本
+wsl bash scripts/_build_iso.sh
+wsl timeout 15 qemu-system-x86_64 -cdrom /tmp/k2.iso -nographic -no-reboot -m 128M
+```
+
+## 文件清单
+
+| 文件 | 说明 |
+|:--|:--|
+| srclib/qcc_x86.c | +__asm 内建 |
+| tests/kernel/boot.S | Multiboot a.out kludge 修复 |
+| tests/kernel/kernel_v5.c | 全功能内核（串口+PIC+键盘+hlt） |
+| tests/kernel/kernel_noglob.c | 零变量验证版 |
+| tests/kernel/kernel_serial.c | 串口+VGA+键盘（全局变量版，待修） |
+| tests/kernel/kernel_pic.c | PIC框架+键盘（全局变量版，待修） |
+| scripts/stitch_kernel.py | 全自动：编译boot+拼接+修补+ISO+QEMU |
+| scripts/_build_iso.sh | WSL GRUB ISO 构建 |
+| scripts/_find_jmp.py | boot.bin 跳转分析工具 |
+
+## Gate 进度
+
+| Gate | 状态 |
+|:--|:--|
+| Gate 0: 裸机存活 | ✅ VGA+键盘回显+banner+codegen 突破 |
+| Gate 1: 串口+中断 | 🎉 COM1 ✅ / PIC 框架 ✅ / IDT+中断分发 🚧 |
+| Gate 2-9 | 待攻 |
+
+## 教训
+1. **bin模式全局变量是陷阱**：RIP-relative 偏移在 bin 模式下 data_base 计算有误 → 栈上 context 更优
+2. **Multiboot a.out kludge 需要基址修正**：`ld -Ttext` 定址比 `as --32` + `objcopy` 更可靠
+3. **`ld --defsym kernel_main=0`** 让未定义符号不报错
+4. **GRUB serial console** 需要在 grub.cfg 配置 `terminal_output serial`
+5. **_BOOT_CONTEXT.md 要及时更新**：主战场已从 COFF jy 转向内核开发

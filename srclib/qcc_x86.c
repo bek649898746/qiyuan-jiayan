@@ -1314,7 +1314,7 @@ static int coff_is_builtin(const char *n) {
         "fopen", "fread", "fwrite", "fputc", "fputs", "fclose", "fseek", "ftell", "rewind",
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
-        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb" };
+        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "__asm" };
     for (int i = 0; i < (int)(sizeof(bn)/sizeof(bn[0])); i++) if (!strcmp(bn[i], n)) return 1;
     return 0;
 }
@@ -5767,6 +5767,15 @@ static void cg(int n) {
             kids[15] = n15[n]; kids[16] = n16[n]; kids[17] = n17[n]; kids[18] = n18[n]; kids[19] = n19[n];
             int nargs = 0;
             for (int i = 0; i < 20; i++) { int c = kids[i]; if (c == fn || c < 0) continue; nargs++; }
+            /* 内建 __asm(args...): 发射任意字节到代码流 (内核 sti/cli/lidt/iretq, fix 2026-08-08) */
+            if (nt[fn] == 1 && !strcmp(fname, "__asm") && bin_mode) {
+                for (int i = 0; i < 20; i++) {
+                    int c = kids[i];
+                    if (c == fn || c < 0) continue;
+                    if (nt[c] == 0) b(nv[c] & 0xFF);
+                }
+                break;
+            }
             int extra = nargs > 4 ? nargs - 4 : 0;
             int is_user = (fi >= 0 && (func_tbl[fi].defined || (coff_mode && !coff_is_builtin(fname)))) || (fi < 0 && coff_mode && !coff_is_builtin(fname)); /* extern call in -c mode also user call */
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
@@ -7285,6 +7294,7 @@ void gen_code(void) {
 
         /* fix 2026-08-08 -bin: _start 设裸机栈 + 正常序言 (完整帧, 函数体帧访问有效) */
         int no_frame = (bin_mode && i == 0 && !strcmp(fname, "_start"));
+        int is_isr = (bin_mode && !strncmp(fname, "__isr_", 6)); /* __isr_xxx: 裸中断函数 — 无帧、iretq */
         if (no_frame) {
             mov_ri_ext(4, 0x200000); /* mov rsp, 0x200000 — 内核栈 (裸机无栈) */
             mov_rr64(15, 4);         /* r15 = rsp */
@@ -7292,9 +7302,12 @@ void gen_code(void) {
             push_r(3);  /* push rbx */
             mov_rr64(5, 4); /* mov rbp, rsp */
             sub_rsp_imm(fn_frame); /* 完整帧 */
+        } else if (is_isr) {
+            /* 裸中断函数: 无栈帧, iretq 退出 (CPU 已压入 SS:RSP:RFLAGS:CS:RIP) */
+            (void)0; /* no prologue */
         } else {
             push_r(5);  /* push rbp */
-            push_r(3);  /* push rbx (callee-saved �?used as cross-call temp) */
+            push_r(3);  /* push rbx */
             mov_rr64(5, 4); /* mov rbp, rsp */
             sub_rsp_imm(fn_frame); /* shadow space + locals */
         }
@@ -7308,7 +7321,7 @@ void gen_code(void) {
            vars[], copying every param into every prologue would clobber live slots. */
         int fv0 = fvb[gfn], fv1 = fve[gfn];
         vs_end = fv1; /* scope var lookups to this function during codegen */
-        int bin_no_params = (bin_mode && i == 0); /* -bin 入口函数: 跳过参数复制/argv 初始化 (裸机无参, codegen ABI 与 Multiboot 不匹配) */
+        int bin_no_params = (bin_mode && i == 0) || is_isr; /* -bin 入口函数或 ISR: 跳过参数复制 */
         for (int vi = fv0; vi < fv1; vi++) {
             if (vars[vi].is_param && !bin_no_params) {
                 if (vars[vi].is_dbl) {
@@ -7339,10 +7352,16 @@ void gen_code(void) {
 
         /* epilogue */
         set_label(epi_label);
-        add_rsp_imm(fn_frame);
-        pop_r(3); /* pop rbx */
-        pop_r(5); /* pop rbp */
-        ret();
+        if (is_isr) {
+            /* iretq: 从中断返回 (CPU 自动弹出 RIP:CS:RFLAGS:RSP:SS) */
+            asm_emit("    iretq\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+            b(0x48); b(0xCF);
+        } else {
+            add_rsp_imm(fn_frame);
+            pop_r(3); /* pop rbx */
+            pop_r(5); /* pop rbp */
+            ret();
+        }
     }
     if (coff_mode) {
         /* -c 模式：跳过 CRT 与补丁烘焙；str/fn/dbl 补丁改为 COFF 重定位 */

@@ -6,10 +6,15 @@
 .section .text
 .global _start
 _start:
-    /* Multiboot1 header (12 bytes) */
-    .long 0x1BADB002
-    .long 0x0
-    .long -0x1BADB002
+    /* Multiboot1 header: a.out kludge for raw binary support */
+    .long 0x1BADB002         /* magic */
+    .long 0x00010003         /* flags: page-align | mem-info | a.out-kludge */
+    .long 0xE4514FFB         /* checksum: -(0x1BADB002 + 0x00010003) */
+    .long 0x00100000         /* header_addr */
+    .long 0x00100000         /* load_addr */
+    .long 0x00000000         /* load_end_addr (0 = whole file) */
+    .long 0x00000000         /* bss_end_addr */
+    .long 0x00100000         /* entry_addr */
 
     /* 32 位保护模式入口 (Multiboot1 从这里进入) */
     cli
