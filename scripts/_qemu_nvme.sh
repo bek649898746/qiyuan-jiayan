@@ -7,7 +7,7 @@ as --32 $K/tests/kernel/boot.S -o /tmp/boot_k.o
 ld -m elf_i386 -Ttext 0x100000 --defsym kernel_main=0 --oformat binary /tmp/boot_k.o -o /tmp/boot_k.bin
 
 # Stitch
-EP=0x1811
+EP=0x198E
 python3 -c "
 import struct,sys
 boot=open('/tmp/boot_k.bin','rb').read()
