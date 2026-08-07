@@ -28,26 +28,39 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
-      - name: CI 诊断 (PE 头 + 手动运行, 临时)
+      - name: CI 诊断 (决定性: 4 种运行方式 + gcc 对照 + PE 头)
         if: always()
         continue-on-error: true
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
-          Remove-Item scratch_test/_diag.exe -Force -ErrorAction SilentlyContinue
-          Write-Host "=== 编译 arg4 ==="
+          Remove-Item scratch_test/_diag* -Force -ErrorAction SilentlyContinue
+          Write-Host "=== [1] 编译 arg4 (qcc) ==="
           .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1
-          Write-Host "编译 rc=$LASTEXITCODE"
-          if (Test-Path scratch_test/_diag.exe) {
-            Write-Host "=== 文件大小 ==="
-            (Get-Item scratch_test/_diag.exe).Length
-            Write-Host "=== objdump PE 头 ==="
-            objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'SizeOfImage|SizeOfRawData|VirtualSize|SizeOfStack|entry|DLL Name' | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() }
-            Write-Host "=== cmd 直接运行 ==="
-            cmd /c "scratch_test\_diag.exe & echo rc=%ERRORLEVEL%" 2>&1
-            Write-Host "=== python subprocess 运行 ==="
-            python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,text=True,timeout=15); print('rc=',p.returncode)"
-          }
+          Write-Host "qcc 编译 rc=$LASTEXITCODE"
+          Write-Host "=== [2] 编译 arg4 (gcc 对照) ==="
+          gcc tests/qcc/arg4.c -o scratch_test/_diag_gcc.exe 2>&1
+          Write-Host "gcc 编译 rc=$LASTEXITCODE"
+          Write-Host "=== [3] 完整 PE 头 (qcc vs gcc) ==="
+          Write-Host "--- qcc ---"
+          objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'Characteristics|Magic|AddressOfEntryPoint|SizeOfImage|SizeOfHeaders|Subsystem|DllChar|StackReserve|StackCommit|HeapReserve|NumberOfSections|MajorSubsystemVersion|MinorSubsystemVersion' | ForEach-Object { $_.Line.Trim() }
+          Write-Host "--- gcc ---"
+          objdump -x scratch_test/_diag_gcc.exe 2>&1 | Select-String -Pattern 'Characteristics|Magic|AddressOfEntryPoint|SizeOfImage|SizeOfHeaders|Subsystem|DllChar|StackReserve|StackCommit|HeapReserve|NumberOfSections|MajorSubsystemVersion|MinorSubsystemVersion' | ForEach-Object { $_.Line.Trim() }
+          Write-Host "=== [4] 运行方式对比 (qcc exe) ==="
+          Write-Host "--- cmd /c ---"
+          cmd /c "scratch_test\_diag.exe & echo CMD_RC=%ERRORLEVEL%" 2>&1
+          Write-Host "--- python subprocess 直接 ---"
+          python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('DIRECT_RC=',p.returncode)"
+          Write-Host "--- python subprocess cmd /c ---"
+          python -c "import subprocess; p=subprocess.run(['cmd','/c',r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('CMDRC=',p.returncode)"
+          Write-Host "--- powershell Start-Process ---"
+          $p = Start-Process -FilePath (Resolve-Path 'scratch_test\_diag.exe') -PassThru -Wait
+          Write-Host "SP_RC=$($p.ExitCode)"
+          Write-Host "=== [5] 运行方式对比 (gcc exe 对照) ==="
+          Write-Host "--- cmd /c ---"
+          cmd /c "scratch_test\_diag_gcc.exe & echo GCC_CMD_RC=%ERRORLEVEL%" 2>&1
+          Write-Host "--- python subprocess ---"
+          python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag_gcc.exe'],capture_output=True,timeout=15); print('GCC_DIRECT_RC=',p.returncode)"
 
       - name: 行为断言 (180+)
         run: python scripts/run_tests.py
