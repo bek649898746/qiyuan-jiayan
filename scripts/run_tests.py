@@ -48,7 +48,7 @@ for name in tests:
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True)
+    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         fail_n += 1; fails.append(f'{name} 编译失败'); continue
 
@@ -60,7 +60,7 @@ for name in tests:
     except OSError:
         pass
     try:
-        p = subprocess.run([h1], capture_output=True, text=True, timeout=15)
+        p = subprocess.run([h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
         rc = p.returncode
         out = (p.stdout or '').strip()
     except subprocess.TimeoutExpired:
