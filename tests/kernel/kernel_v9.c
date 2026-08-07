@@ -6,7 +6,7 @@ typedef struct { 整 slot; 整 budget; 整 val; } Ag; // val: bit0=started bit1=
 空 sw(整 c){循环((inb(c+5)&0x20)==0){}}
 空 spc(整 c,整 v){若(v==10){sw(c);outb(c,13);}sw(c);outb(c,v);}
 空 sps(整 c,字*s){循环(*s!=0){spc(c,*s);s++;}}
-空 spn(整 c,整 n){若(n>=1000){spc(c,48+n/1000);n=n-(n/1000)*1000;若(n<100){spc(c,48);spc(c,48);}}若(n>=100){spc(c,48+n/100);n=n-(n/100)*100;若(n<10){spc(c,48);}}若(n>=10){spc(c,48+n/10);n=n-(n/10)*10;}spc(c,48+n);}
+空 spn(整 c,整 n){若(n>=1000){spc(c,48+n/1000);n=n-(n/1000)*1000;若(n<100){spc(c,48);}}若(n>=100){spc(c,48+n/100);n=n-(n/100)*100;若(n<10){spc(c,48);}}若(n>=10){spc(c,48+n/10);n=n-(n/10)*10;}spc(c,48+n);}
 
 空 set(Ag *a,整 s,整 b){ a->slot=s; a->budget=b; a->val=0; }
 空 show(整 c,Ag *a,字* n){
