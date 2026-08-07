@@ -7881,20 +7881,21 @@ int main(int argc, char **argv) {
     FILE *f = fopen(outf, "wb");
     if (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); return 1; }
     if (bin_mode) {
-        /* -bin: 裸二进制 = bin_hdr(引导) + code + pad到data_rva_base + .data 静态区
-           RIP 相对 disp 假设 代码@0x1000/数据@data_rva_base — bin 保持同样相对布局,
-           加载到任意基址(如0x100000) 相对量不变 → 位置无关 (fix 2026-08-08 内核) */
-        if (bin_hdr_n > 0) fwrite(bin_hdr, 1, bin_hdr_n, f);
-        /* 代码@0x1000, 数据@data_rva_base (动态=代码后对齐, RIP 相对 disp 位置无关) */
-        int code_off = 0x1000;
-        int cur = bin_hdr_n;
-        if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
-        fwrite(code, 1, cp, f);
-        cur += cp;
-        if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
-        /* .data 静态区: heap counter + stc_n 槽 (供 RIP 相对访问) */
-        w4(f, 0); /* heap counter (未用) */
-        for (int i = 0; i < stc_n; i++) w4(f, 0); /* 静态槽 */
+        if (bin_hdr_n > 0) {
+            /* 手写内核 (__asm_byte): 只输出 bin_hdr, codegen 残留 (return 等) 不入文件 */
+            fwrite(bin_hdr, 1, bin_hdr_n, f);
+        } else {
+            /* codegen 内核: 代码@0x1000, 数据@data_rva_base (RIP 相对位置无关) */
+            int code_off = 0x1000;
+            int cur = 0;
+            if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
+            fwrite(code, 1, cp, f);
+            cur += cp;
+            if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
+            /* .data 静态区: heap counter + stc_n 槽 */
+            w4(f, 0);
+            for (int i = 0; i < stc_n; i++) w4(f, 0);
+        }
     } else if (coff_mode) {
         write_coff_obj(f);
     } else {
