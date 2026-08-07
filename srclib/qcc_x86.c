@@ -1314,7 +1314,7 @@ static int coff_is_builtin(const char *n) {
         "fopen", "fread", "fwrite", "fputc", "fputs", "fclose", "fseek", "ftell", "rewind",
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
-        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "__asm" };
+        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
     for (int i = 0; i < (int)(sizeof(bn)/sizeof(bn[0])); i++) if (!strcmp(bn[i], n)) return 1;
     return 0;
 }
@@ -6099,6 +6099,16 @@ static void cg(int n) {
                 mov_rr(0, 2);   /* mov eax, edx (val) */
                 mov_rr(2, 1);   /* mov edx, ecx (port) */
                 asm_emit("    写端口 dx, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEE); /* out dx, al */
+                mov_r_imm(0, 0);
+            } else if (!strcmp(fname, "inl")) {
+                /* inl(port): 32-bit port read, port in rcx, returns eax */
+                mov_rr64(2, 1); /* mov edx, ecx (port) */
+                asm_emit("    读端口32 eax, dx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xED); /* in eax, dx */
+            } else if (!strcmp(fname, "outl")) {
+                /* outl(port, val): 32-bit port write, port in rcx, val in rdx */
+                mov_rr64(0, 2);  /* mov eax, edx (save val) */
+                mov_rr64(2, 1);  /* mov edx, ecx (port) */
+                asm_emit("    写端口32 dx, eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEF); /* out dx, eax */
                 mov_r_imm(0, 0);
             } else if (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
