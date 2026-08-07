@@ -1314,7 +1314,7 @@ static int coff_is_builtin(const char *n) {
         "fopen", "fread", "fwrite", "fputc", "fputs", "fclose", "fseek", "ftell", "rewind",
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
-        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort" };
+        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb" };
     for (int i = 0; i < (int)(sizeof(bn)/sizeof(bn[0])); i++) if (!strcmp(bn[i], n)) return 1;
     return 0;
 }
@@ -2478,7 +2478,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
             else if (!strcmp(tn[ti], "返")) strcpy(tn[ti], "return");
             else if (!strcmp(tn[ti], "若")) strcpy(tn[ti], "if");
-            else if (!strcmp(tn[ti], "否")) strcpy(tn[ti], "else");
+            else if (!strcmp(tn[ti], "否") || !strcmp(tn[ti], "否则")) strcpy(tn[ti], "else"); /* fix 2026-08-08: 否则(两字) 未被映射 → 被当标识符, 吞掉后续函数定义 */
             else if (!strcmp(tn[ti], "循环")) strcpy(tn[ti], "while");
             else if (!strcmp(tn[ti], "做")) strcpy(tn[ti], "do");
             else if (!strcmp(tn[ti], "遍")) strcpy(tn[ti], "for");
@@ -6055,6 +6055,17 @@ static void cg(int n) {
                 asm_emit("    自增 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xC0); /* inc eax */
                 jmp_rel(-1); patch_label(cp-4, ls, 2);
                 set_label(ld);
+            } else if (!strcmp(fname, "inb")) {
+                /* inb(port): port in rcx; 返回 eax = al (键盘 0x60/0x64) */
+                mov_rr(2, 1);   /* mov edx, ecx (port) */
+                asm_emit("    读端口 al, dx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEC); /* in al, dx */
+                movzx_eax_al(); /* movzx eax, al */
+            } else if (!strcmp(fname, "outb")) {
+                /* outb(port, val): port in rcx, val in rdx */
+                mov_rr(0, 2);   /* mov eax, edx (val) */
+                mov_rr(2, 1);   /* mov edx, ecx (port) */
+                asm_emit("    写端口 dx, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEE); /* out dx, al */
+                mov_r_imm(0, 0);
             } else if (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
             } else if (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs")) {
