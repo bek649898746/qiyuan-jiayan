@@ -7003,7 +7003,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     fputc('.', f); fputc('d', f); fputc('a', f); fputc('t', f); fputc('a', f); fputc(0, f); fputc(0, f); fputc(0, f);
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, 0x4403000);  /* SizeOfRawData = 72MB 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, (cp * 84 > 0x400000 ? cp * 84 : 0x400000) + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源动态) */ /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7092,7 +7092,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
-    整 data_end = data_foff + 0x4403000; /* fix 2026-08-08 镜像 C 源: 覆盖栈顶 */
+    整 data_end = data_foff + (cp * 84 > 0x400000 ? cp * 84 : 0x400000) + 0x3000; /* fix 2026-08-08 镜像 C 源动态 */ /* fix 2026-08-08 镜像 C 源: 覆盖栈顶 */
     循环 (pos < data_end) { fputc(0, f); pos++; }
 }
 
@@ -7113,7 +7113,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    整 stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
+    整 stk_top = IMAGE_BASE + data_rva_base + (cp * 84 > 0x400000 ? cp * 84 : 0x400000); /* fix 2026-08-08 镜像 C 源: 动态栈顶按产物大小 */
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
