@@ -7049,7 +7049,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fwrite(".data", 1, 5, f); pad(f, 3); /* ".data\0\0\0" — split write (see .text note) */
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, 0x4403000);  /* SizeOfRawData = 72MB 覆盖自切栈顶 (fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, (cp * 84 > 0x400000 ? cp * 84 : 0x400000) + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 动态) */ /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7118,7 +7118,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
-    int data_end = data_foff + 0x4403000; /* fix 2026-08-08: 覆盖栈顶 */
+    int data_end = data_foff + (cp * 84 > 0x400000 ? cp * 84 : 0x400000) + 0x3000; /* fix 2026-08-08 动态 */ /* fix 2026-08-08: 覆盖栈顶 */
     while (pos < data_end) { fputc(0, f); pos++; }
 }
 
@@ -7138,7 +7138,7 @@ static void emit_crt_stub(void) {
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    int stk_top = IMAGE_BASE + data_rva_base + 0x4400000;
+    int stk_top = IMAGE_BASE + data_rva_base + (cp * 84 > 0x400000 ? cp * 84 : 0x400000); /* fix 2026-08-08: 动态栈顶按产物大小 (编译器 852KB->72MB, 测试程序 4KB->4MB) */
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
