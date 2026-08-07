@@ -22,7 +22,7 @@ jobs:
         run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
       - name: 编译器自检
-        run: qcc_x86.exe --test
+        run: .\qcc_x86.exe --test
 
       - name: 170 行为断言
         run: python scripts/run_tests.py
