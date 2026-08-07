@@ -6936,6 +6936,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     若 (!cg_no_deref) {
                         若 (var_is_dbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays) */
                         否 若 (is_struct_elem) { /* address mode for member access */
+                            若 (esz <= 8) { 若 (esz == 8) { mov_reg_mreg64(0, 0); } 否 { mov_reg_mreg(0, 0); } } /* fix 2026-08-07 镜像 C 源: ≤8 字节 struct 元素作值 → 解引用 (原留地址 → x = arr[1] 存地址, C 版 08-06 已修, 镜像漏) */
                         } 否 若 (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); }
                         否 若 (esz == 8) { mov_reg_mreg64(0, 0); } /* char* / pointer element: 64-bit */
                         否 { mov_reg_mreg(0, 0); }

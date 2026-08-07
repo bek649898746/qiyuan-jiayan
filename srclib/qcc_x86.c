@@ -4409,7 +4409,7 @@ static int parse(const char *s) {
                     if (tt[tk] == AK) { /* = init */
                         if (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
                         tk++;
-                        if (tt[tk] == FK && g_stidx >= 0) { /* struct G g = { a, b, c }; — brace init */
+                        if (tt[tk] == FK && g_stidx >= 0 && gcnt == 0) { /* struct G g = { a, b, c }; — brace init (fix 2026-08-07: +gcnt==0 → struct ARRAY 走数组分支, 否则 {{...}} 被当单 struct 字段 → brace_fields strcpy 越界崩) */
                             tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
                             int blkinit = brace_fields(g_stidx, idn);
