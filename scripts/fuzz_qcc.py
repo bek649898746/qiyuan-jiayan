@@ -172,6 +172,14 @@ class Gen:
                 main_lines.append('%s[1].v[0] = %d;' % (sar, iv))
                 main_lines.append('%s(%s[1]);' % (mfn, sar))
                 main_lines.append('printf("%%d\\n", %s[1].v[0]);' % sar)
+        # double-returning fn + (int) cast (2026-08-07: expr_is_double 场景)
+        self.dfn_name = None
+        if r.random() < 0.5:
+            self.fn_count += 1
+            dfn = 'dfn%d' % self.fn_count
+            parts.append('double %s(int x) { return x + 0.5; }' % dfn)
+            self.dfn_name = dfn
+            main_lines.append('printf("%%d\\n", (int)%s(%s));' % (dfn, self.int_lit()))
         # ll
         if r.random() < 0.6:
             ll = self.ident('x', used); used.add(ll)

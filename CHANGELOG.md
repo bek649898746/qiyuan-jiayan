@@ -3,6 +3,15 @@
 > 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## c129a754 (2026-08-07)
+**镜像/源分歧深挖第三轮: expr_is_double + 字符串表满检查 + DCL-MISS 严格报错（host+v1 173/173 全绿）**
+
+- **镜像缺 expr_is_double（C 源有）**：`(int)` 转换 double 表达式（含 double-returning 调用/fnptr/表达式 callee）——镜像只在 `ndbl[ce]` 时走 node 19 真截断，缺 `expr_is_double` 覆盖。补函数（放 arr_base_node 之后防前向引用）+ cast 处理 `|| expr_is_double(ce)`。新增回归 regress_int_cast_double.c
+- **镜像字符串字面量表满检查缺失**：str_cnt>=1024 时 C 源 abort，镜像越界写 str_tbl。补 [STR-OVERFLOW] 检查
+- **镜像 [DCL-MISS] 用 var_offset 兜底**：C 源已改严格报错（parse 漏注册是编译 bug，杜绝 [rbp+正偏移] 毁帧），镜像未同步。对齐为 var_lookup<0 → [DCL-MISS] + return
+- fuzz 生成器加 double 函数 + `(int)` 转换场景
+- 验证: v1==v2==v3=C129A754, host+v1 173/173, multifile 6/6, sqlite3 OK
+
 ## f40326df (2026-08-07)
 **技术债清理：镜像/源结构对齐 + 静态数组元素按值传参别名 bug + extern 检查对齐（host+v1 172/172 全绿）**
 
