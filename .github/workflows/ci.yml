@@ -11,6 +11,9 @@ on:
 jobs:
   build-verify:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      issues: write   # 诊断结果发 PR 评论 (临时, 修绿后移除)
     steps:
       - uses: actions/checkout@v5
 
@@ -71,8 +74,17 @@ for name, kw in tests:
           }
           $diag | Set-Content -Path scratch_test/_ci_diag.txt -Encoding UTF8
           $diag | ForEach-Object { Write-Host $_ }
-          # 同时写入 STEP_SUMMARY (PR 页面可见, 不依赖日志 API)
-          $diag | Set-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Append
+          # 发 PR 评论 (issues API, 保证结果可获取)
+          try {
+            $body = @{ body = ("CI 诊断结果 (commit $env:GITHUB_SHA)`n`n```" + "`n" + ($diag -join "`n") + "`n" + "```") } | ConvertTo-Json
+            $prnum = if ($env:GITHUB_REF -match 'pull/(\d+)') { $matches[1] } else { $null }
+            if ($prnum) {
+              Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/bek649898746/qiyuan-jiayan/issues/$prnum/comments" -Headers @{'User-Agent'='shrimp';'Authorization'='token ${{ secrets.GITHUB_TOKEN }}'} -Body $body -ContentType 'application/json' | Out-Null
+              Write-Host "诊断已发到 PR#$prnum 评论"
+            } else {
+              Write-Host "非 PR 上下文, 跳过评论 (ref=$env:GITHUB_REF)"
+            }
+          } catch { Write-Host "发评论失败: $_" }
 
       - name: 上传诊断结果 (临时)
         if: always()
