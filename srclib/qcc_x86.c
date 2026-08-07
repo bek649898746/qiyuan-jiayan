@@ -625,11 +625,12 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     if (stypes[si].fn >= 32) { fprintf(stderr, "[ERR] struct 字段超过 32 上限 (fix 2026-08-06 M2: 原溢出写进 stypes[si+1] 字段表，多结构互相踩崩溃)\n"); exit(1); }
     int idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
-       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。 */
+       frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。
+       fix 2026-08-07: fsz>=8 也 8 对齐 — 指针字段 (struct LNode* next) 调用传 frow=1 → 原 align=1 → 偏移错位 (读 [&b+4] 而非 +8) */
     int align = 1;
-    if (frow >= 8) align = 8;
-    else if (frow >= 4) align = 4;
-    else if (frow >= 2) align = 2;
+    if (frow >= 8 || fsz >= 8) align = 8;
+    else if (frow >= 4 || fsz >= 4) align = 4;
+    else if (frow >= 2 || fsz >= 2) align = 2;
     if (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -1876,6 +1877,7 @@ static int mem_addr(int n, int *fsz_out, int *si_out) {
         *fsz_out = 4;
         *si_out = var_stidx(vn);
         if (var_isstatic(vn)) lea_rax_rip(coff_static_disp(off, 1) - 1);
+        else if (var_pesz(vn) > 0) lea_r_mbrp(0, off - cur_frame_sz); /* fix 2026-08-07: 指针变量 root (q->next->v) — lea &q; var_sbase 对 st_idx 减 struct 大小 → 错位 (q 解引用读垃圾) */
         else lea_r_mbrp(0, var_sbase(vn, off) - cur_frame_sz);
         return 0;
     }
@@ -2225,7 +2227,10 @@ static int brace_fields(int si, int base) {
         int frow2 = stypes[si].frows[fidx];
         int mem = Nd(15); memcpy((char*)(nn + mem), fname, 32); nv[mem] = 0;
         Nc(mem, base);
-        if (fty >= 0) { /* nested struct field: recurse into its fields */
+        /* fix 2026-08-07: 指针字段 (ftype=指向的 struct, 但 fsz=8 ≠ struct size) 不递归 —
+           自引用结构体 struct LNode { int v; struct LNode *next; } 的 next 若递归 → 无限递归死循环 */
+        int fty_is_ptr = (fty >= 0 && stypes[fty].sz != fsz2);
+        if (fty >= 0 && !fty_is_ptr) { /* nested struct field: recurse into its fields */
             if (tt[tk] == FK) tk++; /* explicit nested braces { ... } */
             int sub = brace_fields(fty, mem);
             if (tt[tk] == UK) tk++; /* skip closing } */
@@ -3142,7 +3147,7 @@ static int blk(void) {
                             if (tt[tk] == DK) { fptr = 1; tk++; }
                             if (inner_si >= 0 && tt[tk] == VR) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
-                                st_field_sz_r(nsi, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                st_field_sz_r(nsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (本地类型定义) */
                                 st_field_ty(nsi, fn, inner_si);
                             }
                         }
@@ -3159,7 +3164,8 @@ static int blk(void) {
                                 if (tt[tk] == RB) tk++;
                             }
                             if (fdims >= 1) st_field_sz_r(nsi, fn, fsz8, fsz8 / first);
-                            else st_field_sz_r(nsi, fn, 8, 1);
+                            else st_field_sz_r(nsi, fn, 8, 8); /* fix 2026-08-07: 单 fnptr 字段 frow=8 (本地类型定义) */
+                            st_field_ty(nsi, fn, -2); /* fix 2026-08-07: mark fnptr field (原缺 → 读 8 字节字段不 deref, 取地址当值) */
                             if (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
                             if (tt[tk] == OK) { /* skip (args) */
                                 int depth = 0;
@@ -3358,6 +3364,11 @@ static int blk(void) {
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
+            if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
+                if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
+                tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
+                tk++;
+            }
             int is_ptr = (tt[tk] == DK);
             if (is_ptr) tk++; /* skip * for pointers */
             int d = Nd(7);
@@ -3455,6 +3466,7 @@ static int blk(void) {
                 }
             } else if (is_static) {
                 if (is_double) { var_static(vn, 4); vars[vcnt - 1].is_dbl = 1; } /* static double: 8-byte .data slot */
+                else if (ltd_si >= 0 && !is_ptr) { var_static_struct(vn, ltd_si, 1); } /* static typedef'd struct var (fix 2026-08-07: was var_static → int, 字段全错位) */
                 else { var_static(vn, is_ptr ? (is_char ? 1 : 4) : 0); if (is_char) vars[vcnt - 1].is_char = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; } }
             else if (is_ptr) {
                 if (is_double) { var_offset_ptr(vn, 8); vars[vcnt - 1].p_dbl = 1; } /* double*: 8-byte element + p_dbl */
@@ -3477,13 +3489,34 @@ static int blk(void) {
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
                 continue;
+            } else if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) {
+                /* typedef'd struct var brace init: LN b = { a, b } (fix 2026-08-07: was Nc(d,expr()) — expr() can't parse '{' → fields never written) */
+                tk++;
+                int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32); /* name already in decl node d (vn out of scope) */
+                int bi = brace_fields(ltd_si, idn);
+                Nc(b, d); b_cnt++; /* declare first */
+                int bt = Nd(5); Nc(bt, bi);
+                Nc(b, bt); b_cnt++;
+                if (tt[tk] == UK) tk++;
+                while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                if (tt[tk] == SK) tk++;
+                continue;
             } else if (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
-                int decl = Nd(7); memcpy((char*)(nn + decl), (char*)(nn + d), 32);
-                Nc(decl, expr());
-                ginit[ginit_n++] = decl;
-                vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07: was Nc(decl,expr()) — expr() 不能解析 '{') */
+                    tk++;
+                    int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32); /* name in decl node d (vn out of scope) */
+                    int blkinit = brace_fields(ltd_si, idn);
+                    if (tt[tk] == UK) tk++;
+                    if (ginit_n < 4096) ginit[ginit_n++] = blkinit;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                } else {
+                    int decl = Nd(7); memcpy((char*)(nn + decl), (char*)(nn + d), 32);
+                    Nc(decl, expr());
+                    ginit[ginit_n++] = decl;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                }
             } else {
                 Nc(d, expr());
             }
@@ -3804,7 +3837,7 @@ static int parse(const char *s) {
                                 if (inner_si >= 0 && tt[tk] == VR) {
                                     char fn[32]; strcpy(fn, tn[tk]); tk++;
                                     if (is_union) st_union_field(si, fn, fptr ? 8 : stypes[inner_si].sz);
-                                    else { st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, 1); st_field_ty(si, fn, inner_si); } /* ftype = pointed-to struct even for pointers (n1.next->val) */
+                                    else { st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); st_field_ty(si, fn, inner_si); } /* fix 2026-08-07: 指针字段 frow=8 → 偏移 8 对齐 (原 frow=1 → align=1 → struct LNode* next 偏移 4, 读 [&b+4] 错位) */
                                 }
                             }
                             if (tt[tk] == SK) tk++;
@@ -3817,7 +3850,7 @@ static int parse(const char *s) {
                                 int fsz8 = 8, first = 1, fdims = 0;
                                 while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
                                 if (is_union) st_union_field(si, fn, fsz8);
-                                else { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 1); st_field_ty(si, fn, -2); } /* mark fnptr field */
+                                else { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); } /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — 原 1 触发 brace_fields 数组路径) */
                                 if (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
                                 if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
                             }
@@ -3917,7 +3950,8 @@ static int parse(const char *s) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
-            if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 跨文件函数已工作, 跳过 */
+            if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
+                if (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tk < TS && tt[tk] == SK) tk++;
                 continue;
@@ -3983,7 +4017,7 @@ static int parse(const char *s) {
                                 if (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                                 if (inner_si >= 0 && tt[tk] == VR) {
                                     char fn[32]; strcpy(fn, tn[tk]); tk++;
-                                    st_field_sz(si, fn, fptr ? 8 : stypes[inner_si].sz);
+                                    st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (typedef 匿名结构体) */
                                     st_field_ty(si, fn, inner_si);
                                 }
                             }
@@ -3996,7 +4030,7 @@ static int parse(const char *s) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
                                 int fsz8 = 8, first = 1, fdims = 0;
                                 while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
-                                st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 1); st_field_ty(si, fn, -2); /* mark fnptr field */
+                                st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — typedef 匿名) */
                                 if (tt[tk] == KK) tk++;
                                 if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
                             }
@@ -4052,7 +4086,7 @@ static int parse(const char *s) {
                                     if (tt[tk] == DK) { fptr = 1; tk++; }
                                     if (inner_si >= 0 && tt[tk] == VR) {
                                         char fn[32]; strcpy(fn, tn[tk]); tk++;
-                                        st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                        st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (typedef 带标签结构体) */
                                         st_field_ty(tsi, fn, inner_si);
                                     }
                                 }
@@ -4065,7 +4099,7 @@ static int parse(const char *s) {
                                     char fn[32]; strcpy(fn, tn[tk]); tk++;
                                     int fsz8 = 8, first = 1, fdims = 0;
                                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
-                                    st_field_sz_r(tsi, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 1); st_field_ty(tsi, fn, -2); /* mark fnptr field */
+                                    st_field_sz_r(tsi, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(tsi, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — typedef 带标签) */
                                     if (tt[tk] == KK) tk++;
                                     if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
                                 }
@@ -4175,10 +4209,24 @@ static int parse(const char *s) {
                             if (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                             if (inner_si >= 0 && tt[tk] == VR) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
-                                st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, 1);
+                                st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (匿名全局结构体) */
                                 st_field_ty(si, fn, inner_si);
                             }
                         }
+                        if (tt[tk] == SK) tk++;
+                        continue;
+                    }
+                    else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr field (fix 2026-08-07: 原缺失 → '(' 不被消费 → 循环死循环) */
+                        tk++; tk++; /* skip ( * */
+                        if (tt[tk] == VR) {
+                            char fn[32]; strcpy(fn, tn[tk]); tk++;
+                            int fsz8 = 8, first = 1, fdims = 0;
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
+                            if (tt[tk] == KK) tk++;
+                            if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
+                        }
+                        if (tt[tk] == CK) tk++;
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
@@ -4221,8 +4269,23 @@ static int parse(const char *s) {
                     int cnt = 1;
                     if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
                     var_static_struct(tn[tk], si, cnt);
+                    char vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; }
+                    if (tt[tk] == AK) { /* = init (fix 2026-08-07: was skipped entirely → global anon struct fields never initialized) */
+                        tk++;
+                        if (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
+                            tk++;
+                            int idn = Nd(1); memcpy((char*)(nn + idn), vn_anon, 32);
+                            int blkinit = brace_fields(si, idn);
+                            if (tt[tk] == UK) tk++;
+                            if (ginit_n < 4096) ginit[ginit_n++] = blkinit;
+                        } else {
+                            int decl = Nd(7); memcpy((char*)(nn + decl), vn_anon, 32);
+                            Nc(decl, expr());
+                            if (ginit_n < 4096) ginit[ginit_n++] = decl;
+                        }
+                    }
                 }
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
@@ -4513,7 +4576,7 @@ static int parse(const char *s) {
                     }
                 }
             }
-            if (tt[tk] == SK) { tk++; continue; } /* function prototype: register name, no body; call sites auto-register */
+            if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); tk++; continue; } /* function prototype: record double return for call sites */
             Nc(fdef, blk());
             if (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
@@ -5691,7 +5754,7 @@ static void cg(int n) {
             int nargs = 0;
             for (int i = 0; i < 20; i++) { int c = kids[i]; if (c == fn || c < 0) continue; nargs++; }
             int extra = nargs > 4 ? nargs - 4 : 0;
-            int is_user = (fi >= 0 && (func_tbl[fi].defined || (coff_mode && !coff_is_builtin(fname)))); /* -c 模式：声明未定义也是用户调用（跨 TU 符号） */
+            int is_user = (fi >= 0 && (func_tbl[fi].defined || (coff_mode && !coff_is_builtin(fname)))) || (fi < 0 && coff_mode && !coff_is_builtin(fname)); /* extern call in -c mode also user call */
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
                cg_sret_off; the callee writes the result straight into it (Win64 hidden ptr). */
             int sret_si = (fi >= 0 && fi < 512 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
@@ -5731,7 +5794,8 @@ static void cg(int n) {
                 } else if (nt[c] == 14) {
                     char *an = (char*)(nn + n0[c]); /* array variable name */
                     int asi = var_stidx(an);
-                    if (asi >= 0 && stypes[asi].sz > 8 && !var_isstatic(an)) { bigsz = stypes[asi].sz; bigarr = 1; }
+                    /* fix 2026-08-07: 去掉 !var_isstatic — 静态数组元素按值传参也走 bigarr 拷贝 (原被排除 → 留地址捷径 → 被调方改的是原数组 = 别名 bug) */
+                    if (asi >= 0 && stypes[asi].sz > 8) { bigsz = stypes[asi].sz; bigarr = 1; }
                 }
                 if (bigsz > 0) {
                     int aoff = var_lookup((char*)(nn + c));
@@ -6663,7 +6727,7 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     if(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     int afsz = st_field_size(stypes[s].name, fn);
                     if (cg_no_deref) { /* address only (fix 2026-08-05) */ }
-                    else if (afsz > 4) { if (afsz == 8 && (st_field_ty_idx(stypes[s].name, fn) == -2 || st_field_ty_idx(stypes[s].name, fn) == -3)) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */ }
+                    else if (afsz > 4) { int afy = st_field_ty_idx(stypes[s].name, fn); if (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址) */ }
                     else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
 else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                     else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
@@ -6677,7 +6741,9 @@ else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long lon
                     lea_rax_rip(coff_static_disp(o, 1) + fo - 1);
                     if (st_field_is_dbl(stypes[s].name, fn)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
                     else if (fsz > 4) {
-                        if (fsz == 8 && (st_field_ty_idx(stypes[s].name, fn) == -2 || st_field_ty_idx(stypes[s].name, fn) == -3)) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/long long(-3) field: 64-bit value (fix 2026-08-06) */
+                        int fty = st_field_ty_idx(stypes[s].name, fn);
+                        if (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址) */
+                        /* else: by-value struct (8B) / array field → address */
                     } else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
 else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                     else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
@@ -7258,20 +7324,22 @@ void gen_code(void) {
                 coff_crel(fn_patches[i].patch_at, 0x0002, fs, 0);
             }
         }
+        /* 计算字符串数据总大小 — dbl_offs 值包含 sdat 前缀（字符串）偏移，
+           但 COFF .rdbl 节只有 double 数据（从 0 开始），reloc addend 必须减去前缀。 */
+        int str_bytes = 0;
+        for (int i = 0; i < str_cnt; i++) if (str_offs[i] >= 0) {
+            int sz = (int)strlen(str_tbl[i]) + 1;
+            if (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz;
+        }
+        if (str_bytes > sdp) str_bytes = sdp;
         for (int i = 0; i < dbl_patch_n; i++) {
             int di = dbl_patches[i].dbl_idx;
             if (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdata$dbl", 0, 3, 3, 0);
-            int off = dbl_offs[di];
+            int off = dbl_offs[di] - str_bytes; /* .rdbl 节内偏移（去掉字符串前缀） */
             b4_at(dbl_patches[i].patch_at, off);
             coff_crel(dbl_patches[i].patch_at, 0x0004, coff_dbl_sym, off);
         }
         if (sdp > 0) {
-            int str_bytes = 0;
-            for (int i = 0; i < str_cnt; i++) if (str_offs[i] >= 0) {
-                int sz = (int)strlen(str_tbl[i]) + 1;
-                if (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz;
-            }
-            if (str_bytes > sdp) str_bytes = sdp;
             coff_str_add(sdat, str_bytes);
             if (sdp > str_bytes) coff_dbl_add(sdat + str_bytes, sdp - str_bytes);
         }
