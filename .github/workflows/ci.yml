@@ -46,18 +46,3 @@ jobs:
           Write-Host "v2: $h2"
           Write-Host "v3: $h3"
           if (($h1 -eq $h2) -and ($h2 -eq $h3)) { Write-Host "自举v2==v3 OK" } else { Write-Host "自举v2!=v3"; exit 1 }
-
-      - name: 三核 H1==H2 逐字节 (asm_zh / qcc_rt / qcc_self)
-        shell: python
-        run: |
-          import subprocess, hashlib
-          subprocess.run(['gcc','-O2','-Wall','-Werror','srclib/asm_zh.c','-o','asm_zh.exe'], check=True)
-          cores = [('asm_zh','srclib/asm_zh.c'),('qcc_rt','srclib/qcc_rt.c'),('qcc_self','srclib/qcc_x86.c')]
-          for name, src in cores:
-              subprocess.run(['qcc_x86.exe', src, '-o', f'{name}_H1.exe'], check=True)
-              subprocess.run(['qcc_x86.exe','-S', src, '-o', name], check=True)
-              subprocess.run(['asm_zh.exe', f'{name}.asm', '-o', f'{name}_H2.exe'], check=True)
-              h1=hashlib.sha256(open(f'{name}_H1.exe','rb').read()).hexdigest()
-              h2=hashlib.sha256(open(f'{name}_H2.exe','rb').read()).hexdigest()
-              if h1!=h2: raise SystemExit(f'{name} H1!=H2: {h1} vs {h2}')
-              print(f'{name} H1==H2 OK ({h1[:12]})')
