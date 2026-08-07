@@ -7324,20 +7324,22 @@ void gen_code(void) {
                 coff_crel(fn_patches[i].patch_at, 0x0002, fs, 0);
             }
         }
+        /* 计算字符串数据总大小 — dbl_offs 值包含 sdat 前缀（字符串）偏移，
+           但 COFF .rdbl 节只有 double 数据（从 0 开始），reloc addend 必须减去前缀。 */
+        int str_bytes = 0;
+        for (int i = 0; i < str_cnt; i++) if (str_offs[i] >= 0) {
+            int sz = (int)strlen(str_tbl[i]) + 1;
+            if (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz;
+        }
+        if (str_bytes > sdp) str_bytes = sdp;
         for (int i = 0; i < dbl_patch_n; i++) {
             int di = dbl_patches[i].dbl_idx;
             if (!coff_dbl_sym) coff_dbl_sym = csym_add(".rdata$dbl", 0, 3, 3, 0);
-            int off = dbl_offs[di];
+            int off = dbl_offs[di] - str_bytes; /* .rdbl 节内偏移（去掉字符串前缀） */
             b4_at(dbl_patches[i].patch_at, off);
             coff_crel(dbl_patches[i].patch_at, 0x0004, coff_dbl_sym, off);
         }
         if (sdp > 0) {
-            int str_bytes = 0;
-            for (int i = 0; i < str_cnt; i++) if (str_offs[i] >= 0) {
-                int sz = (int)strlen(str_tbl[i]) + 1;
-                if (str_offs[i] + sz > str_bytes) str_bytes = str_offs[i] + sz;
-            }
-            if (str_bytes > sdp) str_bytes = sdp;
             coff_str_add(sdat, str_bytes);
             if (sdp > str_bytes) coff_dbl_add(sdat + str_bytes, sdp - str_bytes);
         }
