@@ -6654,6 +6654,27 @@ static void cg(int n) {
                         did=1;
                     }
                 }
+                else if (nt[n0[ac]] == 11 || vn[0] == 0) { /* generic base (&arr[i])[j]=v — node-11 base (fix 2026-08-09: fell into load_param_val("") → crash) */
+                    int esz = 4;
+                    if (nt[n0[ac]] == 11) {
+                        int kid = n0[n0[ac]];
+                        if (nt[kid] == 14) esz = var_esz((char*)(nn + n0[kid])); /* &arr[i]: element = array's arr_esz */
+                        else if (nt[kid] == 1) esz = var_esz((char*)(nn + kid)); /* &var */
+                    }
+                    mov_rr(11, 0); /* r11d = index */
+                    if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}else if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
+                    push_r(11); /* cg(n0[ac]) may clobber r11 (fix 2026-08-09) */
+                    cg(n0[ac]); /* base addr → rax (case 11 yields the address) */
+                    pop_r(11);
+                    if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-09: cg may clobber r3) */
+                    asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
+                    if (var_pdbl(vn)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
+                    else if(esz==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
+                    else if(esz==8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx */
+                    else if(esz==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx */
+                    else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
+                    mov_rr(0, 3); /* eax = stored value (chained assignments) */
+                }
                 else { /* pointer param arr[i]=v: index in r11 (r9 may be the param reg) */
                     int peszp = var_esz(vn);
                     if (!arr_dbl) pop_r(3); /* ebx = rhs (fix 2026-08-05) */
@@ -7027,14 +7048,34 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     did = 1;
                 }
             } else {
-                /* pointer param arr[i]: index in r11 (r9 may be the param reg) */
-                int peszp = var_esz(vname);
-                cg(n1[n]); /* index �?eax */
+                /* pointer param arr[i] OR generic base (address-of / cast expr):
+                   index in r11 (r9 may be the param reg).
+                   fix 2026-08-09: (&buf[0])[2] crashed — a node-11 base fell into
+                   load_param_val("") → garbage ptr. Generic base: cg the base to get
+                   its address, element size from pesz (cast) or cg_mem_frow (set by
+                   the address-of child's case-14 cg). */
+                int is_gen = (nt[n0[n]] == 11 || vname[0] == 0);
+                int peszp = 4;
+                if (is_gen) {
+                    /* element size from the address-of child (fix 2026-08-09:
+                       cg_mem_frow is p_esz-based → 4 for char arrays; var_esz is right) */
+                    if (nt[n0[n]] == 11) {
+                        int kid = n0[n0[n]];
+                        if (nt[kid] == 14) peszp = var_esz((char*)(nn + n0[kid])); /* &arr[i]: element = array's arr_esz */
+                        else if (nt[kid] == 1) peszp = var_esz((char*)(nn + kid)); /* &var */
+                        else peszp = cg_mem_frow ? cg_mem_frow : 4;
+                    } else peszp = cg_mem_frow ? cg_mem_frow : 4;
+                    int save_nd = cg_no_deref; cg(n0[n]); cg_no_deref = save_nd; /* case 11 clobbers the flag; restore (fix 2026-08-09: store path wrote to the VALUE not the address) */
+                    push_r(0);
+                }
+                else peszp = var_esz(vname);
+                cg(n1[n]); /* index → eax */
                 mov_rr(11, 0); /* r11d = index */
                 if (peszp == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
                 else if (peszp == 2) { asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
                 else if (peszp > 4) { mov_r_imm(0, peszp); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
-                load_param_val(vname); /* eax = ptr (reg or [rbp+disp]) */
+                if (is_gen) { pop_r(0); } /* rax = base address (saved) */
+                else load_param_val(vname); /* eax = ptr (reg or [rbp+disp]) */
                 asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                 if (!cg_no_deref) {
                     if (var_pdbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* param elem → xmm0 */
