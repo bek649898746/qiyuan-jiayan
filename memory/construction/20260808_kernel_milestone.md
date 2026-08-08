@@ -27,6 +27,8 @@
 ### 已知遗留
 - **jy 镜像 (qcc_work.jy) 冻结在 A9CC10A2**: 深度诊断确认自宿主链对**任何镜像源码修改**（连加一个 lexer 字符串 `字节` 都会）产出 8.4MB 破产物 (v1→v2, .text 函数大量丢失)。根因是预先存在的自宿主静态布局/字符串表脆弱性（`str_tbl[1024][2048]` 上限 + 静态槽寻址不一致 + 顶层节点 256 限制），非本轮引入。改镜像本身就会破坏不动点 —— 无法同步。**决策: 镜像冻结, 宿主 (qcc_x86.exe) 承载全部修复**。内核用宿主编译, 不受影响。后续若要解除冻结, 需先修自宿主布局 bug（另立专项, 风险极高）。
 - **Gate 5 NVMe 已打通 Identify (commit 8bea5a8)**: PCIe枚举→BAR0→原生32位MMIO→控制器重置→大队列配置(AQA=0xFF003F, 队列@0x7FDD000/0x7FDE000)→启用RDY=1→Identify→**SN=JIAYAN + MN=QEMU NVMe Ctrl 读回 [PASS]**。遗留: NN 字段偏移显示非标值 + 读写命令(0x01/0x02) + Tensor 池 待做。
+- **Tensor 持久池 v2 (commit bdb04e9)**: 版本链 + 追加写 (store→v1, append→v2, fetch取最新, fetch_v取指定版本, delete全版本), 纯内存(池@0x2000000 64槽), **QEMU 验证 TENSOR-PASS [PASS]**。NVMe 持久化层待数据面解阻。
+- **数据面状态 (commit 8722a74)**: NVM 读写需走 I/O 队列(非管理队列); 完成检测被 GRUB 异步读盘干扰; bin模式零全局铁律。读写回环待干净队列环境(QEMU/GRUB 时序)。
 
 ---
 
