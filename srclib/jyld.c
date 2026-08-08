@@ -147,10 +147,13 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
     o->nsym = nsym;
     o->syms = (JSym*)calloc(nsym ? nsym : 1, sizeof(JSym));
     o->sym_remap = (int*)calloc(nsym ? nsym : 1, sizeof(int));
-    for (int i = 0; i < nsym; i++) o->sym_remap[i] = -1;
-    o->raw_nsym = nsym;
     o->nrel = (int*)calloc(nsec ? nsec : 1, sizeof(int));
     o->rel_off = (int*)calloc(nsec ? nsec : 1, sizeof(int));
+    if (!o->syms || !o->sym_remap || !o->nrel || !o->rel_off) { /* fix 2026-08-09 审计: malloc/calloc NULL 检查 */
+        fprintf(stderr, "jyld: %s: out of memory\n", path); return -1;
+    }
+    for (int i = 0; i < nsym; i++) o->sym_remap[i] = -1;
+    o->raw_nsym = nsym;
 
     const uint8_t *strtab = NULL;
     int strtab_len = 0;
@@ -191,6 +194,9 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
 
     int compact = 0;
     for (int i = 0; i < nsym; i++) {
+        if (symptr + i * 18 + 18 > len) { /* fix 2026-08-09 审计: 符号条目防御性越界检查 */
+            fprintf(stderr, "jyld: %s: symbol table out of bounds\n", path); return -1;
+        }
         const uint8_t *sy = b + symptr + i * 18;
         JSym *s = &o->syms[compact];
         parse_symname(s->name, NSYMLEN, sy, strtab);
