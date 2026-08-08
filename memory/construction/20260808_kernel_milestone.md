@@ -29,6 +29,7 @@
 - **Gate 5 NVMe 已打通 Identify (commit 8bea5a8)**: PCIe枚举→BAR0→原生32位MMIO→控制器重置→大队列配置(AQA=0xFF003F, 队列@0x7FDD000/0x7FDE000)→启用RDY=1→Identify→**SN=JIAYAN + MN=QEMU NVMe Ctrl 读回 [PASS]**。遗留: NN 字段偏移显示非标值 + 读写命令(0x01/0x02) + Tensor 池 待做。
 - **Tensor 持久池 v2 (commit bdb04e9)**: 版本链 + 追加写 (store→v1, append→v2, fetch取最新, fetch_v取指定版本, delete全版本), 纯内存(池@0x2000000 64槽), **QEMU 验证 TENSOR-PASS [PASS]**。NVMe 持久化层待数据面解阻。
 - **数据面状态 (commit 8722a74)**: NVM 读写需走 I/O 队列(非管理队列); 完成检测被 GRUB 异步读盘干扰; bin模式零全局铁律。读写回环待干净队列环境(QEMU/GRUB 时序)。
+- **🔴 镜像解冻实证 (推翻"冻结"结论, 路线图v1.1)**: 三组实验证明"任何修改都崩"是早期在禁点测试的错误结论。实测: 字节映射/is_short/decl short/case12/10/11处short分支 全部可安全同步(74MB自举OK); __attribute__ 和 pesz数组是唯一破坏者(控制流结构/全局区禁点)。**镜像解冻有路径**: 函数内安全点同步 → 新不动点 → H1==H2闭环可行。
 
 ---
 
