@@ -242,7 +242,7 @@ __attribute__((unused))
         若 (seg[i] == '"' && !in_str) in_str = 1;
         否 若 (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         若 (in_str) {
-            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
             续;
         }
@@ -338,10 +338,10 @@ __attribute__((unused))
                 out = *outp;
                 续;
             }
-            若 (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            若 (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             遍 (整 k = 0; k < ni; k++) out[(*o)++] = nm[k];
         } 否 {
-            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
         }
     }
@@ -350,7 +350,7 @@ __attribute__((unused))
 
 静 字 *fn_macro_expand(常 字 *s) {
     整 cap = (整)strlen(s) * 2 + 1024;
-    字 *out = malloc(cap);
+    字 *out = malloc(cap); 若 (!out) { fprintf(stderr, "[ERR] OOM malloc\n"); exit(1); }
     整 o = 0;
     fn_macro_expand_to(s, &out, &o, &cap, -1);
     若 (o + 1 > cap) { cap = o + 1; out = realloc(out, cap); }
@@ -1216,6 +1216,8 @@ __attribute__((unused))
 静 构 { 整 patch_at; 整 label; } fn_patches[2048]; 整 fnpn; /* function-address imm32 patches */
 静 整 ginit[4096]; 静 整 ginit_n; /* fix 2026-08-06: 128→4096 + 溢出报错 */ /* global variable initializer nodes (emitted at main entry) */
 静 整 coff_mode = 0;
+静 整 bin_mode = 0; /* -bin */
+静 字 bin_hdr[256]; 静 整 bin_hdr_n = 0; /* 字 而非 字节: 字节全局数组触发自举破坏 (2026-08-09) */
 
 #define MAX_CREL 1024
 静 构 { 整 site; 整 type; 整 sym; 整 addend; 整 is_label; 整 label; } crel[MAX_CREL];
@@ -4725,7 +4727,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     整 bw = st_field_bitw(sn, fn);
     若 (bw <= 0) 返;
     整 bitof = st_field_bitof(sn, fn);
-    整 mask = bw >= 32 ? -1 : (1 << bw) - 1;
+    整 mask = bw >= 32 ? -1 : (1u << bw) - 1; /* fix 2026-08-09 审计: 1<<31 UB */
     若 (bitof == 0) { mov_ri_ext(9, mask); alu_rr(25, 0, 9); } /* eax &= mask */
     否 {
         mov_rr(10, 0); /* r10d = slot value */
@@ -4755,7 +4757,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     整 bw = st_field_bitw(sn, fn);
     若 (bw <= 0) 返 0;
     整 bitof = st_field_bitof(sn, fn);
-    整 fm = bw >= 32 ? -1 : ((1 << bw) - 1) << bitof;
+    整 fm = bw >= 32 ? -1 : ((1u << bw) - 1) << bitof; /* fix 2026-08-09 审计 */
     mov_reg_mreg(10, 0); /* r10d = [rax] = old slot (rax keeps the address) */
     mov_rr(11, 3); /* r11d = rhs */
     bf_shl_imm(11, bitof); /* r11d <<= bitof */
@@ -5715,6 +5717,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             字 *fname = (字*)(nn + fn);
             整 fi = -1;
             若 (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
+            若 (nt[fn] == 1 && !strcmp(fname, "__asm_byte") && bin_mode) {
+                整 av = n0[n];
+                若 (av >= 0 && nt[av] == 0) { 若 (bin_hdr_n < 256) bin_hdr[bin_hdr_n++] = nv[av] & 0xFF; }
+                否 { fprintf(stderr, "[ERR] __asm_byte 需整数常量\n"); }
+                断;
+            }
             若 (fi >= 0 && fn_dbl_get_ret(fname)) ndbl[n] = 1; /* double-returning call: node yields xmm0 */
             /* ?????????? ??rcx, rdx, r8, r9 ??arg5+ on stack at [rsp+40+8k]
                Args are evaluated one at a time and PUSHED (8 bytes each): a later
@@ -5727,6 +5735,14 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             kids[15] = n15[n]; kids[16] = n16[n]; kids[17] = n17[n]; kids[18] = n18[n]; kids[19] = n19[n];
             整 nargs = 0;
             遍 (整 i = 0; i < 20; i++) { 整 c = kids[i]; 若 (c == fn || c < 0) 续; nargs++; }
+            若 (nt[fn] == 1 && !strcmp(fname, "__asm") && bin_mode) {
+                遍 (整 i = 0; i < 20; i++) {
+                    整 c = kids[i];
+                    若 (c == fn || c < 0) 续;
+                    若 (nt[c] == 0) b(nv[c] & 0xFF);
+                }
+                断;
+            }
             整 extra = nargs > 4 ? nargs - 4 : 0;
             整 is_user;
             若 (fi >= 0) { 若 (func_tbl[fi].defined) is_user = 1; 否 若 (coff_mode && !coff_is_builtin(fname)) is_user = 1; 否 is_user = 0; }
@@ -7930,6 +7946,7 @@ __attribute__((unused))
         }
         若 (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; 续; }
         若 (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; 续; }
+        若 (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; 续; }
         /* input file */
         字 *fb = read_file(argv[argi]);
         若 (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); 返 1; }
