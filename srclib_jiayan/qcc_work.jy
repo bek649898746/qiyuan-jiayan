@@ -10,7 +10,7 @@
 #define FILE_ALIGNMENT 0x200
 #define IMAGE_BASE 0x400000
 #define DATA_RVA_OFF 0x300 /* statics 起点后移：给扩展导入区让位（fix 2026-08-06 BUG-1） */
-#define STACK_PAD_SIZE 0x160000
+#define STACK_PAD_SIZE 0x300000
 #define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
@@ -2528,6 +2528,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "常")) strcpy(tn[ti], "const");
             否 若 (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
             否 若 (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
+            否则 若 (!strcmp(tn[ti], "字节")) strcpy(tn[ti], "char"); /* fix root */
             否则 若 (!strcmp(tn[ti], "字节")) strcpy(tn[ti], "char"); /* fix 2026-08-08 root: byte(2chars) type */
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             整 k = kw(tn[ti]);            若 (k == NK) { 字 *sm = str_macro_find(tn[ti]); 若 (sm) { 若 (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 整 k2 = 0; 循环 (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } 若 (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } 整 found_num = 0, nvv = 0; 遍 (整 mi = 0; mi < macro_n; mi++) 若 (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; 断; } 若 (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; 续; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 */ tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
@@ -3400,13 +3401,14 @@ __attribute__((unused))
             若 (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); }
             整 tdi2v = tdef_lookup(tn[tk]); 整 tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); 整 tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef 变量/数组: ops_t ops[2] / ops_t f（fix 2026-08-05: 原注册成 int → 4 字节元素，fnptr 调用取错地址；p_dbl=0 破坏 case-10 赋值的 double 返回调用） */
             整 is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
+            整 is_short = (tt[tk] == VK && !strcmp(tn[tk], "short")); /* fix */
             整 is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             整 is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
             整 is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             整 is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8 字节整（fix 2026-08-06: unsigned 前缀组合） */
             tk++; 若 (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
-            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long（fix 2026-08-06） */
             若 (tt[tk] == VR && td_is(tn[tk])) { /* 第 2/3 个 token 是 typedef'd 类型 (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07 镜像 C 源) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
@@ -3431,7 +3433,7 @@ __attribute__((unused))
                         var_array(vn, cnt, 8);
                         若 (is_double) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array: tbl[i](x) yields xmm0 */
                     } 否 {
-                        var_offset_ptr(vn, is_char ? 1 : 4);
+                        var_offset_ptr(vn, is_char ? 1 : (is_short ? 2 : 4)); /* fix */
                         vars[vcnt - 1].arr_esz = 8; /* fnptr: deref *fp loads 8 bytes */
                         若 (is_double) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr: fp(x) yields xmm0 */
                     }
@@ -6631,6 +6633,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             否 若 (nt[n0[n]] == 14) { 字 *av = (字*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
             若 (el == 8) { mov_reg_mreg64(0, 0); 断; } /* 64-bit load */
             若 (el == 4) { mov_reg_mreg(0, 0); 断; }   /* dword load */
+            若 (el == 2) { b(0x0F); b(0xB7); modrm(0, 0, 0); 断; } /* fix */
             asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); b(0x00); /* MOVZX eax, byte [eax] */
         } 断;
         例 13: /* fall through to 15 */
