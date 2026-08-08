@@ -6352,8 +6352,8 @@ static void cg(int n) {
             char *vn = (char*)(nn + n0[n]);
             int off = var_lookup(vn);
             if (nt[n0[n]] == 1 && off >= 0) {
-                int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-06: 原用 p_esz=槽大小4 → char* a++ 跳 4 字节; 应 arr_esz=元素大小) */
-                for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; break; }
+                int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 指针变量用 p_esz; 原只用 arr_esz, 指针 var arr_esz=0 → 各指针类型 步进=1 — 08-06 修 char* 时的副作用) */
+                for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].p_esz > 0) step = vars[vi].p_esz; else if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; break; }
                 if (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
                 else mov_reg_mbrp(0, off - cur_frame_sz);
                 push_r(0); /* save old value */
@@ -6394,8 +6394,8 @@ static void cg(int n) {
             char *vn = (char*)(nn + n0[n]);
             int off = var_lookup(vn);
             if (nt[n0[n]] == 1 && off >= 0) {
-                int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-06: 原用 p_esz=槽大小4 → char* a++ 跳 4 字节; 应 arr_esz=元素大小) */
-                for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; break; }
+                int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 指针变量用 p_esz; 原只用 arr_esz, 指针 var arr_esz=0 → 各指针类型 步进=1 — 08-06 修 char* 时的副作用) */
+                for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].p_esz > 0) step = vars[vi].p_esz; else if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; break; }
                 mov_r_imm(1, is_dec ? -step : step); /* ecx = ±step */
                 if (var_isstatic(vn)) { mov_eax_rip(coff_static_disp(off, 0)); alu_rr(T_PK, 0, 1); mov_rip_eax(coff_static_disp(off, 0)); }
                 else { mov_reg_mbrp(0, off - cur_frame_sz); alu_rr(T_PK, 0, 1); mov_mbrp_reg(off - cur_frame_sz, 0); }
