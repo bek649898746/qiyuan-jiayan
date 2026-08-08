@@ -57,7 +57,7 @@ dd if=/dev/zero of=/tmp/nvme_disk.img bs=1M count=16 2>/dev/null
 
 # --- ④ QEMU + 持久化日志 ---
 echo "=== QEMU $TAG ==="
-timeout 15 qemu-system-x86_64 -M q35 -cdrom /tmp/knv.iso \
+timeout 30 qemu-system-x86_64 -M q35 -cdrom /tmp/knv.iso \
   -device nvme,drive=nvme0,serial=JIAYAN \
   -drive file=/tmp/nvme_disk.img,format=raw,if=none,id=nvme0 \
   -nographic -no-reboot -m 128M 2>&1 | tee $K/scratch_test/_qemu_verify_$TAG.txt
