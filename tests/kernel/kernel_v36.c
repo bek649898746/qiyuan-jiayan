@@ -10,18 +10,17 @@
     整 a=(1<<31)|(bus<<16)|(dev<<11)|(func<<8)|(off&0xFC);
     outl(0xCF8,a); 返 inl(0xCFC);
 }
-/* 槽哨兵完成检测: 在 cq[cmd] 写哨兵, 提交后等哨兵变化, 返 DW3 */
-整 waitcq(整 cqbase, 整 cmd, 整 cid){
-    整 cslot=cmd*4;
-    *(整*)(cqbase+cslot*4+0)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+4)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+8)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+12)=0xAAAAAAAA;
+/* 全 CQ 扫描: 找 CID 匹配的完成 (DW2 低16位 = CID), 返 DW3, 超时返 -1 */
+整 waitcq(整 cqbase, 整 entries, 整 cid){
     整 t=0;
     循环(t<20000){
+        整 i=0;
+        循环(i<entries){
+            整 dw2=*(整*)(cqbase+i*16+8);
+            若((dw2&0xFFFF)==cid){ 返 *(整*)(cqbase+i*16+12); }
+            i=i+1;
+        }
         t=t+1;
-        若(*(整*)(cqbase+cslot*4+12)!=0xAAAAAAAA){ 返 *(整*)(cqbase+cslot*4+12); }
-        若(*(整*)(cqbase+cslot*4+0)!=0xAAAAAAAA){ 返 *(整*)(cqbase+cslot*4+0); }
     }
     返 -1;
 }
@@ -34,7 +33,7 @@
     sq[slot+8]=0; sq[slot+9]=0; sq[slot+10]=cdw10; sq[slot+11]=cdw11;
     sq[slot+12]=0; sq[slot+13]=0; sq[slot+14]=0; sq[slot+15]=0;
     *(整*)(mmio+0x1000)=cmd+1;
-    返 waitcq(acq, cmd, cid);
+    返 waitcq(acq, 64, cmd+1);  /* QEMU 10.2: 完成 CID = 槽位+1 */
 }
 /* 提交 I/O 命令到 I/O SQ 槽 cmd, 返完成状态 */
 整 iocmd(整 mmio, 整 iosq, 整 iocq, 整 cmd, 整 op, 整 cid, 整 prp1, 整 slba, 整 nlb){
@@ -45,7 +44,7 @@
     sq[slot+8]=0; sq[slot+9]=0; sq[slot+10]=slba; sq[slot+11]=0;
     sq[slot+12]=nlb; sq[slot+13]=0; sq[slot+14]=0; sq[slot+15]=0;
     *(整*)(mmio+0x1008)=cmd+1;  /* I/O SQ1 tail @0x1008 */
-    整 st=waitcq(iocq, cmd, cid);
+    整 st=waitcq(iocq, 32, cmd+1);  /* QEMU 10.2: 完成 CID = 槽位+1 */
     *(整*)(mmio+0x100C)=cmd+1;  /* I/O CQ1 head @0x100C */
     返 st;
 }
@@ -59,7 +58,14 @@
             若(cls==0x0108){
                 整 b0=pci32(0,dev,0,0x10);
                 整 mmio=b0&~15;
-                sps(c,"BAR=");hex32(c,mmio);spc(c,10);
+                /* 读 BAR0 size mask */
+                outl(0xCF8,(1<<31)|(dev<<11)|(0x10&0xFC));
+                outl(0xCFC,0xFFFFFFFF);
+                整 b0mask=pci32(0,dev,0,0x10);
+                /* 恢复 BAR0 */
+                outl(0xCF8,(1<<31)|(dev<<11)|(0x10&0xFC));
+                outl(0xCFC,b0);
+                sps(c,"BAR=");hex32(c,mmio);sps(c,"MASK=");hex32(c,b0mask);spc(c,10);
                 /* 用 GRUB 曾用的队列地址 (0x7FDD000) + -kernel无GRUB模式 */
                 整 aqa=0xFF003F;
                 整 asq=0x7FDD000;  /* admin SQ */
@@ -82,10 +88,26 @@
                 *(整*)(mmio+0x28)=asq; *(整*)(mmio+0x2C)=0;
                 *(整*)(mmio+0x30)=acq; *(整*)(mmio+0x34)=0;
                 sps(c,"QSET\n");
-                *(整*)(mmio+0x14)=1|(6<<16)|(4<<20);
-                t=0;
-                循环((*(整*)(mmio+0x1C))&1==0){t=t+1;若(t>2000000){sps(c,"T2\n");循环(1){__asm(0xF4);}}}
+                /* 启用重试: CC.EN 切换最多 5 次, 解决 GRUB 偶发 */
+                整 rtry=0; 整 rdy1=0;
+                循环(rtry<5 && rdy1==0){
+                    *(整*)(mmio+0x14)=1|(6<<16)|(4<<20);
+                    t=0;
+                    循环((*(整*)(mmio+0x1C))&1==0){t=t+1;若(t>3000000){break;}}
+                    若((*(整*)(mmio+0x1C))&1){rdy1=1;}
+                    否则{
+                        *(整*)(mmio+0x14)=0;
+                        t=0;
+                        循环((*(整*)(mmio+0x1C))&1){t=t+1;若(t>1000000){break;}}
+                    }
+                    rtry=rtry+1;
+                }
+                若(rdy1==0){sps(c,"RDYFAIL\n");循环(1){__asm(0xF4);}}
                 sps(c,"R1\n");
+                /* 清零整个管理 CQ (清除 GRUB 残留) */
+                整 qi=0;
+                循环(qi<1024){*(字节*)(acq+qi)=0;qi=qi+1;}
+                sps(c,"CQC\n");
 
                 整 cmd=0; 整 st;
                 sps(c,"GO\n");
@@ -93,6 +115,15 @@
                 st=acmd(mmio,asq,acq,cmd,0x06,0x41,0,buf,1,0);
                 cmd=cmd+1;
                 sps(c,"ID=");hex32(c,*(整*)(buf+4));sps(c,"ST=");hex32(c,st);spc(c,10);
+                /* dump 管理 CQ 前 8 槽 DW2/DW3 */
+                sps(c,"CQd:");
+                i=0;
+                循环(i<8){
+                    hex32(c,*(整*)(acq+i*16+8));spc(c,44);
+                    hex32(c,*(整*)(acq+i*16+12));spc(c,44);
+                    i=i+1;
+                }
+                spc(c,10);
                 /* dump 管理 SQ 槽0-2 的 DW0 (确认我的命令在内存) */
                 sps(c,"SQd:");
                 i=0;
