@@ -1,0 +1,10 @@
+v37t
+P1 1
+P2 2
+G=KLMNO
+G1=ABCDE
+W=abcd
+D=0
+GX=0
+GW=abcd
+TENSOR-PASS
