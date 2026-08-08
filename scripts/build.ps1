@@ -1,7 +1,7 @@
 ﻿# ============================================================
 # 启元 · 甲言 一键构建 + 自举验证
 # 用法: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 功能: 编译宿主 → 自举三代 → 校验不动点 → 跑 128 测试
+# 功能: 编译宿主 → 自举三代 → 校验不动点 → 跑 171 测试
 # ============================================================
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -36,7 +36,7 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 
 # 验收标准: v2==v3==v4 (自举闭环; v1 是 gcc 种子产物, 与甲言系不同属正常 — 见 docs/甲言自举验证体系_工程化解析.md)
-$expected = 'DEC5180231557B1C737C8B7C47C0B71F9B1D7A08A5BC9B154E6A4C91DBCA666E1'
+$expected = 'DEC518022ACCF14173BA7FE7A43879A2CBDD723D9F2A8CFDC9F5A9B57F34DC11'
 if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: $($h2.Substring(0,8)) (GEN2==GEN3==GEN4 全等)" -ForegroundColor Green
 } else {
@@ -44,8 +44,8 @@ if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
-# 4. 跑 160 编译测试（直发，验证不崩溃且可执行）
-Write-Host "[4/4] 跑 tests/qcc 160 测试 ..." -ForegroundColor Yellow
+# 4. 跑 171 编译测试（直发，验证不崩溃且可执行）
+Write-Host "[4/4] 跑 tests/qcc 171 测试 ..." -ForegroundColor Yellow
 $pass = 0; $fail = 0
 Get-ChildItem tests\qcc\*.c | ForEach-Object {
     $out = "$($_.BaseName)_test.exe"
