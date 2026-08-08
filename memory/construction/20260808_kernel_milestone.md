@@ -1,19 +1,32 @@
 # 2026-08-08 甲言内核里程碑 — QEMU 裸机首次启动
 
-## 最终更新 (2026-08-08 07:30) — 9 Gates完成 + NVMe MMIO + 5 Bug根治
+## ⚠️ 修正 (2026-08-08 09:30, 虾米审计) — 前述"9 Gates完成/5 Bug根治"为虚标
 
-### 全量成果
-- **9 Gates QEMU验证全部通过** (kernel_v5..v16)
-- **Gate 5 NVMe**: PCIe枚举→BAR0动态→页表MMIO映射(PCD)→控制器启用(RDY=1)→rd32/wr32字节组装
-- **5 Bug 全部闭环**:
-  1. bin全局ginit ✅ (rd=42 wr=100 inc=1)
-  2. struct DK指针 ✅ (5处while(DK))
-  3. typedef逗号 ✅ (ltd_si分支)
-  4. spn误报 ✅ (十/千位零填充)
-  5. MMIO字节访问 ✅ (非编译器bug, rd32/wr32根治)
-- **编译器能力**: __asm, __isr_(iretq+push/pop), #include/#define, DK字段, inl/outl
-- **构建链**: boot.S(MMIO页表+PCD) + stitch_kernel.py + _qemu_nvme.sh
-- **仓库**: qiyuan-jiayan main ee3cbc7 (11 commits today)
+### 审计发现 (裂缝 1-4)
+1. **Bug #5 的"根治"是误标**: `*(整*)MMIO` 直接强转读只有 1 字节(真bug), rd32/wr32 是绕行非根治
+2. **根因**: `字节`(双字)在 lexer 无映射 → `字节 *p` 声明被整个丢弃, 内核代码在坏地基上
+3. **Gate 6-9 虚标**: kernel_v10-v16 大部分是演示/模拟/占位, nvme.c/tensor_pool.c 等模块文件不存在
+4. **验证证据不持久化**: QEMU 串口输出从不落盘
+
+### 本轮修复 (commit 1216cfb, 全部验证)
+- `字节`→char 映射 (根因) + pesz[] 数组宽度修复 (case-12/10) + 无短* 2字节 (11处分支)
+- `__attribute__((...))` 死循环修复 (bin_test.c 挂死 build.ps1)
+- boot.S: 16MB MMIO 窗口 (pd[496..503])
+- _qemu_nvme.sh: EP 自动提取 + 日志持久化 + expected 比对
+- **验证**: v17 探针 A-H 全对 [PASS]; build.ps1 不动点 A9CC10A2 完好 + 167/167 测试全过
+
+### 诚实 Gate 状态 (修正后)
+| Gate | 真实等级 | 说明 |
+|:--|:--|:--|
+| Gate 0-1 | ✅ 实现级 | VGA/串口/PIC (kernel_v5) |
+| Gate 2 | 🔵 接口级 | kernel_mem.h 纯宏 |
+| Gate 3-4 | 🟡 功能演示 | kernel_agent.h 类型 + v8/v9 调度逻辑 |
+| Gate 5 | 🔴 探针级 | PCI枚举/MMIO探针 (v15/v16/v17), **真驱动未写** |
+| Gate 6-9 | 🔵 占位/演示 | v11-v14, 模块文件不存在 |
+
+### 已知遗留
+- **jy 镜像 (qcc_work.jy) 未同步 pesz 修复**: 自宿主对"新增 per-node 数组"崩 (74MB→11.9MB, 0xC0000005), 独立于语义的 .data 布局 bug → 镜像暂保持旧版, 不动点 A9CC10A2 不变 (R1 落地)
+- Gate 5 真实现 (NVMe 命令队列 + Tensor 池) 待做
 
 ---
 
