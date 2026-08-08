@@ -2509,7 +2509,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
             否 若 (!strcmp(tn[ti], "返")) strcpy(tn[ti], "return");
             否 若 (!strcmp(tn[ti], "若")) strcpy(tn[ti], "if");
-            否 若 (!strcmp(tn[ti], "否")) strcpy(tn[ti], "else");
+            否 若 (!strcmp(tn[ti], "否") || !strcmp(tn[ti], "否则")) strcpy(tn[ti], "else"); /* fix 2026-08-09: 镜像缺 否则 映射 → 字节 全局 bug 根因 */
             否 若 (!strcmp(tn[ti], "循环")) strcpy(tn[ti], "while");
             否 若 (!strcmp(tn[ti], "做")) strcpy(tn[ti], "do");
             否 若 (!strcmp(tn[ti], "遍")) strcpy(tn[ti], "for");
