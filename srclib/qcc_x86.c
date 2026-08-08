@@ -2960,6 +2960,11 @@ static int prim(void) {
                     int ar = (tt[tk] == AR); tk++;
                     if (tt[tk] == VR) { int m = Nd(15); Nc(m, ce); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 32); tk++; ce = m; } else break;
                 } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, ce); ce = c; }
+                else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (cast)++ 后缀同样补齐 */
+                    int is_dec = (tt[tk] == MM); tk++;
+                    int m = Nd(23); nv[m] = is_dec;
+                    Nc(m, ce); ce = m;
+                }
                 else break;
             }
             if (cast_nstar >= 1) { /* fix 2026-08-08 width bug: (T*) cast no-op drops type info, *((T*)x) width by target element size */
@@ -2989,6 +2994,10 @@ static int prim(void) {
                 if (tt[tk] == VR) { int m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 32); tk++; n = m; } else break;
             } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c;
                 if (nt[callee] == 1 && fn_dbl_get_ret((char*)(nn + callee))) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737) */
+            } else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
+                int is_dec = (tt[tk] == MM); tk++;
+                int m = Nd(23); nv[m] = is_dec;
+                Nc(m, n); n = m;
             }
             else break;
         }
@@ -6753,6 +6762,7 @@ static void cg(int n) {
         } break;
         case 12: { /* *ptr — byte load (char*), dword (int*), 64-bit (fnptr / char** / int**) */
             cg(n0[n]); /* ptr → eax */
+            if (cg_no_deref) break; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原 case-12 忽略 cg_no_deref 永远加载值 → (*p)++ 把值当地址 */
             int el = 0;
             if (nt[n0[n]] == 1) el = var_esz((char*)(nn + n0[n])); /* named var: element size */
             else if (nt[n0[n]] == 14) { char *av = (char*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */

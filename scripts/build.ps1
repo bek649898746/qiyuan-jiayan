@@ -19,24 +19,28 @@ Write-Host "[2/4] 宿主自检 --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
 if ($t -notmatch 'PASS') { Write-Host "[FAIL] 自检失败: $t" -ForegroundColor Red; exit 1 }
 
-# 3. 自举三代
-Write-Host "[3/4] 自举三代 ..." -ForegroundColor Yellow
+# 3. 自举四代
+Write-Host "[3/4] 自举四代 ..." -ForegroundColor Yellow
 & .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
 & .\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe | Out-Null
+& .\v3.exe srclib_jiayan\qcc_work.jy -o v4.exe | Out-Null
 
 $h1 = (Get-FileHash v1.exe -Algorithm SHA256).Hash
 $h2 = (Get-FileHash v2.exe -Algorithm SHA256).Hash
 $h3 = (Get-FileHash v3.exe -Algorithm SHA256).Hash
+$h4 = (Get-FileHash v4.exe -Algorithm SHA256).Hash
 Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
+Write-Host "  v4: $h4"
 
-$expected = 'A9CC10A2DA01A036830FF2E0A838C2F224F24955619A64673860A377E8E0DCAA'
-if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h1 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: $($h1.Substring(0,8)) (GEN1==GEN2==GEN3 全等)" -ForegroundColor Green
+# 验收标准: v2==v3==v4 (自举闭环; v1 是 gcc 种子产物, 与甲言系不同属正常 — 见 docs/甲言自举验证体系_工程化解析.md)
+$expected = 'EDD810EB2A2667C08EA9771673E4A488B0258BBE6D322CD4E88CF306DFA5B2F2'
+if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
+    Write-Host "[OK] 自举不动点达成: $($h2.Substring(0,8)) (GEN2==GEN3==GEN4 全等)" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] 三代哈希与仓库记录不同：$h1" -ForegroundColor Yellow
+    Write-Host "[WARN] 三代哈希与仓库记录不同：$h2" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
