@@ -32,8 +32,16 @@ _start:
     addl $0x200000, %esi
     addl $8, %edi
     loop 1b
-    /* NVMe MMIO: 0xFE000000 → PD index 496 */
+    /* NVMe MMIO: 0xFE000000-0xFF000000 → PD index 496-503 (16MB window, PCD)
+     * 覆盖 QEMU q35 NVMe BAR0 动态落点 (常见 0xFEBD4000 等)  (fix 2026-08-08 裂缝2) */
     movl $0xFE000093, pd + 496*8  /* add PCD(bit4) for uncacheable MMIO */
+    movl $0xFE200093, pd + 497*8
+    movl $0xFE400093, pd + 498*8
+    movl $0xFE600093, pd + 499*8
+    movl $0xFE800093, pd + 500*8
+    movl $0xFEA00093, pd + 501*8
+    movl $0xFEC00093, pd + 502*8
+    movl $0xFEE00093, pd + 503*8
     movl $pdpt, %eax
     orl  $3, %eax
     movl %eax, pml4              /* pml4[0] = pdpt | 3 */
