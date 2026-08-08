@@ -1,7 +1,41 @@
 # CHANGELOG — 启元 · 甲言
 
-> 版本标识 = 自举不动点 SHA256 前 16 位（GEN1==GEN2==GEN3 三代一致）。
+> 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
+
+## DEC51802 (2026-08-09)
+**取地址/强转基址索引修复：case-14 读写双路径通用基址分支（H1==H2 171/171 全绿）：**
+
+- **根因**：`(&buf[0])[2]` / `((char*)&buf[0])[2]` 两版 0xC0000005 崩 — case-14 只认 15/14 嵌套、
+  off>=0 变量、pointer-param 三类基址，node-11（取地址）无分支 → load_param_val(空名) 垃圾指针
+- **读路径**：else 分支加 is_gen(node-11/空名) 检测；元素宽从取地址子节点算（case-14→var_esz(数组名),
+  var→var_esz）；cg 基址拿地址；**保存/恢复 cg_no_deref**（case 11 内部会清标志 → 存储曾写进"值"地址）
+- **写路径**：pointer-param store 前加通用基址分支；**RHS 弹出移到 cg 之后**（cg 会覆盖 r3/r11）
+- 新增回归：regress_cast_index.c（读写双路径+偏移基址）
+- **验证**：v2==v3==v4=DEC51802，H1==H2 171/171 全绿
+- 教训：手写编译器优先覆盖"直接索引"，"取地址再索引"是空白区；探针三变体一测定位
+
+## D5A96E9D (2026-08-09)
+**短指针宽度家族收官（H1==H2 170/170）：case-10 短写 + is_short + 数组 esz + 步进 + 5 处字存储**
+
+- **case-10 直接解引用存储 pe==2**（`*(short*)ptr=v` 原存 4 字节污染相邻）+ 镜像普通 short* 声明补 is_short
+  （batch-2 的 is_short 误加在 fnptr 路径恒 0 无效）
+- **node-23/26 指针步进 p_esz 优先**（原 arr_esz=0 → int*/short*/double* p++ 步进=1，08-06 修 char* 副作用）
+- **镜像数组 esz 补 is_short**（`short arr[4]` 元素 4→2）+ 5 处数组元素写站点补 66 89 字存储
+- 新增回归：regress_short_ptr_store.c / regress_ptr_step.c
+- **验证**：v2==v3==v4=D5A96E9D，H1==H2 170/170
+- **禁点结论推翻**：case-10/14 区域实测可安全插入（STACK_PAD 解药），仅全局区仍布局敏感
+
+## EDD810EB (2026-08-08)
+**H1==H2 全量攻坚三连（164/167→167/167）：attribute 吞噬 + parser 后缀链 + lea disp8**
+
+- 第3批：镜像缺 `__attribute__` 词法吞噬（bin_test 挂死根因）→ 54A07F01
+- 第4批：**prim() 括号/强转后缀链缺 PP/MM → `(*p)++` 被吞** → fn_macro 展开空 → 235B 空壳
+  （宿主镜像都中招）+ case-12 补 cg_no_deref → D524D3E1
+- 第5批：镜像缺 08-03 lea `[rsp+0]` disp8 修复（H1!=H2 差 5 字节）→ EDD810EB
+- 新增回归：regress_pptr_postinc.c
+- **验证**：v2==v3==v4=EDD810EB，H1==H2 167/167
+- 教训：全量 H1==H2 此前从未真正跑过（只跑小样）；重复代码最危险（三后缀链本应相同实缺分支）
 
 ## 9900de15 (2026-08-07)
 **匿名全局 fnptr 字段 + static typedef struct 变量（host+v1 180/180 全绿）：**

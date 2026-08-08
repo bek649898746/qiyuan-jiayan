@@ -1,6 +1,5 @@
-# 启元·甲言 CI — 每次 push/PR 自动验证闭环 (Task 3.3)
-# 验证: 编译器构建 (gcc 零警告) → 行为断言 → 自举不动点
-# 拆分 2 job: tests(断言+多文件) + bootstrap(自举), 便于定位失败步骤
+# 启元甲言 CI — 每次 push/PR 自动验证闭环
+# 验证: 宿主编译(gcc 零警告) → 行为断言 → 多文件链接 → 自举不动点 (v2==v3==v4)
 name: qiyuan-ci
 
 on:
@@ -12,8 +11,6 @@ on:
 jobs:
   tests:
     runs-on: windows-latest
-    permissions:
-      contents: write   # 诊断结果 push 回 ci-fix (临时)
     steps:
       - uses: actions/checkout@v5
 
@@ -30,64 +27,7 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
-      - name: CI 诊断 (决定性: 4 种运行方式 + gcc 对照 + PE 头)
-        if: always()
-        continue-on-error: true
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: |
-          Remove-Item scratch_test/_diag* -Force -ErrorAction SilentlyContinue
-          Write-Host "=== [1] 编译 arg4 (qcc) ==="
-          .\qcc_x86.exe tests/qcc/arg4.c -o scratch_test/_diag.exe 2>&1
-          Write-Host "qcc 编译 rc=$LASTEXITCODE"
-          Write-Host "=== [2] 编译 arg4 (gcc 对照) ==="
-          gcc tests/qcc/arg4.c -o scratch_test/_diag_gcc.exe 2>&1
-          Write-Host "gcc 编译 rc=$LASTEXITCODE"
-          Write-Host "=== [3] 完整 PE 头 (qcc vs gcc) ==="
-          Write-Host "--- qcc ---"
-          objdump -x scratch_test/_diag.exe 2>&1 | Select-String -Pattern 'Characteristics|Magic|AddressOfEntryPoint|SizeOfImage|SizeOfHeaders|Subsystem|DllChar|StackReserve|StackCommit|HeapReserve|NumberOfSections|MajorSubsystemVersion|MinorSubsystemVersion' | ForEach-Object { $_.Line.Trim() }
-          Write-Host "--- gcc ---"
-          objdump -x scratch_test/_diag_gcc.exe 2>&1 | Select-String -Pattern 'Characteristics|Magic|AddressOfEntryPoint|SizeOfImage|SizeOfHeaders|Subsystem|DllChar|StackReserve|StackCommit|HeapReserve|NumberOfSections|MajorSubsystemVersion|MinorSubsystemVersion' | ForEach-Object { $_.Line.Trim() }
-          Write-Host "=== [4] 运行方式对比 (qcc exe) ==="
-          Write-Host "--- cmd /c ---"
-          cmd /c "scratch_test\_diag.exe & echo CMD_RC=%ERRORLEVEL%" 2>&1
-          Write-Host "--- python subprocess 直接 ---"
-          python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('DIRECT_RC=',p.returncode)"
-          Write-Host "--- python subprocess cmd /c ---"
-          python -c "import subprocess; p=subprocess.run(['cmd','/c',r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('CMDRC=',p.returncode)"
-          Write-Host "--- powershell Start-Process ---"
-          $p = Start-Process -FilePath (Resolve-Path 'scratch_test\_diag.exe') -PassThru -Wait
-          Write-Host "SP_RC=$($p.ExitCode)"
-          Write-Host "=== [5] 运行方式对比 (gcc exe 对照) ==="
-          Write-Host "--- cmd /c ---"
-          cmd /c "scratch_test\_diag_gcc.exe & echo GCC_CMD_RC=%ERRORLEVEL%" 2>&1
-          Write-Host "--- python subprocess ---"
-          python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag_gcc.exe'],capture_output=True,timeout=15); print('GCC_DIRECT_RC=',p.returncode)"
-          Write-Host "=== [6] 结果写入仓库 (git commit) ==="
-          $out = @()
-          $out += "=== CI 决定性诊断 $env:GITHUB_SHA ==="
-          $out += Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-          $out += "--- qcc exe SizeOfImage/SizeOfHeaders ---"
-          $out += (objdump -x scratch_test/_diag.exe 2>&1 | Select-String 'SizeOfImage|SizeOfHeaders' | ForEach-Object { $_.Line.Trim() })
-          $out += "--- gcc exe SizeOfImage/SizeOfHeaders ---"
-          $out += (objdump -x scratch_test/_diag_gcc.exe 2>&1 | Select-String 'SizeOfImage|SizeOfHeaders' | ForEach-Object { $_.Line.Trim() })
-          $out += "--- cmd run qcc ---"
-          $out += (cmd /c "scratch_test\_diag.exe & echo CMD_RC=%ERRORLEVEL%" 2>&1)
-          $out += "--- python direct qcc ---"
-          $out += (python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag.exe'],capture_output=True,timeout=15); print('DIRECT_RC=',p.returncode)")
-          $out += "--- cmd run gcc ---"
-          $out += (cmd /c "scratch_test\_diag_gcc.exe & echo GCC_CMD_RC=%ERRORLEVEL%" 2>&1)
-          $out += "--- python direct gcc ---"
-          $out += (python -c "import subprocess; p=subprocess.run([r'scratch_test\_diag_gcc.exe'],capture_output=True,timeout=15); print('GCC_DIRECT_RC=',p.returncode)")
-          $out | Set-Content ci_diag_result.txt -Encoding UTF8
-          git config user.email "ci@qiyuan.local"
-          git config user.name "ci-bot"
-          git add ci_diag_result.txt
-          git commit -m "ci: 诊断结果 $env:GITHUB_SHA" 2>&1 | Out-Null
-          git push origin HEAD:ci-fix 2>&1 | Out-Null
-          Write-Host "已提交诊断结果到 ci-fix"
-
-      - name: 行为断言 (180+)
+      - name: 行为断言 (171 测试)
         run: python scripts/run_tests.py
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
@@ -106,16 +46,23 @@ jobs:
       - name: 编译宿主编译器
         run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
-      - name: 自举三代不动点
+      - name: 自举不动点 (v2==v3==v4 全等 + 匹配仓库记录)
         shell: powershell
         run: |
+          $expected = 'DEC518022ACCF14173BA7FE7A43879A2CBDD723D9F2A8CFDC9F5A9B57F34DC11'
           qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe | Out-Null
           .\v1.exe srclib_jiayan/qcc_work.jy -o v2.exe | Out-Null
           .\v2.exe srclib_jiayan/qcc_work.jy -o v3.exe | Out-Null
-          $h1 = (Get-FileHash v1.exe -Algorithm SHA256).Hash
+          .\v3.exe srclib_jiayan/qcc_work.jy -o v4.exe | Out-Null
           $h2 = (Get-FileHash v2.exe -Algorithm SHA256).Hash
           $h3 = (Get-FileHash v3.exe -Algorithm SHA256).Hash
-          Write-Host "v1: $h1"
+          $h4 = (Get-FileHash v4.exe -Algorithm SHA256).Hash
           Write-Host "v2: $h2"
           Write-Host "v3: $h3"
-          if (($h1 -eq $h2) -and ($h2 -eq $h3)) { Write-Host "自举v2==v3 OK" } else { Write-Host "自举v2!=v3"; exit 1 }
+          Write-Host "v4: $h4"
+          if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
+            Write-Host "自举不动点 OK: $($h2.Substring(0,8))"
+          } else {
+            Write-Host "自举不动点 FAIL (v2 不等于 v3/v4 或与仓库记录不符)"
+            exit 1
+          }
