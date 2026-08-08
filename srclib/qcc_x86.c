@@ -287,7 +287,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
         if (seg[i] == '"' && !in_str) in_str = 1;
         else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         if (in_str) {
-            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
             continue;
         }
@@ -385,10 +385,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 continue;
             }
             /* plain identifier */
-            if (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            if (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             for (int k = 0; k < ni; k++) out[(*o)++] = nm[k];
         } else {
-            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); out = *outp; }
+            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
         }
     }
@@ -512,7 +512,7 @@ static char *pp_include_expand(const char *src, int depth) {
     if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
     if (depth == 0) pp_guard_n = 0; /* fix 2026-08-07: 每次编译重置守卫名表 */
     int cap = (int)strlen(src) + 16384;
-    char *out = malloc(cap); int oi = 0;
+    char *out = malloc(cap); if (!out) { fprintf(stderr, "[ERR] OOM malloc\n"); exit(1); } int oi = 0;
     const char *p = src;
     int if_skip = 0, if_n = 0;
     int if_parent_skip[64], if_taken[64];
@@ -4750,7 +4750,7 @@ static void bf_extract(const char *sn, const char *fn) {
     int bw = st_field_bitw(sn, fn);
     if (bw <= 0) return;
     int bitof = st_field_bitof(sn, fn);
-    int mask = bw >= 32 ? -1 : (1 << bw) - 1;
+    int mask = bw >= 32 ? -1 : (1u << bw) - 1; /* fix 2026-08-09 审计: 1<<31 是有符号溢出 UB, 改 1u */
     if (bitof == 0) { mov_ri_ext(9, mask); alu_rr(25, 0, 9); } /* eax &= mask */
     else {
         mov_rr(10, 0); /* r10d = slot value */
@@ -4780,7 +4780,7 @@ static int bf_store(const char *sn, const char *fn) {
     int bw = st_field_bitw(sn, fn);
     if (bw <= 0) return 0;
     int bitof = st_field_bitof(sn, fn);
-    int fm = bw >= 32 ? -1 : ((1 << bw) - 1) << bitof;
+    int fm = bw >= 32 ? -1 : ((1u << bw) - 1) << bitof; /* fix 2026-08-09 审计: 1u 防有符号溢出 */
     mov_reg_mreg(10, 0); /* r10d = [rax] = old slot (rax keeps the address) */
     mov_rr(11, 3); /* r11d = rhs */
     bf_shl_imm(11, bitof); /* r11d <<= bitof */
