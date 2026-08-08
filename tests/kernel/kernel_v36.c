@@ -10,17 +10,17 @@
     整 a=(1<<31)|(bus<<16)|(dev<<11)|(func<<8)|(off&0xFC);
     outl(0xCF8,a); 返 inl(0xCFC);
 }
-/* 槽哨兵完成检测: 在 cq[cmd*4] 写哨兵, 提交后等哨兵变化, 返 DW3 */
+/* 槽哨兵完成检测: 在 cq[cmd] 写哨兵, 提交后等哨兵变化, 返 DW3 */
 整 waitcq(整 cqbase, 整 cmd, 整 cid){
     整 cslot=cmd*4;
     *(整*)(cqbase+cslot*4+0)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+1)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+2)=0xAAAAAAAA;
-    *(整*)(cqbase+cslot*4+3)=0xAAAAAAAA;
+    *(整*)(cqbase+cslot*4+4)=0xAAAAAAAA;
+    *(整*)(cqbase+cslot*4+8)=0xAAAAAAAA;
+    *(整*)(cqbase+cslot*4+12)=0xAAAAAAAA;
     整 t=0;
-    循环(t<2000){
+    循环(t<20000){
         t=t+1;
-        若(*(整*)(cqbase+cslot*4+3)!=0xAAAAAAAA){ 返 *(整*)(cqbase+cslot*4+3); }
+        若(*(整*)(cqbase+cslot*4+12)!=0xAAAAAAAA){ 返 *(整*)(cqbase+cslot*4+12); }
         若(*(整*)(cqbase+cslot*4+0)!=0xAAAAAAAA){ 返 *(整*)(cqbase+cslot*4+0); }
     }
     返 -1;
@@ -109,6 +109,9 @@
                 st=acmd(mmio,asq,acq,cmd,0x01,0x43,0,iosq,1|(31<<16),1|(1<<16));
                 cmd=cmd+1;
                 sps(c,"CSQ=");hex32(c,st);spc(c,10);
+                /* dump 管理 CQ 槽1/2 完成 (create CQ/SQ) */
+                sps(c,"mCQ1=");hex32(c,*(整*)(acq+16));hex32(c,*(整*)(acq+20));hex32(c,*(整*)(acq+24));hex32(c,*(整*)(acq+28));spc(c,10);
+                sps(c,"mCQ2=");hex32(c,*(整*)(acq+32));hex32(c,*(整*)(acq+36));hex32(c,*(整*)(acq+40));hex32(c,*(整*)(acq+44));spc(c,10);
                 /* dump 管理 SQ 槽0-3 (create 后确认) */
                 sps(c,"SQd:");
                 i=0;
@@ -123,11 +126,7 @@
                 循环(i<64){*(字节*)(buf+i)=65+i%26;i=i+1;}
                 st=iocmd(mmio,iosq,iocq,0,0x02,0x44,buf,0,0);
                 sps(c,"WR=");hex32(c,st);spc(c,10);
-                spc(c,'A');spc(c,10);
-                hex32(c,*(整*)(iocq+0));spc(c,32);hex32(c,*(整*)(iocq+8));hex32(c,*(整*)(iocq+12));spc(c,10);
-                spc(c,'B');spc(c,10);
-                hex32(c,*(整*)(iosq+0));hex32(c,*(整*)(iosq+4));spc(c,10);
-                spc(c,'C');spc(c,10);
+                sps(c,"ioCQ0=");hex32(c,*(整*)(iocq+0));hex32(c,*(整*)(iocq+4));hex32(c,*(整*)(iocq+8));hex32(c,*(整*)(iocq+12));spc(c,10);
                 /* 读 LBA0 (CID=0x45) */
                 整 br=buf+0x1000;
                 i=0;
