@@ -26,6 +26,11 @@ if not os.path.exists(qcc):
 # 清理 scratch_test: CI 多次 run 残留文件会被占用 -> cannot write _H1.exe (fix 2026-08-08)
 import shutil
 st_dir = os.path.join(root, 'scratch_test')
+# 先杀僵尸测试进程 (崩溃测试的 exe 进程可能残留锁住 _H1.exe, 复跑必失败 fix 2026-08-09;
+# taskkill 通配符不可靠, 用 PowerShell Get-Process + Stop-Process 实测有效)
+subprocess.run(['powershell', '-NoProfile', '-Command',
+                'Get-Process -Name "*_H1*" -ErrorAction SilentlyContinue | Stop-Process -Force'],
+               capture_output=True)
 if os.path.isdir(st_dir):
     for f in os.listdir(st_dir):
         try:

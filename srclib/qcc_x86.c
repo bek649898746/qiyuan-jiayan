@@ -53,7 +53,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
-static char str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量 */ int str_cnt;
+static char str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-09 审计#2: 条目 1024 实测未满(967), 2048 打破自举静态布局 → 保持 */ int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
 static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -1223,7 +1223,7 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 
 /* ==================== COFF 对象输出（-c 模式） ==================== */
 static int stc_disp(int idx);
-static struct { char name[32]; int label; int defined; int ret_si; } func_tbl[1024]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 自举文件逼近 512 */
+static struct { char name[32]; int label; int defined; int ret_si; } func_tbl[2048]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048 */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
 static char fn_static_names[512][32]; static int fn_static_n;
 static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
@@ -1834,7 +1834,7 @@ static int lbl_reg(const char *n) {
 }
 enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66 }; /* MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
-#define TS 262144
+#define TS 524288 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 static int *tt, *tv; char (*tn)[32]; char (*nn)[32]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
 static int *tuns; /* per-token unsigned-suffix flag (0xFFFFFFFFu) — fix 2026-08-05 */
 static int *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-08-05 */
@@ -2287,7 +2287,7 @@ static int kw(const char *s) {
 }
 
 static void lex(const char *s) {
-    int i = 0; ti = 0; tk = 0;
+    int i = 0; ti = 0; tk = 0; int unknown_chars = 0; /* fix 2026-08-09 BUG-5: 未知字符计数, lex 结束汇报 */
     while (s[i] && ti < TS) {
         while (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r') i++;
         if (!s[i]) break;
@@ -2515,8 +2515,9 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cv; ti++; continue;
         }
-        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: break; } ti++; i++;
+        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; break; } ti++; i++;
     }
+    if (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
 
 static int Nd(int t) { if (nc >= ASZ) { fprintf(stderr, "[ERR] AST overflow\n"); return -1; } int i = nc++; nt[i] = t; nv[i] = 0; n0[i] = n1[i] = n2[i] = n3[i] = n4[i] = n5[i] = n6[i] = n7[i] = n8[i] = n9[i] = n10[i] = n11[i] = n12[i] = n13[i] = n14[i] = n15[i] = n16[i] = n17[i] = n18[i] = n19[i] = n20[i] = n21[i] = n22[i] = n23[i] = n24[i] = n25[i] = n26[i] = n27[i] = n28[i] = n29[i] = n30[i] = n31[i] = n32[i] = n33[i] = n34[i] = n35[i] = n36[i] = n37[i] = n38[i] = n39[i] = n40[i] = n41[i] = n42[i] = n43[i] = n44[i] = n45[i] = n46[i] = n47[i] = n48[i] = n49[i] = n50[i] = n51[i] = n52[i] = n53[i] = n54[i] = n55[i] = n56[i] = n57[i] = n58[i] = n59[i] = n60[i] = n61[i] = n62[i] = n63[i] = n64[i] = n65[i] = n66[i] = n67[i] = n68[i] = n69[i] = n70[i] = n71[i] = n72[i] = n73[i] = n74[i] = n75[i] = n76[i] = n77[i] = n78[i] = n79[i] = n80[i] = n81[i] = n82[i] = n83[i] = n84[i] = n85[i] = n86[i] = n87[i] = n88[i] = n89[i] = n90[i] = n91[i] = n92[i] = n93[i] = n94[i] = n95[i] = n96[i] = n97[i] = n98[i] = n99[i] = n100[i] = n101[i] = n102[i] = n103[i] = n104[i] = n105[i] = n106[i] = n107[i] = n108[i] = n109[i] = n110[i] = n111[i] = n112[i] = n113[i] = n114[i] = n115[i] = n116[i] = n117[i] = n118[i] = n119[i] = n120[i] = n121[i] = n122[i] = n123[i] = n124[i] = n125[i] = n126[i] = n127[i] = n128[i] = n129[i] = n130[i] = n131[i] = n132[i] = n133[i] = n134[i] = n135[i] = n136[i] = n137[i] = n138[i] = n139[i] = n140[i] = n141[i] = n142[i] = n143[i] = n144[i] = n145[i] = n146[i] = n147[i] = n148[i] = n149[i] = n150[i] = n151[i] = n152[i] = n153[i] = n154[i] = n155[i] = n156[i] = n157[i] = n158[i] = n159[i] = n160[i] = n161[i] = n162[i] = n163[i] = n164[i] = n165[i] = n166[i] = n167[i] = n168[i] = n169[i] = n170[i] = n171[i] = n172[i] = n173[i] = n174[i] = n175[i] = n176[i] = n177[i] = n178[i] = n179[i] = n180[i] = n181[i] = n182[i] = n183[i] = n184[i] = n185[i] = n186[i] = n187[i] = n188[i] = n189[i] = n190[i] = n191[i] = n192[i] = n193[i] = n194[i] = n195[i] = n196[i] = n197[i] = n198[i] = n199[i] = n200[i] = n201[i] = n202[i] = n203[i] = n204[i] = n205[i] = n206[i] = n207[i] = n208[i] = n209[i] = n210[i] = n211[i] = n212[i] = n213[i] = n214[i] = n215[i] = n216[i] = n217[i] = n218[i] = n219[i] = n220[i] = n221[i] = n222[i] = n223[i] = n224[i] = n225[i] = n226[i] = n227[i] = n228[i] = n229[i] = n230[i] = n231[i] = n232[i] = n233[i] = n234[i] = n235[i] = n236[i] = n237[i] = n238[i] = n239[i] = n240[i] = n241[i] = n242[i] = n243[i] = n244[i] = n245[i] = n246[i] = n247[i] = n248[i] = n249[i] = n250[i] = n251[i] = n252[i] = n253[i] = n254[i] = n255[i] = -1; pesz[i] = 0; return i; }
@@ -7663,6 +7664,7 @@ static char *read_file(const char *path) {
         fseek(f, 0, 2); /* SEEK_END */
         sz = ftell(f);
         rewind(f);
+        if (sz < 0) { fclose(f); return NULL; } /* fix 2026-08-09 BUG-12: ftell 失败(-1L 非 seekable)显式检查 */
         if (sz > 0 && sz <= 1048576) {
             b = malloc(sz + 1);
             fread(b, 1, sz, f);
