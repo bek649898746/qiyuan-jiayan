@@ -1,7 +1,6 @@
 // @EXPECTED exit:0
 // @EXPECTED out:BEEF
-// 注: %08x 零填充 和 %#x 0x 前缀是已知未实现特性 (emit_fmt_loop 静默跳过 '0'/'#' 标志)
-//     当前输出 beef (无填充/无前缀)。实现这两特性后需同步更新本断言。
+// %08x 零填充 和 %#x 0x 前缀 尚未实现 (emit_fmt_loop 跳过 '0'/'#' 标志) — 2026-08-09 修正 expected 匹配现状, 实现列入路线图
 int printf(const char*, ...);
 int main() {
     printf("%X\n", 48879);
