@@ -143,7 +143,7 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
     while (isalnum((unsigned char)*q) || *q == '_' || ((unsigned char)*q >= 0x80)) { if (ni < 31) nm[ni++] = *q; q++; }
     nm[ni] = 0;
     while (*q == ' ' || *q == '\t') q++;
-    int v = 0, neg = 0;
+    long long v = 0; int neg = 0; /* fix 2026-08-09 审计 BUG-3: int v 累加 3000000000 有符号溢出 UB → long long */
     if (*q == '-') { neg = 1; q++; }
     while (*q == '(') q++; /* (N) 括号包 (fix 2026-08-07) */
     if (*q == '0' && (q[1] == 'x' || q[1] == 'X')) {
@@ -151,7 +151,7 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
     } else if (*q >= '0' && *q <= '9') {
         while (*q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; }
     }
-    *val = neg ? -v : v;
+    *val = (int)(neg ? -v : v);
 }
 static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macro_collect 的条件编译感知用) */
 
@@ -2383,7 +2383,7 @@ static void lex(const char *s) {
                     while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; }
                     continue;
                 }
-                int mval = 0;
+                long long mval = 0; /* fix 2026-08-09 审计 BUG-3: int 累加 3000000000 溢出 UB → long long */
                 if (s[i] == '"' && str_macro_n < 64) { /* string macro: #define NAME "value" — store DECODED value, lexed at the use site (fix 2026-08-03) */
                     i++;
                     int j = 0;

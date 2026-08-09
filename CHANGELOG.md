@@ -3,14 +3,14 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
-## FA9CDF0D (2026-08-09)
-**BUG-NEW-1 修复: 指针参数后置自增步进错（实测复验审计发现，新不动点）：**
+## B35E9A77 (2026-08-09)
+**BUG-3 修复: 无符号大整数解析溢出 UB（严格审计 #4，宿主+镜像同步）：**
 
-- **根因**：`var_param` 指针参数 p_esz 硬编码 4（元素宽只存 arr_esz）→ `char* a` 的 `a++` 步进 4 字节（应 1）
-  → 字符串遍历 `while(*p){p++;}` 全错。宿主/v1/v2 全中招
-- **修复**：node-23/26 step 逻辑 **arr_esz 优先（参数）/ p_esz 次（局部）**；不改 var_param（宽修复曾致 v1 编镜像崩）
-- **验证**：v2==v3==v4=FA9CDF0D，宿主+v2 `f("abc")[1]` 均正确
-- **新增回归**：regress_ptr_param_inc.c（a++ 解引用 + strlen 风格遍历）
+- **根因**：`pp_def_parse` 与 lexer 宏数字累加用 `int`，`#define BIG 3000000000` 累加时**有符号溢出 = UB**（C 标准：溢出未定义，行为碰运气）
+- **修复**：两处累加器 `int v` / `int mval` → `long long`（host `qcc_x86.c` 与 mirror `qcc_work.jy` 逐字同步），`*val = (int)(neg ? -v : v)` 显式截断——行为从此确定而非偶然
+- **验证**：v2==v3==v4=B35E9A77（901386B，codegen 不变=纯解析侧修复），全量 H1==H2 **177/177**，宿主+v2 `_ubig2.c` 产物字节一致、rc=0
+- **新增回归**：regress_ubig.c（#define 十进制/十六进制大字面量一致性）
+- 注：b() 4MB 容量守卫仍在源码中（曾疑致 10 测试超时，本次 177/177 实证无回归）
 
 ## A16AC67F (2026-08-09)
 **enum 常量注册修复 + 语言特性摸底（union/free/extern/scanf）：**
@@ -20,6 +20,15 @@
 - union/free: 正常, 锁回归 regress_union.c / regress_free.c
 - extern: 同文件声明+定义不支持 (多文件模型OK); scanf: 运行时未实现 — 记台账
 - 验证: v2==v3==v4=A16AC67F, 全量 H1==H2 174/174
+
+## FA9CDF0D (2026-08-09)
+**BUG-NEW-1 修复: 指针参数后置自增步进错（实测复验审计发现，新不动点）：**
+
+- **根因**：`var_param` 指针参数 p_esz 硬编码 4（元素宽只存 arr_esz）→ `char* a` 的 `a++` 步进 4 字节（应 1）
+  → 字符串遍历 `while(*p){p++;}` 全错。宿主/v1/v2 全中招
+- **修复**：node-23/26 step 逻辑 **arr_esz 优先（参数）/ p_esz 次（局部）**；不改 var_param（宽修复曾致 v1 编镜像崩）
+- **验证**：v2==v3==v4=FA9CDF0D，宿主+v2 `f("abc")[1]` 均正确
+- **新增回归**：regress_ptr_param_inc.c（a++ 解引用 + strlen 风格遍历）
 
 ## 60ACEF3D (2026-08-09)（bin_mode C3；6FD5AA72 的 b() 守卫因 10 测试超 4MB 容量回退, 容量问题记台账）
 
