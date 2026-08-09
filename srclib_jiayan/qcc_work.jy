@@ -773,7 +773,7 @@ __attribute__((unused))
 }
 静 整 e_lookup(常 字 *n) {
     遍 (整 i = 0; i < eval_n; i++) 若 (!strcmp(evals[i].name, n)) 返 evals[i].val;
-    返 -1;
+    返 0x80000000; /* ENUM_NOT_FOUND (fix 2026-08-09: -1 与负值 enum 常量冲突 -> RED=-2 被当未找到) */
 }
 
 /* ?????????? double ??????????? */
@@ -2919,7 +2919,7 @@ __attribute__((unused))
     若 (tt[tk] == VR) {
         /* enum constant? */
         整 ev = e_lookup(tn[tk]);
-        若 (ev >= 0) { tk++; 整 n = Nd(0); nv[n] = ev; 返 n; }
+        若 (ev != 0x80000000) { /* fix 2026-08-09: != sentinel (neg const RED=-2) */ tk++; 整 n = Nd(0); nv[n] = ev; 返 n; }
         整 n = Nd(1); memcpy((字*)(nn + n), tn[tk], 32); tk++;
         若 (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (数组名衰减为地址，不是 double — fix 2026-08-05: double 数组名被标 ndbl → 指针/double 比较走了浮点路径) */
         若 (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long 变量（fix 2026-08-05） */
@@ -3777,7 +3777,7 @@ __attribute__((unused))
             若(tt[tk]==CA){ /* case CONST: */
                 tk++; 整 cv=0;
                 若(tt[tk]==NK){cv=tv[tk];tk++;}
-                否 若(tt[tk]==VR){ 整 evc = e_lookup(tn[tk]); 若 (evc >= 0) { cv = evc; tk++; } } /* enum constant label: case STR: */
+                否 若(tt[tk]==VR){ 整 evc = e_lookup(tn[tk]); 若 (evc != 0x80000000) { cv = evc; tk++; } /* fix 2026-08-09: != sentinel */ } /* enum constant label: case STR: */
                 若(tt[tk]==CL)tk++; /* : */
                 整 body=Nd(5); /* case body */
                 循环(tt[tk]!=BR&&tt[tk]!=CA&&tt[tk]!=DF&&tt[tk]!=UK&&tt[tk]!=EK){
@@ -3983,25 +3983,29 @@ __attribute__((unused))
         }
         /* enum definition: enum Name { A, B, C }; */
         若 (tt[tk] == EN) {
+            整 en_save = tk;
             tk++; /* skip 'enum' */
             若 (tt[tk] == VR) tk++; /* optional enum name */
             若 (tt[tk] == FK) { /* { */
                 tk++; 整 ev = 0;
                 循环 (tk < TS && tt[tk] != UK) {
+                    整 tk0 = tk;
                     若 (tt[tk] == VR) {
                         字 ename[32]; strcpy(ename, tn[tk]);
                         tk++; /* skip name */
-                        若 (tt[tk] == AK) { tk++; 若 (tt[tk] == NK) { ev = tv[tk]; tk++; } } /* = val: jump the counter BEFORE registering */
+                        若 (tt[tk] == AK) { tk++; 整 neg = 0; 若 (tt[tk] == MK) { neg = 1; tk++; } 若 (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 neg consume */
                         e_reg(ename, ev);
                         ev++;
                     }
                     若 (tt[tk] == CK) tk++; /* comma */
                     若 (tt[tk] == SK) tk++; /* semicolon (not in enum but safety) */
+                    若 (tk == tk0) tk++; /* safety: always advance (fix 2026-08-09) */
                 }
                 若 (tt[tk] == UK) tk++; /* } */
                 若 (tt[tk] == SK) tk++; /* ; */
+                续;
             }
-            续;
+            tk = en_save; /* enum Type gvar; -> rewind to global-decl branch (fix 2026-08-09) */
         }
         /* extern variable declarations �?skip silently */
         若 (tt[tk] == VK && !strcmp(tn[tk], "extern")) { /* fix 2026-08-06: 注册 extern 外部符号 (Task 5.1 多 .o 链接, 镜像 qcc_x86.c) */
@@ -4196,15 +4200,17 @@ __attribute__((unused))
                 若 (tt[tk] == FK) { /* { */
                     tk++; 整 ev = 0;
                     循环 (tk < TS && tt[tk] != UK) {
+                        整 tk0 = tk;
                         若 (tt[tk] == VR) {
                             字 ename[32]; strcpy(ename, tn[tk]);
                             tk++; /* skip name */
-                            若 (tt[tk] == AK) { tk++; 若 (tt[tk] == NK) { ev = tv[tk]; tk++; } } /* = val */
+                            若 (tt[tk] == AK) { tk++; 整 neg = 0; 若 (tt[tk] == MK) { neg = 1; tk++; } 若 (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 neg */
                             e_reg(ename, ev);
                             ev++;
                         }
                         若 (tt[tk] == CK) tk++; /* comma */
                         若 (tt[tk] == SK) tk++; /* semicolon (safety) */
+                        若 (tk == tk0) tk++; /* safety: always advance */
                     }
                     若 (tt[tk] == UK) tk++; /* } */
                 }

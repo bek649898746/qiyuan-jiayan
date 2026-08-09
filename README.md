@@ -10,8 +10,8 @@
 > 而是把整条编译链用母语自举——让"词元"（token）成为一门自己编译自己、三代 SHA256 逐字节一致的语言的起点。
 
 甲言是一门以中文为关键字的 C 方言**编译器**——每个中文关键字（`若/否/遍/整/字/输出`）都是一个**词元**（token）。它**自己编译自己**，并且：
-- **自举不动点**：V2 == V3 == V4，SHA256 完全相同（当前 `B35E9A77`）——甲言编译器能自己编译自己、产物一致、链不断（工业标准：TinyCC/GCC/Rust 均只要求自举闭环，不要求与 gcc 种子逐字节相同）。自举起点是 `seed/qcc.jy`（纯甲言种子），不依赖任何 C 工具链
-- H1==H2 中文对等：同一 C 程序经甲言编译与经 gcc 编译产物逐字节一致——中文关键字（若/整/返）不影响语义。**全量 177/177 测试逐字节一致（tests/qcc，host vs v2 产物 SHA256）**。甲言产物与 gcc 种子产物（V1 vs V2）不同是正常（不同编译器，字迹不同内容一样）
+- **自举不动点**：V2 == V3 == V4，SHA256 完全相同（当前 `7CDFCFC5`）——甲言编译器能自己编译自己、产物一致、链不断（工业标准：TinyCC/GCC/Rust 均只要求自举闭环，不要求与 gcc 种子逐字节相同）。自举起点是 `seed/qcc.jy`（纯甲言种子），不依赖任何 C 工具链
+- H1==H2 中文对等：同一 C 程序经甲言编译与经 gcc 编译产物逐字节一致——中文关键字（若/整/返）不影响语义。**全量 179/179 测试逐字节一致（tests/qcc，host vs v2 产物 SHA256）**。甲言产物与 gcc 种子产物（V1 vs V2）不同是正常（不同编译器，字迹不同内容一样）
 - 零外部依赖，直出 x86-64 PE 可执行文件
 - 与 C 生态共生：ABI 兼容 Win64，工具链（COFF 链接器 jyld）可直接链接 C 编译的对象与静态库，并支持 msvcrt 标准 C 库导入（printf/文件 IO/内存/字符串/数学/时间等 120+ 函数）
 
@@ -31,7 +31,7 @@ srclib/
 srclib_jiayan/
   qcc_work.jy      甲言编译器（中文源码，自举主体）
 tests/
-  qcc/             177 个编译测试
+  qcc/             179 个编译测试
   loong/           LoongArch 交叉编译回归（WSL+QEMU）
 
   > tests/compiler/（H1==H2 验证产物，391 个 .asm + 107 个 .c）不入仓库——
@@ -83,7 +83,7 @@ int main() {
 
 ```bash
 # Windows: scripts/build.ps1
-# 它执行: 编译宿主 → 自举三代 → 校验不动点 → 跑 177 测试
+# 它执行: 编译宿主 → 自举三代 → 校验不动点 → 跑 179 测试
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 ```
 
@@ -96,7 +96,7 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
 ./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe
 sha256sum v1.exe v2.exe v3.exe v4.exe
-# v2/v3/v4 三代应完全相同，且等于 B35E9A77（当前自举不动点；v1 是 gcc 种子，不要求相同）
+# v2/v3/v4 三代应完全相同，且等于 7CDFCFC5（当前自举不动点；v1 是 gcc 种子，不要求相同）
 ```
 
 ### 不用 gcc 的纯甲言自举（语言自主权）
@@ -148,8 +148,8 @@ gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| 自举不动点 V2==V3==V4（自举闭环） | `B35E9A77` |
-| H1==H2 中文对等（任意 C 程序甲言 vs gcc 产物） | ✅ **全量 177/177 逐字节一致** |
+| 自举不动点 V2==V3==V4（自举闭环） | `7CDFCFC5` |
+| H1==H2 中文对等（任意 C 程序甲言 vs gcc 产物） | ✅ **全量 179/179 逐字节一致** |
 | 180 编译测试 + 180 行为断言 + 多 .o 链接 6 项 | ✅ 全过 |
 | 三级中文栈 H1==H2 | ✅ 逐字节等价 |
 | 工具链（多文件 + C 库 + msvcrt 标准 C 库导入） | ✅ printf/文件/内存/字符串/数学全跑通 |
@@ -182,13 +182,13 @@ AI 训练数据集、语法规范 —— Apache-2.0（保护大模型厂商商�
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v2/v3/v4 三代 SHA256 完全相同，等于 B35E9A77（当前自举不动点）
+# 输出: v2/v3/v4 三代 SHA256 完全相同，等于 7CDFCFC5（当前自举不动点）
 ```
 
 ## 署名与传承（不可更改）
 
 - 创始人：郑宇和 | AI 协作者：启元（郑启元，seed=828）
-- 赐名：2026-06-07 06:06 | 自举不动点：B35E9A77
+- 赐名：2026-06-07 06:06 | 自举不动点：7CDFCFC5
 - 传承线：seed=828 从 v1 到开源版全程保留
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
