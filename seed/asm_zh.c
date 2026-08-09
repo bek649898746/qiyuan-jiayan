@@ -90,7 +90,7 @@ static void jmp_rel(int rel) { b(0xE9);b4(rel); }
 static void jz_rel(int rel) { b(0x0F);b(0x84);b4(rel); }
 static void jnz_rel(int rel) { b(0x0F);b(0x85);b4(rel); }
 static void call_iat(int slot) { int at=cp; int iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); b(0xFF);b(0x15);b4((data_rva_base+iat_off)-(0x1000+at+6)); } /* IAT1@+0x08 / IAT2@+0x50（fix 2026-08-06 BUG-1） */
-static void resolve_patches(void) { for(int i=0;i<pn;i++){ if(!labels[patches[i].target].defined){fprintf(stderr,"[ERR] asm_zh: undefined label '%s' at line %d\n",labels[patches[i].target].name,labels[patches[i].target].line);exit(1);} int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label → clean error */
+static void resolve_patches(void) { for(int i=0;i<pn;i++){ int t=labels[patches[i].target].pos;int at=patches[i].at; if(patches[i].is_jmp==3){ int v=t-(at+1); b_at(at,v&0xff); } else { int v=t-(at+4); b4_at(at,v); } } } /* fix 2026-08-05: rel8 (is_jmp==3) vs rel32 back-patch; undefined label (e.g. CRT's call main in a library file) resolves to 0 — tolerant so qcc_rt/route_learn (no main) assemble (fix 2026-08-06, matches grok-build) */
 /* Data section buffer */
 static unsigned char *sdat; static int sdp, sdc;
 /* string-address back-patch: STR{n} marker in "移动 r0, STRn" */
@@ -272,6 +272,7 @@ static int asm_assemble(const char *src, int base, int emit_data) {
      else if(!strcmp(mn,"乘无64")){SK;int r=RG;if(r>=0){rex(1,0,0,r&8);b(0xF7);modrm(3,4,r&7);}} /* mul r64 (P0) */
      else if(!strcmp(mn,"乘即")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;SK;if(*p==',')p++;int v=NUM;if(d>=0&&s>=0){rex(1,d&8,0,s&8);if(v>=-128&&v<=127){b(0x6B);modrm(3,d&7,s&7);b(v&0xff);}else{b(0x69);modrm(3,d&7,s&7);b4(v);}}} /* imul r64,r64,imm (P0) */
         else if(!strcmp(mn,"加指针")){SK;if(!strncmp(p,"rax",3)){p+=3;SK;if(*p==',')p++;int v=NUM;if(v>=-128&&v<=127){rex(1,0,0,0);b(0x83);modrm(3,0,0);b(v&0xff);}else{rex(1,0,0,0);b(0x05);b4(v);}}} /* add rax,imm */
+        else if(!strcmp(mn,"加即64")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){rex(1,0,0,r&8);if(v>=-128&&v<=127){b(0x83);modrm(3,0,r&7);b(v&0xff);}else{b(0x81);modrm(3,0,r&7);b4(v);}}} /* add r64,imm8/imm32 (fix 2026-08-06 cg_struct_copy add rbx,8) */
         else if(!strcmp(mn,"浮取参")){b(0xF2);b(0x41);b(0x0F);b(0x10);b(0x45);b(0x00);} /* movsd xmm0,[r13] */
         else if(!strcmp(mn,"扩展符号")){b(0x99);} /* CDQ (fix 2026-08-06 M1: 原 48 99=CQO 查 RAX 位63，32位负数高32位为0 → 变无符号除法) */
         else if(!strcmp(mn,"减即")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0x83);modrm(3,5,r&7);b(v);}} /* sub r,imm8 */
@@ -318,7 +319,7 @@ else if(!strcmp(mn,"无符号除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);mo
         else if(!strcmp(mn,"存零")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int r=RG;if(r>=0&&m>=0){b(0x89);modrm(0,r&7,m&7);}} /* mov [m],r32 NO REX */
         else if(!strcmp(mn,"存浮")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0xF2);b(0x0F);b(0x11);modrm(0,0,3);}} /* movsd [rbx],xmm0 */
         else if(!strcmp(mn,"存字节")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0x40);b(0x88);modrm(0,0,3);}} /* mov [rbx],al */
-        else if(!strcmp(mn,"存64")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int v=RG;if(m==0&&v==3){b(0x48);b(0x89);modrm(0,3,0);}else if(m==3){b(0x48);b(0x89);modrm(0,0,3);}} /* mov [rax],rbx / mov [rbx],rax (fix 2026-08-03: case-10 64-bit element store was bare) */
+        else if(!strcmp(mn,"存64")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int v=RG;if(m==0&&v==3){b(0x48);b(0x89);modrm(0,3,0);}else if(m==3&&v==1){b(0x48);b(0x89);modrm(0,1,3);}else if(m==3){b(0x48);b(0x89);modrm(0,0,3);}} /* mov [rax],rbx / mov [rbx],rcx / mov [rbx],rax (fix 2026-08-06 cg_struct_copy: [rbx],rcx was bare → -S 缺指令) */
                 else if(!strcmp(mn,"存指64")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x48);b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],rax (sret copy text fix 2026-08-03) */
         else if(!strcmp(mn,"存指32")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],eax */
         else if(!strcmp(mn,"存指16")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x66);b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],ax */
@@ -350,7 +351,8 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"减")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(6,d,s);}
         else if(!strcmp(mn,"乘")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(7,d,s);}
         else if(!strcmp(mn,"比较")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0)alu_rr(8,d,s);}
-        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);}
+        else if(!strcmp(mn,"测试")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0)test_rr(d,s);} else if(!strcmp(mn,"测试64")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x85);modrm(3,s&7,d&7);}} /* test r64,r64 (fix 2026-08-06 %lld) */
+        else if(!strcmp(mn,"符号扩展")){SK;int d=RG;SK;if(*p==',')p++;SK;int s=RG;if(d>=0&&s>=0){b(0x48);b(0x63);modrm(3,d&7,s&7);}} /* movsxd r64,r32 (fix 2026-08-06 (long long)int) */
         else if(!strcmp(mn,"测试al")){b(0x84);b(0xC0);}
         else if(!strcmp(mn,"置等")){setcc(8);}
         else if(!strcmp(mn,"置不等")){setcc(10);}
@@ -369,11 +371,13 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
      else if(!strcmp(mn,"取符号字")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBF);modrm(3,d&7,s&7);}} /* movsx r32,r/m16 (P0) */
      else if(!strcmp(mn,"零扩展")){SK;if(!strncmp(p,"SIB",3)){b(0x43);b(0x0F);b(0xB6);b(0x04);b(0x1A);}else{int dst=-1;if(!strncmp(p,"eax",3)){dst=0;p+=3;}else if(!strncmp(p,"ecx",3)){dst=1;p+=3;}else if(!strncmp(p,"edx",3)){dst=2;p+=3;}if(dst>=0){SK;if(*p==',')p++;SK;if(*p=='['){p++;int br=RG;SK;if(br>=8){b(0x41);}b(0x0F);b(0xB6);modrm(0,dst,br&7);}else{if(dst==0)movzx_eax_al();else if(dst==1){b(0x0F);b(0xB6);modrm(3,1,1);}else{b(0x0F);b(0xB6);modrm(3,2,2);}}}else movzx_eax_al();}}
 
-        else if(!strcmp(mn,"零扩展字")){SK;if(!strncmp(p,"r0",2))p+=2;SK;if(*p==',')p++;int v=MEM;b(0x0F);b(0xB7);b(0x85);b4(v);} /* movzx eax,word[rbp+disp32] */
+        else if(!strcmp(mn,"零扩展字")){SK;if(!strncmp(p,"r0",2)){p+=2;SK;if(*p==',')p++;int v=MEM;b(0x0F);b(0xB7);b(0x85);b4(v);} /* movzx eax,word[rbp+disp32] (sret copy) */
+        else{int dst=-1;if(!strncmp(p,"eax",3)){dst=0;p+=3;}else if(!strncmp(p,"ecx",3)){dst=1;p+=3;}else if(!strncmp(p,"edx",3)){dst=2;p+=3;}SK;if(*p==',')p++;SK;if(*p=='['){p++;int br=RG;SK;if(br>=8){b(0x41);}b(0x0F);b(0xB7);modrm(0,dst,br&7);} /* movzx eax,word[reg] (short field read fix 2026-08-06) */ else {int v=MEM;b(0x0F);b(0xB7);b(0x85);b4(v);}}} /* fix 2026-08-06: b9c0a7f 多一个 } 导致 if/else 链断裂 → asm_zh.c 编译不过 */
         else if(!strcmp(mn,"零扩展字节")){SK;if(!strncmp(p,"r0",2))p+=2;SK;if(*p==',')p++;int v=MEM;b(0x0F);b(0xB6);b(0x85);b4(v);} /* movzx eax,byte[rbp+disp32] */
         else if(!strcmp(mn,"存字节帧")){b(0x41);b(0x88);modrm(1,1,5);b(0);} /* mov byte[r13+0],cl */
         else if(!strcmp(mn,"存字节0")){b(0x41);b(0xC6);modrm(1,0,5);b(0);b(0);} /* mov byte[r13+0],0 */
         else if(!strcmp(mn,"存字节0r12")){b(0x41);b(0xC6);b(0x04);b(0x24);b(0);} /* mov byte[r12],0 (sprintf NUL — fix 2026-08-03) */
+        else if(!strcmp(mn,"存字rax")){b(0x40);b(0x66);b(0x89);b(0x18);} /* MOV [rax],bx (short field write fix 2026-08-06) */
         else if(!strcmp(mn,"自增")){int r=RG;if(r>=8)b(0x41);if(r>=0){b(0xFF);modrm(3,0,r&7);}} /* inc r8-r15 */
         else if(!strcmp(mn,"存32rax")){b(0x40);b(0x89);b(0x18);} /* MOV [rax],ebx (32-bit array write) */
         else if(!strcmp(mn,"存字节rax")){b(0x40);b(0x88);b(0x18);} /* MOV [rax],bl (char array write) */
