@@ -3413,6 +3413,22 @@ __attribute__((unused))
             整 is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8 字节整（fix 2026-08-06: unsigned 前缀组合） */
             tk++; 若 (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
+            若 (was_enum && tt[tk] == FK) { /* enum 常量体 { A, B = 5, C } — 注册常量 (fix 2026-08-09) */
+                tk++; /* skip { */
+                整 ev = 0;
+                循环 (tt[tk] != UK && tt[tk] != EK) {
+                    整 tk0 = tk;
+                    若 (tt[tk] == VR) {
+                        字 enm[32]; memcpy(enm, tn[tk], 32); tk++;
+                        若 (tt[tk] == AK) { tk++; 整 neg = 0; 若 (tt[tk] == MK) { neg = 1; tk++; } 若 (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } }
+                        e_reg(enm, ev);
+                        ev++;
+                    }
+                    若 (tt[tk] == CK) tk++; /* , */
+                    若 (tk == tk0) tk++; /* safety: 保证推进 (fix 2026-08-09: 原否tk++ 在 = -2 后跳过 } 吞token挂死) */
+                }
+                若 (tt[tk] == UK) tk++; /* } */
+            }
             若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long（fix 2026-08-06） */
             若 (tt[tk] == VR && td_is(tn[tk])) { /* 第 2/3 个 token 是 typedef'd 类型 (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07 镜像 C 源) */

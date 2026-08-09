@@ -3394,6 +3394,22 @@ static int blk(void) {
             int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
+            if (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
+                tk++; /* skip { */
+                int ev = 0;
+                while (tt[tk] != UK && tt[tk] != EK) {
+                    int tk0 = tk;
+                    if (tt[tk] == VR) {
+                        char enm[32]; memcpy(enm, tn[tk], 32); tk++;
+                        if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } }
+                        e_reg(enm, ev);
+                        ev++;
+                    }
+                    if (tt[tk] == CK) tk++; /* , */
+                    if (tk == tk0) tk++; /* safety: always advance (fix 2026-08-09: 原 else tk++ 在 = -2 后跳过 } → 吞 token 挂死) */
+                }
+                if (tt[tk] == UK) tk++; /* } */
+            }
             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "short")) is_short = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
             if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
