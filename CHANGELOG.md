@@ -3,6 +3,19 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 87EB41AB (2026-08-09)
+**#7 printf %08x/%#x 实现（host+mirror 同步，新不动点）：**
+
+- **%#x/%#X**: '0x'/'0X' 前缀（'#' flag 从"跳过"改为置位 sc+260）
+- **%08x/%0Nx**: 宽度零填充（'0' flag 置位 sc+264 + 宽度填充逻辑）
+- **实现**：新 emit_hex_prefix_pad helper（数 hex 位数→pad=W-len-前缀宽→零/空格填充→前缀→digits）；%x/%X 处理器接入
+- **两个自举陷阱**（mirror 编译时发现）：
+  1. mirror 的三元 `upper ? 'X' : 'x'` 生成坏代码（v2 崩溃 0xC0000094）→ 改 `若/否`
+  2. mirror 误编译**单行** `若 (upper) { 长语句链 } 否 { }` → 改多行；但运行时分支仍与 host 字节不一致 → **最终方案：helper 传前缀字符字面量** `emit_hex_prefix_pad(lfmt, 0, 'x')`，host/mirror 字节一致
+  3. mirror emit_fmt_loop 的 lhash/lzero 标签变量必须显式声明（未声明=未定义=0→label 冲突）
+- **验证**：v2==v3==v4=87EB41AB，fmt_hex 程序 H1==H2 字节一致，全量 H1==H2 180/180
+- **新增回归**：regress_printf_hex.c
+
 ## A5AE7D39 (2026-08-09)
 **台账批量清零: #5 ftell / #11 未知字符 / #2 func_tbl / #13 TS（新不动点）：**
 
