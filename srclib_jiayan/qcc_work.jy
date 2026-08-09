@@ -103,7 +103,7 @@ __attribute__((unused))
     循环 (isalnum((无 字)*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (ni < 31) nm[ni++] = *q; q++; }
     nm[ni] = 0;
     循环 (*q == ' ' || *q == '\t') q++;
-    整 v = 0, neg = 0;
+    long long v = 0; 整 neg = 0; /* fix 2026-08-09 审计 BUG-3: int v 累加 3000000000 有符号溢出 UB → long long */
     若 (*q == '-') { neg = 1; q++; }
     循环 (*q == '(') q++;
     若 (*q == '0' && (q[1] == 'x' || q[1] == 'X')) {
@@ -111,7 +111,7 @@ __attribute__((unused))
     } 否 若 (*q >= '0' && *q <= '9') {
         循环 (*q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; }
     }
-    *val = neg ? -v : v;
+    *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
 静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n; /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
@@ -2408,7 +2408,7 @@ __attribute__((unused))
                     循环 (s[i] && s[i] != '\n') { 若 (s[i] == '\\' && s[i + 1] == '\n') i += 2; 否 若 (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; 否 i++; }
                     续;
                 }
-                整 mval = 0;
+                long long mval = 0; /* fix 2026-08-09 审计 BUG-3: int 累加 3000000000 溢出 UB → long long */
                 若 (s[i] == '"' && str_macro_n < 64) { /* string macro: #define NAME "value" — 解码存储 (fix 2026-08-07: 镜像 qcc_x86.c — 原缺失, 字符串宏注册成数值 0) */
                     i++;
                     整 j = 0;
