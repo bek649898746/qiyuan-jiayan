@@ -2945,6 +2945,14 @@ static int prim(void) {
             else while (tt[tk] == VK) tk++;
             if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; }
             else if (tt[tk] == VR && td_is(tn[tk])) tk++;
+            if (tt[tk] == OK && tt[tk + 1] == DK) { /* fix 2026-08-10: 函数指针类型 cast (int (*)(int))expr — 跳过 (*) (args) 到类型结束 ) */
+                int fp_d = 1; tk++; /* (* 的 ( 已含在深度内 */
+                while (tk < TS) {
+                    if (tt[tk] == OK) fp_d++;
+                    else if (tt[tk] == KK) { if (fp_d == 0) { tk++; break; } fp_d--; }
+                    tk++;
+                }
+            }
             int cast_nstar = 0; while (tt[tk] == DK) { cast_nstar++; tk++; } /* pointer * */
             if (tt[tk] == KK) tk++; /* ) */
             int ce = prim(); /* cast operand is a UNARY expr — prim() not expr(): (long long)1<<32 must shift the 64-bit cast, not parse as (long long)(1<<32) (fix 2026-08-05) */

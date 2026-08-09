@@ -2968,6 +2968,14 @@ __attribute__((unused))
             否 循环 (tt[tk] == VK) tk++;
             若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; }
             否 若 (tt[tk] == VR && td_is(tn[tk])) tk++;
+            若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fix 2026-08-10: 函数指针类型 cast (int (*)(int))expr — 跳过 (*) (args) 到类型结束 ) */
+                整 fp_d = 1; tk++; /* (* 的 ( 已含在深度内 */
+                循环 (tk < TS) {
+                    若 (tt[tk] == OK) fp_d++;
+                    否 若 (tt[tk] == KK) { 若 (fp_d == 0) { tk++; 断; } fp_d--; }
+                    tk++;
+                }
+            }
             循环 (tt[tk] == DK) tk++; /* pointer * */
             若 (tt[tk] == KK) tk++; /* ) */
             整 ce = prim(); /* cast 操作数是 UNARY 表达式——用 prim() 而非 expr()：`(long long)1<<32` 必须先做 64 位 cast 再移位，不能解析成 `(long long)(1<<32)`（fix 2026-08-05） */
