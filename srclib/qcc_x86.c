@@ -821,7 +821,7 @@ static void e_reg(const char *n, int v) {
 }
 static int e_lookup(const char *n) {
     for (int i = 0; i < eval_n; i++) if (!strcmp(evals[i].name, n)) return evals[i].val;
-    return -1;
+    return 0x80000000; /* ENUM_NOT_FOUND (fix 2026-08-09: 原 -1 与负值 enum 常量冲突 → RED=-2 被当未找到 → 当变量用=0) */
 }
 
 /* ?????????? double ??????????? */
@@ -2896,7 +2896,7 @@ static int prim(void) {
         if (!strcmp(tn[tk], "NULL")) { tk++; int n = Nd(0); nv[n] = 0; return n; }
         /* enum constant? */
         int ev = e_lookup(tn[tk]);
-        if (ev >= 0) { tk++; int n = Nd(0); nv[n] = ev; return n; }
+        if (ev != 0x80000000) { tk++; int n = Nd(0); nv[n] = ev; return n; } /* fix 2026-08-09: != 哨兵而非 >= 0 (负值常量 RED=-2) */
         int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 32); tk++;
                 if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         if (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
@@ -3781,7 +3781,7 @@ static int stmt(void) {
             if(tt[tk]==CA){ /* case CONST: */
                 tk++; int cv=0;
                 if(tt[tk]==NK){cv=tv[tk];tk++;}
-                else if(tt[tk]==VR){ int evc = e_lookup(tn[tk]); if (evc >= 0) { cv = evc; tk++; } } /* enum constant label: case STR: */
+                else if(tt[tk]==VR){ int evc = e_lookup(tn[tk]); if (evc != 0x80000000) { cv = evc; tk++; } } /* enum constant label: case STR: (fix 2026-08-09: != 哨兵, 支持负值 case) */
                 if(tt[tk]==CL)tk++; /* : */
                 int body=Nd(5); /* case body */
                 while(tt[tk]!=BR&&tt[tk]!=CA&&tt[tk]!=DF&&tt[tk]!=UK&&tt[tk]!=EK){
@@ -3991,27 +3991,31 @@ static int parse(const char *s) {
                 continue;
             }
         }
-        /* enum definition: enum Name { A, B, C }; */
+        /* enum definition: enum Name { A, B, C }; OR enum Name gvar; (global enum var) */
         if (tt[tk] == EN) {
+            int en_save = tk;
             tk++; /* skip 'enum' */
             if (tt[tk] == VR) tk++; /* optional enum name */
             if (tt[tk] == FK) { /* { */
                 tk++; int ev = 0;
                 while (tk < TS && tt[tk] != UK) {
+                    int tk0 = tk;
                     if (tt[tk] == VR) {
                         char ename[32]; strcpy(ename, tn[tk]);
                         tk++; /* skip name */
-                        if (tt[tk] == AK) { tk++; if (tt[tk] == NK) { ev = tv[tk]; tk++; } } /* = val: jump the counter BEFORE registering */
+                        if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 负号消费 (原只认 NK → MK 卡死死循环) */
                         e_reg(ename, ev);
                         ev++;
                     }
                     if (tt[tk] == CK) tk++; /* comma */
                     if (tt[tk] == SK) tk++; /* semicolon (not in enum but safety) */
+                    if (tk == tk0) tk++; /* safety: always advance (fix 2026-08-09: 与 blk() 版对齐, 防未知 token 死转) */
                 }
                 if (tt[tk] == UK) tk++; /* } */
                 if (tt[tk] == SK) tk++; /* ; */
+                continue;
             }
-            continue;
+            tk = en_save; /* 无常量体: enum Type gvar; → 回卷到全局声明分支 (fix 2026-08-09: 原 continue 吞掉变量声明 → g_color 未注册 → 运行时 0xC0000005) */
         }
         /* extern variable declarations — 注册外部符号 (Task 5.1 多 .o 链接 fix 2026-08-06:
            原静默跳过 → 单独 -c 编译时引用被当局部变量; 现在注册 extern 负槽, coff_mode 生成未定义符号) */
@@ -4218,15 +4222,17 @@ static int parse(const char *s) {
                 if (tt[tk] == FK) { /* { */
                     tk++; int ev = 0;
                     while (tk < TS && tt[tk] != UK) {
+                        int tk0 = tk;
                         if (tt[tk] == VR) {
                             char ename[32]; strcpy(ename, tn[tk]);
                             tk++; /* skip name */
-                            if (tt[tk] == AK) { tk++; if (tt[tk] == NK) { ev = tv[tk]; tk++; } } /* = val */
+                            if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 负号消费 + tk0 守卫 (原 → MK 卡死死循环) */
                             e_reg(ename, ev);
                             ev++;
                         }
                         if (tt[tk] == CK) tk++; /* comma */
                         if (tt[tk] == SK) tk++; /* semicolon (safety) */
+                        if (tk == tk0) tk++; /* safety: always advance */
                     }
                     if (tt[tk] == UK) tk++; /* } */
                 }

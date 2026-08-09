@@ -27,7 +27,7 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
-      - name: 行为断言 (171 测试)
+      - name: 行为断言
         run: python scripts/run_tests.py
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
@@ -49,7 +49,7 @@ jobs:
       - name: 自举不动点 (v2==v3==v4 全等 + 匹配仓库记录)
         shell: powershell
         run: |
-          $expected = 'B35E9A7716A13593CFEC49DFDA9D69C42E886B4833FB41DBD286FE29705DED04'
+          $expected = '7CDFCFC5ADF4B6C9D25F52AE65134032A7B9F055ADF43B169E14ED3B5F7AF421'
           qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe | Out-Null
           .\v1.exe srclib_jiayan/qcc_work.jy -o v2.exe | Out-Null
           .\v2.exe srclib_jiayan/qcc_work.jy -o v3.exe | Out-Null
