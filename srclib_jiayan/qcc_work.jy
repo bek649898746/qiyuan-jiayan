@@ -7296,10 +7296,23 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         scratch_base = cur_frame_sz - 272; /* fix 2026-08-06: 状态区 [rbp-272..]，printf 缓冲在其下 */
         sret_ptr_off = cur_frame_sz - 8;   /* sret 槽在 [rbp-8] */
 
-        push_r(5);  /* push rbp */
-        push_r(3);  /* push rbx (callee-saved �?used as cross-call temp) */
-        mov_rr64(5, 4); /* mov rbp, rsp */
-        sub_rsp_imm(fn_frame); /* shadow space + locals */
+        /* fix 2026-08-08 -bin: _start è®¾è£¸æºæ  + æ­£å¸¸åºè¨ (å®æ´å¸§) */
+        整 no_frame = (bin_mode && i == 0 && !strcmp(fname, "_start"));
+        整 is_isr = (bin_mode && !strncmp(fname, "__isr_", 6)); /* __isr_xxx: è£¸ä¸­æ­å½æ° æ å¸§ãiretq */
+        若 (no_frame) {
+            mov_ri_ext(4, 0x200000); /* mov rsp, 0x200000 â åæ ¸æ  (è£¸æºæ æ ) */
+            mov_rr64(15, 4);         /* r15 = rsp */
+            push_r(5);  push_r(3);
+            mov_rr64(5, 4); /* mov rbp, rsp */
+            sub_rsp_imm(fn_frame); /* å®æ´å¸§ */
+        } 否 若 (is_isr) {
+            (void)0; /* no prologue */
+        } 否 {
+            push_r(5);  /* push rbp */
+            push_r(3);  /* push rbx */
+            mov_rr64(5, 4); /* mov rbp, rsp */
+            sub_rsp_imm(fn_frame); /* shadow space + locals */
+        }
         若 (cur_fn_sret) mov_mbrp_reg64(sret_ptr_off - cur_frame_sz, 1); /* save the hidden sret pointer (rcx) — inner calls clobber it */
 
         /* copy incoming params into frame slots (reg params from rcx/rdx/r8/r9,
@@ -7310,8 +7323,9 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
            vars[], copying every param into every prologue would clobber live slots. */
         整 fv0 = fvb[gfn], fv1 = fve[gfn];
         vs_end = fv1; /* scope var lookups to this function during codegen */
+        整 bin_no_params = (bin_mode && i == 0) || is_isr; /* -bin å¥å£å½æ°æ ISR: è·³è¿åæ°å¤å¶ */
         遍 (整 vi = fv0; vi < fv1; vi++) {
-            若 (vars[vi].is_param) {
+            若 (vars[vi].is_param && !bin_no_params) {
                 若 (vars[vi].is_dbl) {
                     /* double param: xmm[preg→xmm] (reg) or [rbp+pdisp] (stack). 8 bytes. */
                     若 (vars[vi].pstk) { movsd_xmm0_mbrp(vars[vi].pdisp); movsd_mbrp_xmm0(vars[vi].rsp_off - cur_frame_sz); }
@@ -7328,7 +7342,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         /* epilogue label: return jumps here */
         epi_label = new_label();
 
-        若 ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主")))) { /* emit global initializers at program entry (甲言: 主() = main()); coff 模式挂最后一个函数 — 原挂第一个, 函数内 static 变量未注册 DCL-MISS (fix 2026-08-07 镜像 C 源) */
+        若 ((coff_mode && !coff_ginit_done && i == last_fn_i) || (!coff_mode && (!strcmp(fname, "main") || !strcmp(fname, "主"))) || (bin_mode && !strcmp(fname, "_start"))) { /* bin æ¨¡å¼: ginit å¨ _start åå° (è£¸æºæ  CRT) */
             cg_ginit_ctx = 1; /* ginit decls must NOT be skipped by case-7's local-static check */
             遍 (整 gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
             cg_ginit_ctx = 0;
@@ -7348,7 +7362,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 
     /* mini-CRT entry stub: provides argc/argv, calls main, exits with its code.
        Emitted in BOTH passes (pass 2 overwrites pass 1 identically). */
-    emit_crt_stub();
+    若 (!bin_mode) { emit_crt_stub(); } /* -bin: æ  CRT (åæ ¸èªå¤ Multiboot2 header + å¥å£) */
 
     /* ????????? */
     resolve_patches();
@@ -7416,12 +7430,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < strpn; i++) {
         整 si = str_patches[i].str_idx;
         整 off = str_offs[si]; /* byte offset within string data */
-        整 rva = IMAGE_BASE + 0x1000 + code_end + off; /* ImageBase(IMAGE_BASE) + text_rva + code + off */
+        整 rva = (bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + code_end + off; /* bin: åæ ¸å è½½åºå 0x104000 */
         b4_at(str_patches[i].patch_at, rva);
     }
     /* patch function-address imm32s (fn ptr assignment) to actual VA */
     遍 (整 i = 0; i < fnpn; i++) {
-        整 rva = IMAGE_BASE + 0x1000 + label_pos[fn_patches[i].label];
+        整 rva = (bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + label_pos[fn_patches[i].label];
         b4_at(fn_patches[i].patch_at, rva);
     }
     /* patch double-literal rip-relative disp32s: target VA = text_rva + code_end + dbl_off.
@@ -7430,8 +7444,8 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     遍 (整 i = 0; i < dbl_patch_n; i++) {
         整 di = dbl_patches[i].dbl_idx;
         整 off = dbl_offs[di];
-        整 rva = IMAGE_BASE + 0x1000 + code_end + off;
-        b4_at(dbl_patches[i].patch_at, rva - (IMAGE_BASE + 0x1000 + dbl_patches[i].patch_at + 4));
+        整 rva = (bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + code_end + off;
+        b4_at(dbl_patches[i].patch_at, rva - ((bin_mode ? 0x104000 : IMAGE_BASE) + 0x1000 + dbl_patches[i].patch_at + 4));
     }
     /* ????????????????????*/
     若 (sdp > 0) {
