@@ -4868,6 +4868,23 @@ static void emit_print(const char *fname, int nargs) {
     /* len = r12 - r14 */
     mov_rr64(0, 12); asm_emit("    å‡64 r0, r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0); /* sub rax, r14 */
     mov_rr(8, 0); /* r8 = len */
+    if (bin_mode) { /* fix 2026-08-10 Gate 9: bin printf -> ´®¿Ú COM1 0x3F8, ÎÞ kernel32 */
+        int lbin_loop = new_label(), lbin_wait = new_label(), lbin_done = new_label();
+        set_label(lbin_loop);
+        test_rr(8, 8); jz_rel(-1); patch_label(cp-4, lbin_done, 1);
+        set_label(lbin_wait);
+        mov_r_imm(2, 0x3FD); /* THR status reg */
+        asm_emit("    ¶Á¶Ë¿Ú al, dx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEC); /* in al, dx */
+        b(0xA8); b(0x20); /* test al, 0x20 (THRE) */
+        jz_rel(-1); patch_label(cp-4, lbin_wait, 1);
+        rex(0,0,0,1); b(0x8A); modrm(0, 0, 6); /* mov al, [r14] */
+        mov_r_imm(2, 0x3F8);
+        asm_emit("    Ð´¶Ë¿Ú dx, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEE); /* out dx, al */
+        asm_emit("    ×ÔÔö r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 6); /* inc r14 */
+        rex(0,0,0,1); b(0xFF); modrm(3, 1, 0); /* dec r8d */
+        jmp_rel(-1); patch_label(cp-4, lbin_loop, 2);
+        set_label(lbin_done);
+    } else {
     sub_rsp_imm(32);
     mov_rr64(1, 10); /* rcx = handle */
     mov_rr64(2, 14); /* rdx = buf */
@@ -4875,6 +4892,7 @@ static void emit_print(const char *fname, int nargs) {
     mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (8-byte NULL overlapped ï¿½?arg5 at [rsp+32] per real ABI) */
     call_iat(1);       /* WriteFile */
     add_rsp_imm(32);
+    }
     mov_rr64(4, 15); /* mov rsp, r15 ï¿½?restore original stack position */
 }
 
