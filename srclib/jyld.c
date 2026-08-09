@@ -244,6 +244,7 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
     } else {
         o->rels = NULL;
     }
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); return -1; } /* fix 2026-08-09 审计: 越界写防御 */
     obj_n++;
     return 0;
 }
@@ -358,6 +359,7 @@ static void add_builtin_main(void) {
     o->rel_off = (int*)calloc(1, sizeof(int));
     o->nrel[0] = 0;
     o->rels = NULL;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); } /* fix 2026-08-09 审计: 越界写防御 */
     obj_n++;
 }
 

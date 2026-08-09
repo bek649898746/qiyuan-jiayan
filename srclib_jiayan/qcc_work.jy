@@ -865,7 +865,7 @@ __attribute__((unused))
 静 空 b(无 字 v) {
     /* 4MB 预分配后无需增长检查（C 原版 296：`code[cp++] = v` 裸写）。
        qcc 对 `cc=N;...` 的全局写会丢（存到局部），若保留 cc 增长判断会误判 → 每次 realloc → bump 泄漏 75MB 撞栈。 */
-    code[cp++] = v;
+    若 (cp >= CODE_BUF_CAP) { fprintf(stderr, "qcc_x86: code buffer overflow\n"); exit(1); } code[cp++] = v;
 }
 静 空 b4(整 v) { b(v & 0xff); b((v >> 8) & 0xff); b((v >> 16) & 0xff); b((v >> 24) & 0xff); }
 

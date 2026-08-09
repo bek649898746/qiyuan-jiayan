@@ -890,7 +890,7 @@ static void hexfp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
 #define T_MD 43  /* % */
 #define T_SH 44  /* << */
 #define T_SR 45  /* >> */
-static void b(unsigned char v) { code[cp++] = v; }
+static void b(unsigned char v) { if (cp >= CODE_BUF_CAP) { fprintf(stderr, "qcc_x86: code buffer overflow (fix 2026-08-09 审计)\n"); exit(1); } code[cp++] = v; }
 static void b4(int v) { b(v & 0xff); b((v >> 8) & 0xff); b((v >> 16) & 0xff); b((v >> 24) & 0xff); }
 
 /* ModR/M: mod=0(reg,[reg+disp])/1(reg,[reg+disp8])/2(reg,[reg+disp32])/3(reg,reg) */
