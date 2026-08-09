@@ -1216,7 +1216,12 @@ __attribute__((unused))
 静 构 { 整 patch_at; 整 label; } fn_patches[2048]; 整 fnpn; /* function-address imm32 patches */
 静 整 ginit[4096]; 静 整 ginit_n; /* fix 2026-08-06: 128→4096 + 溢出报错 */ /* global variable initializer nodes (emitted at main entry) */
 静 整 coff_mode = 0;
-静 整 bin_mode = 0; /* -bin */
+静 整 bare_metal = 0; /* fix 2026-08-10 Gate 9: 编译器自身在裸机 (main 检测 __bare__ 参数设置) */
+整 bin_mode = 0;
+#define BIN_SRC_ADDR 0x3800000
+#define BIN_RT_ADDR 0x3900000
+#define BIN_OUT_ADDR 0x3A00000
+#define BIN_OUT_LEN_ADDR 0x3B00000 /* -bin */
 静 字 bin_hdr[256]; 静 整 bin_hdr_n = 0; /* 字 而非 字节: 字节全局数组触发自举破坏 (2026-08-09) */
 
 #define MAX_CREL 1024
@@ -4845,6 +4850,24 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* len = r12 - r14 */
     mov_rr64(0, 12); asm_emit("    减64 r0, r14\n", 0, 0, 0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0); /* sub rax, r14 */
     mov_rr(8, 0); /* r8 = len */
+    若 (bin_mode) { /* fix 2026-08-10 Gate 9: bin printf -> 串口 COM1 0x3F8 */
+        整 lbin_loop = new_label(), lbin_wait = new_label(), lbin_done = new_label();
+        set_label(lbin_loop);
+        test_rr(8, 8); jz_rel(-1); patch_label(cp-4, lbin_done, 1);
+        set_label(lbin_wait);
+        mov_r_imm(2, 0x3FD);
+        asm_emit("    读端口 al, dx\n", 0, 0, 0); b(0xEC);
+        b(0xA8); b(0x20);
+        jz_rel(-1); patch_label(cp-4, lbin_wait, 1);
+        rex(0,0,0,1); b(0x8A); modrm(0, 0, 6);
+        mov_r_imm(2, 0x3F8);
+        asm_emit("    写端口 dx, al\n", 0, 0, 0); b(0xEE);
+        asm_emit("    自增 r14\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 6);
+        rex(0,0,0,1); b(0xFF); modrm(3, 1, 0);
+        jmp_rel(-1); patch_label(cp-4, lbin_loop, 2);
+        set_label(lbin_done);
+    } 否 {
+
     sub_rsp_imm(32);
     mov_rr64(1, 10); /* rcx = handle */
     mov_rr64(2, 14); /* rdx = buf */
@@ -4852,6 +4875,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (8-byte NULL overlapped �?arg5 at [rsp+32] per real ABI) */
     call_iat(1);       /* WriteFile */
     add_rsp_imm(32);
+    }
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
 
@@ -7978,6 +8002,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 
 
 静 字 *read_file(常 字 *path) {
+    若 (bare_metal) { /* fix 2026-08-10 Gate 9: 裸机无文件系统 -> 内存读 */
+        若 (strcmp(path, "srclib/qcc_rt.c") == 0 || strcmp(path, "qcc_rt.c") == 0) {
+            返 (字 *)BIN_RT_ADDR; /* 运行时 */
+        }
+        返 (字 *)BIN_SRC_ADDR;  /* 主源码 */
+    }
     字 *b = NULL;
     FILE *f;
     整 sz;
@@ -8027,6 +8057,8 @@ __attribute__((unused))
     字 *hdrs = NULL; 整 hdr_len = 0, hdr_cap = 0;
     字 *all_src = NULL; 整 all_len = 0;
 
+    /* fix 2026-08-10 Gate 9: 引导传 "__bare__" 标记编译器裸机运行 */
+    遍 (整 bi = 1; bi < argc; bi++) { 若 (argv[bi] && strcmp(argv[bi], "__bare__") == 0) { bare_metal = 1; 断; } }
     循环 (argc > argi) {
         若 (strcmp(argv[argi], "--help") == 0) {
             printf("qcc_x86 v5.0\nUsage: qcc_x86 [-I header.h] [-o out.exe] file.c [file2.c ...]\n");
@@ -8222,28 +8254,53 @@ __attribute__((unused))
     }
 
     /* ??PE */
-    FILE *f = fopen(outf, "wb");
-    若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
-    若 (bin_mode) {
+    /* fix 2026-08-10 Gate 9: 裸机产物输出到内存 (无文件系统) */
+    整 bin_out_len = 0;
+    无 字 *ob = (无 字 *)BIN_OUT_ADDR;
+    整 oi = 0;
+    若 (bare_metal) {
         若 (bin_hdr_n > 0) {
-            fwrite(bin_hdr, 1, bin_hdr_n, f);
+            memcpy(ob, bin_hdr, bin_hdr_n); oi = bin_hdr_n;
         } 否 {
             整 code_off = 0x1000;
-            整 cur = 0;
-            若 (cur < code_off) { 遍 (整 i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
-            fwrite(code, 1, cp, f);
-            cur += cp;
-            若 (cur < data_rva_base) { 遍 (整 i = cur; i < data_rva_base; i++) fputc(0, f); }
-            w4(f, 0); /* heap counter */
-            w4(f, 0); /* padding */
+            若 (oi < code_off) { memset(ob+oi, 0, code_off-oi); oi = code_off; }
+            memcpy(ob+oi, code, cp); oi += cp;
+            若 (oi < data_rva_base) { memset(ob+oi, 0, data_rva_base-oi); oi = data_rva_base; }
+            *(整*)(ob+oi) = 0; oi += 4;
+            *(整*)(ob+oi) = 0; oi += 4;
             整 stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
             整 stub_va = 0x100000 + stub_off;
-            遍 (整 i = 8; i < 0x300; i += 8) { w4(f, stub_va); w4(f, 0); }
-            遍 (整 i = 0; i < stc_n; i++) w4(f, 0);
-            fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
+            遍 (整 i = 8; i < 0x300; i += 8) { *(整*)(ob+oi) = stub_va; *(整*)(ob+oi+4) = 0; oi += 8; }
+            遍 (整 i = 0; i < stc_n; i++) { *(整*)(ob+oi) = 0; oi += 4; }
+            ob[oi++] = 0xEB; ob[oi++] = 0xFE;
         }
-    } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
-    fclose(f);
+        bin_out_len = oi;
+        *(整*)BIN_OUT_LEN_ADDR = bin_out_len;
+        printf("OK: bin -> mem (code=%d out=%d)\n", cp, bin_out_len);
+    } 否 {
+        FILE *f = fopen(outf, "wb");
+        若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
+        若 (bin_mode) {
+            若 (bin_hdr_n > 0) {
+                fwrite(bin_hdr, 1, bin_hdr_n, f);
+            } 否 {
+                整 code_off2 = 0x1000;
+                整 cur = 0;
+                若 (cur < code_off2) { 遍 (整 i = cur; i < code_off2; i++) fputc(0, f); cur = code_off2; }
+                fwrite(code, 1, cp, f);
+                cur += cp;
+                若 (cur < data_rva_base) { 遍 (整 i = cur; i < data_rva_base; i++) fputc(0, f); }
+                w4(f, 0); w4(f, 0);
+                整 stub_off2 = data_rva_base + 0x300 + 4 + 4 * stc_n;
+                整 stub_va2 = 0x100000 + stub_off2;
+                遍 (整 i = 8; i < 0x300; i += 8) { w4(f, stub_va2); w4(f, 0); }
+                遍 (整 i = 0; i < stc_n; i++) w4(f, 0);
+                fputc(0xEB, f); fputc(0xFE, f);
+            }
+        } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+        fclose(f);
+    }
+
     若 (asm_out) { fclose(asm_out); asm_out = 0; }
 
     若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
