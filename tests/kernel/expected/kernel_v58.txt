@@ -1,0 +1,3 @@
+[serial]
+printf test 42 2a
+[done]
