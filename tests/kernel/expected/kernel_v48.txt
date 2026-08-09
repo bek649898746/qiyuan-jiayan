@@ -1,0 +1,4 @@
+echo-ok
+ver]kernel-v48
+COMPILE-STUB
+TOOLS-PASS
