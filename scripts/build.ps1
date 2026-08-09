@@ -45,8 +45,7 @@ if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
 }
 
 # 4. 跑 171 编译测试（直发，验证不崩溃且可执行）
-Write-Host "[4/4] 跑 tests/qcc 171 测试 ..." -ForegroundColor Yellow
-$pass = 0; $fail = 0
+Write-Host "[4/4] 跑 tests/qcc 171 测试 ..." -ForegroundColor Yellow$pass = 0; $fail = 0
 Get-ChildItem tests\qcc\*.c | ForEach-Object {
     $out = "$($_.BaseName)_test.exe"
     & .\qcc_x86.exe $_.FullName -o $out 2>$null | Out-Null
@@ -60,7 +59,15 @@ Get-ChildItem tests\qcc\*.c | ForEach-Object {
 }
 Write-Host "  编译通过: $pass / $($pass + $fail)" -ForegroundColor Green
 
-# 5. 编译工具链
+# 5. 行为断言（fix 2026-08-09 实测复验审计: 此前从不运行行为测试, 2 失败无人知）
+Write-Host "[5/5] 跑行为断言 tests/behavior ..." -ForegroundColor Yellow
+python tests/behavior/run_behavior.py
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[WARN] 行为断言失败" -ForegroundColor Red
+    exit 1
+}
+
+# 6. 工具链
 Write-Host "[+] 编译工具链 jyld / jycc ..." -ForegroundColor Yellow
 gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
 gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
