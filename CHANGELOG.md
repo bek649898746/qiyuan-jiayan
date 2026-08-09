@@ -12,7 +12,17 @@
 - **验证**：v2==v3==v4=FA9CDF0D，宿主+v2 `f("abc")[1]` 均正确
 - **新增回归**：regress_ptr_param_inc.c（a++ 解引用 + strlen 风格遍历）
 
-## 60ACEF3D (2026-08-09)
+## A16AC67F (2026-08-09)
+**enum 常量注册修复 + 语言特性摸底（union/free/extern/scanf）：**
+
+- enum 常量体 {A,B=5,C} 从未解析 → 常量未注册 → 使用崩溃；修复 was_enum+FK 解析+e_reg 注册
+- 教训: else tk++ 无条件推进跳过 } 吞 token 挂死 → tk0 安全守卫
+- union/free: 正常, 锁回归 regress_union.c / regress_free.c
+- extern: 同文件声明+定义不支持 (多文件模型OK); scanf: 运行时未实现 — 记台账
+- 验证: v2==v3==v4=A16AC67F, 全量 H1==H2 174/174
+
+## 60ACEF3D (2026-08-09)（bin_mode C3；6FD5AA72 的 b() 守卫因 10 测试超 4MB 容量回退, 容量问题记台账）
+
 **bin_mode C3: 裸二进制输出端（审计 P0#1 三步全落地）：**
 
 - C3a: 输出端 bin raw writer（bin_hdr 前缀 或 代码@0x1000 + padding + heap/IAT/静态槽 + jmp .）
