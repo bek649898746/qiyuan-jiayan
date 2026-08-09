@@ -8078,6 +8078,20 @@ __attribute__((unused))
 
     /* two-pass generation: pass 1 estimates text size �?.data base; pass 2 real */
     g_lc_save = lc; g_rsp_save = rsp_used;
+    若 (bin_mode) {
+        data_rva_base = 0x2000;
+        遍 (整 it = 0; it < 8; it++) {
+            asm_pass = 2;
+            gen_final = (it == 7);
+            gen_code();
+            gen_final = 0;
+            整 nb = (0x1000 + cp + 4095) & ~4095;
+            若 (nb < 0x2000) nb = 0x2000;
+            若 (nb == data_rva_base) 断;
+            data_rva_base = nb;
+        }
+        asm_pass = 0;
+    } 否 {
     data_rva_base = 0x2000;
     asm_pass = 1;
     gen_code();
@@ -8117,11 +8131,30 @@ __attribute__((unused))
         gen_final = 0;
     }
     asm_pass = 0;
+    }
 
     /* ??PE */
     FILE *f = fopen(outf, "wb");
     若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
-    若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+    若 (bin_mode) {
+        若 (bin_hdr_n > 0) {
+            fwrite(bin_hdr, 1, bin_hdr_n, f);
+        } 否 {
+            整 code_off = 0x1000;
+            整 cur = 0;
+            若 (cur < code_off) { 遍 (整 i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
+            fwrite(code, 1, cp, f);
+            cur += cp;
+            若 (cur < data_rva_base) { 遍 (整 i = cur; i < data_rva_base; i++) fputc(0, f); }
+            w4(f, 0); /* heap counter */
+            w4(f, 0); /* padding */
+            整 stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
+            整 stub_va = 0x100000 + stub_off;
+            遍 (整 i = 8; i < 0x300; i += 8) { w4(f, stub_va); w4(f, 0); }
+            遍 (整 i = 0; i < stc_n; i++) w4(f, 0);
+            fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
+        }
+    } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
     fclose(f);
     若 (asm_out) { fclose(asm_out); asm_out = 0; }
 
