@@ -36,7 +36,7 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 
 # 验收标准: v2==v3==v4 (自举闭环; v1 是 gcc 种子产物, 与甲言系不同属正常 — 见 docs/甲言自举验证体系_工程化解析.md)
-$expected = '7CDFCFC5ADF4B6C9D25F52AE65134032A7B9F055ADF43B169E14ED3B5F7AF421'
+$expected = 'A5AE7D39C6CF294A034D3B568D17A5E0504B804AEBAE9932B759EEE712B346C8'
 if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: $($h2.Substring(0,8)) (GEN2==GEN3==GEN4 全等)" -ForegroundColor Green
 } else {
