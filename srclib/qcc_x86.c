@@ -1230,7 +1230,13 @@ static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static int func_n = 0;
 static int coff_mode = 0;
-static int bin_mode = 0; /* -bin: è£¸äºŒè¿›åˆ¶è¾“å‡º (å†…æ ¸: æ—  PE å¤´/æ—  CRT/æ—  .data), fix 2026-08-08 */
+static /* fix 2026-08-10 Gate 9: Âã»úÔËĞĞ (bare_metal) + ÄÚ´æÊäÈë/Êä³öµØÖ· */
+int bare_metal = 0; /* Gate 9: ±àÒëÆ÷×ÔÉíÔÚÂã»ú (main ¼ì²â __bare__ ²ÎÊıÉèÖÃ) */
+#define BIN_SRC_ADDR 0x3800000
+#define BIN_RT_ADDR 0x3900000
+#define BIN_OUT_ADDR 0x3A00000
+#define BIN_OUT_LEN_ADDR 0x3B00000
+int bin_mode = 0; /* -bin: è£¸äºŒè¿›åˆ¶è¾“å‡º (å†…æ ¸: æ—  PE å¤´/æ—  CRT/æ—  .data), fix 2026-08-08 */
 static int coff_ginit_done = 0; /* -c: ginit emitted once per object */
 #define MAX_CREL 131072
 static struct { int site; int type; int sym; int addend; int is_label; int label; } crel[MAX_CREL];
@@ -7742,6 +7748,13 @@ void gen_code(void) {
    (#define F(x) ...), so a macro call would compile as an undefined function
    and the self-hosted compiler could never read its input. */
 static char *read_file(const char *path) {
+    if (bare_metal) { /* fix 2026-08-10 Gate 9: Âã»úÎŞÎÄ¼şÏµÍ³ -> ÄÚ´æ¶Á */
+        if (!strcmp(path, "srclib/qcc_rt.c") || !strcmp(path, "qcc_rt.c")) {
+            return (char *)BIN_RT_ADDR; /* ÔËĞĞÊ± */
+        }
+        return (char *)BIN_SRC_ADDR;  /* Ö÷Ô´Âë */
+    }
+
     char *b = NULL;
     FILE *f;
     int sz;
@@ -7942,6 +7955,8 @@ int main(int argc, char **argv) {
     char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
     char *all_src = NULL; int all_len = 0;
 
+    /* fix 2026-08-10 Gate 9: Òıµ¼´« "__bare__" ±ê¼Ç±àÒëÆ÷Âã»úÔËĞĞ */
+    for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
     while (argc > argi) {
         if (strcmp(argv[argi], "--help") == 0) {
             printf("qcc_x86 v5.0\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
@@ -8146,37 +8161,59 @@ int main(int argc, char **argv) {
     }
 
     /* ??PE / COFF å¯¹è±¡ */
-    FILE *f = fopen(outf, "wb");
-    if (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); return 1; }
-    if (bin_mode) {
+    /* fix 2026-08-10 Gate 9: Âã»ú²úÎïÊä³öµ½ÄÚ´æ (ÎŞÎÄ¼şÏµÍ³) */
+    int bin_out_len = 0;
+    unsigned char *ob = (unsigned char*)BIN_OUT_ADDR;
+    int oi = 0;
+    if (bare_metal) {
         if (bin_hdr_n > 0) {
-            /* æ‰‹å†™å†…æ ¸ (__asm_byte): åªè¾“å‡º bin_hdr, codegen æ®‹ç•™ä¸å…¥æ–‡ä»¶ â€” SHA256 å¯¹é½ */
-            fwrite(bin_hdr, 1, bin_hdr_n, f);
+            memcpy(ob, bin_hdr, bin_hdr_n); oi = bin_hdr_n;
         } else {
-            /* codegen å†…æ ¸: ä»£ç @0x1000 + .data (RIP ç›¸å¯¹ä½ç½®æ— å…³) */
             int code_off = 0x1000;
-            int cur = 0;
-            if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
-            fwrite(code, 1, cp, f);
-            cur += cp;
-            if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
-            /* .data: heap counter @+0x0, IAT åŒº @+0x8 (å¡« stub), é™æ€æ§½ @+0x300 */
-            w4(f, 0); /* heap counter */
-            w4(f, 0); /* padding */
+            if (oi < code_off) { memset(ob+oi, 0, code_off-oi); oi = code_off; }
+            memcpy(ob+oi, code, cp); oi += cp;
+            if (oi < data_rva_base) { memset(ob+oi, 0, data_rva_base-oi); oi = data_rva_base; }
+            /* heap counter / IAT stub / ¾²Ì¬²Û */
+            *(int*)(ob+oi) = 0; oi += 4;
+            *(int*)(ob+oi) = 0; oi += 4;
             int stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
             int stub_va = 0x100000 + stub_off;
-            for (int i = 8; i < 0x300; i += 8) {
-                w4(f, stub_va); w4(f, 0); /* IAT stub åœ°å€ */
-            }
-            for (int i = 0; i < stc_n; i++) w4(f, 0); /* é™æ€æ§½ */
-            fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
+            for (int i = 8; i < 0x300; i += 8) { *(int*)(ob+oi) = stub_va; *(int*)(ob+oi+4) = 0; oi += 8; }
+            for (int i = 0; i < stc_n; i++) { *(int*)(ob+oi) = 0; oi += 4; }
+            ob[oi++] = 0xEB; ob[oi++] = 0xFE;
         }
-    } else if (coff_mode) {
-        write_coff_obj(f);
+        bin_out_len = oi;
+        *(int*)BIN_OUT_LEN_ADDR = bin_out_len;
+        printf("OK: bin -> mem (code=%d out=%d)\n", cp, bin_out_len);
     } else {
-        write_pe(f, entry_rva_global);
+        FILE *f = fopen(outf, "wb");
+        if (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); return 1; }
+        if (bin_mode) {
+            if (bin_hdr_n > 0) {
+                fwrite(bin_hdr, 1, bin_hdr_n, f);
+            } else {
+                int code_off = 0x1000;
+                int cur = 0;
+                if (cur < code_off) { for (int i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
+                fwrite(code, 1, cp, f);
+                cur += cp;
+                if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
+                /* .data: heap counter / IAT / ¾²Ì¬²Û */
+                w4(f, 0); w4(f, 0);
+                int stub_off2 = data_rva_base + 0x300 + 4 + 4 * stc_n;
+                int stub_va2 = 0x100000 + stub_off2;
+                for (int i = 8; i < 0x300; i += 8) { w4(f, stub_va2); w4(f, 0); }
+                for (int i = 0; i < stc_n; i++) w4(f, 0);
+                fputc(0xEB, f); fputc(0xFE, f);
+            }
+        } else if (coff_mode) {
+            write_coff_obj(f);
+        } else {
+            write_pe(f, entry_rva_global);
+        }
+        fclose(f);
     }
-    fclose(f);
+
     if (asm_out) { fclose(asm_out); asm_out = NULL; }
 
     if (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } else { printf("OK: %s (%d bytes code)\n", outf, cp); }
