@@ -1207,7 +1207,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 
 /* ?????? ??????: ???????????????????? */
 #define ASZ 262144
-#define MAX_LABELS 16384
+#define MAX_LABELS 32768
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
 static struct { int patch_at; int target_label; int is_jmp; } patches[65536]; int patch_n; /* fix 2026-08-06: 16384→65536 — qcc_work.jy 编译 patch_n=16380 贴上限, 加 STR 下标后缀链后超 4 个溢出; 自举大文件余量 */

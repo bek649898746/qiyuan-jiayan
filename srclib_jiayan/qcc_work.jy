@@ -1207,7 +1207,7 @@ __attribute__((unused))
 
 /* ?????? ??????: ???????????????????? */
 #define ASZ 262144
-#define MAX_LABELS 16384
+#define MAX_LABELS 32768
 静 整 label_pos[MAX_LABELS];
 静 整 label_set[MAX_LABELS];
 静 构 { 整 patch_at; 整 target_label; 整 is_jmp; } patches[65536]; 整 patch_n; /* fix 2026-08-06: 16384→65536 镜像 qcc_x86.c — qcc_work.jy 编译贴上限 */
@@ -6142,7 +6142,24 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 asm_emit("    自增 r0\n", 0, 0, 0); b(0xFF); b(0xC0); /* inc eax */
                 jmp_rel(-1); patch_label(cp-4, ls, 2);
                 set_label(ld);
-            } 否 若 (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
+            } 否 若 (!strcmp(fname, "inb")) {
+    mov_rr(2, 1);
+    asm_emit("    读端口 al, dx\n", 0, 0, 0); b(0xEC);
+    movzx_eax_al();
+} 否 若 (!strcmp(fname, "outb")) {
+    mov_rr(0, 2);
+    mov_rr(2, 1);
+    asm_emit("    写端口 dx, al\n", 0, 0, 0); b(0xEE);
+    mov_r_imm(0, 0);
+} 否 若 (!strcmp(fname, "inl")) {
+    mov_rr64(2, 1);
+    asm_emit("    读端口32 eax, dx\n", 0, 0, 0); b(0xED);
+} 否 若 (!strcmp(fname, "outl")) {
+    mov_rr64(0, 2);
+    mov_rr64(2, 1);
+    asm_emit("    写端口32 dx, eax\n", 0, 0, 0); b(0xEF);
+    mov_r_imm(0, 0);
+} 否 若 (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
             } 否 若 (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs")) {
                 emit_fileio(fname);
