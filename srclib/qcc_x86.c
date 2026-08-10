@@ -1408,8 +1408,10 @@ static void resolve_patches(void) {
    rule is: non-static vars are visible only within their own function
    [fvb[gfn], fve[gfn]); statics are visible everywhere. Enforce it during codegen. */
 static int var_codegen_visible(int i) {
-    if (vars[i].is_static) return 1;   /* .data slot: visible from any function */
-    if (!vs_end) return 1;             /* parse phase: caller's parse_base floor applies */
+    if (vars[i].is_static) return 1;   /* .data slot (globals + function-local statics): visible from any function */
+    if (!vs_end) return (i >= parse_base); /* parse phase: ONLY current function body (parse_base floor).
+                                              fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
+                                              var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
     return (i >= fvb[gfn]);            /* codegen: only THIS function's locals/params */
 }
 static int var_is_dbl(const char *n) {
@@ -3085,6 +3087,26 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
     while (tt[tk] != UK) {
         if (tt[tk] == CK || tt[tk] == SK) { tk++; continue; }
         if (tt[tk] == UK) break;
+        if (tt[tk] == LB) { /* Phase 2: designated initializer [idx] = expr (fix 2026-08-11) */
+            int dsubs[8]; int dn_cnt = 0;
+            while (tt[tk] == LB) { /* 支持多维 [i][j] 设计器 */
+                tk++; /* [ */
+                int dn = expr();
+                int didx = (dn > 0 && nt[dn] == 0) ? nv[dn] : -1; /* 常量下标: expr() 返回 Nd(0) 节点, nv 存值 */
+                if (didx < 0) { while (tt[tk] != CK && tt[tk] != UK && tt[tk] != EK) tk++; continue; }
+                if (tt[tk] == RB) tk++; /* ] */
+                if (dn_cnt < 8) dsubs[dn_cnt++] = didx;
+            }
+            if (tt[tk] == AK) tk++; /* = */
+            /* 跳到指定下标: 顶层扁平 → gi_idx[0..dn_cnt-1]=dsubs (其余维清零); 嵌套行 → 本层 depth */
+            if (depth == 0) {
+                for (int i = 0; i < nd; i++) gi_idx[i] = 0;
+                for (int i = 0; i < dn_cnt; i++) gi_idx[i] = dsubs[i];
+            } else {
+                gi_idx[depth] = dsubs[0];
+            }
+            /* 落 leaf 消费值 (C99: [2]=9 后随值落 a[3] — leaf 的 ++ 推进保持语义) */
+        }
         if (tt[tk] == FK && depth < nd - 1) { /* nested row { ... } */
             gi_idx[depth + 1] = 0; /* reset the child cursor (fix: next row continued from the previous row's column) */
             brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
@@ -8216,6 +8238,7 @@ int main(int argc, char **argv) {
         } else {
             write_pe(f, entry_rva_global);
         }
+        if (fflush(f) != 0 || ferror(f)) { fprintf(stderr, "qcc_x86: I/O error writing %s (disk full? handle lost?)\n", outf); fclose(f); return 1; } /* fix 2026-08-11 QA-1: fwrite 不检查返回值 → v2 截断静默成功 */
         fclose(f);
     }
 

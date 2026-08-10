@@ -39,3 +39,4 @@ for src in cases:
 print('== 行为测试: PASS %d FAIL %d (%s) ==' % (pass_n, fail_n, QCC))
 for f in fails:
     print('FAIL', f)
+sys.exit(1 if fail_n else 0)  # fix 2026-08-11: 门禁真正上锁 — 有失败必须非零退出, 否则 build.ps1 误报 OK
