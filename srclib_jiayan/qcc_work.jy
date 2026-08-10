@@ -1410,7 +1410,9 @@ __attribute__((unused))
 /* 规则：非静态变量只在自身函数 [fvb[gfn], fve[gfn]) 内可见；静态变量处处可见。codegen 时强制执行（C 原版 614 移植） */
 静 整 var_codegen_visible(整 i) {
     若 (vars[i].is_static) 返 1;   /* .data slot: 任意函数可见 */
-    若 (!vs_end) 返 1;             /* parse 阶段：调用方 parse_base 下限生效 */
+    若 (!vs_end) 返 (i >= parse_base); /* parse 阶段: 只允许当前函数体 (parse_base 下限)。
+                                          fix 2026-08-11 BLOCKER-1: 原返 1 导致跨函数同名变量泄漏 —
+                                          var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
     返 (i >= fvb[gfn]);            /* codegen：只允许当前函数的 locals/params */
 }
 静 整 var_is_dbl(常 字 *n) {
@@ -3097,6 +3099,26 @@ __attribute__((unused))
     循环 (tt[tk] != UK) {
         若 (tt[tk] == CK || tt[tk] == SK) { tk++; 续; }
         若 (tt[tk] == UK) 断;
+        若 (tt[tk] == LB) { /* Phase 2: designated initializer [idx] = expr (fix 2026-08-11, 对齐宿主) */
+            整 dsubs[8]; 整 dn_cnt = 0;
+            循环 (tt[tk] == LB) { /* 支持多维 [i][j] 设计器 */
+                tk++; /* [ */
+                整 dn = expr();
+                整 didx = (dn > 0 && nt[dn] == 0) ? nv[dn] : -1; /* 常量下标: expr() 返回 Nd(0) 节点, nv 存值 */
+                若 (didx < 0) { 循环 (tt[tk] != CK && tt[tk] != UK && tt[tk] != EK) tk++; 续; }
+                若 (tt[tk] == RB) tk++; /* ] */
+                若 (dn_cnt < 8) dsubs[dn_cnt++] = didx;
+            }
+            若 (tt[tk] == AK) tk++; /* = */
+            /* 跳到指定下标: 顶层扁平 → gi_idx[0..dn_cnt-1]=dsubs (其余维清零); 嵌套行 → 本层 depth */
+            若 (depth == 0) {
+                遍 (整 i = 0; i < nd; i++) gi_idx[i] = 0;
+                遍 (整 i = 0; i < dn_cnt; i++) gi_idx[i] = dsubs[i];
+            } 否 {
+                gi_idx[depth] = dsubs[0];
+            }
+            /* 落 leaf 消费值 (C99: [2]=9 后随值落 a[3] — leaf 的 ++ 推进保持语义) */
+        }
         若 (tt[tk] == FK && depth < nd - 1) { /* 嵌套行 { ... } */
             gi_idx[depth + 1] = 0; /* 重置子游标 (fix: next row continued from the previous row's column) */
             brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
@@ -8343,6 +8365,7 @@ __attribute__((unused))
                 fputc(0xEB, f); fputc(0xFE, f);
             }
         } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+        若 (fflush(f) != 0 || ferror(f)) { fprintf(stderr, "qcc_x86: I/O error writing %s (disk full? handle lost?)\n", outf); fclose(f); 返 1; } /* fix 2026-08-11 QA-1: fwrite 不检查返回值 → 截断静默成功 */
         fclose(f);
     }
 

@@ -3,6 +3,17 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## B27D0D47 (2026-08-11)
+**BLOCKER-1 布局敏感根因根治 + Phase 2 Designated Initializer [idx]=expr：**
+
+- **BLOCKER-1 根治**：`var_codegen_visible()` parse 阶段对全部变量返回 true → 跨函数同名变量泄漏 → ndbl[] 误标 → codegen 差异（= "布局敏感"的根因）
+  - 修复：parse 分支改 `i >= parse_base`（一处根修覆盖全部 lookup 函数；全局 is_static=1 不受影响）
+  - 宿主+镜像同步 → **v1==v2==v3==v4 = b27d0d47 FIXPOINT**（宿主/自举完全对齐）
+- **Phase 2**: C99 `[idx] = expr` 数组下标设计器（支持多维/乱序/设计器后游标续）
+  - 新测试: regress_desig_idx.c（一维）+ regress_desig_idx2.c（多维）
+- QA-1: 最终写 exe 加 fflush+ferror 检查（截断不再静默成功）
+- QA-5: run_behavior.py 加 sys.exit（门禁真正上锁）+ build.ps1 接退出码
+
 ## 1744556F (2026-08-10)
 **镜像同步 Gate 9 裸机适配（新不动点）：**
 
