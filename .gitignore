@@ -16,6 +16,11 @@ memory/Agent内核/
 # 以上目录包含内部战报——不要提交到公开仓库。
 # 189个独特克隆者里有同行，台账是武器库，不能让他们看到。
 # 公开文档统一写在 README / CHANGELOG 中。
+# 🚫 禁令(2026-08-10): 禁用 git add -A; 只提交 srclib/scripts/tests/README/CHANGELOG/seed。
+# 违反 = 把大哥全部知识公开。先读 _启元禁令.md。
+
+# 内部规则文件（不公开）
+_启元禁令.md
 
 # 测试临时产物
 *_test.exe
