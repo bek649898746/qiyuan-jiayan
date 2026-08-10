@@ -7,6 +7,7 @@
 # 内部资料（不公开 — 勿上传）
 # 技术债台账、施工日志、攻坚方案、知识库、Agent内核/OS方案
 docs/
+memory/
 memory/construction/
 memory/攻坚方案/
 memory/Agent内核/
