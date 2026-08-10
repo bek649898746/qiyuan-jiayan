@@ -2788,6 +2788,8 @@ static void Nc(int p, int c) { if (c < 0) return;
     if (n255[p] < 0) { n255[p] = c; return; }
 }
 
+static int cl_blk = -1; /* 当前 blk() 块 (compound literal 初始化挂这里, fix 2026-08-11) */
+static int compound_literal(int is_struct, int si, int is_array, int arr_n, int arr_esz);
 static int prim(void);
 static int stmt(void);
 static int expr(void);
@@ -2948,10 +2950,11 @@ static int prim(void) {
         /* type cast: (type)expr �?type keywords/struct/typedef then ) */
             if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
             char *cast_ty = 0; char *cast_ty2 = 0;
+            char cast_sname[32] = ""; int cast_is_struct = 0;
             tk++; /* ( */
             if (tt[tk] == VK) { cast_ty = tn[tk]; tk++; if (tt[tk] == VK) { cast_ty2 = tn[tk]; tk++; } while (tt[tk] == VK) tk++; } /* first/second type kw: int/double */
             else while (tt[tk] == VK) tk++;
-            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; }
+            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { strcpy(cast_sname, tn[tk]); cast_is_struct = 1; tk++; } } /* struct Tag — 保存 tag 名 (compound literal 用) */
             else if (tt[tk] == VR && td_is(tn[tk])) tk++;
             if (tt[tk] == OK && tt[tk + 1] == DK) { /* fix 2026-08-10: 函数指针类型 cast (int (*)(int))expr — 跳过 (*) (args) 到类型结束 ) */
                 int fp_d = 1; tk++; /* (* 的 ( 已含在深度内 */
@@ -2962,7 +2965,29 @@ static int prim(void) {
                 }
             }
             int cast_nstar = 0; while (tt[tk] == DK) { cast_nstar++; tk++; } /* pointer * */
+            int cast_arrn = 0; int cast_arresz = 0; /* compound literal 数组 dims: (int[N]){...} */
+            if (tt[tk] == LB) { /* (T[N]) 数组类型后缀 (compound literal 用, fix 2026-08-11) */
+                tk++; if (tt[tk] == NK) { cast_arrn = tv[tk]; tk++; } else if (tt[tk] == VR) { cast_arrn = 0; tk++; }
+                if (tt[tk] == RB) tk++;
+                cast_arresz = cast_ty2 ? 8 : 4; /* double/long long → 8, else 4 */
+            }
             if (tt[tk] == KK) tk++; /* ) */
+            /* C99 compound literal: (T){ init } — 表达式位置初始化 (fix 2026-08-11 Phase 2-3) */
+            if (tt[tk] == FK) {
+                if (cast_is_struct && cast_sname[0]) {
+                    int si2 = st_find(cast_sname);
+                    if (si2 >= 0) return compound_literal(1, si2, 0, 0, 0);
+                    /* 未知 struct tag: 跳过 {} 当表达式失败处理 */
+                    tk++; int d0 = 1;
+                    while (tk < TS && d0 > 0) { if (tt[tk] == FK) d0++; else if (tt[tk] == UK) d0--; tk++; }
+                    return -1;
+                }
+                if (cast_arresz > 0) { /* (int[N]){...} 或 (int[]){...} — 显式数组后缀走数组路径, dims 由 compound_literal 推断 */
+                    return compound_literal(0, -1, 1, cast_arrn, cast_arresz);
+                }
+                /* 标量 (int){5} 或 struct (已在上方处理): 走普通标量路径 */
+                return compound_literal(0, -1, 0, 0, 0);
+            }
             int ce = prim(); /* cast operand is a UNARY expr — prim() not expr(): (long long)1<<32 must shift the 64-bit cast, not parse as (long long)(1<<32) (fix 2026-08-05) */
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si).
                expr_is_double covers double-returning CALLS whose ndbl is set only at
@@ -3177,9 +3202,58 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
     if (depth == 0 && arr_blk_root >= 0) Nc(b, arr_blk_root); /* fix 2026-08-06: 根块挂到顶层块 */
 }
 
+/* C99 compound literal: (T){ init } — 匿名自动存储期临时对象 (fix 2026-08-11 Phase 2-3).
+   cast 分支在 ')' 后见 FK 时调用。注册 _cl<N> 临时变量, 复用 brace_fields/brace_arr_init 填充,
+   初始化块挂到 cl_blk (blk() 当前块), 返回临时对象的地址节点 (Nd(1)). */
+static int cl_cnt = 0;
+static int compound_literal(int is_struct, int si, int is_array, int arr_n, int arr_esz) {
+    char vn[32]; snprintf(vn, 32, "_cl%d", cl_cnt++);
+    int b = Nd(5); /* block: decl + init assigns */
+    int d = Nd(7); memcpy((char*)(nn + d), vn, 32); /* decl node */
+    int init_blk = Nd(5); /* init assignments (挂到 cl_blk) */
+    if (is_array) {
+        if (arr_n <= 0) { /* (T[]){} : 数 FK 内顶层元素数推断 dims */
+            int save_tk = tk; int cnt = 0; int depth0 = 1; tk++; /* skip { */
+            while (tk < TS && depth0 > 0) {
+                if (tt[tk] == FK) depth0++;
+                else if (tt[tk] == UK) { depth0--; if (depth0 == 0) break; }
+                else if (tt[tk] == CK && depth0 == 1) cnt++;
+                tk++;
+            }
+            arr_n = cnt + 1;
+            tk = save_tk;
+        }
+        var_array(vn, arr_n, arr_esz);
+        Nc(b, d); /* declare */
+        int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
+        int dims[1]; dims[0] = arr_n;
+        tk++; /* skip { */
+        brace_arr_init(init_blk, idn, dims, 1, 0);
+    } else if (is_struct) {
+        var_struct(vn, si);
+        Nc(b, d);
+        int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
+        tk++; /* skip { 先跳 FK (brace_fields 从 FK 后开始) */
+        int bi = brace_fields(si, idn);
+        Nc(init_blk, bi);
+        if (tt[tk] == UK) tk++; /* } */
+    } else { /* scalar: (T){5} → 临时 = 5 (C99: 标量 compound literal 是值, 非地址) */
+        tk++; /* skip { */
+        int val = expr(); /* { 后的表达式值 */
+        if (tt[tk] == UK) tk++; /* } */
+        /* 标量不需要临时变量 — 直接返回值 */
+        return val;
+    }
+    /* 声明挂当前块, 初始化挂 cl_blk (compound literal 语义: 初始化在包含语句前执行) */
+    if (cl_blk >= 0) Nc(cl_blk, b);
+    if (cl_blk >= 0) Nc(cl_blk, init_blk);
+    int n = Nd(1); memcpy((char*)(nn + n), vn, 32); /* 返回临时对象地址 */
+    return n;
+}
 static int blk(void) {
     int b = Nd(5); tk++;
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
+    int cl_prev = cl_blk; cl_blk = b; /* compound literal 初始化挂当前块 (fix 2026-08-11) */
     int b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     while (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
         if (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
@@ -3722,6 +3796,7 @@ static int blk(void) {
         else { Nc(b, stmt()); b_cnt++; }
     }
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
+    cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
     return b_root;
 }
 
