@@ -6813,10 +6813,7 @@ static void cg(int n) {
                 int pnode = n0[n0[n]];
                 int pe = 4;
                 if (nt[pnode] == 1) pe = var_esz((char*)(nn + pnode));
-                if (pesz[pnode] == 8) pe = 8; /* fix 2026-08-10: 条件式读取规避大文件 codegen bug (对齐镜像) */
-                else if (pesz[pnode] == 4) pe = 4;
-                else if (pesz[pnode] == 2) pe = 2;
-                else if (pesz[pnode] == 1) pe = 1;
+                if (pesz[pnode]) pe = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
                 int is_dp = (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)));
                 cg(pnode); /* ptr → eax */
                 push_r(0); /* save ptr on stack */
@@ -6911,12 +6908,7 @@ static void cg(int n) {
             int el = 0;
             if (nt[n0[n]] == 1) el = var_esz((char*)(nn + n0[n])); /* named var: element size */
             else if (nt[n0[n]] == 14) { char *av = (char*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
-            /* fix 2026-08-10: 条件式读取规避"大文件下数组变量索引读赋值"codegen bug (movzx 误用).
-               直接 `el = pesz[n0[n]]` 在宿主编译大文件(镜像自身)时宽度判断错 → 改逐值比较对齐镜像. */
-            if (pesz[n0[n]] == 8) el = 8;
-            else if (pesz[n0[n]] == 4) el = 4;
-            else if (pesz[n0[n]] == 2) el = 2;
-            else if (pesz[n0[n]] == 1) el = 1;
+            if (pesz[n0[n]]) el = pesz[n0[n]]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
             if (ndbl[n] || (nt[n0[n]] == 1 && var_pdbl((char*)(nn + n0[n])))) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
