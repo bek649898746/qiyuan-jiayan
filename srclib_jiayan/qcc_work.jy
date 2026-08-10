@@ -2509,6 +2509,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "读取")) strcpy(tn[ti], "fread");
             否 若 (!strcmp(tn[ti], "写入")) strcpy(tn[ti], "fwrite");
             /* 甲言关键字: 中文 → 英文名 (解析器二次 strcmp 判断需要英文 tn) */
+            否 若 (!strcmp(tn[ti], "字节")) strcpy(tn[ti], "char"); /* 中文类型名 字节→char */
             否 若 (!strcmp(tn[ti], "构")) strcpy(tn[ti], "struct");
             否 若 (!strcmp(tn[ti], "联")) strcpy(tn[ti], "union");
             否 若 (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
@@ -2967,9 +2968,9 @@ __attribute__((unused))
     若 (tt[tk] == OK) {
         /* type cast: (type)expr �?type keywords/struct/typedef then ) */
         若 (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
-            字 *cast_ty = 0;
+            字 *cast_ty = 0; 字 *cast_ty2 = 0;
             tk++; /* ( */
-            若 (tt[tk] == VK) { cast_ty = tn[tk]; 循环 (tt[tk] == VK) tk++; } /* first type kw: int/double */
+            若 (tt[tk] == VK) { cast_ty = tn[tk]; tk++; 若 (tt[tk] == VK) { cast_ty2 = tn[tk]; tk++; } 循环 (tt[tk] == VK) tk++; } /* first/second type kw */
             否 循环 (tt[tk] == VK) tk++;
             若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; }
             否 若 (tt[tk] == VR && td_is(tn[tk])) tk++;
@@ -2981,7 +2982,7 @@ __attribute__((unused))
                     tk++;
                 }
             }
-            循环 (tt[tk] == DK) tk++; /* pointer * */
+            整 cast_nstar = 0; 循环 (tt[tk] == DK) { cast_nstar++; tk++; }
             若 (tt[tk] == KK) tk++; /* ) */
             整 ce = prim(); /* cast 操作数是 UNARY 表达式——用 prim() 而非 expr()：`(long long)1<<32` 必须先做 64 位 cast 再移位，不能解析成 `(long long)(1<<32)`（fix 2026-08-05） */
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si) */
@@ -2997,7 +2998,18 @@ __attribute__((unused))
                 否 若 (tt[tk] == PP || tt[tk] == MM) { 整 is_dec = (tt[tk] == MM); tk++; 整 m = Nd(23); nv[m] = is_dec; Nc(m, ce); ce = m; } /* fix 2026-08-08: (cast)++ 后缀补齐 */
                 否 断;
             }
-            返 ce; /* cast is no-op: value unchanged */
+            若 (cast_nstar >= 1) { /* fix 2026-08-08 width bug: (T*) cast no-op drops type info, *((T*)x) width by target element size */
+    整 cpe = 0;
+    若 (cast_nstar >= 2) cpe = 8; /* T** -> pointer */
+    否 若 (cast_ty && !strcmp(cast_ty, "char")) cpe = 1;
+    否 若 (cast_ty && !strcmp(cast_ty, "short")) cpe = 2;
+    否 若 (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; 若 (cast_ty2 && !strcmp(cast_ty2, "char")) cpe = 1; 否 若 (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; 否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
+    否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
+    否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
+    否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
+    若 (cpe) nv[ce + 100000] = cpe; /* 宽度存 nv 高偏移区 (2026-08-10) */
+}
+返 ce; /* cast is no-op: value unchanged */
         }
         tk++; 整 n = expr();
         /* comma operator inside parens: (a, b, c) �?needed for (i++, PP) in the
@@ -6713,6 +6725,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 整 pnode = n0[n0[n]];
                 整 pe = 4;
                 若 (nt[pnode] == 1) pe = var_esz((字*)(nn + pnode));
+                若 (nv[pnode + 100000] == 8) pe = 8; /* fix 2026-08-08 width bug: (T*) cast deref store (nv 高偏移 + 条件式) */
+                否 若 (nv[pnode + 100000] == 4) pe = 4;
+                否 若 (nv[pnode + 100000] == 2) pe = 2;
+                否 若 (nv[pnode + 100000] == 1) pe = 1;
                 整 is_dp = (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode)));
                 cg(pnode); /* ptr �?eax */
                 push_r(0); /* save ptr on stack */
@@ -6806,6 +6822,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             若 (cg_no_deref) 断; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原例-12 忽略 cg_no_deref 永远加载值 */
             若 (nt[n0[n]] == 1) el = var_esz((字*)(nn + n0[n])); /* named var: element size */
             否 若 (nt[n0[n]] == 14) { 字 *av = (字*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
+            若 (nv[n0[n] + 100000] == 8) el = 8; /* fix 2026-08-08 width bug: (T*) cast deref read (nv 高偏移 + 条件式) */
+            否 若 (nv[n0[n] + 100000] == 4) el = 4;
+            否 若 (nv[n0[n] + 100000] == 2) el = 2;
+            否 若 (nv[n0[n] + 100000] == 1) el = 1;
             若 (el == 8) { mov_reg_mreg64(0, 0); 断; } /* 64-bit load */
             若 (el == 4) { mov_reg_mreg(0, 0); 断; }   /* dword load */
             若 (el == 2) { b(0x0F); b(0xB7); modrm(0, 0, 0); 断; } /* fix */
