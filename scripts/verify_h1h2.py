@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-# 全量 H1==H2: tests/qcc 全部测试 host vs v2(镜像) 编译产物对比
-# v2: 超时/挂死 = 失败
+# 全量 H1==H2: tests/qcc 全部测试 host vs 镜像编译器 编译产物对比
+# 镜像编译器: v4.exe (2026-08-10 新不动点 4982C098, 含 typedef struct 别名注册修复)
+# 超时/挂死 = 失败
 import subprocess, os, hashlib
 os.chdir(r'C:\Users\Administrator\Desktop\qiyuan-jiayan')
+
+MIRROR = r'.\v4.exe'
 
 def run(compiler, src, out, tmo=30):
     try:
@@ -17,7 +20,7 @@ fail_n = 0
 fail_list = []
 for t in tests:
     rh, _ = run(r'.\qcc_x86.exe', r'tests\qcc\%s' % t, r'scratch_test\_h2_h.exe')
-    rv, _ = run(r'.\v2.exe', r'tests\qcc\%s' % t, r'scratch_test\_h2_v.exe')
+    rv, _ = run(MIRROR, r'tests\qcc\%s' % t, r'scratch_test\_h2_v.exe')
     if rh == 0 and rv == 0:
         hh = hashlib.sha256(open(r'scratch_test\_h2_h.exe','rb').read()).hexdigest()
         hv = hashlib.sha256(open(r'scratch_test\_h2_v.exe','rb').read()).hexdigest()
