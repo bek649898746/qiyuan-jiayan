@@ -81,11 +81,11 @@ __attribute__((unused))
 静 整 sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
 静 整 vs_n(空) { 返 vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-静 构 { 字 name[32]; 整 val; } macros[64]; 静 整 macro_n;
-静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 64) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
+静 构 { 字 name[32]; 整 val; } macros[1024]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
+静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
-静 构 { 字 name[32]; 字 val[2048]; } str_macros[64]; /* fix 2026-08-06 */ 静 整 str_macro_n;
+静 构 { 字 name[32]; 字 val[2048]; } str_macros[1024]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* fix 2026-08-07: 顺序 #define 定义表 (名字+数值) — pp_include_expand 与 fn_macro_collect 共用, 使 include 守卫生效 + #if 用真值 (镜像 qcc_x86.c) */
 静 字 pp_guard[128][32]; 静 整 pp_guard_val[128]; 静 整 pp_guard_n;
@@ -114,8 +114,8 @@ __attribute__((unused))
     *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
-静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n; /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
-静 整 cl_if_parent[64]; 静 整 cl_if_taken[64]; 静 整 cl_if_n; 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
+静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[1024]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+静 整 cl_if_parent[1024]; 静 整 cl_if_taken[1024]; 静 整 cl_if_n; /* Phase1-L4: 64->1024 */ 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
 静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
     遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 1;
@@ -163,7 +163,7 @@ __attribute__((unused))
                     cond = pp_eval(expr); 
                 }
                 若 (is_if || is_ifdef || is_ifndef) {
-                    若 (cl_if_n < 64) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
+                    若 (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
                 } 否 若 (is_elif) {
                     若 (cl_if_n > 0) { 若 (!cl_if_taken[cl_if_n-1] && !cl_if_parent[cl_if_n-1]) { cl_if_taken[cl_if_n-1] = cond; cl_if_skip = cl_if_parent[cl_if_n-1] || !cond; } 否 cl_if_skip = 1; }
                 } 否 若 (is_else) {
@@ -196,7 +196,7 @@ __attribute__((unused))
             循环 (isalnum((无 字)s[p]) || s[p] == '_') { 若 (ni < 31) nm[ni++] = s[p]; p++; }
             nm[ni] = 0;
             循环 (s[p] == ' ' || s[p] == '\t') p++;
-            若 (s[p] == '(' && fn_macro_n < 64 && strcmp(nm, "_va_alloc")) {
+            若 (s[p] == '(' && fn_macro_n < 1024 && strcmp(nm, "_va_alloc")) {
                 strcpy(fn_macros[fn_macro_n].name, nm);
                 p++;
                 整 pi = 0;
@@ -1497,7 +1497,7 @@ __attribute__((unused))
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 静 整 var_static(常 字 *n, 整 pesz) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 只应遮蔽既有 STATIC 全局 — qcc_rt.c 前置的库函数局部变量会撞名（atof 的 `s` 等）导致输入全局变量永不注册 */
-    若 (vcnt >= 4000 || stc_n >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1532,7 +1532,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off;
     整 slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     若 (esz > 4) slots = (count * esz + 3) / 4;
-    若 (vcnt >= 4000 || stc_n + slots >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n + slots >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1547,7 +1547,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 同 var_static — 只应遮蔽既有 STATIC 全局 */
     整 slots = (stypes[si].sz + 3) / 4; 若 (slots < 1) slots = 1;
     整 total = slots * count;
-    若 (vcnt >= 4000 || stc_n + total >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n + total >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -2414,7 +2414,7 @@ __attribute__((unused))
                     续;
                 }
                 long long mval = 0; /* fix 2026-08-09 审计 BUG-3: int 累加 3000000000 溢出 UB → long long */
-                若 (s[i] == '"' && str_macro_n < 64) { /* string macro: #define NAME "value" — 解码存储 (fix 2026-08-07: 镜像 qcc_x86.c — 原缺失, 字符串宏注册成数值 0) */
+                若 (s[i] == '"' && str_macro_n < 1024) { /* string macro: #define NAME "value" — 解码存储 (fix 2026-08-07: 镜像 qcc_x86.c — 原缺失, 字符串宏注册成数值 0) */
                     i++;
                     整 j = 0;
                     循环 (s[i] && s[i] != '"' && j < 2046) {
@@ -4352,14 +4352,18 @@ __attribute__((unused))
                     若 (tt[tk] == SK) tk++;
                 }
                 若 (tt[tk] == UK) tk++;
-                若 (tt[tk] == VR) {
+                若 (tt[tk] == VR || tt[tk] == DK) {
+                    整 anon_ptr = 0;
+                    若 (tt[tk] == DK) { anon_ptr = 1; tk++; } /* fix 2026-08-10: struct {...} *p -- ptr global was skipped (latent bug) */
+                    若 (tt[tk] == VR) {
                     /* struct gets a unique type name (NOT the var name: that would make
                        blk() misparse "tbl[i].f = x" as a struct type declaration) */
                     字 tmp[32]; sprintf(tmp, "__anon_%d", si);
                     strcpy(stypes[si].name, tmp);
                     整 cnt = 1;
                     若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
-                    var_static_struct(tn[tk], si, cnt);
+                    若 (anon_ptr) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; }
+                    否 var_static_struct(tn[tk], si, cnt);
                     字 vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
                     循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; }
@@ -4376,6 +4380,7 @@ __attribute__((unused))
                             Nc(decl, expr());
                             若 (ginit_n < 4096) ginit[ginit_n++] = decl;
                         }
+                    }
                     }
                 }
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -6277,7 +6282,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 若 (vname[0] != 0) {
                 整 off = var_lookup(vname); 若 (off < 0) { fprintf(stderr, "[DCL-MISS] unregistered decl: %s\n", vname); 返; } /* fix 2026-08-07: 镜像 C 源 — 严格报错 (原 var_offset 兜底 → [rbp+正偏移] 毁帧) */
                 整 sti = var_stidx(vname);
-                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && nt[n0[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n0[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: sync host 434006 fix 2026-08-03 */
                 若 (sret_tgt) { /* big-struct init: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n0[n]); /* case-4 emits the sret call (lea rcx=&target) */
@@ -6746,7 +6751,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 字 *vname = (字*)(nn + n0[n]);
                 整 off = var_lookup(vname);
                 整 sti = var_stidx(vname);
-                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars */
                 若 (sret_tgt) { /* big-struct assign: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n1[n]);

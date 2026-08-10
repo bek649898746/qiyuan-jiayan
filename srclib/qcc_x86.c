@@ -116,8 +116,8 @@ static void asm_emit_dbl(const char *fmt, double v) {
 }
 static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-static struct { char name[32]; int val; } macros[64]; static int macro_n;
-static void macro_add(const char *n, int v) { if (macro_n < 64) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
+static struct { char name[32]; int val; } macros[1024]; static int macro_n; /* Phase1-L3: 64->1024 */
+static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* string #define macros: #define NAME "value" — fix 2026-08-03: only NUMBER
    macros were supported, so route_learn's LOG_DIR/WEIGHTS_FILE compiled to
@@ -125,7 +125,7 @@ static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!st
    value is stored here and copied into str_tbl at the USE SITE (assigning the
    ID in source-reference order), so the .字串 ID order == sdat placement order
    and the 3-stage H1==H2 string layout stays identical. */
-static struct { char name[32]; char val[2048]; } str_macros[64]; /* fix 2026-08-06 */ static int str_macro_n;
+static struct { char name[32]; char val[2048]; } str_macros[1024]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ static int str_macro_n;
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* fix 2026-08-07: include 展开阶段收集 #define 名字 — 使 include 守卫 (#ifndef X ... #endif) 在
    pp_include_expand 内生效, 重复 #include 的头不再重复展开其内部 #include (防指数膨胀) */
@@ -156,8 +156,8 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
 static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macro_collect 的条件编译感知用) */
 
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
-static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[64]; static int fn_macro_n; /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
-static int cl_if_parent[64]; static int cl_if_taken[64]; static int cl_if_n; static int cl_if_skip; /* fn_macro_collect 的条件编译栈 (fix 2026-08-07) */
+static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[1024]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+static int cl_if_parent[1024]; static int cl_if_taken[1024]; static int cl_if_n; /* Phase1-L4: 64->1024 */ static int cl_if_skip; /* fn_macro_collect 的条件编译栈 (fix 2026-08-07) */
 static int macro_exists(const char *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆, defined(NEG) 判假 */
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return 1;
     for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return 1;
@@ -205,7 +205,7 @@ static void fn_macro_collect(const char *s) {
                     cond = pp_eval(expr);
                 }
                 if (is_if || is_ifdef || is_ifndef) {
-                    if (cl_if_n < 64) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
+                    if (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
                 } else if (is_elif) {
                     if (cl_if_n > 0) { if (!cl_if_taken[cl_if_n-1] && !cl_if_parent[cl_if_n-1]) { cl_if_taken[cl_if_n-1] = cond; cl_if_skip = cl_if_parent[cl_if_n-1] || !cond; } else cl_if_skip = 1; }
                 } else if (is_else) {
@@ -238,7 +238,7 @@ static void fn_macro_collect(const char *s) {
             while (isalnum((unsigned char)s[p]) || s[p] == '_') { if (ni < 31) nm[ni++] = s[p]; p++; }
             nm[ni] = 0;
             while (s[p] == ' ' || s[p] == '\t') p++;
-            if (s[p] == '(' && fn_macro_n < 64 && strcmp(nm, "_va_alloc")) { /* _va_alloc: qcc 内置机制(宏定义被跳过, codegen 按名字识别) — 不能展开 */
+            if (s[p] == '(' && fn_macro_n < 1024 && strcmp(nm, "_va_alloc")) { /* _va_alloc: qcc 内置机制(宏定义被跳过, codegen 按名字识别) — 不能展开 */
                 strcpy(fn_macros[fn_macro_n].name, nm);
                 p++;
                 int pi = 0;
@@ -1494,7 +1494,7 @@ static int var_offset_ptr(const char *n, int pesz) {
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 static int var_static(const char *n, int pesz) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
-    if (vcnt >= 4000 || stc_n >= 8388608) exit(1);
+    if (vcnt >= 4000 || stc_n >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1529,7 +1529,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
-    if (vcnt >= 4000 || stc_n + slots >= 8388608) exit(1); /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
+    if (vcnt >= 4000 || stc_n + slots >= 33554432) exit(1); /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1543,7 +1543,7 @@ static int var_static_struct(const char *n, int si, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
-    if (vcnt >= 4000 || stc_n + total >= 8388608) exit(1);
+    if (vcnt >= 4000 || stc_n + total >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -2390,7 +2390,7 @@ static void lex(const char *s) {
                     continue;
                 }
                 long long mval = 0; /* fix 2026-08-09 审计 BUG-3: int 累加 3000000000 溢出 UB → long long */
-                if (s[i] == '"' && str_macro_n < 64) { /* string macro: #define NAME "value" — store DECODED value, lexed at the use site (fix 2026-08-03) */
+                if (s[i] == '"' && str_macro_n < 1024) { /* string macro: #define NAME "value" — store DECODED value, lexed at the use site (fix 2026-08-03) */
                     i++;
                     int j = 0;
                     while (s[i] && s[i] != '"' && j < 2046) {
@@ -4355,14 +4355,18 @@ static int parse(const char *s) {
                     if (tt[tk] == SK) tk++;
                 }
                 if (tt[tk] == UK) tk++;
-                if (tt[tk] == VR) {
+                if (tt[tk] == VR || tt[tk] == DK) {
+                    int anon_ptr = 0;
+                    if (tt[tk] == DK) { anon_ptr = 1; tk++; } /* fix 2026-08-10: struct {...} *p -- ptr global was skipped, refs became undefined id -> addr 0 crash (latent bug) */
+                    if (tt[tk] == VR) {
                     /* struct gets a unique type name (NOT the var name: that would make
                        blk() misparse "tbl[i].f = x" as a struct type declaration) */
                     char tmp[32]; sprintf(tmp, "__anon_%d", si);
                     strcpy(stypes[si].name, tmp);
                     int cnt = 1;
                     if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
-                    var_static_struct(tn[tk], si, cnt);
+                    if (anon_ptr) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; }
+                    else var_static_struct(tn[tk], si, cnt);
                     char vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; }
@@ -4379,6 +4383,7 @@ static int parse(const char *s) {
                             Nc(decl, expr());
                             if (ginit_n < 4096) ginit[ginit_n++] = decl;
                         }
+                    }
                     }
                 }
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -6824,7 +6829,7 @@ static void cg(int n) {
                 char *vname = (char*)(nn + n0[n]);
                 int off = var_lookup(vname);
                 int sti = var_stidx(vname);
-                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars (mirror struct-ptr global crash root) */
                 if (sret_tgt) { /* big-struct assign: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n1[n]);
