@@ -2306,6 +2306,8 @@ __attribute__((unused))
     若 (!strcmp(s, "unsigned")) 返 VK;
     若 (!strcmp(s, "int") || !strcmp(s, "double")) 返 VK;
     若 (!strcmp(s, "char")) 返 VK;
+    若 (!strcmp(s, "_Bool")) 返 VK;
+    若 (!strcmp(s, "inline")) 返 VK;
     若 (!strcmp(s, "short")) 返 VK; /* fix 2026-08-06: 镜像 qcc_x86.c — short 缺词法分类 → struct 字段当标识符注册成幻影字段 (回归测试 regress_struct_align 暴露) */
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "sizeof")) 返 BK;
@@ -2835,7 +2837,7 @@ __attribute__((unused))
         若 (tt[tk] == OK) tk++; /* skip ( */
         若 (tt[tk] == VK) { /* sizeof(int/char/double/...) + 指针 (fix 2026-08-05: was hardcoded 4 for every type) */
             整 tsz = 4;
-            若 (!strcmp(tn[tk], "char")) tsz = 1;
+            若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) tsz = 1;
             否 若 (!strcmp(tn[tk], "double")) tsz = 8;
             否 若 (!strcmp(tn[tk], "short")) tsz = 2;
             tk++;
@@ -2854,7 +2856,7 @@ __attribute__((unused))
                 整 funs = 0; /* unsigned 位域标记 */
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == DK) tk++; 若 (tt[tk] == VR) { 字 fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
                     否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                     若 (tt[tk] == CL) { /* 无名位域 */
@@ -3029,9 +3031,9 @@ __attribute__((unused))
             若 (cast_nstar >= 1) { /* fix 2026-08-08 width bug: (T*) cast no-op drops type info, *((T*)x) width by target element size */
     整 cpe = 0;
     若 (cast_nstar >= 2) cpe = 8; /* T** -> pointer */
-    否 若 (cast_ty && !strcmp(cast_ty, "char")) cpe = 1;
+    否 若 (cast_ty && (!strcmp(cast_ty, "char") || !strcmp(cast_ty, "_Bool"))) cpe = 1;
     否 若 (cast_ty && !strcmp(cast_ty, "short")) cpe = 2;
-    否 若 (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; 若 (cast_ty2 && !strcmp(cast_ty2, "char")) cpe = 1; 否 若 (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; 否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
+    否 若 (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; 若 (cast_ty2 && (!strcmp(cast_ty2, "char") || !strcmp(cast_ty2, "_Bool"))) cpe = 1; 否 若 (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; 否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
     否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
     否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
     否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
@@ -3528,7 +3530,7 @@ __attribute__((unused))
             整 ltd_si = -1; /* typedef'd struct 索引（C 原版 2187） */
             若 (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); }
             整 tdi2v = tdef_lookup(tn[tk]); 整 tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); 整 tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef 变量/数组: ops_t ops[2] / ops_t f（fix 2026-08-05: 原注册成 int → 4 字节元素，fnptr 调用取错地址；p_dbl=0 破坏 case-10 赋值的 double 返回调用） */
-            整 is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
+            整 is_char = (tt[tk] == VK && !strcmp(tn[tk], "char")) || (tt[tk] == VK && !strcmp(tn[tk], "_Bool"));
             整 is_short = (tt[tk] == VK && !strcmp(tn[tk], "short")); /* fix */
             整 is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             整 is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
@@ -3552,7 +3554,7 @@ __attribute__((unused))
                 }
                 若 (tt[tk] == UK) tk++; /* } */
             }
-            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long（fix 2026-08-06） */
             若 (tt[tk] == VR && td_is(tn[tk])) { /* 第 2/3 个 token 是 typedef'd 类型 (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07 镜像 C 源) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
@@ -3605,6 +3607,7 @@ __attribute__((unused))
                 整 cnt = 1; 整 first = 1; 整 dims = 0;
                 循环 (tt[tk] == LB) {
                     tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; 若 (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
+                    否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc != 0x80000000) { 若 (dims == 0) first = evc; 若 (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } }
                     若 (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `整 a[] = {1,2,3}` / `字 *names[] = {...}`
@@ -3843,7 +3846,7 @@ __attribute__((unused))
                 /* for(int i = 0; ...) �?declaration as init */
                 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; }
                 整 is_char = 0, is_ptr = 0;
-                循环 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; tk++; }
+                循环 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; tk++; }
                 若 (tt[tk] == DK) { is_ptr = 1; tk++; }
                 整 d = Nd(7);
                 若 (tt[tk] == VR) {
@@ -3981,7 +3984,7 @@ __attribute__((unused))
                     整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
                     循环 (tk < TS && tt[tk] != UK) {
                         整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0; 整 fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
-                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
+                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         否 若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             若 (tt[tk] == VR) {
@@ -3993,7 +3996,7 @@ __attribute__((unused))
                                     整 ifuns = 0; /* unsigned 位域标记（fix 2026-08-05） */
                                     循环 (tk < TS && tt[tk] != UK) {
                                         整 ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
-                                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) ifuns = 1; 若 (!strcmp(tn[tk], "char")) ifsz = 1; 否 若 (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
+                                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) ifuns = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; 否 若 (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
                                         否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == DK) tk++; }
                                         若 (tt[tk] == CL) { /* 无名位域（fix 2026-08-05） */
                                             tk++; 整 ubw = 0;
@@ -4135,7 +4138,7 @@ __attribute__((unused))
         若 (tt[tk] == VK && !strcmp(tn[tk], "extern")) { /* fix 2026-08-06: 注册 extern 外部符号 (Task 5.1 多 .o 链接, 镜像 qcc_x86.c) */
         tk++; /* skip extern */
         整 e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
-        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
+        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
         若 (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明: 记录返回类型后跳过 */
             若 (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
             循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -4258,7 +4261,7 @@ __attribute__((unused))
                         整 tfuns = 0; /* unsigned 位域标记（fix 2026-08-05） */
                         循环 (tk < TS && tt[tk] != UK) {
                             整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) tfuns = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) tfuns = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             否 若 (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
                                 若 (tt[tk] == VR) {
@@ -4381,7 +4384,7 @@ __attribute__((unused))
                 整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     否 若 (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
                         若 (tt[tk] == VR) {
@@ -4521,7 +4524,7 @@ __attribute__((unused))
             } 否 若 (is_type && (tt[tk] == VR || tt[tk] == DK)) {
                 /* global variable(s): int a, b, c; (comma-separated) */
                 整 g_is_char = 0;
-                遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "char")) g_is_char = 1;
+                遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && (!strcmp(tn[ti2], "char") || !strcmp(tn[ti2], "_Bool"))) g_is_char = 1;
                 整 g_is_double = 0;
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "double")) g_is_double = 1;
                 若 (!g_is_double) { 整 tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias (fix 2026-08-07 镜像 C 源: g_tdef 覆盖 static 前缀) */
@@ -4696,11 +4699,11 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 整 p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr 参数：8 字节指针槽（C 原版 3045 移植） */
                 整 pis_uns = 0; /* unsigned 参数: >> 逻辑 (fix 2026-08-05) */
                 整 pis_ll = 0; /* long long 参数: 8 字节槽（fix 2026-08-05） */
-                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
+                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                 否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
-                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long（fix 2026-08-06） */
                 循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */

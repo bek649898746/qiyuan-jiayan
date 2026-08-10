@@ -2288,6 +2288,8 @@ static int kw(const char *s) {
     if (!strcmp(s, "unsigned")) return VK;
     if (!strcmp(s, "int") || !strcmp(s, "double")) return VK;
     if (!strcmp(s, "char")) return VK;
+    if (!strcmp(s, "_Bool")) return VK;
+    if (!strcmp(s, "inline")) return VK;
     if (!strcmp(s, "short")) return VK; /* fix 2026-08-06: short 缺词法分类 → struct 字段被当标识符注册成幻影字段, 布局错乱 (回归测试 regress_struct_align 暴露) */
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "sizeof")) return BK;
@@ -2806,7 +2808,7 @@ static int prim(void) {
         if (tt[tk] == OK) tk++; /* skip ( */
         if (tt[tk] == VK) { /* sizeof(int/char/double/...) + pointers (fix 2026-08-05: was hardcoded 4 for every type) */
             int tsz = 4;
-            if (!strcmp(tn[tk], "char")) tsz = 1;
+            if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) tsz = 1;
             else if (!strcmp(tn[tk], "double")) tsz = 8;
             else if (!strcmp(tn[tk], "short")) tsz = 2;
             tk++;
@@ -2825,7 +2827,7 @@ static int prim(void) {
                 int funs = 0; /* unsigned bit-field marker */
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field (fix: DK unhandled) */
                     if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; if (tt[tk] == VR) { char fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
                     if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
@@ -3012,9 +3014,9 @@ static int prim(void) {
             if (cast_nstar >= 1) { /* fix 2026-08-08 width bug: (T*) cast no-op drops type info, *((T*)x) width by target element size */
                 int cpe = 0;
                 if (cast_nstar >= 2) cpe = 8; /* T** -> pointer */
-                else if (cast_ty && !strcmp(cast_ty, "char")) cpe = 1;
+                else if (cast_ty && (!strcmp(cast_ty, "char") || !strcmp(cast_ty, "_Bool"))) cpe = 1;
                 else if (cast_ty && !strcmp(cast_ty, "short")) cpe = 2;
-                else if (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; if (cast_ty2 && !strcmp(cast_ty2, "char")) cpe = 1; else if (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; else if (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
+                else if (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; if (cast_ty2 && (!strcmp(cast_ty2, "char") || !strcmp(cast_ty2, "_Bool"))) cpe = 1; else if (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; else if (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
                 else if (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
                 else if (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
                 else if (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
@@ -3497,7 +3499,7 @@ static int blk(void) {
             int ltd_si = -1; /* typedef'd struct type index (fix 2026-08-03: typedef local decls were unhandled → EngineStat s was registered as int, field offsets 0) */
             if (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); } /* no tk++ here — the shared tk++ below skips the type name */
             int tdi2v = tdef_lookup(tn[tk]); int tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); int tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef var/array: ops_t ops[2] / ops_t f (fix 2026-08-05: was registered as int → 4-byte elements, fnptr calls loaded the wrong address; p_dbl=0 broke double-return calls on case-10 assigns) */
-            int is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
+            int is_char = (tt[tk] == VK && !strcmp(tn[tk], "char")) || (tt[tk] == VK && !strcmp(tn[tk], "_Bool"));
             int is_short = (tt[tk] == VK && !strcmp(tn[tk], "short")); /* fix 2026-08-08: 无短 2 字节类型 (VGA 指针) */
             int is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             int is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
@@ -3521,7 +3523,7 @@ static int blk(void) {
                 }
                 if (tt[tk] == UK) tk++; /* } */
             }
-            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "short")) is_short = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "short")) is_short = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
             if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
                 if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
@@ -3577,6 +3579,7 @@ static int blk(void) {
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
                     tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
+                    else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc != 0x80000000) { if (dims == 0) first = evc; if (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } }
                     if (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `int a[] = {1,2,3}` / `char *names[] = {...}`
@@ -3835,7 +3838,7 @@ static int stmt(void) {
                 /* for(int i = 0; ...) �?declaration as init */
                 if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; }
                 int is_char = 0, is_ptr = 0;
-                while (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) is_char = 1; tk++; }
+                while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; tk++; }
                 if (tt[tk] == DK) { is_ptr = 1; tk++; }
                 int d = Nd(7);
                 if (tt[tk] == VR) {
@@ -3974,7 +3977,7 @@ static int parse(const char *s) {
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
                         int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
-                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
+                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
                             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
@@ -3988,7 +3991,7 @@ static int parse(const char *s) {
                                     int ifuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                                     while (tk < TS && tt[tk] != UK) {
                                         int ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
-                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
+                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
                                         else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; }
                                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                             tk++; int ubw = 0;
@@ -4134,7 +4137,7 @@ static int parse(const char *s) {
         if (tt[tk] == VK && !strcmp(tn[tk], "extern")) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
-            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
+            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
                 if (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -4263,7 +4266,7 @@ static int parse(const char *s) {
                         int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                         while (tk < TS && tt[tk] != UK) {
                             int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                             if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
@@ -4390,7 +4393,7 @@ static int parse(const char *s) {
                 int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                     if (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
@@ -4523,7 +4526,7 @@ static int parse(const char *s) {
             } else if (is_type && (tt[tk] == VR || tt[tk] == DK)) {
                 /* global variable(s): int a, b, c; (comma-separated) */
                 int g_is_char = 0;
-                for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "char")) g_is_char = 1;
+                for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && (!strcmp(tn[ti2], "char") || !strcmp(tn[ti2], "_Bool"))) g_is_char = 1;
                 int g_is_double = 0;
                 for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "double")) g_is_double = 1;
                 if (!g_is_double) { int tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias (fix 2026-08-07: g_tdef 覆盖 static 前缀) */
@@ -4701,11 +4704,11 @@ static int parse(const char *s) {
                 int p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr param: 8-byte pointer slot (fix 2026-08-03) */
                 int pis_uns = 0; /* unsigned param: >> logical (fix 2026-08-05) */
                 int pis_ll = 0; /* long long param: 8-byte slot (fix 2026-08-05) */
-                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
+                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                 else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
-                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */

@@ -14,6 +14,16 @@
 - 宿主+镜像同步，**v1==v2==v3==v4 = d1cf1cb7 FIXPOINT**，宿主 vs v4 SAME
 - 新测试: regress_compound_scalar/struct/array.c
 
+## EB36E120 (2026-08-11)
+**Phase 2-3: _Bool + inline + enum 维度完整落地：**
+
+- **_Bool**: kw 关键字 + 16 处类型识别全覆盖（is_char/fsz/cpe/e_char/pis_char/ifuns/g_is_char）
+- **inline**: kw 加 VK 修饰符（函数定义自动消费）
+- **enum 维度**: `int a[MAX]`（MAX=enum 常量）局部+全局数组
+- **关键**: 逐个加回（每步自举验证）→ 全部收敛，修正"布局敏感=一次性大改瞬态"
+- **v1==v2==v3==v4 = eb36e120 FIXPOINT**，宿主+v1+v4 三代全过新测试
+- 新测试: regress_bool / bool_arr / inline / inline2 / enum_dim
+
 ## B27D0D47 (2026-08-11)
 **BLOCKER-1 布局敏感根因根治 + Phase 2 Designated Initializer [idx]=expr：**
 - **BLOCKER-1 根治**：`var_codegen_visible()` parse 阶段对全部变量返回 true → 跨函数同名变量泄漏 → ndbl[] 误标 → codegen 差异（= "布局敏感"的根因）
