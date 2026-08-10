@@ -4146,7 +4146,9 @@ __attribute__((unused))
                     /* rename struct to typedef name */
                     若 (tt[tk] == VR) {
                         strcpy(stypes[si].name, tn[tk]); /* use typedef name as struct name */
-                        td_reg(tn[tk]); tk++;
+                        td_reg(tn[tk]);
+                        tdef_add(tn[tk], 1, stypes[si].name, 0); /* 同步宿主 fix 2026-08-03: 只 td_reg → td_st_index 返回 -1 → typedef struct 局部/全局注册成 int → member 赋值 store 丢失 */
+                        tk++;
                     }
                 } 否 若 (tt[tk] == VR) { /* struct tag name — remember for typedef X */
                     strcpy(td_stname, tn[tk]); td_isst = 1; tk++;

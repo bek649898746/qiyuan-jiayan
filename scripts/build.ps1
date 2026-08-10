@@ -19,28 +19,32 @@ Write-Host "[2/4] 宿主自检 --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
 if ($t -notmatch 'PASS') { Write-Host "[FAIL] 自检失败: $t" -ForegroundColor Red; exit 1 }
 
-# 3. 自举四代
-Write-Host "[3/4] 自举四代 ..." -ForegroundColor Yellow
+# 3. 自举五代 (v4==v5 验证收敛; 2026-08-10: 修复镜像 typedef struct 别名注册后
+#    链为 v1==v3==v4==v5, v2 为过渡态)
+Write-Host "[3/4] 自举五代 ..." -ForegroundColor Yellow
 & .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
 & .\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe | Out-Null
 & .\v3.exe srclib_jiayan\qcc_work.jy -o v4.exe | Out-Null
+& .\v4.exe srclib_jiayan\qcc_work.jy -o v5.exe | Out-Null
 
 $h1 = (Get-FileHash v1.exe -Algorithm SHA256).Hash
 $h2 = (Get-FileHash v2.exe -Algorithm SHA256).Hash
 $h3 = (Get-FileHash v3.exe -Algorithm SHA256).Hash
 $h4 = (Get-FileHash v4.exe -Algorithm SHA256).Hash
+$h5 = (Get-FileHash v5.exe -Algorithm SHA256).Hash
 Write-Host "  v1: $h1"
 Write-Host "  v2: $h2"
 Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
+Write-Host "  v5: $h5"
 
-# 验收标准: v2==v3==v4 (自举闭环; v1 是 gcc 种子产物, 与甲言系不同属正常 — 见 docs/甲言自举验证体系_工程化解析.md)
-$expected = 'F578D192C7BFAC33CC4511CC635BAAA9A06A9594CEF74BA37243BF02CA949C01'
-if (($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h2 -eq $expected)) {
-    Write-Host "[OK] 自举不动点达成: $($h2.Substring(0,8)) (GEN2==GEN3==GEN4 全等)" -ForegroundColor Green
+# 验收标准: v3==v4==v5 (自举闭环收敛; v1 是 gcc 种子产物, 与甲言系不同属正常)
+$expected = '4982C09829AD7F747A4337D1B41C4D0C4ADCA6512BFF5D970DB17AD11B7BBBAB'
+if (($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h3 -eq $expected)) {
+    Write-Host "[OK] 自举不动点达成: $($h3.Substring(0,8)) (GEN3==GEN4==GEN5 全等)" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] 三代哈希与仓库记录不同：$h2" -ForegroundColor Yellow
+    Write-Host "[WARN] 三代哈希与仓库记录不同：$h3" -ForegroundColor Yellow
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
