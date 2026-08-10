@@ -116,7 +116,7 @@ static void asm_emit_dbl(const char *fmt, double v) {
 }
 static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() ï¿½?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-static struct { char name[32]; int val; } macros[1024]; static int macro_n; /* Phase1-L3: 64->1024 */
+static struct { char name[32]; int val; } macros[2048]; static int macro_n; /* Phase1-L3: 64->1024 */
 static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* string #define macros: #define NAME "value" â€” fix 2026-08-03: only NUMBER
@@ -125,7 +125,7 @@ static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!st
    value is stored here and copied into str_tbl at the USE SITE (assigning the
    ID in source-reference order), so the .å­—ä¸² ID order == sdat placement order
    and the 3-stage H1==H2 string layout stays identical. */
-static struct { char name[32]; char val[2048]; } str_macros[1024]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ static int str_macro_n;
+static struct { char name[32]; char val[2048]; } str_macros[2048]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ static int str_macro_n;
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* fix 2026-08-07: include å±•å¼€é˜¶æ®µæ”¶é›† #define åå­— â€” ä½¿ include å®ˆå« (#ifndef X ... #endif) åœ¨
    pp_include_expand å†…ç”Ÿæ•ˆ, é‡å¤ #include çš„å¤´ä¸å†é‡å¤å±•å¼€å…¶å†…éƒ¨ #include (é˜²æŒ‡æ•°è†¨èƒ€) */
@@ -156,7 +156,7 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
 static int pp_eval(const char *e); /* fwd: å®šä¹‰åœ¨ fn_macro åŒºä¹‹å (fn_macro_collect çš„æ¡ä»¶ç¼–è¯‘æ„ŸçŸ¥ç”¨) */
 
 /* function-like macros: #define NAME(p1,p2) body â€” collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped â†’ call sites were undefined-function calls) */
-static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[1024]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8Ã—16 â†’ 16Ã—32 (å˜å‚/å¤šå‚å®) */
+static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[2048]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8Ã—16 â†’ 16Ã—32 (å˜å‚/å¤šå‚å®) */
 static int cl_if_parent[1024]; static int cl_if_taken[1024]; static int cl_if_n; /* Phase1-L4: 64->1024 */ static int cl_if_skip; /* fn_macro_collect çš„æ¡ä»¶ç¼–è¯‘æ ˆ (fix 2026-08-07) */
 static int macro_exists(const char *n) { /* fix 2026-08-06: åŒºåˆ†ã€Œæœªæ‰¾åˆ°ã€(-1) ä¸ã€Œè´Ÿå€¼å®ã€â€” macro_find çš„ -1 å“¨å…µä¸è´Ÿå€¼æ··æ·†, defined(NEG) åˆ¤å‡ */
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return 1;
@@ -1230,8 +1230,8 @@ static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static int func_n = 0;
 static int coff_mode = 0;
-static /* fix 2026-08-10 Gate 9: Âã»úÔËĞĞ (bare_metal) + ÄÚ´æÊäÈë/Êä³öµØÖ· */
-int bare_metal = 0; /* Gate 9: ±àÒëÆ÷×ÔÉíÔÚÂã»ú (main ¼ì²â __bare__ ²ÎÊıÉèÖÃ) */
+static /* fix 2026-08-10 Gate 9: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ (bare_metal) + ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½Ö· */
+int bare_metal = 0; /* Gate 9: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ (main ï¿½ï¿½ï¿½ __bare__ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½) */
 #define BIN_SRC_ADDR 0x3800000
 #define BIN_RT_ADDR 0x3900000
 #define BIN_OUT_ADDR 0x3A00000
@@ -4879,19 +4879,19 @@ static void emit_print(const char *fname, int nargs) {
     /* len = r12 - r14 */
     mov_rr64(0, 12); asm_emit("    å‡64 r0, r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0); /* sub rax, r14 */
     mov_rr(8, 0); /* r8 = len */
-    if (bin_mode) { /* fix 2026-08-10 Gate 9: bin printf -> ´®¿Ú COM1 0x3F8, ÎŞ kernel32 */
+    if (bin_mode) { /* fix 2026-08-10 Gate 9: bin printf -> ï¿½ï¿½ï¿½ï¿½ COM1 0x3F8, ï¿½ï¿½ kernel32 */
         int lbin_loop = new_label(), lbin_wait = new_label(), lbin_done = new_label();
         set_label(lbin_loop);
         test_rr(8, 8); jz_rel(-1); patch_label(cp-4, lbin_done, 1);
         set_label(lbin_wait);
         mov_r_imm(2, 0x3FD); /* THR status reg */
-        asm_emit("    ¶Á¶Ë¿Ú al, dx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEC); /* in al, dx */
+        asm_emit("    ï¿½ï¿½ï¿½Ë¿ï¿½ al, dx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEC); /* in al, dx */
         b(0xA8); b(0x20); /* test al, 0x20 (THRE) */
         jz_rel(-1); patch_label(cp-4, lbin_wait, 1);
         rex(0,0,0,1); b(0x8A); modrm(0, 0, 6); /* mov al, [r14] */
         mov_r_imm(2, 0x3F8);
-        asm_emit("    Ğ´¶Ë¿Ú dx, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEE); /* out dx, al */
-        asm_emit("    ×ÔÔö r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 6); /* inc r14 */
+        asm_emit("    Ğ´ï¿½Ë¿ï¿½ dx, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEE); /* out dx, al */
+        asm_emit("    ï¿½ï¿½ï¿½ï¿½ r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 6); /* inc r14 */
         rex(0,0,0,1); b(0xFF); modrm(3, 1, 0); /* dec r8d */
         jmp_rel(-1); patch_label(cp-4, lbin_loop, 2);
         set_label(lbin_done);
@@ -6813,7 +6813,10 @@ static void cg(int n) {
                 int pnode = n0[n0[n]];
                 int pe = 4;
                 if (nt[pnode] == 1) pe = var_esz((char*)(nn + pnode));
-                if (pesz[pnode]) pe = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
+                if (pesz[pnode] == 8) pe = 8; /* fix 2026-08-10: æ¡ä»¶å¼è¯»å–è§„é¿å¤§æ–‡ä»¶ codegen bug (å¯¹é½é•œåƒ) */
+                else if (pesz[pnode] == 4) pe = 4;
+                else if (pesz[pnode] == 2) pe = 2;
+                else if (pesz[pnode] == 1) pe = 1;
                 int is_dp = (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)));
                 cg(pnode); /* ptr â†’ eax */
                 push_r(0); /* save ptr on stack */
@@ -6908,7 +6911,12 @@ static void cg(int n) {
             int el = 0;
             if (nt[n0[n]] == 1) el = var_esz((char*)(nn + n0[n])); /* named var: element size */
             else if (nt[n0[n]] == 14) { char *av = (char*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
-            if (pesz[n0[n]]) el = pesz[n0[n]]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
+            /* fix 2026-08-10: æ¡ä»¶å¼è¯»å–è§„é¿"å¤§æ–‡ä»¶ä¸‹æ•°ç»„å˜é‡ç´¢å¼•è¯»èµ‹å€¼"codegen bug (movzx è¯¯ç”¨).
+               ç›´æ¥ `el = pesz[n0[n]]` åœ¨å®¿ä¸»ç¼–è¯‘å¤§æ–‡ä»¶(é•œåƒè‡ªèº«)æ—¶å®½åº¦åˆ¤æ–­é”™ â†’ æ”¹é€å€¼æ¯”è¾ƒå¯¹é½é•œåƒ. */
+            if (pesz[n0[n]] == 8) el = 8;
+            else if (pesz[n0[n]] == 4) el = 4;
+            else if (pesz[n0[n]] == 2) el = 2;
+            else if (pesz[n0[n]] == 1) el = 1;
             if (ndbl[n] || (nt[n0[n]] == 1 && var_pdbl((char*)(nn + n0[n])))) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref â†’ xmm0 */
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
@@ -7753,11 +7761,11 @@ void gen_code(void) {
    (#define F(x) ...), so a macro call would compile as an undefined function
    and the self-hosted compiler could never read its input. */
 static char *read_file(const char *path) {
-    if (bare_metal) { /* fix 2026-08-10 Gate 9: Âã»úÎŞÎÄ¼şÏµÍ³ -> ÄÚ´æ¶Á */
+    if (bare_metal) { /* fix 2026-08-10 Gate 9: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ÏµÍ³ -> ï¿½Ú´ï¿½ï¿½ */
         if (!strcmp(path, "srclib/qcc_rt.c") || !strcmp(path, "qcc_rt.c")) {
-            return (char *)BIN_RT_ADDR; /* ÔËĞĞÊ± */
+            return (char *)BIN_RT_ADDR; /* ï¿½ï¿½ï¿½ï¿½Ê± */
         }
-        return (char *)BIN_SRC_ADDR;  /* Ö÷Ô´Âë */
+        return (char *)BIN_SRC_ADDR;  /* ï¿½ï¿½Ô´ï¿½ï¿½ */
     }
 
     char *b = NULL;
@@ -7960,7 +7968,7 @@ int main(int argc, char **argv) {
     char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
     char *all_src = NULL; int all_len = 0;
 
-    /* fix 2026-08-10 Gate 9: Òıµ¼´« "__bare__" ±ê¼Ç±àÒëÆ÷Âã»úÔËĞĞ */
+    /* fix 2026-08-10 Gate 9: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ "__bare__" ï¿½ï¿½Ç±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
     for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
     while (argc > argi) {
         if (strcmp(argv[argi], "--help") == 0) {
@@ -8166,7 +8174,7 @@ int main(int argc, char **argv) {
     }
 
     /* ??PE / COFF å¯¹è±¡ */
-    /* fix 2026-08-10 Gate 9: Âã»ú²úÎïÊä³öµ½ÄÚ´æ (ÎŞÎÄ¼şÏµÍ³) */
+    /* fix 2026-08-10 Gate 9: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ (ï¿½ï¿½ï¿½Ä¼ï¿½ÏµÍ³) */
     int bin_out_len = 0;
     unsigned char *ob = (unsigned char*)BIN_OUT_ADDR;
     int oi = 0;
@@ -8178,7 +8186,7 @@ int main(int argc, char **argv) {
             if (oi < code_off) { memset(ob+oi, 0, code_off-oi); oi = code_off; }
             memcpy(ob+oi, code, cp); oi += cp;
             if (oi < data_rva_base) { memset(ob+oi, 0, data_rva_base-oi); oi = data_rva_base; }
-            /* heap counter / IAT stub / ¾²Ì¬²Û */
+            /* heap counter / IAT stub / ï¿½ï¿½Ì¬ï¿½ï¿½ */
             *(int*)(ob+oi) = 0; oi += 4;
             *(int*)(ob+oi) = 0; oi += 4;
             int stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
@@ -8203,7 +8211,7 @@ int main(int argc, char **argv) {
                 fwrite(code, 1, cp, f);
                 cur += cp;
                 if (cur < data_rva_base) { for (int i = cur; i < data_rva_base; i++) fputc(0, f); }
-                /* .data: heap counter / IAT / ¾²Ì¬²Û */
+                /* .data: heap counter / IAT / ï¿½ï¿½Ì¬ï¿½ï¿½ */
                 w4(f, 0); w4(f, 0);
                 int stub_off2 = data_rva_base + 0x300 + 4 + 4 * stc_n;
                 int stub_va2 = 0x100000 + stub_off2;

@@ -81,11 +81,11 @@ __attribute__((unused))
 静 整 sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
 静 整 vs_n(空) { 返 vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-静 构 { 字 name[32]; 整 val; } macros[1024]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
+静 构 { 字 name[32]; 整 val; } macros[2048]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
 静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
-静 构 { 字 name[32]; 字 val[2048]; } str_macros[1024]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
+静 构 { 字 name[32]; 字 val[2048]; } str_macros[2048]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* fix 2026-08-07: 顺序 #define 定义表 (名字+数值) — pp_include_expand 与 fn_macro_collect 共用, 使 include 守卫生效 + #if 用真值 (镜像 qcc_x86.c) */
 静 字 pp_guard[128][32]; 静 整 pp_guard_val[128]; 静 整 pp_guard_n;
@@ -114,7 +114,7 @@ __attribute__((unused))
     *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
-静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[1024]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[2048]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
 静 整 cl_if_parent[1024]; 静 整 cl_if_taken[1024]; 静 整 cl_if_n; /* Phase1-L4: 64->1024 */ 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
 静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
@@ -1261,6 +1261,7 @@ __attribute__((unused))
 静 整 nll[262144]; /* per-node flag: expression is a 64-bit long long（fix 2026-08-05） */
 静 整 *nll_hi; /* per-node long long 字面量高 32 — 动态分配（静态 1MB 数组使 cf_1 .data 超限，fix 2026-08-05） */
 静 整 nuns[262144]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
+静 整 pesz[262144];
 
 
 静 整 new_label(空) { 若 (lc >= MAX_LABELS) { fprintf(stderr, "[LABEL-OVERFLOW] lc=%d\n", lc); abort(); } 整 l = lc++; label_set[l] = 0; 返 l; }
@@ -3007,7 +3008,7 @@ __attribute__((unused))
     否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
     否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
     否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
-    若 (cpe) nv[ce + 100000] = cpe; /* 宽度存 nv 高偏移区 (2026-08-10) */
+    若 (cpe) pesz[ce] = cpe;
 }
 返 ce; /* cast is no-op: value unchanged */
         }
@@ -6732,10 +6733,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 整 pnode = n0[n0[n]];
                 整 pe = 4;
                 若 (nt[pnode] == 1) pe = var_esz((字*)(nn + pnode));
-                若 (nv[pnode + 100000] == 8) pe = 8; /* fix 2026-08-08 width bug: (T*) cast deref store (nv 高偏移 + 条件式) */
-                否 若 (nv[pnode + 100000] == 4) pe = 4;
-                否 若 (nv[pnode + 100000] == 2) pe = 2;
-                否 若 (nv[pnode + 100000] == 1) pe = 1;
+                若 (pesz[pnode] == 8) pe = 8; /* fix 2026-08-08 width bug: (T*) cast deref store (条件式读取规避 case-12 RHS bug, fix 2026-08-10) */
+                否 若 (pesz[pnode] == 4) pe = 4;
+                否 若 (pesz[pnode] == 2) pe = 2;
+                否 若 (pesz[pnode] == 1) pe = 1;
                 整 is_dp = (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode)));
                 cg(pnode); /* ptr �?eax */
                 push_r(0); /* save ptr on stack */
@@ -6829,10 +6830,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             若 (cg_no_deref) 断; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原例-12 忽略 cg_no_deref 永远加载值 */
             若 (nt[n0[n]] == 1) el = var_esz((字*)(nn + n0[n])); /* named var: element size */
             否 若 (nt[n0[n]] == 14) { 字 *av = (字*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
-            若 (nv[n0[n] + 100000] == 8) el = 8; /* fix 2026-08-08 width bug: (T*) cast deref read (nv 高偏移 + 条件式) */
-            否 若 (nv[n0[n] + 100000] == 4) el = 4;
-            否 若 (nv[n0[n] + 100000] == 2) el = 2;
-            否 若 (nv[n0[n] + 100000] == 1) el = 1;
+            若 (pesz[n0[n]] == 8) el = 8; /* fix 2026-08-08 width bug: (T*) cast deref read (条件式读取规避 case-12 RHS bug, fix 2026-08-10) */
+            否 若 (pesz[n0[n]] == 4) el = 4;
+            否 若 (pesz[n0[n]] == 2) el = 2;
+            否 若 (pesz[n0[n]] == 1) el = 1;
             若 (el == 8) { mov_reg_mreg64(0, 0); 断; } /* 64-bit load */
             若 (el == 4) { mov_reg_mreg(0, 0); 断; }   /* dword load */
             若 (el == 2) { b(0x0F); b(0xB7); modrm(0, 0, 0); 断; } /* fix */
