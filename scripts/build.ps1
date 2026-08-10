@@ -40,7 +40,7 @@ Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
 # 验收标准: v3==v4==v5 (自举闭环收敛; v1 是 gcc 种子产物, 与甲言系不同属正常)
-$expected = 'd89d264ecef8eea34fccbdeaf580a96b49d2eaf8450bb043cd636b52822d294c'
+$expected = 'd1cf1cb7816eff559b83247436f60c841e2c60e151a0083307aa3a3d8df5f4cc'
 if (($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h3 -eq $expected)) {
     Write-Host "[OK] 自举不动点达成: $($h3.Substring(0,8)) (GEN3==GEN4==GEN5 全等)" -ForegroundColor Green
 } else {

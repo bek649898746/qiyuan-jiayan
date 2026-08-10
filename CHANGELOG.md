@@ -3,9 +3,19 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## D1CF1CB7 (2026-08-11)
+**Phase 2-3 Compound Literal (C99 (T){...})：**
+
+- 标量/struct/数组三种 compound literal 路径（cast 分支 `)` 后 FK → compound_literal）
+- struct: 保存 cast tag 名 → st_find → var_struct → brace_fields
+- 数组: `(T[N])`/`(T[])` 后缀解析 → var_array → brace_arr_init（dims 自动推断）
+- 标量: 直接返回 `{}` 内表达式值（C99 语义：标量 compound literal 是值非地址）
+- 匿名临时变量 `_cl<N>` + cl_blk 块挂载机制
+- 宿主+镜像同步，**v1==v2==v3==v4 = d1cf1cb7 FIXPOINT**，宿主 vs v4 SAME
+- 新测试: regress_compound_scalar/struct/array.c
+
 ## B27D0D47 (2026-08-11)
 **BLOCKER-1 布局敏感根因根治 + Phase 2 Designated Initializer [idx]=expr：**
-
 - **BLOCKER-1 根治**：`var_codegen_visible()` parse 阶段对全部变量返回 true → 跨函数同名变量泄漏 → ndbl[] 误标 → codegen 差异（= "布局敏感"的根因）
   - 修复：parse 分支改 `i >= parse_base`（一处根修覆盖全部 lookup 函数；全局 is_static=1 不受影响）
   - 宿主+镜像同步 → **v1==v2==v3==v4 = b27d0d47 FIXPOINT**（宿主/自举完全对齐）
