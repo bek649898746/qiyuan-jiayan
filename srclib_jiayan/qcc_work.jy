@@ -5745,6 +5745,164 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     }
 }
 
+/* fix 2026-08-11 汇编本身: __asm("指令") 字符串汇编编码器 (bin_mode) — 镜像版.
+   strcmp 链 (镜像无 struct 数组 brace-init); 行内 hex/dec 解析 (镜像无 strtol/atoi). */
+静 整 asm_reg_id(常 字 *s) {
+    若 (!strcmp(s, "rax")) 返 0;
+    若 (!strcmp(s, "rcx")) 返 1;
+    若 (!strcmp(s, "rdx")) 返 2;
+    若 (!strcmp(s, "rbx")) 返 3;
+    若 (!strcmp(s, "rsp")) 返 4;
+    若 (!strcmp(s, "rbp")) 返 5;
+    若 (!strcmp(s, "rsi")) 返 6;
+    若 (!strcmp(s, "rdi")) 返 7;
+    若 (!strcmp(s, "eax")) 返 0;
+    若 (!strcmp(s, "ecx")) 返 1;
+    若 (!strcmp(s, "edx")) 返 2;
+    若 (!strcmp(s, "ebx")) 返 3;
+    若 (!strcmp(s, "esp")) 返 4;
+    若 (!strcmp(s, "ebp")) 返 5;
+    若 (!strcmp(s, "esi")) 返 6;
+    若 (!strcmp(s, "edi")) 返 7;
+    若 (!strcmp(s, "al")) 返 0;
+    若 (!strcmp(s, "cl")) 返 1;
+    若 (!strcmp(s, "dl")) 返 2;
+    若 (!strcmp(s, "bl")) 返 3;
+    若 (!strcmp(s, "spl")) 返 4;
+    若 (!strcmp(s, "bpl")) 返 5;
+    若 (!strcmp(s, "sil")) 返 6;
+    若 (!strcmp(s, "dil")) 返 7;
+    若 (!strcmp(s, "r8")) 返 8;
+    若 (!strcmp(s, "r9")) 返 9;
+    若 (!strcmp(s, "r10")) 返 10;
+    若 (!strcmp(s, "r11")) 返 11;
+    若 (!strcmp(s, "r12")) 返 12;
+    若 (!strcmp(s, "r13")) 返 13;
+    若 (!strcmp(s, "r14")) 返 14;
+    若 (!strcmp(s, "r15")) 返 15;
+    若 (!strcmp(s, "r8d")) 返 8;
+    若 (!strcmp(s, "r9d")) 返 9;
+    若 (!strcmp(s, "r10d")) 返 10;
+    若 (!strcmp(s, "r11d")) 返 11;
+    若 (!strcmp(s, "r12d")) 返 12;
+    若 (!strcmp(s, "r13d")) 返 13;
+    若 (!strcmp(s, "r14d")) 返 14;
+    若 (!strcmp(s, "r15d")) 返 15;
+    返 -1;
+}
+静 空 asm_enc_string(常 字 *asmtext) {
+    字 buf[256]; 整 bi = 0;
+    循环 (asmtext[bi] && bi < 255) { buf[bi] = asmtext[bi]; bi++; }
+    buf[bi] = 0;
+    整 op = 0; 循环 (buf[op] == ' ' || buf[op] == '\t') op++;
+    整 rest = op; 循环 (buf[rest] && buf[rest] != ' ' && buf[rest] != '\t' && buf[rest] != ',') rest++;
+    字 opc[32]; 整 opl = rest - op; 若 (opl > 31) opl = 31;
+    整 oi = 0; 循环 (oi < opl) { opc[oi] = buf[op + oi]; oi++; }
+    opc[oi] = 0;
+    循环 (buf[rest] == ' ' || buf[rest] == '\t' || buf[rest] == ',') rest++;
+    整 arg1 = rest; 循环 (buf[arg1] == ' ' || buf[arg1] == '\t') arg1++;
+    若 (!strcmp(opc, "hlt")) { b(0xF4); 返; }
+    若 (!strcmp(opc, "nop")) { b(0x90); 返; }
+    若 (!strcmp(opc, "ret") || !strcmp(opc, "retq")) { b(0xC3); 返; }
+    若 (!strcmp(opc, "sti")) { b(0xFB); 返; }
+    若 (!strcmp(opc, "cli")) { b(0xFA); 返; }
+    若 (!strcmp(opc, "int3")) { b(0xCC); 返; }
+    若 (!strcmp(opc, "iretq")) { b(0x48); b(0xCF); 返; }
+    若 (!strcmp(opc, "push") || !strcmp(opc, "pop")) {
+        整 a1 = arg1; 循环 (buf[a1] == '%') a1++;
+        字 an[16]; 整 ai = 0;
+        循环 (buf[a1] && buf[a1] != ' ' && buf[a1] != '\t' && ai < 15) { an[ai] = buf[a1]; ai++; a1++; }
+        an[ai] = 0;
+        整 r = asm_reg_id(an);
+        若 (r >= 0) {
+            若 (r < 8) {
+                若 (!strcmp(opc, "push")) b(0x50 + r); 否 b(0x58 + r);
+            } 否 {
+                整 lo = r - 8;
+                若 (!strcmp(opc, "push")) { b(0x41); b(0x50 + lo); }
+                否 { b(0x41); b(0x58 + lo); }
+            }
+            返;
+        }
+    }
+    整 comma = arg1; 循环 (buf[comma] && buf[comma] != ',') comma++;
+    若 (buf[comma] == ',') {
+        comma++;
+        循环 (buf[comma] == ' ' || buf[comma] == '\t') comma++;
+        整 d0 = arg1; 循环 (buf[d0] == '%') d0++;
+        整 s0 = comma; 循环 (buf[s0] == '%') s0++;
+        字 dstb[16]; 整 di = 0;
+        循环 (buf[d0] && buf[d0] != ' ' && buf[d0] != '\t' && buf[d0] != ',' && di < 15) { dstb[di] = buf[d0]; di++; d0++; }
+        dstb[di] = 0;
+        字 srcb[16]; 整 si2 = 0;
+        循环 (buf[s0] && buf[s0] != ' ' && buf[s0] != '\t' && buf[s0] != ',' && si2 < 15) { srcb[si2] = buf[s0]; si2++; s0++; }
+        srcb[si2] = 0;
+        整 dr = asm_reg_id(dstb);
+        整 sr = asm_reg_id(srcb);
+        整 imm = 0; 整 is_imm = (srcb[0] == '$') || (srcb[0] >= '0' && srcb[0] <= '9');
+        若 (is_imm) {
+            整 sp = 0; 若 (srcb[0] == '$') sp++;
+            若 (srcb[sp] == '0' && (srcb[sp+1] == 'x' || srcb[sp+1] == 'X')) {
+                sp += 2;
+                循环 (srcb[sp] && ((srcb[sp] >= '0' && srcb[sp] <= '9') || (srcb[sp] >= 'a' && srcb[sp] <= 'f') || (srcb[sp] >= 'A' && srcb[sp] <= 'F'))) {
+                    整 dc = srcb[sp];
+                    若 (dc >= '0' && dc <= '9') dc = dc - '0';
+                    否 若 (dc >= 'a' && dc <= 'f') dc = dc - 'a' + 10;
+                    否 dc = dc - 'A' + 10;
+                    imm = imm * 16 + dc;
+                    sp++;
+                }
+            } 否 {
+                循环 (srcb[sp] >= '0' && srcb[sp] <= '9') { imm = imm * 10 + (srcb[sp] - '0'); sp++; }
+            }
+            若 (dr >= 0) {
+                整 is64 = dstb[0] == 'r';
+                若 (!strcmp(opc, "mov")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0xC7); b(0xC0 + dr); b4(imm); }
+                    否 { b(0x49); b(0xC7); b(0xC0 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "add")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xC0 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xC0 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "sub")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xE8 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xE8 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "cmp")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xF8 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xF8 + dr - 8); b4(imm); }
+                    返;
+                }
+            }
+        }
+        若 (dr >= 0 && sr >= 0) {
+            整 d64 = dstb[0] == 'r';
+            若 (!strcmp(opc, "mov")) {
+                若 (dr < 8 && sr < 8) {
+                    若 (d64) b(0x48);
+                    b(0x89); b(0xC0 + sr * 8 + dr);
+                } 否 若 (dr >= 8 && sr < 8) { b(0x4D); b(0x89); b(0xC0 + sr * 8 + (dr - 8)); }
+                否 若 (dr < 8 && sr >= 8) { b(0x4C); b(0x89); b(0xC0 + (sr - 8) * 8 + dr); }
+                否 { b(0x4D); b(0x89); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                返;
+            }
+            若 (!strcmp(opc, "add") || !strcmp(opc, "sub") || !strcmp(opc, "cmp")) {
+                整 base = !strcmp(opc, "add") ? 0x01 : (!strcmp(opc, "sub") ? 0x29 : 0x39);
+                若 (dr < 8 && sr < 8) { 若 (d64) b(0x48); b(base); b(0xC0 + sr * 8 + dr); }
+                否 若 (dr >= 8 && sr < 8) { b(0x4D); b(base); b(0xC0 + sr * 8 + (dr - 8)); }
+                否 若 (dr < 8 && sr >= 8) { b(0x4C); b(base); b(0xC0 + (sr - 8) * 8 + dr); }
+                否 { b(0x4D); b(base); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                返;
+            }
+        }
+    }
+    fprintf(stderr, "[ERR] __asm 未编码: %s\n", asmtext);
+}
+
 静 空 cg(整 n) {
     若 (n < 0) 返;
     若 (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
@@ -5979,6 +6137,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     整 c = kids[i];
                     若 (c == fn || c < 0) 续;
                     若 (nt[c] == 0) b(nv[c] & 0xFF);
+                    否 若 (nt[c] == STR) asm_enc_string(str_tbl[nv[c]]); /* fix 2026-08-11: __asm("mov rax,0x10") 字符串指令 */
                 }
                 断;
             }
@@ -7229,7 +7388,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 /* str */
 /* string data */
 静 无 字 *sdat; 静 整 sdp, sdc;
-静 整 str_offs[1024]; /* RVA offset for each string (str_tbl 上限 1024，必须匹配) */
+静 整 str_offs[2048]; /* RVA offset for each string (str_tbl 上限 2048，必须匹配) (fix 2026-08-11: 编码器加 62 字符串 → 1090 > 1024 → 扩容) */
 
 静 整 dbl_offs[1024]; /* byte offset of each double literal in sdat; -1 = not placed */
 静 整 dbl_place(整 idx) {
@@ -7513,7 +7672,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                    otherwise pass-2 new_label() numbers overlap the pass-1 function
                    labels and epilogue/return jumps resolve to the wrong functions. */
     lc = g_lc_save; rsp_used = g_rsp_save;
-    memset(str_offs, -1, 1024 * 4);;
+    memset(str_offs, -1, 2048 * 4);;
     memset(dbl_offs, -1, 1024 * 4);;
     /* label_pos/label_set MUST be cleared per pass: pass 2 re-uses pass 1's label
        IDs (lc = g_lc_save) but a label that pass 2 never re-sets would keep a stale
@@ -7636,7 +7795,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        故必须保证 dbl_offs[di]/str_offs[si] 随索引单调递增（放置序==索引序），
        -S 发射序（偏移序）== 索引序，H2 位次解析 == H1 直接引用。 */
     sdp = 0;
-    memset(str_offs, -1, 1024 * 4);
+    memset(str_offs, -1, 2048 * 4);
     memset(dbl_offs, -1, 1024 * 4);
     遍 (整 si = 0; si < str_cnt; si++) str_place(si); /* 字符串先（C 原版 5137） */
     遍 (整 di = 0; di < dbl_n; di++) dbl_place(di);   /* double 后 */
@@ -8341,7 +8500,7 @@ __attribute__((unused))
 
     code = malloc(CODE_BUF_CAP); cc = IMAGE_BASE; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
-    memset(str_offs, -1, 1024 * 4);;
+    memset(str_offs, -1, 2048 * 4);;
 
     整 root = parse(src);
     若 (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); 返 1; }

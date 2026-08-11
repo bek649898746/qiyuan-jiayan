@@ -54,7 +54,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
 __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][2048]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-09 审计#2: 条目 1024 实测未满(967), 2048 打破自举静态布局 → 保持 */ int str_cnt;
-static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
+static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
 static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
@@ -5799,6 +5799,113 @@ static void ll_ext32(int rhs) {
     }
 }
 
+/* fix 2026-08-11 汇编本身: __asm("指令") 字符串汇编编码器 (bin_mode).
+   支持内核常用指令: hlt/nop/ret/sti/cli/int3/iretq + push/pop + mov/add/sub/cmp 寄存器/立即数.
+   Intel 语法 "mov rax, 0x10" / "mov rax, rbx". */
+static int asm_reg_id(const char *s) {
+    struct { const char *n; int id; } regs[] = {
+        {"rax",0},{"rcx",1},{"rdx",2},{"rbx",3},{"rsp",4},{"rbp",5},{"rsi",6},{"rdi",7},
+        {"eax",0},{"ecx",1},{"edx",2},{"ebx",3},{"esp",4},{"ebp",5},{"esi",6},{"edi",7},
+        {"al",0},{"cl",1},{"dl",2},{"bl",3},{"spl",4},{"bpl",5},{"sil",6},{"dil",7},
+        {"r8",8},{"r9",9},{"r10",10},{"r11",11},{"r12",12},{"r13",13},{"r14",14},{"r15",15},
+        {"r8d",8},{"r9d",9},{"r10d",10},{"r11d",11},{"r12d",12},{"r13d",13},{"r14d",14},{"r15d",15},
+    };
+    for (int i = 0; i < (int)(sizeof(regs)/sizeof(regs[0])); i++) if (!strcmp(s, regs[i].n)) return regs[i].id;
+    return -1;
+}
+static void asm_enc_string(const char *asmtext) {
+    char buf[256]; strncpy(buf, asmtext, 255); buf[255] = 0;
+    char *op = buf; while (*op == ' ' || *op == '\t') op++;
+    char *rest = op; while (*rest && *rest != ' ' && *rest != '\t' && *rest != ',') rest++;
+    char opc[32]; int opl = rest - op; if (opl > 31) opl = 31; memcpy(opc, op, opl); opc[opl] = 0;
+    while (*rest == ' ' || *rest == '\t' || *rest == ',') rest++;
+    char *arg1 = rest; while (*arg1 == ' ' || *arg1 == '\t') arg1++;
+    /* 单操作数或无操作数指令 */
+    if (!strcmp(opc, "hlt")) { b(0xF4); return; }
+    if (!strcmp(opc, "nop")) { b(0x90); return; }
+    if (!strcmp(opc, "ret") || !strcmp(opc, "retq")) { b(0xC3); return; }
+    if (!strcmp(opc, "sti")) { b(0xFB); return; }
+    if (!strcmp(opc, "cli")) { b(0xFA); return; }
+    if (!strcmp(opc, "int3")) { b(0xCC); return; }
+    if (!strcmp(opc, "iretq")) { b(0x48); b(0xCF); return; }
+    /* push/pop reg */
+    if (!strcmp(opc, "push") || !strcmp(opc, "pop")) {
+        char *a1 = arg1; while (*a1 == '%') a1++;
+        int r = asm_reg_id(a1);
+        if (r >= 0) {
+            if (r < 8) {
+                if (!strcmp(opc, "push")) b(0x50 + r); else b(0x58 + r);
+            } else {
+                int lo = r - 8;
+                if (!strcmp(opc, "push")) { b(0x41); b(0x50 + lo); }
+                else { b(0x41); b(0x58 + lo); }
+            }
+            return;
+        }
+    }
+    /* 双操作数: mov/add/sub/cmp dst, src */
+    char *comma = arg1; while (*comma && *comma != ',') comma++;
+    if (*comma == ',') {
+        *comma = 0; comma++;
+        while (*comma == ' ' || *comma == '\t') comma++;
+        char *dst = arg1; while (*dst == '%') dst++;
+        char *src = comma; while (*src == '%') src++;
+        int dr = asm_reg_id(dst), sr = asm_reg_id(src);
+        /* 立即数: 0xNN 或 数字 */
+        int imm = 0; int is_imm = (src[0] == '$') || (src[0] >= '0' && src[0] <= '9');
+        if (is_imm) {
+            if (src[0] == '$') src++;
+            if (src[0] == '0' && (src[1] == 'x' || src[1] == 'X')) imm = (int)strtol(src, 0, 16);
+            else imm = atoi(src);
+            if (dr >= 0) {
+                int is64 = dst[0] == 'r';
+                if (!strcmp(opc, "mov")) {
+                    if (dr < 8) { if (is64) b(0x48); b(0xC7); b(0xC0 + dr); b4(imm); }
+                    else { b(0x49); b(0xC7); b(0xC0 + dr - 8); b4(imm); }
+                    return;
+                }
+                if (!strcmp(opc, "add")) {
+                    if (dr < 8) { if (is64) b(0x48); b(0x81); b(0xC0 + dr); b4(imm); }
+                    else { b(0x49); b(0x81); b(0xC0 + dr - 8); b4(imm); }
+                    return;
+                }
+                if (!strcmp(opc, "sub")) {
+                    if (dr < 8) { if (is64) b(0x48); b(0x81); b(0xE8 + dr); b4(imm); }
+                    else { b(0x49); b(0x81); b(0xE8 + dr - 8); b4(imm); }
+                    return;
+                }
+                if (!strcmp(opc, "cmp")) {
+                    if (dr < 8) { if (is64) b(0x48); b(0x81); b(0xF8 + dr); b4(imm); }
+                    else { b(0x49); b(0x81); b(0xF8 + dr - 8); b4(imm); }
+                    return;
+                }
+            }
+        }
+        /* reg, reg */
+        if (dr >= 0 && sr >= 0) {
+            int d64 = dst[0] == 'r';
+            if (!strcmp(opc, "mov")) {
+                if (dr < 8 && sr < 8) {
+                    if (d64) b(0x48);
+                    b(0x89); b(0xC0 + sr * 8 + dr);
+                } else if (dr >= 8 && sr < 8) { b(0x4D); b(0x89); b(0xC0 + sr * 8 + (dr - 8)); }
+                else if (dr < 8 && sr >= 8) { b(0x4C); b(0x89); b(0xC0 + (sr - 8) * 8 + dr); }
+                else { b(0x4D); b(0x89); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                return;
+            }
+            if (!strcmp(opc, "add") || !strcmp(opc, "sub") || !strcmp(opc, "cmp")) {
+                int base = !strcmp(opc, "add") ? 0x01 : (!strcmp(opc, "sub") ? 0x29 : 0x39);
+                if (dr < 8 && sr < 8) { if (d64) b(0x48); b(base); b(0xC0 + sr * 8 + dr); }
+                else if (dr >= 8 && sr < 8) { b(0x4D); b(base); b(0xC0 + sr * 8 + (dr - 8)); }
+                else if (dr < 8 && sr >= 8) { b(0x4C); b(base); b(0xC0 + (sr - 8) * 8 + dr); }
+                else { b(0x4D); b(base); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                return;
+            }
+        }
+    }
+    fprintf(stderr, "[ERR] __asm 未编码: %s\n", asmtext);
+}
+
 static void cg(int n) {
     if (n < 0) return;
     if (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
@@ -6052,6 +6159,7 @@ static void cg(int n) {
                     int c = kids[i];
                     if (c == fn || c < 0) continue;
                     if (nt[c] == 0) b(nv[c] & 0xFF);
+                    else if (nt[c] == STR) asm_enc_string(str_tbl[nv[c]]); /* fix 2026-08-11: __asm("mov rax,0x10") 字符串指令 */
                 }
                 break;
             }
@@ -7586,7 +7694,8 @@ void gen_code(void) {
                    otherwise pass-2 new_label() numbers overlap the pass-1 function
                    labels and epilogue/return jumps resolve to the wrong functions. */
     lc = g_lc_save; rsp_used = g_rsp_save;
-    for (int i = 0; i < 1024; i++) { str_offs[i] = -1; dbl_offs[i] = -1; } /* fix 2026-08-03: was 512 — strings with ID>=512 kept pass-1 offsets, so pass-2 pool missed them and string refs pointed past the pool */
+    for (int i = 0; i < 2048; i++) { str_offs[i] = -1; } /* fix 2026-08-11: 镜像 1090 字符串 > 1024, str_offs 扩容 2048 */
+    for (int i = 0; i < 1024; i++) { dbl_offs[i] = -1; } /* fix 2026-08-03: was 512 — strings with ID>=512 kept pass-1 offsets, so pass-2 pool missed them and string refs pointed past the pool */
     for (int i = 0; i < MAX_LABELS; i++) { label_pos[i] = 0; label_set[i] = 0; }
     /* Pre-place ALL strings and doubles in ID order (fix 2026-08-03): str_place/
        dbl_place are normally lazy (first-reference order), which can deviate from
