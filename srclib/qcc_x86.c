@@ -1415,22 +1415,22 @@ static int var_codegen_visible(int i) {
     return (i >= fvb[gfn]);            /* codegen: only THIS function's locals/params */
 }
 static int var_is_dbl(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
     return 0;
 }
 /* long long var: 64-bit int loads/stores (fix 2026-08-05) */
 static int var_is_ll(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_ll;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_ll;
     return 0;
 }
 /* unsigned variable: >> must use SHR (logical), not SAR (fix 2026-08-05) */
 static int var_is_uns(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_uns;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_uns;
     return 0;
 }
 /* pointer-to-double (double *p): p[i] reads/writes 8-byte doubles (movsd) */
 static int var_pdbl(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].p_dbl;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].p_dbl;
     return 0;
 }
 /* 8-byte frame slot for a local double */
@@ -1523,7 +1523,7 @@ static int var_extern(const char *n, int is_char, int is_dbl, int pesz, int is_l
     return vars[vcnt++].rsp_off;
 }
 static int var_isstatic(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_static;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_static;
     return 0;
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
@@ -1658,7 +1658,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
     return vars[vcnt++].rsp_off;
 }
 static int var_lookup(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06) */
             for (int j = i - 1; j >= 0; j--) if (!strcmp(vars[j].name, n) && vars[j].rsp_off >= 0 && var_codegen_visible(j)) return vars[j].rsp_off;
             return vars[i].rsp_off; /* 无定义: extern 槽 (coff_mode 外部符号) */
@@ -1668,17 +1668,17 @@ static int var_lookup(const char *n) {
     return -1;
 }
 static int var_stidx(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].st_idx;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].st_idx;
     return -1;
 }
 static int var_pesz(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].p_esz;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].p_esz;
     return 0;
 }
 /* ginit slot index for a function-local static with an initializer (emitted at main
    entry, not on every call). -1 = no ginit initializer. Uses pdisp (unused for statics). */
 static int var_ginit(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].pdisp;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].pdisp;
     return -1;
 }
 /* byte size of a struct-typed var/param (0 = not a struct). st_sz is 0 for params
@@ -1688,7 +1688,7 @@ static int var_ginit(const char *n) {
    assignment all move the whole struct as a single 8-byte value. Larger
    structs are not supported (no sret); leave them on the old path. */
 static int var_small_struct(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].arr_sz > 0) return 0; /* struct array name is not a small value (fix 2026-08-03) */
         if (vars[i].st_idx >= 0) { int sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; return (sz > 0 && sz <= 8) ? 1 : 0; }
         return 0;
@@ -1697,7 +1697,7 @@ static int var_small_struct(const char *n) {
 }
 /* big-struct PARAM specifically: its slot holds a POINTER to the caller-side copy */
 static int var_big_param(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].is_param && vars[i].st_idx >= 0) { int sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; return (sz > 8) ? 1 : 0; }
         return 0;
     }
@@ -1707,7 +1707,7 @@ static int var_big_param(const char *n) {
    Local structs register rsp_off as the ALIGNED UPPER bound (field access uses
    off - sz); by-value struct params register the START. Returns an rbp offset. */
 static int var_sbase(const char *n, int off) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].arr_sz > 0) { /* struct ARRAY: base = off - arr_sz*esz (fix 2026-08-03) */
             int esz = vars[i].arr_esz ? vars[i].arr_esz : 4;
             return off - vars[i].arr_sz * esz;
@@ -1727,7 +1727,7 @@ static int mem_addr(int n, int *fsz_out, int *si_out);
 
 
 static int var_arrsz(const char *n) {
-    for (int i = vs_n() - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].arr_sz;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].arr_sz;
     return 0;
 }
 /* element size for ptr[i] / arr[i]: arr_esz (arrays AND pointer params/locals now store
