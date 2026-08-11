@@ -13,7 +13,7 @@
 #define FILE_ALIGNMENT 0x200
 #define IMAGE_BASE 0x400000
 #define DATA_RVA_OFF 0x300 /* statics 起点后移：给扩展导入区（IAT 24+ILT 24+desc+names 至 0x2B0）让位（fix 2026-08-06 BUG-1） */
-#define STACK_PAD_SIZE 0x160000
+#define STACK_PAD_SIZE 0x300000
 #define CODE_BUF_CAP 0x400000
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,7 +53,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
-static char str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-09 审计#2: 条目 1024 实测未满(967), 2048 打破自举静态布局 → 保持 */ int str_cnt;
+static char str_tbl[2048][2048]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-09 审计#2: 条目 1024 实测未满(967), 2048 打破自举静态布局 → 保持 */ int str_cnt;
 static int str_offs[1024]; /* RVA offset for each string (declared early for cg STR case) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
 static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -2516,8 +2516,8 @@ static void lex(const char *s) {
                 if (s[aj] == '(') { i = aj; int ad = 0; while (s[i]) { if (s[i] == '"') { i++; while (s[i] && s[i] != '"') { if (s[i] == '\\') i++; i++; } continue; } if (s[i] == '(') ad++; else if (s[i] == ')') { ad--; if (ad <= 0) { i++; break; } } i++; } continue; }
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; continue; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
-        if (s[i] == '"') { if (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 2046) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06: 原来截断后解析器错位死循环)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; continue; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
+        if (s[i] == '"') { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 2046) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06: 原来截断后解析器错位死循环)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
             if (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
@@ -4758,7 +4758,7 @@ static int parse(const char *s) {
                         if (ptr_depth > 0) esz = 8; /* pointer array: char *argv[] → 8-byte elements (fix 2026-08-03: was esz=1, argv[1] read a byte instead of a pointer) */
                         else if (esz == 0) esz = 4; /* element size for arr[i] scaling */
                     }
-                    var_param(tn[tk], pr, pis_ptr ? 4 : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* double* is a POINTER (rcx), not an xmm double */
+                    var_param(tn[tk], pr, pis_ptr ? (ptr_depth > 1 ? 8 : 4) : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* fix 2026-08-11: 指针参数 p_esz 原硬编码 4 - 多级指针(char pp / int pp)应 8 */
                     if (pis_char && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_char = 1; /* sizeof(char param) (fix 2026-08-05) */
                     if (pis_uns && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_uns = 1; /* unsigned param: >> logical (fix 2026-08-05) */
                     if (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long param: 8-byte slot (fix 2026-08-05) */
@@ -7356,7 +7356,7 @@ static void write_pe(FILE *f, int entry_rva) {
     if (text_size < need) text_size = need;
     int text_foff = FILE_ALIGNMENT;
     int data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
-    int data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
+    int data_vsize = 0x6000000;   /* .data 96MB virtual: statics + bump heap (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
     int image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
 
     /* DOS Header (64 bytes) */
