@@ -3579,7 +3579,7 @@ static int blk(void) {
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
                     tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
-                    else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc != 0x80000000) { if (dims == 0) first = evc; if (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } }
+                    else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000) { if (dims == 0) first = evc; if (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } else tk++; } /* 真 VLA: 跳过维度名避免死循环 (fix 2026-08-11) */
                     if (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `int a[] = {1,2,3}` / `char *names[] = {...}`
@@ -4555,6 +4555,14 @@ static int parse(const char *s) {
                             gcnt *= tv[tk];
                             if (gdim_n < 8) { gdims[gdim_n] = tv[tk]; gdim_n++; }
                             tk++;
+                        } else if (tt[tk] == VR) { /* fix 2026-08-11: enum/宏 常量维度 */
+                            int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]);
+                            if (evc != 0x80000000) {
+                                if (gcnt == 0) { gfirst = evc; gcnt = 1; }
+                                gcnt *= evc;
+                                if (gdim_n < 8) { gdims[gdim_n] = evc; gdim_n++; }
+                                tk++;
+                            } else tk++; /* 真 VLA: 跳过避免死循环 (fix 2026-08-11) */
                         }
                         if (tt[tk] == RB) tk++;
                     }
