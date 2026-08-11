@@ -1416,22 +1416,22 @@ __attribute__((unused))
     返 (i >= fvb[gfn]);            /* codegen：只允许当前函数的 locals/params */
 }
 静 整 var_is_dbl(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_dbl;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_dbl;
     返 0;
 }
 /* long long 变量: 64 位整加载/存储（fix 2026-08-05） */
 静 整 var_is_ll(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_ll;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_ll;
     返 0;
 }
 /* unsigned 变量: >> 必须用逻辑右移 SHR（fix 2026-08-05） */
 静 整 var_is_uns(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_uns;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_uns;
     返 0;
 }
 /* pointer-to-double (double *p): p[i] reads/writes 8-byte doubles (movsd) */
 静 整 var_pdbl(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_dbl;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_dbl;
     返 0;
 }
 /* 8-byte frame slot for a local double */
@@ -1527,7 +1527,7 @@ __attribute__((unused))
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_isstatic(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_static;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_static;
     返 0;
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
@@ -1679,7 +1679,7 @@ __attribute__((unused))
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_lookup(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06 镜像) */
             遍 (整 j = i - 1; j >= 0; j--) 若 (!strcmp(vars[j].name, n) && vars[j].rsp_off >= 0 && var_codegen_visible(j)) 返 vars[j].rsp_off;
             返 vars[i].rsp_off; /* 无定义: extern 槽 */
@@ -1689,17 +1689,17 @@ __attribute__((unused))
     返 -1;
 }
 静 整 var_stidx(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].st_idx;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].st_idx;
     返 -1;
 }
 静 整 var_pesz(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_esz;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_esz;
     返 0;
 }
 /* ginit slot index for a function-local static with an initializer (emitted at main
    entry, not on every call). -1 = no ginit initializer. Uses pdisp (unused for statics). */
 静 整 var_ginit(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].pdisp;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].pdisp;
     返 -1;
 }
 /* byte size of a struct-typed var/param (0 = not a struct). st_sz is 0 for params
@@ -1709,7 +1709,7 @@ __attribute__((unused))
    assignment all move the whole struct as a single 8-byte value. Larger
    structs are not supported (no sret); leave them on the old path. */
 静 整 var_small_struct(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].st_idx >= 0) { 整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; 返 (sz > 0 && sz <= 8) ? 1 : 0; }
         返 0;
     }
@@ -1717,7 +1717,7 @@ __attribute__((unused))
 }
 /* big-struct PARAM specifically: its slot holds a POINTER to the caller-side copy */
 静 整 var_big_param(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].is_param && vars[i].st_idx >= 0) { 整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; 返 (sz > 8) ? 1 : 0; }
         返 0;
     }
@@ -1727,7 +1727,7 @@ __attribute__((unused))
    Local structs register rsp_off as the ALIGNED UPPER bound (field access uses
    off - sz); by-value struct params register the START. Returns an rbp offset. */
 静 整 var_sbase(常 字 *n, 整 off) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].st_idx >= 0) {
             整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz;
             返 vars[i].is_param ? off : off - sz;
@@ -1743,7 +1743,7 @@ __attribute__((unused))
 
 
 静 整 var_arrsz(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].arr_sz;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].arr_sz;
     返 0;
 }
 /* element size for ptr[i] / arr[i]: arr_esz (arrays AND pointer params/locals now store
@@ -6493,7 +6493,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-09: 指针变量用 p_esz; 原只用 arr_esz, 指针 var arr_esz=0 → 各指针类型 步进=1) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
                 若 (var_isstatic(vn)) mov_eax_rip(stc_disp(off));
                 否 mov_reg_mbrp(0, off - cur_frame_sz);
                 push_r(0); /* save old value */
@@ -6535,7 +6535,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-05) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
                 mov_r_imm(1, is_dec ? -step : step); /* ecx = ±step */
                 若 (var_isstatic(vn)) { mov_eax_rip(stc_disp(off)); alu_rr(T_PK, 0, 1); mov_rip_eax(stc_disp(off)); }
                 否 { mov_reg_mbrp(0, off - cur_frame_sz); alu_rr(T_PK, 0, 1); mov_mbrp_reg(off - cur_frame_sz, 0); }
