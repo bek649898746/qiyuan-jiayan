@@ -2888,7 +2888,7 @@ __attribute__((unused))
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
-                            若 (fdbl) st_field_dbl(si, fn); 若 (fll) st_field_ty(si, fn, -3);
+                            若 (fdbl) st_field_dbl(si, fn); /* fix 2026-08-12: 删除残留 fll 引用 — 本分支未声明 fll, 与宿主对齐 */
                         }
                     }
                     若 (tt[tk] == CK) tk++;
