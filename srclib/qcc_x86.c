@@ -6939,7 +6939,7 @@ static void cg(int n) {
                    `var - const` subtraction and would CLOBBER the RHS (fix 2026-08-05:
                    vars[vcnt-1].frows[dims-1] = esz compiled to storing vcnt-1). */
                 int off=var_lookup(vn);
-                int pesz=var_pesz(vn);
+                int peszl=var_pesz(vn);
                 if (nt[n0[ac]] == 15 || nt[n0[ac]] == 14) {
                     /* NESTED base store: u.c[0]=v / arr[i].field[k]=v — base is a member/array
                        chain (vname is a FIELD name, must NOT be resolved as a variable). */
@@ -6978,7 +6978,7 @@ static void cg(int n) {
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     did=1; break;
                     }
-                    if(!did && pesz>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
+                    if(!did && peszl>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
                         int esz = var_esz(vn);
                         mov_rr(11,0); /* r11d = index */
                         if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}else if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
@@ -7289,7 +7289,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
             }
             char *vname = (char*)(nn + n0[n]);
             int off = var_lookup(vname);
-            int pesz = var_pesz(vname);
+            int peszl = var_pesz(vname);
             if (nt[n0[n]] == 15 || nt[n0[n]] == 14) {
                 /* NESTED base (member/array chain) takes priority: vname is the member's
                    field name, NOT a variable — var_lookup could match an unrelated
@@ -7351,7 +7351,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         }
                         did = 1; break;
                     }
-                if (!did && pesz > 0 && var_arrsz(vname) == 0) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
+                if (!did && peszl > 0 && var_arrsz(vname) == 0) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
                     int esz = var_esz(vname);
                     mov_rr(11, 0); /* r11d = index */
                     if (esz == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
