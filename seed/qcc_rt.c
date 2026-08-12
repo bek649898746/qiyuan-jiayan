@@ -145,5 +145,50 @@ int isalnum(int c) {
 int isxdigit(int c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
+
+/* ---- scanf runtime (fix 2026-08-12): parse fmt, read from input buffer, write back to args[].
+   args[i] are POINTERS to the target variables (&a, &b, ...). emit_scanf reads stdin
+   into a buffer then calls this. Returns count of successfully converted items. ---- */
+int _scanf_rt(const char *fmt, char **args, const char *buf, int len) {
+    int argi = 0; int i = 0; int j = 0;
+    while (fmt[i] && j < len) {
+        if (fmt[i] == '%') {
+            i++;
+            if (fmt[i] == 'd') {
+                while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
+                int neg = 0; long long v = 0;
+                if (j < len && (buf[j] == '-' || buf[j] == '+')) { if (buf[j] == '-') neg = 1; j++; }
+                while (j < len && buf[j] >= '0' && buf[j] <= '9') { v = v * 10 + (buf[j] - '0'); j++; }
+                if (neg) v = -v;
+                *((int*)(args[argi])) = (int)v; argi++;
+            } else if (fmt[i] == 'x') {
+                while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
+                long long v = 0;
+                while (j < len) {
+                    char c = buf[j]; int d;
+                    if (c >= '0' && c <= '9') d = c - '0';
+                    else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+                    else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+                    else break;
+                    v = v * 16 + d; j++;
+                }
+                *((int*)(args[argi])) = (int)v; argi++;
+            } else if (fmt[i] == 'c') {
+                *((char*)(args[argi])) = buf[j]; j++; argi++;
+            } else if (fmt[i] == 's') {
+                while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
+                char *dst = (char*)(args[argi]);
+                while (j < len && buf[j] != ' ' && buf[j] != 9 && buf[j] != 10) { *dst = buf[j]; dst++; j++; }
+                *dst = 0; argi++;
+            } else if (fmt[i] == '%') {
+            }
+            i++;
+        } else {
+            if (buf[j] == fmt[i]) j++;
+            i++;
+        }
+    }
+    return argi;
+}
 #endif
 
