@@ -5971,6 +5971,12 @@ static void cg(int n) {
                     fn_patches[fnpn].patch_at = cp - 4;
                     fn_patches[fnpn].label = func_tbl[ffi].label;
                     fnpn++;
+                } else if (ffi >= 0 && !coff_is_builtin((char*)(nn + n)) && strcmp((char*)(nn + n), "stderr") && strcmp((char*)(nn + n), "stdout") && strcmp((char*)(nn + n), "stdin")) {
+                    /* fix 2026-08-12: extern 未定义函数名作值 — 原走 load_param_val 不发指令 → rax 残留垃圾 (非确定性).
+                       与 coff_static_disp 的 extern 变量一致: 单文件模型无符号可解析 → 编译期诊断.
+                       stderr/stdout/stdin 是内置 FILE* 伪参数 (fprintf builtin 忽略 arg0), 豁免.
+                       2026-08-12 重试: fll 死代码已删 / func_n var_lookup 补丁已修 → 连锁因素清除. */
+                    fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (char*)(nn + n)); exit(1);
                 } else {
                     load_param_val((char*)(nn + n)); /* eax = param (reg or [rbp+disp]) */
                 }

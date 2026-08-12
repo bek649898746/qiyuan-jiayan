@@ -5955,6 +5955,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     fn_patches[fnpn].patch_at = cp - 4;
                     fn_patches[fnpn].label = func_tbl[ffi].label;
                     fnpn++;
+                } 否 若 (ffi >= 0 && !coff_is_builtin((字*)(nn + n)) && strcmp((字*)(nn + n), "stderr") && strcmp((字*)(nn + n), "stdout") && strcmp((字*)(nn + n), "stdin")) {
+                    /* fix 2026-08-12: extern 未定义函数名作值 — 编译期诊断 (与 extern 变量一致).
+                       stderr/stdout/stdin 豁免 (fprintf 伪参数). 重试: fll/var_lookup 连锁已清. */
+                    fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (字*)(nn + n)); exit(1);
                 } 否 {
                     load_param_val((字*)(nn + n)); /* eax = param (reg or [rbp+disp]) */
                 }
