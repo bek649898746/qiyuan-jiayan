@@ -1,8 +1,10 @@
 #!/bin/bash
 # QEMU -kernel 直载 (跳过 GRUB): 消除 GRUB 对 NVMe 的干扰
+# 参数化: KERNEL=$1 (必填), 项目根 = $QIYUAN_ROOT 环境变量或 $2, 默认 WSL 挂载路径
 set -e
-K=/mnt/c/Users/Administrator/Desktop/qiyuan-jiayan
+K=${QIYUAN_ROOT:-${2:-/mnt/c/Users/Administrator/Desktop/qiyuan-jiayan}}
 KERNEL=$1
+if [ -z "$KERNEL" ]; then echo "用法: $0 <KERNEL名> [项目根] 或 QIYUAN_ROOT=... $0 <KERNEL名>"; exit 1; fi
 WINQCC=$K/qcc_x86.exe
 WINSRC=$(wslpath -w $K/tests/kernel/$KERNEL.c)
 WINOUT=$(wslpath -w $K/scratch_test/$KERNEL.bin)
