@@ -3,6 +3,20 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## 02142A5D (2026-08-12)
+
+**H2 全量对等收官（qcc -S → asm_zh 汇编产物与直发 SHA 一致，217/218 + 1 预期跳过）：**
+
+- 根因一类：直发裸发射缺 asm_emit 文本 → -S 文本缺指令 → asm_zh 少字节/分支位移差 N 字节（症状：`0x68` 入口点低字节不同、`e9/0f84` 位移普遍差 3/4）
+- `存64 [rbp+disp], r0`（emit_scanf 参数数组）：asm_zh 只认 [rax]/[rbx] 无位移 → 静默丢弃，补 rbp 位移形式
+- `存字节 [rbp+disp], imm`（字符串字面量初始化 4 连）：asm_zh 只认 [rbx],al → 丢弃，补 C6 /0 imm8 形式（disp8/disp32 按范围）
+- 16 位存储裸发射 6 处（cg_mem_frow==2 / esz==2 ×4 / peszp==2）：补 `存字rax bx` + rex(0,0,0,0)，与 fsz==2 站点统一为 `40 66 89 18`
+- peszp==1 char 存储补 `存字节rax bl`；peszp==2 左移补 `左移 r11, 1`
+- movsd 系裸发射 18 处（9 load + 9 store）：补 `浮取 xmm0, [r0]` / `存浮 [r0], xmm0`；asm_zh 新增 `浮取` 处理器、`存浮` 泛化 [rM]（原只认 [rbx]）
+- 位域 RMW 回写 `存32rax r10`：asm_zh 硬编码 ebx → 解析寄存器操作数；bf_shl_imm 补 `左移 r%d, cl` 文本
+- 镜像 qcc_work.jy 同步以上全部 + 补 case-12 double* 解引用分支（镜像此前当 8 字节整型读）与 pesz 无条件覆盖对齐宿主
+- 验证: v1==v2==v3==v4==v5 = 02142a5d42858159 五代全等, H1==H2 253/254, H2 全量 217/218 (差异 0), 行为断言 218/218
+
 ## AEC60F44 (2026-08-12)
 
 - scanf 变参输入 builtin (%d/%x/%c/%s) + run_tests stdin 注入 (@EXPECTED in:)
