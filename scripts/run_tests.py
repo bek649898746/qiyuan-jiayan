@@ -48,7 +48,7 @@ fails = []
 for name in tests:
     src = os.path.join('tests', name)  # name 已含 qcc/ 或 behavior/ 前缀
     # 读断言
-    expected = '0'; expected_out = None
+    expected = '0'; expected_out = None; expect_cfail = False
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
     except Exception:
@@ -58,6 +58,7 @@ for name in tests:
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
+        if '@EXPECTED compile_fail' in line: expect_cfail = True
 
     # H1 编译 (输出名用 basename, 兼容 behavior/ 子目录)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -67,6 +68,8 @@ for name in tests:
         pass
     r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
+        if expect_cfail:
+            pass_n += 1; continue  # @EXPECTED compile_fail: 编译失败 = 通过 (fix 2026-08-12)
         fail_n += 1; fails.append(f'{name} 编译失败'); continue
 
     # 运行
