@@ -1408,7 +1408,12 @@ static void resolve_patches(void) {
    rule is: non-static vars are visible only within their own function
    [fvb[gfn], fve[gfn]); statics are visible everywhere. Enforce it during codegen. */
 static int var_codegen_visible(int i) {
-    if (vars[i].is_static) return 1;   /* .data slot (globals + function-local statics): visible from any function */
+    if (vars[i].is_static) {
+        if (!vs_end) return 1;            /* parse: statics visible (parse_base floor already blocks prior fns) */
+        if (cg_ginit_ctx) return 1;       /* ginit: emitted at main entry, ALL statics visible (fix 2026-08-11 BLOCKER-3) */
+        if (var_static_kw[i]) return (i >= fvb[gfn]); /* fn-local static: ONLY its own function (fix 2026-08-11 BLOCKER-3) */
+        return 1;                         /* global static: visible from any function */
+    }
     if (!vs_end) return (i >= parse_base); /* parse phase: ONLY current function body (parse_base floor).
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
                                               var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
@@ -1538,6 +1543,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = esz;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-11 BLOCKER-3: fn-local static ARRAY mark */
     return vars[vcnt++].rsp_off;
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
@@ -1552,6 +1558,7 @@ static int var_static_struct(const char *n, int si, int count) {
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = slots * 4; vars[vcnt].arr_sz = (count > 1) ? count : 0; vars[vcnt].arr_esz = stypes[si].sz; /* fix 2026-08-06: count==1 是普通 struct 变量不是数组 → arr_sz=0, 否则 var_small_struct 拒认 → 静态 struct 赋值变 32 位/LEA 崩 */
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-11 BLOCKER-3: fn-local static STRUCT mark */
     return vars[vcnt++].rsp_off;
 }
 /* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
@@ -2426,7 +2433,7 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cval; ti++; continue;
         }
-        if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll_hi[ti] = 0;
+        if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0;
             long long v64 = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05) */
             if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2;
@@ -2516,7 +2523,7 @@ static void lex(const char *s) {
                 if (s[aj] == '(') { i = aj; int ad = 0; while (s[i]) { if (s[i] == '"') { i++; while (s[i] && s[i] != '"') { if (s[i] == '\\') i++; i++; } continue; } if (s[i] == '(') ad++; else if (s[i] == ')') { ad--; if (ad <= 0) { i++; break; } } i++; } continue; }
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; continue; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
         if (s[i] == '"') { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 2046) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06: 原来截断后解析器错位死循环)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
@@ -7556,6 +7563,7 @@ static void write_pe(FILE *f, int entry_rva) {
        ILT1@+0xD8 (8+term) ILT2@+0x120 (16+term) desc@+0x1A8 (3*20=60B) names@+0x1E4 */
     fseek(f, data_foff, SEEK_SET);
     int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
@@ -7987,7 +7995,7 @@ static char *read_file(const char *path) {
         rewind(f);
         if (sz < 0) { fclose(f); return NULL; } /* fix 2026-08-09 BUG-12: ftell 失败(-1L 非 seekable)显式检查 */
         if (sz > 0 && sz <= 1048576) {
-            b = malloc(sz + 1);
+            b = malloc((sz + 4) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — unaligned bump sizes misalign tt..tll -> tll[tk] garbage -> spurious nll=1 -> 2-cycle */
             fread(b, 1, sz, f);
             b[sz] = 0;
             /* skip UTF-8 BOM (EF BB BF): qcc lexed it as a CJK identifier
@@ -8024,6 +8032,7 @@ static void write_coff_obj(FILE *f) {
        挂在第一个函数入口不执行 → counter=100 丢成 0。改 .data 段含初始值; 未初始化全局写 0 (语义等价 .bss 清零) */
     strcpy(secs[3].name, ".data"); secs[3].size = stc_n * 4; secs[3].chars = 0xC0300080;
     uint8_t *ddata = (uint8_t*)calloc(stc_n ? stc_n : 1, 4);
+
     secs[3].data = ddata;
     for (int gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) */
         int gn = ginit[gi];
@@ -8204,7 +8213,7 @@ int main(int argc, char **argv) {
         char *fb = read_file(argv[argi]);
         if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
         int fl = (int)strlen(fb);
-        all_src = realloc(all_src, all_len + fl + 2);
+        all_src = realloc(all_src, (all_len + fl + 4) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1 */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
         all_src[all_len++] = '\n'; all_src[all_len] = 0;
         free(fb);
@@ -8212,7 +8221,7 @@ int main(int argc, char **argv) {
     }
     if (all_len > 0) {
         int total = hdr_len + all_len + 2;
-        char *combined = malloc(total);
+        char *combined = malloc((total + 3) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 */
         int pos = 0;
         if (hdr_len > 0) { memcpy(combined, hdrs, hdr_len); pos = hdr_len; }
         memcpy(combined + pos, all_src, all_len); pos += all_len;
@@ -8257,7 +8266,7 @@ int main(int argc, char **argv) {
             int rl = (int)strlen(rtb);
             int al = (int)strlen(src);
             rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
-            char *combined2 = malloc(rl + al + 2);
+            char *combined2 = malloc((rl + al + 5) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — rl+al+2 misaligned the bump counter -> tt..tll misaligned -> tll[tk] reads garbage -> spurious nll=1 -> 2-cycle */
             memcpy(combined2, rtb, rl);
             combined2[rl] = '\n';
             memcpy(combined2 + rl + 1, src, al);
