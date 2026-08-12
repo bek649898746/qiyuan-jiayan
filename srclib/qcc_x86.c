@@ -119,7 +119,53 @@ static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �
 static struct { char name[32]; int val; } macros[4096]; static int macro_n; /* Phase1-L3: 64->1024 */
 static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
-/* string #define macros: #define NAME "value" — fix 2026-08-03: only NUMBER
+/* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
+static struct { char name[32]; char val[512]; } obj_macros[2048]; static int obj_macro_n;
+static void obj_add(const char *n, const char *v) { if (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } }
+static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
+/* 文本层对象宏展开: 词边界替换, 串内/注释内不换, 链式(深度≤32 防自引用循环) */
+static char *obj_macro_expand(const char *s) {
+    int cap = (int)strlen(s) * 2 + 2048;
+    char *out = malloc(cap);
+    int o = 0;
+    for (int i = 0; s[i]; ) {
+        if (s[i] == '#' && (s[i + 1] == 'd' || s[i + 1] == 'u' || s[i + 1] == 'i' || s[i + 1] == 'e' || s[i + 1] == 'l' || s[i + 1] == 'p' || s[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被自引用展开) */
+            while (s[i] && s[i] != '\n') out[o++] = s[i++];
+            continue;
+        }
+        if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
+        if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
+        if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') out[o++] = s[i++]; continue; }
+        if (isalnum((unsigned char)s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) {
+            int j = i;
+            while (isalnum((unsigned char)s[j]) || s[j] == '_' || ((unsigned char)s[j] >= 0x80)) j++;
+            int prev_ok = (i > 0) && (isalnum((unsigned char)s[i - 1]) || s[i - 1] == '_' || ((unsigned char)s[i - 1] >= 0x80));
+            int next_ok = (isalnum((unsigned char)s[j]) || s[j] == '_' || ((unsigned char)s[j] >= 0x80));
+            char nm[32]; int nl = j - i;
+            if (nl < 31) { memcpy(nm, s + i, nl); nm[nl] = 0; } else nl = 0;
+            if (!prev_ok && !next_ok && nl > 0) {
+                const char *val = obj_find(nm);
+                int dep = 0;
+                while (val && dep < 32 && (int)strlen(val) < 4000) {
+                    const char *v2 = obj_find(val);
+                    if (!v2 || v2 == val) break;
+                    /* 链式: val 本身也是对象宏名 → 继续替换 */
+                    int vn = 0; while (isalnum((unsigned char)val[vn]) || val[vn] == '_' || ((unsigned char)val[vn] >= 0x80)) vn++;
+                    if (val[vn] != 0) break; /* 值含非标识符 → 不再链式 */
+                    val = v2;
+                    dep++;
+                }
+                if (val) { int vl = (int)strlen(val); if (o + vl < cap - 4) { memcpy(out + o, val, vl); o += vl; i = j; continue; } }
+            }
+            while (i < j) out[o++] = s[i++];
+            continue;
+        }
+        out[o++] = s[i++];
+        if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); }
+    }
+    out[o] = 0;
+    return out;
+}/* string #define macros: #define NAME "value" — fix 2026-08-03: only NUMBER
    macros were supported, so route_learn's LOG_DIR/WEIGHTS_FILE compiled to
    NULL → scan_logs(NULL) crashed in the snprintf %s copy loop. The DECODED
    value is stored here and copied into str_tbl at the USE SITE (assigning the
@@ -169,6 +215,34 @@ static void macro_remove(const char *n) {
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) { for (int j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n--; return; }
     for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) { for (int j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n--; return; }
     for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, n)) { for (int j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n--; return; }
+}
+
+/* 对象宏收集 (lex 前): #define A <表达式/标识符> — 非函数宏非字符串宏非纯数字 (fix 2026-08-13) */
+static void obj_macro_collect(const char *s) {
+    obj_macro_n = 0;
+    for (int i = 0; s[i]; i++) {
+        if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; i++; continue; }
+        if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; }
+        if (s[i] == '"') { i++; while (s[i] && s[i] != '"') { if (s[i] == '\\') i++; i++; } continue; }
+        if (s[i] == '\'') { i++; while (s[i] && s[i] != '\'') { if (s[i] == '\\') i++; i++; } continue; }
+        if (s[i] == '#' && !strncmp(s + i, "#define", 7)) {
+            int p = i + 7;
+            while (s[p] == ' ' || s[p] == '\t') p++;
+            char nm[32]; int ni = 0;
+            while (isalnum((unsigned char)s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 31) nm[ni++] = s[p]; p++; }
+            nm[ni] = 0;
+            while (s[p] == ' ' || s[p] == '\t') p++;
+            if (nm[0] && s[p] != '(' && s[p] != '"') { /* 非函数宏非字符串宏 → 对象宏候选 */
+                char av[512]; int ai = 0;
+                while (s[p] && s[p] != '\n' && ai < 510) { if (s[p] == '\\' && s[p + 1] == '\n') { p += 2; av[ai++] = ' '; continue; } av[ai++] = s[p]; p++; }
+                while (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t' || av[ai - 1] == '\r')) ai--;
+                av[ai] = 0;
+                if (ai > 0 && !(av[0] >= '0' && av[0] <= '9') && !(av[0] == '-' && av[1] >= '0' && av[1] <= '9') && !(av[0] == '0' && (av[1] == 'x' || av[1] == 'X'))) obj_add(nm, av);
+            }
+            while (s[p] && s[p] != '\n') p++;
+            i = p;
+        }
+    }
 }
 
 static void fn_macro_collect(const char *s) {
@@ -3980,9 +4054,14 @@ static int parse(const char *s) {
     memset(tt, 0, TS * 4);
     char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
+    obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
     if (fn_macro_n > 0) {
         char *msrc = fn_macro_expand(exp_src);
         if (msrc && msrc[0]) { free(exp_src); exp_src = msrc; }
+    }
+    if (obj_macro_n > 0) { /* fix 2026-08-13: 对象宏文本层展开 (lex 前) */
+        char *osrc = obj_macro_expand(exp_src);
+        if (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
     lex(exp_src);
     free(exp_src);

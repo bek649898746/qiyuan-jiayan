@@ -85,6 +85,10 @@ __attribute__((unused))
 静 构 { 字 name[32]; 整 val; } macros[4096]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
 静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
+/* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: 同步 C — Git hash-ll.h TAB 别名) */
+静 构 { 字 name[32]; 字 val[512]; } obj_macros[2048]; 静 整 obj_macro_n;
+静 空 obj_add(字 *n, 字 *v) { 若 (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n = obj_macro_n + 1; } }
+静 字 *obj_find(常 字 *n) { 遍 (整 i = 0; i < obj_macro_n; i++) 若 (!strcmp(obj_macros[i].name, n)) 返 obj_macros[i].val; 返 0; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
 静 构 { 字 name[32]; 字 val[2048]; } str_macros[4096]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
@@ -128,6 +132,77 @@ __attribute__((unused))
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) { 遍 (整 j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n = macro_n - 1; 返; }
     遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) { 遍 (整 j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n = str_macro_n - 1; 返; }
     遍 (整 i = 0; i < fn_macro_n; i++) 若 (!strcmp(fn_macros[i].name, n)) { 遍 (整 j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n = fn_macro_n - 1; 返; }
+}
+
+/* 对象宏收集 (lex 前): #define A <表达式/标识符> — 非函数宏非字符串宏非纯数字 (fix 2026-08-13: 同步 C) */
+静 空 obj_macro_collect(常 字 *s) {
+    obj_macro_n = 0;
+    遍 (整 i = 0; s[i]; i = i + 1) {
+        若 (s[i] == '/' && s[i + 1] == '*') { i += 2; 循环 (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i = i + 1; i = i + 1; 续; }
+        若 (s[i] == '/' && s[i + 1] == '/') { 循环 (s[i] && s[i] != '\n') i = i + 1; 续; }
+        若 (s[i] == '"') { i = i + 1; 循环 (s[i] && s[i] != '"') { 若 (s[i] == '\\') i = i + 1; i = i + 1; } 续; }
+        若 (s[i] == '\'') { i = i + 1; 循环 (s[i] && s[i] != '\'') { 若 (s[i] == '\\') i = i + 1; i = i + 1; } 续; }
+        若 (s[i] == '#' && strncmp(s + i, "#define", 7) == 0) {
+            整 p = i + 7;
+            循环 (s[p] == ' ' || s[p] == '\t') p = p + 1;
+            字 nm[32]; 整 ni = 0;
+            循环 (isalnum((无 字)s[p]) || s[p] == '_' || ((无 字)s[p] >= 0x80)) { 若 (ni < 31) nm[ni++] = s[p]; p = p + 1; }
+            nm[ni] = 0;
+            循环 (s[p] == ' ' || s[p] == '\t') p = p + 1;
+            若 (nm[0] && s[p] != '(' && s[p] != '"') {
+                字 av[512]; 整 ai = 0;
+                循环 (s[p] && s[p] != '\n' && ai < 510) { 若 (s[p] == '\\' && s[p + 1] == '\n') { p += 2; av[ai++] = ' '; 续; } av[ai++] = s[p]; p = p + 1; }
+                循环 (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t' || av[ai - 1] == '\r')) ai = ai - 1;
+                av[ai] = 0;
+                若 (ai > 0 && !(av[0] >= '0' && av[0] <= '9') && !(av[0] == '-' && av[1] >= '0' && av[1] <= '9') && !(av[0] == '0' && (av[1] == 'x' || av[1] == 'X'))) obj_add(nm, av);
+            }
+            循环 (s[p] && s[p] != '\n') p = p + 1;
+            i = p;
+        }
+    }
+}
+
+/* 文本层对象宏展开: 词边界替换, 串内/预处理行内不换, 链式 (fix 2026-08-13: 同步 C) */
+静 字 *obj_macro_expand(常 字 *s) {
+    整 cap = (整)strlen(s) * 2 + 2048;
+    字 *out = malloc(cap);
+    整 o = 0;
+    遍 (整 i = 0; s[i]; ) {
+        若 (s[i] == '#' && (s[i + 1] == 'd' || s[i + 1] == 'u' || s[i + 1] == 'i' || s[i + 1] == 'e' || s[i + 1] == 'l' || s[i + 1] == 'p' || s[i + 1] == 'n')) {
+            循环 (s[i] && s[i] != '\n') { out[o++] = s[i]; i = i + 1; }
+            续;
+        }
+        若 (s[i] == '"') { out[o++] = s[i++]; 循环 (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; 若 (s[i]) out[o++] = s[i++]; 续; }
+        若 (s[i] == '\'') { out[o++] = s[i++]; 循环 (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; 若 (s[i]) out[o++] = s[i++]; 续; }
+        若 (s[i] == '/' && s[i + 1] == '/') { 循环 (s[i] && s[i] != '\n') out[o++] = s[i++]; 续; }
+        若 (isalnum((无 字)s[i]) || s[i] == '_' || ((无 字)s[i] >= 0x80)) {
+            整 j = i;
+            循环 (isalnum((无 字)s[j]) || s[j] == '_' || ((无 字)s[j] >= 0x80)) j = j + 1;
+            整 prev_ok = (i > 0) && (isalnum((无 字)s[i - 1]) || s[i - 1] == '_' || ((无 字)s[i - 1] >= 0x80));
+            整 next_ok = (isalnum((无 字)s[j]) || s[j] == '_' || ((无 字)s[j] >= 0x80));
+            字 nm[32]; 整 nl = j - i;
+            若 (nl < 31) { memcpy(nm, s + i, nl); nm[nl] = 0; } 否 nl = 0;
+            若 (!prev_ok && !next_ok && nl > 0) {
+                字 *val = obj_find(nm);
+                整 dep = 0;
+                循环 (val && dep < 32 && (整)strlen(val) < 4000) {
+                    字 *v2 = obj_find(val);
+                    若 (!v2 || v2 == val) 断;
+                    整 vn = 0; 循环 (isalnum((无 字)val[vn]) || val[vn] == '_' || ((无 字)val[vn] >= 0x80)) vn = vn + 1;
+                    若 (val[vn] != 0) 断;
+                    val = v2;
+                    dep = dep + 1;
+                }
+                若 (val) { 整 vl = (整)strlen(val); 若 (o + vl < cap - 4) { memcpy(out + o, val, vl); o += vl; i = j; 续; } }
+            }
+            循环 (i < j) out[o++] = s[i++];
+            续;
+        }
+        out[o++] = s[i++];
+        若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); }
+    }
+    out[o] = 0;
+    返 out;
 }
 
 静 空 fn_macro_collect(常 字 *s) {
@@ -3993,9 +4068,14 @@ __attribute__((unused))
     memset(tt, 0, TS * 4);
     字 *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
+    obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
     若 (fn_macro_n > 0) {
         字 *msrc = fn_macro_expand(exp_src);
         若 (msrc && msrc[0]) { free(exp_src); exp_src = msrc; }
+    }
+    若 (obj_macro_n > 0) { /* fix 2026-08-13: 对象宏文本层展开 (lex 前) */
+        字 *osrc = obj_macro_expand(exp_src);
+        若 (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
     lex(exp_src);
     free(exp_src);
