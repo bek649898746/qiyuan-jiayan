@@ -83,3 +83,50 @@ jobs:
       - name: QEMU 内核验证 (NVMe 环回 LOOPBACK-PASS)
         continue-on-error: true
         run: wsl -e bash scripts/_qemu_kernel.sh kernel_v36
+
+  asmzh:
+    runs-on: windows-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: 编译宿主汇编器
+        run: gcc -O2 -Wall -Werror srclib/asm_zh.c -o asm_zh.exe
+
+      - name: 编译宿主编译器
+        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
+
+      - name: asm_zh.jy 自宿主 (qcc 编译甲言版 → v2)
+        shell: powershell
+        run: |
+          qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe | Out-Null
+          if (-not (Test-Path build_asmzh_v2.exe)) { exit 1 }
+          Write-Host "asm_zh v2 编译 OK"
+
+      - name: 自宿主对齐 (host vs v2 产物 SHA)
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8'
+          python - <<'PY'
+          import subprocess, hashlib, os
+          files = ['tests/behavior/b_scanf.c', 'tests/behavior/b_bitfield.c', 'tests/qcc/math_call_test.c']
+          ok = 0
+          for i, src in enumerate(files):
+              base = f'szh_ci_{i}'
+              r = subprocess.run(['qcc_x86.exe', '-S', src, '-o', base + '.asm'], capture_output=True)
+              if r.returncode != 0 or not os.path.exists(base + '.asm.asm'):
+                  raise SystemExit(f'{src}: qcc -S 失败')
+              subprocess.run(['asm_zh.exe', base + '.asm.asm', '-o', base + '_h.exe'], capture_output=True, check=True)
+              subprocess.run(['build_asmzh_v2.exe', base + '.asm.asm', '-o', base + '_v.exe'], capture_output=True, check=True, timeout=900)
+              h1 = hashlib.sha256(open(base + '_h.exe', 'rb').read()).hexdigest()
+              h2 = hashlib.sha256(open(base + '_v.exe', 'rb').read()).hexdigest()
+              if h1 != h2:
+                  raise SystemExit(f'{src}: host={h1[:16]} v2={h2[:16]} 不一致')
+              ok += 1
+              print(f'  {src}: MATCH')
+          print(f'asm_zh 自宿主对齐: {ok}/{len(files)} 一致')
+          PY
