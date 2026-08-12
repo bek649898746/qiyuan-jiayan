@@ -7814,10 +7814,16 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 
         /* epilogue */
         set_label(epi_label);
-        add_rsp_imm(fn_frame);
-        pop_r(3); /* pop rbx */
-        pop_r(5); /* pop rbp */
-        ret();
+        若 (is_isr) { /* fix 2026-08-12: 镜像漏同步宿主 is_isr epilogue — 原恒走普通 ret, __isr_ 函数无 iretq → ISR 返回错 */
+            /* iretq: 从中断返回 (CPU 自动弹出 RIP:CS:RFLAGS:RSP:SS) */
+            asm_emit("    iretq\n", 0, 0, 0);
+            b(0x48); b(0xCF);
+        } 否 {
+            add_rsp_imm(fn_frame);
+            pop_r(3); /* pop rbx */
+            pop_r(5); /* pop rbp */
+            ret();
+        }
     }
 
     /* mini-CRT entry stub: provides argc/argv, calls main, exits with its code.
