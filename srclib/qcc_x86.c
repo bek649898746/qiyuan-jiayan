@@ -7471,6 +7471,13 @@ static void w8(FILE *f, int v) { w4(f, v); w4(f, 0); } /* 64-bit write: high wor
 static void w2(FILE *f, int v) { fputc(v & 0xff, f); fputc((v >> 8) & 0xff, f); }
 static void pad(FILE *f, int n) { while (n-- > 0) fputc(0, f); }
 
+/* fix 2026-08-12: 分块写零替代逐字节 fputc — 自宿主的 fputc builtin 每字节一次 WriteFile
+   syscall, 52MB .data 填充 85s; fwrite 整块写 → 4KB 块 ≈ 20ms (快 ~4000 倍). */
+static void pad_zero(FILE *f, int n) {
+    char zb[4096]; memset(zb, 0, sizeof(zb));
+    while (n > 0) { int c = n > 4096 ? 4096 : n; fwrite(zb, 1, c, f); n -= c; }
+}
+
 /* fix 2026-08-12 自举收敛 (根因): .data 覆盖范围必须 ≥ statics + bump 堆 + 自切栈.
    旧公式 max(cp*84, 0x800000) 只按输出代码量估算 — 自举时 cp*84≈83.7MB,
    但 statics ≈46MB + bump 堆 ≈42MB (tt/tv/tn/nn/tuns/tll/tll_hi 34MB + code 4MB + 源缓冲 ~1.5MB + sdat/misc ~3MB)
@@ -7637,7 +7644,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
     int data_end = data_foff + data_extent() + 0x3000; /* fix 2026-08-12: data_extent 覆盖 statics+堆+栈 (旧 cp*84 不够) */
-    while (pos < data_end) { fputc(0, f); pos++; }
+    pad_zero(f, data_end - pos); /* fix 2026-08-12: 原逐字节 fputc, 自宿主 52MB 填充 85s → 分块 fwrite */
 }
 
 /* ?????? ??????????? */

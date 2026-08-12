@@ -7431,6 +7431,11 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 静 空 w8(FILE *f, 整 v) { w4(f, v); w4(f, 0); } /* 64-bit write: high word ALWAYS 0. The self-host has no real long long; `v >> 32` on a 32-bit value masks the shift count to 0 and re-writes v, so all w8 callers pass <4GB values. */
 静 空 w2(FILE *f, 整 v) { fputc(v & 0xff, f); fputc((v >> 8) & 0xff, f); }
 静 空 pad(FILE *f, 整 n) { 循环 (n-- > 0) fputc(0, f); }
+/* fix 2026-08-12: 分块写零替代逐字节 fputc — 自宿主 fputc 每字节一次 WriteFile, 52MB 填充 85s → 4KB 块 fwrite */
+静 空 pad_zero(FILE *f, 整 n) {
+    字 zb[4096]; memset(zb, 0, sizeof(zb));
+    循环 (n > 0) { 整 c = n > 4096 ? 4096 : n; fwrite(zb, 1, c, f); n = n - c; }
+}
 
 /* fix 2026-08-12 自举收敛 (根因): .data 覆盖范围必须 ≥ statics + bump 堆 + 自切栈.
    旧公式 max(cp*84, 0x800000) 只按输出代码量估算 — 自举时 cp*84≈83.7MB,
@@ -7612,7 +7617,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
     整 data_end = data_foff + data_extent() + 0x3000; /* fix 2026-08-12: data_extent 覆盖 statics+堆+栈 (旧 cp*84 不够) */
-    循环 (pos < data_end) { fputc(0, f); pos++; }
+    pad_zero(f, data_end - pos); /* fix 2026-08-12: 原逐字节 fputc, 自宿主 52MB 填充 85s → 分块 fwrite */
 }
 
 /* ?????? ??????????? */
