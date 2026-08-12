@@ -48,7 +48,7 @@ fails = []
 for name in tests:
     src = os.path.join('tests', name)  # name 已含 qcc/ 或 behavior/ 前缀
     # 读断言
-    expected = '0'; expected_out = None; expect_cfail = False
+    expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
     except Exception:
@@ -58,6 +58,8 @@ for name in tests:
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
+        m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
+        if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True
 
     # H1 编译 (输出名用 basename, 兼容 behavior/ 子目录)
@@ -82,7 +84,7 @@ for name in tests:
     try:
         # 用 cmd /c 运行: Server 2025 上 Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005,
         # 但 cmd 启动正常 (fix 2026-08-08, 实测 CI 诊断: cmd rc=0, subprocess rc=0xC0000005)
-        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
         rc = p.returncode
         out = (p.stdout or '').strip()
     except subprocess.TimeoutExpired as te:
