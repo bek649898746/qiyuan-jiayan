@@ -3,6 +3,13 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## AEC60F44 (2026-08-12)
+
+- scanf 变参输入 builtin (%d/%x/%c/%s) + run_tests stdin 注入 (@EXPECTED in:)
+- QEMU CI (脚本路径参数化 + ci.yml qemu job) + Gate5 收尾 (Tensor 池版本链 GC, kernel_v56 GC-PASS)
+- 前期: stk_top 堆修复/parse_base/双指针/var_lookup/extern 诊断/宏表 4096/ISR iretq/pesz 遮蔽 等
+- 验证: v1==v2==v3==v4==v5 = aec60f44045b75f6 五代全等, H1==H2 254/254 (Windows+bin), 行为断言 218/218
+
 ## D1CF1CB7 (2026-08-11)
 **Phase 2-3 Compound Literal (C99 (T){...})：**
 
