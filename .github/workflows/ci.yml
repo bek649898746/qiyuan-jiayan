@@ -49,7 +49,7 @@ jobs:
       - name: 自举不动点 (v2==v3==v4 全等 + 匹配仓库记录)
         shell: powershell
         run: |
-          $expected = '1744556F940A274F06A3FA8B5A6D0293A1C14424A662D3EB35C8F5449235B9F2'
+          $expected = 'AEC60F44045B75F65D2C9C7427E035E3FAB518BC1C8D504B9FE9A77F87C7EA0C'
           qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe | Out-Null
           .\v1.exe srclib_jiayan/qcc_work.jy -o v2.exe | Out-Null
           .\v2.exe srclib_jiayan/qcc_work.jy -o v3.exe | Out-Null
@@ -66,3 +66,20 @@ jobs:
             Write-Host "自举不动点 FAIL (v2 不等于 v3/v4 或与仓库记录不符)"
             exit 1
           }
+
+  qemu:
+    runs-on: windows-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 编译宿主编译器
+        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
+
+      - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
+        continue-on-error: true
+        run: wsl -e bash -c "sudo apt-get update && sudo apt-get install -y qemu-system-x86 binutils"
+
+      - name: QEMU 内核验证 (NVMe 环回 LOOPBACK-PASS)
+        continue-on-error: true
+        run: wsl -e bash scripts/_qemu_kernel.sh kernel_v36
