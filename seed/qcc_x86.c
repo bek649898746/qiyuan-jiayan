@@ -116,7 +116,7 @@ static void asm_emit_dbl(const char *fmt, double v) {
 }
 static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-static struct { char name[32]; int val; } macros[2048]; static int macro_n; /* Phase1-L3: 64->1024 */
+static struct { char name[32]; int val; } macros[4096]; static int macro_n; /* Phase1-L3: 64->1024 */
 static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* string #define macros: #define NAME "value" — fix 2026-08-03: only NUMBER
@@ -125,7 +125,7 @@ static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!st
    value is stored here and copied into str_tbl at the USE SITE (assigning the
    ID in source-reference order), so the .字串 ID order == sdat placement order
    and the 3-stage H1==H2 string layout stays identical. */
-static struct { char name[32]; char val[2048]; } str_macros[2048]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ static int str_macro_n;
+static struct { char name[32]; char val[2048]; } str_macros[4096]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ static int str_macro_n;
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* fix 2026-08-07: include 展开阶段收集 #define 名字 — 使 include 守卫 (#ifndef X ... #endif) 在
    pp_include_expand 内生效, 重复 #include 的头不再重复展开其内部 #include (防指数膨胀) */
@@ -156,7 +156,7 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
 static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macro_collect 的条件编译感知用) */
 
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
-static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[2048]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[4096]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
 static int cl_if_parent[1024]; static int cl_if_taken[1024]; static int cl_if_n; /* Phase1-L4: 64->1024 */ static int cl_if_skip; /* fn_macro_collect 的条件编译栈 (fix 2026-08-07) */
 static int macro_exists(const char *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆, defined(NEG) 判假 */
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return 1;
