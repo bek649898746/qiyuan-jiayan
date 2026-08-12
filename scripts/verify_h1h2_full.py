@@ -65,6 +65,10 @@ for i, (src, is_bin) in enumerate(files):
         agree += 1
     else:
         diffs.append(f'{tag}: host={sh} v1={sv}')
+    # fix 2026-08-13: 逐文件删中间产物 (2×52MB/文件, 218 文件 ≈ 22GB, 防 C 盘堆积)
+    for p in (oh, ov):
+        try: os.remove(p)
+        except OSError: pass
 
 print(f'H1==H2 门禁: 共 {len(files)} 文件 | 产物一致 {agree} | 双失败一致 {cfail} | compile_fail 跳过 {skip} | 差异 {len(diffs)}')
 if diffs:
