@@ -12,6 +12,10 @@ int main() {
     const char *s = "hello world hello";
     const char *p = strrchr(s, 'h');
     printf("strrchr=%d\n", (int)(p ? p - s : -1));
+    // strdup / strndup
+    char *dup = strdup("hello");
+    char *ndup = strndup("hello world", 5);
+    printf("strdup=%s strndup=%s\n", dup ? dup : "NULL", ndup ? ndup : "NULL");
     // memchr
     char buf[16] = "abcdef";
     printf("memchr=%d\n", (int)(memchr(buf, 'd', 6) ? (char*)memchr(buf, 'd', 6) - buf : -1));
