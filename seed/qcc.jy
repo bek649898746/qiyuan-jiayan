@@ -82,11 +82,11 @@ __attribute__((unused))
 静 整 sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
 静 整 vs_n(空) { 返 vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-静 构 { 字 name[32]; 整 val; } macros[2048]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
+静 构 { 字 name[32]; 整 val; } macros[4096]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
 静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
-静 构 { 字 name[32]; 字 val[2048]; } str_macros[2048]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
+静 构 { 字 name[32]; 字 val[2048]; } str_macros[4096]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* fix 2026-08-07: 顺序 #define 定义表 (名字+数值) — pp_include_expand 与 fn_macro_collect 共用, 使 include 守卫生效 + #if 用真值 (镜像 qcc_x86.c) */
 静 字 pp_guard[128][32]; 静 整 pp_guard_val[128]; 静 整 pp_guard_n;
@@ -115,7 +115,7 @@ __attribute__((unused))
     *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
-静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[2048]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[4096]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
 静 整 cl_if_parent[1024]; 静 整 cl_if_taken[1024]; 静 整 cl_if_n; /* Phase1-L4: 64->1024 */ 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
 静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
