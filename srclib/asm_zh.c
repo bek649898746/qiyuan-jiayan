@@ -12,6 +12,8 @@ static unsigned char *code; static int cp;
 static int data_rva_base = 0x2000;
 static int exp_code_end;  /* expected code_end from qcc's .布局 directive */
 static int exp_data_base; /* expected data_base from qcc */
+static int exp_data_vsize; /* .data virtual size from qcc .段 (fix 2026-08-12 H2 对等) */
+static int exp_data_raw;   /* .data raw size from qcc .段 */
 static int asm_stc_n = 0; /* static slots (.堆计 N), for the heap counter */
 
 /* ---- x86-64 emitters ---- */
@@ -111,23 +113,24 @@ static void w2(FILE *f, int v) { fputc(v&0xff,f);fputc((v>>8)&0xff,f); }
 static void write_pe(FILE *f, int entry_rva) {
         int ts=((cp+4095)&~4095); if(ts<512)ts=512;
     int tf=0x200, dr=data_rva_base;
-    int isz=dr+0x5000000+0x1000, df=tf+ts;
+    int dv = exp_data_vsize ? exp_data_vsize : 0x5000000; /* fix 2026-08-12 H2 对等: 用 qcc .段 的 .data vsize */
+    int isz=dr+dv+0x1000, df=tf+ts;
     fputc('M',f);fputc('Z',f);pad(f,58);w4(f,64);
     fputc('P',f);fputc('E',f);fputc(0,f);fputc(0,f);
     w2(f,0x8664);w2(f,2);w4(f,0);w4(f,0);w4(f,0);w2(f,0xF0);w2(f,0x22E);
     w2(f,0x020B);fputc(0,f);fputc(0,f);w4(f,ts);w4(f,8);w4(f,0);w4(f,entry_rva);w4(f,0x1000);
     w8(f,0x400000);w4(f,0x1000);w4(f,0x200);w2(f,6);w2(f,0);w2(f,0);w2(f,0);w2(f,6);w2(f,0);
     w4(f,0);w4(f,isz);w4(f,0x200);w4(f,0);w2(f,3);w2(f,0x8100);
-    w8(f,0x100000);w8(f,0x400000);w8(f,0x100000);w8(f,0x1000);w4(f,0);w4(f,16);
+    w8(f,0x400000);w8(f,0x400000);w8(f,0x100000);w8(f,0x1000); /* StackReserve=StackCommit=0x400000 (fix 2026-08-12 H2 对等, 同步 qcc); HeapReserve/Commit */w4(f,0);w4(f,16);
     w4(f,0);w4(f,0);w4(f,dr+0x1A8);w4(f,60); /* import dir: desc@+0x1A8（fix 2026-08-06 BUG-1） */
     for(int di=2;di<16;di++){w4(f,0);w4(f,0);}
     fwrite(".text\0\0\0",1,8,f);w4(f,ts);w4(f,0x1000);w4(f,ts);w4(f,tf);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0x60000020);
-    fwrite(".data\0\0\0",1,8,f);w4(f,0x5000000);w4(f,dr);w4(f,0x4000);w4(f,df);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0xC0000040);
+    fwrite(".data\0\0\0",1,8,f);w4(f,dv);w4(f,dr);w4(f,exp_data_raw ? exp_data_raw : 0x4000);w4(f,df);w4(f,0);w4(f,0);w2(f,0);w2(f,0);w4(f,0xC0000040);
     int pos=(int)ftell(f);while(pos<tf)fputc(0,f),pos++;fwrite(code,1,cp,f);pos=(int)ftell(f);while(pos<df)fputc(0,f),pos++;
     /* .data header (match qcc fix 2026-08-06 BUG-1): heap counter@+0 (8B),
        IAT1@+8 (8 kernel32 + term), IAT2@+0x50 (16 msvcrt + term),
        ILT1@+0xD8, ILT2@+0x120, desc@+0x1A8, names@+0x1E4, statics@+0x300. */
-    w8(f, 0x400000 + dr + 0x300 + 4 * asm_stc_n + 2560); /* heap counter */
+    w8(f, (0x400000 + dr + 0x300 + 4 * asm_stc_n + 2560 + 7) & ~7); /* heap counter (fix 2026-08-12: +7&~7 对齐, 同步 BLOCKER-3) */
     int nslot[24];
     /* IAT/ILT 占位 */
     fseek(f, df + 0x08, SEEK_SET); for(int i=0;i<9;i++)w8(f,0);
@@ -154,7 +157,7 @@ static void write_pe(FILE *f, int entry_rva) {
     w4(f,dr+0x120);w4(f,0);w4(f,0);w4(f,dr+mdll);w4(f,dr+0x50);
     for(int di=0;di<5;di++)w4(f,0);
     fseek(f,0,SEEK_END);
-    pos=(int)ftell(f);while(pos<df+0x4000)fputc(0,f),pos++;fseek(f,0,SEEK_END);
+    pos=(int)ftell(f);{int drend = df + (exp_data_raw ? exp_data_raw : 0x4000);  while(pos<drend)fputc(0,f),pos++;} fseek(f,0,SEEK_END); pos=(int)ftell(f); 
 }
 
 /* ---- Assembler state ---- */
@@ -244,6 +247,7 @@ static int asm_assemble(const char *src, int base, int emit_data) {
         else if(!strcmp(mn,"右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(0,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r32, cl */
         else if(!strcmp(mn,"算术右移64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,7,r&7);}} /* sar r64, cl (LL; fix 2026-08-05) */
      else if(!strcmp(mn,"逻辑右移64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(r>=0){rex(1,0,0,r&8);b(0xD3);modrm(3,5,r&7);}} /* shr r64, cl (LL; fix 2026-08-05) */
+     else if(!strcmp(mn,"逻辑右移")){SK;int r=RG;SK;if(*p==',')p++;SK;if(!strncmp(p,"cl",2)){if(r>=8)rex(0,0,0,1);else b(0x40);b(0xD3);modrm(3,5,r&7);}else{int v=NUM;if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,5,r&7);b(v&0xff);}} /* shr r32, cl/imm8 (fix 2026-08-12 H2 对等: 32位 cl 形式 D3/5) */
      else if(!strcmp(mn,"循环左移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,0,r&7);b(v&0xff);}} /* rol r,imm8 (P0) */
      else if(!strcmp(mn,"循环左移cl")){SK;int r=RG;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xD3);modrm(3,0,r&7);}} /* rol r,cl (P0) */
      else if(!strcmp(mn,"循环右移")){SK;int r=RG;SK;if(*p==',')p++;int v=NUM;if(r>=0){if(r>=8)b(0x41);else b(0x40);b(0xC1);modrm(3,1,r&7);b(v&0xff);}} /* ror r,imm8 (P0) */
@@ -317,9 +321,11 @@ else if(!strcmp(mn,"无符号除余64")){SK;int r=RG;if(r>=0){b(0x48);b(0xF7);mo
      else if(!strcmp(mn,"扫置位")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(0,s&8,0,d&8);b(0x0F);b(0xBD);modrm(3,d&7,s&7);}} /* bsr r32,r/m32 (P0) */
      else if(!strcmp(mn,"扫置位64")){SK;int d=RG;SK;if(*p==',')p++;int s=RG;if(d>=0&&s>=0){rex(1,s&8,0,d&8);b(0x0F);b(0xBD);modrm(3,d&7,s&7);}} /* bsr r64,r/m64 (P0) */
         else if(!strcmp(mn,"存零")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int r=RG;if(r>=0&&m>=0){b(0x89);modrm(0,r&7,m&7);}} /* mov [m],r32 NO REX */
-        else if(!strcmp(mn,"存浮")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0xF2);b(0x0F);b(0x11);modrm(0,0,3);}} /* movsd [rbx],xmm0 */
-        else if(!strcmp(mn,"存字节")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m==3){b(0x40);b(0x88);modrm(0,0,3);}} /* mov [rbx],al */
-        else if(!strcmp(mn,"存64")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int v=RG;if(m==0&&v==3){b(0x48);b(0x89);modrm(0,3,0);}else if(m==3&&v==1){b(0x48);b(0x89);modrm(0,1,3);}else if(m==3){b(0x48);b(0x89);modrm(0,0,3);}} /* mov [rax],rbx / mov [rbx],rcx / mov [rbx],rax (fix 2026-08-06 cg_struct_copy: [rbx],rcx was bare → -S 缺指令) */
+        else if(!strcmp(mn,"存浮")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(m>=0){b(0xF2);b(0x0F);b(0x11);modrm(0,0,m&7);}} /* movsd [rm],xmm0 (fix 2026-08-12: 原只认 [rbx] → 存浮 [r0],xmm0 被静默丢弃) */
+        else if(!strcmp(mn,"浮取")){SK;int rg=0;if(!strncmp(p,"xmm1",4)){rg=1;p+=4;}else if(!strncmp(p,"xmm0",4)){p+=4;}SK;if(*p==',')p++;SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;if(m>=0){b(0xF2);b(0x0F);b(0x10);modrm(0,rg,m&7);}} /* movsd xmmN, [rm] (fix 2026-08-12: double* 解引用 直发缺文本 → asm 丢指令) */
+        else if(!strcmp(mn,"存字节")){SK;if(*p=='[')p++;int m=RG;SK;int disp=0,has_disp=0;if(*p=='-'||*p=='+'||(*p>='0'&&*p<='9')){has_disp=1;disp=NUM;}SK;if(*p==']')p++;SK;if(*p==',')p++;SK;if(*p=='r'||(*p=='e'&&(p[1]=='a'||p[1]=='c'||p[1]=='d'||p[1]=='b'))){int s=RG;if(m==3&&s==0){b(0x40);b(0x88);modrm(0,0,3);}}else{int imm=NUM;if(has_disp){b(0xC6);if(disp<128&&disp>=-128){modrm(1,0,m&7);b(disp);}else{modrm(2,0,m&7);b4(disp);}b(imm&0xFF);}}} /* mov byte [rbp+disp],imm8 (mov_byte_mbrp_imm, fix 2026-08-12 H2 对等: 原只认 [rbx],al 被静默丢弃) / mov [rbx],al */
+else if(!strcmp(mn,"存字")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int s=RG;if(m>=0&&s>=0){if(m>=8||s>=8){rex(0,s&8,0,m&8);}b(0x66);b(0x89);modrm(0,s&7,m&7);}} /* mov word [rm],rs (fix 2026-08-12 H2 对等) */
+        else if(!strcmp(mn,"存64")){SK;if(*p=='[')p++;int m=RG;SK;int disp=0,has_disp=0;if(*p=='-'||*p=='+'||(*p>='0'&&*p<='9')){has_disp=1;disp=NUM;}SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int v=RG;if(has_disp){b(0x48);b(0x89);modrm(2,v&7,m&7);b4(disp);}else if(m==0&&v==3){b(0x48);b(0x89);modrm(0,3,0);}else if(m==3&&v==1){b(0x48);b(0x89);modrm(0,1,3);}else if(m==3){b(0x48);b(0x89);modrm(0,0,3);}} /* mov [rm+disp32],rv (emit_scanf 存64 [rbp+aoff],r0 — fix 2026-08-12 H2 对等: 原只认 [rax]/[rbx] 无位移, rbp 形式被静默丢弃) / mov [rax],rbx / mov [rbx],rcx / mov [rbx],rax */
                 else if(!strcmp(mn,"存指64")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x48);b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],rax (sret copy text fix 2026-08-03) */
         else if(!strcmp(mn,"存指32")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],eax */
         else if(!strcmp(mn,"存指16")){SK;if(*p=='[')p++;int m=RG;SK;int sg=1;if(*p=='+')p++;else if(*p=='-'){sg=-1;p++;}int ov=NUM*sg;SK;if(*p==']')p++;SK;if(*p==',')p++;SK;int rr=RG;if(m==1&&rr==0){b(0x66);b(0x89);modrm(1,0,1);b(ov);}} /* mov [rcx+disp8],ax */
@@ -379,7 +385,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"存字节0r12")){b(0x41);b(0xC6);b(0x04);b(0x24);b(0);} /* mov byte[r12],0 (sprintf NUL — fix 2026-08-03) */
         else if(!strcmp(mn,"存字rax")){b(0x40);b(0x66);b(0x89);b(0x18);} /* MOV [rax],bx (short field write fix 2026-08-06) */
         else if(!strcmp(mn,"自增")){int r=RG;if(r>=8)b(0x41);if(r>=0){b(0xFF);modrm(3,0,r&7);}} /* inc r8-r15 */
-        else if(!strcmp(mn,"存32rax")){b(0x40);b(0x89);b(0x18);} /* MOV [rax],ebx (32-bit array write) */
+        else if(!strcmp(mn,"存32rax")){SK;if(*p=='r'&&p[1]>='0'&&p[1]<='9'){int r=RG;if(r>=0){rex(0,r&8,0,0);b(0x89);modrm(0,r&7,0);}}else{b(0x40);b(0x89);b(0x18);}} /* MOV [rax],r32 — 位域 RMW 存32rax r10 → 44 89 10 (fix 2026-08-12 H2 对等: 原硬编码 ebx) / 裸形式 → ebx */
         else if(!strcmp(mn,"存字节rax")){b(0x40);b(0x88);b(0x18);} /* MOV [rax],bl (char array write) */
         else if(!strcmp(mn,"存栈索引")){b(0x4F);b(0x89);b(0x04);b(0xF4);} /* mov [r12+r14*8],r8 */
         else if(!strcmp(mn,"跳转")){int li=LR;if(li>=0)patch_label(cp+1,li,2),jmp_rel(0);}
@@ -430,7 +436,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"存静32")){int v=RIPS;SK;if(*p==',')p++;mov_rip_eax(v);}
      else if(!strcmp(mn,"存静字节")){int v=RIPS;SK;if(*p==',')p++;int im=NUM;b(0xC6);b(0x05);b4(v);b(im&0xFF);} /* mov byte [rip+disp], imm8 (fix 2026-08-05) */
         else if(!strcmp(mn,"取值")){SK;int r=RG;SK;if(*p==',')p++;SK;if(*p=='[')p++;int m=RG;if(r>=0&&m>=0)mov_reg_mreg(r,m);}
-        else if(!strcmp(mn,"取64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(*p=='['){p++;if(!strncmp(p,"r13",3)){p+=3;SK;if(*p=='+')p++;int dv=NUM;if(r>=0){b(0x49);b(0x8B);b(0x45);b(dv);}SK;if(*p==']')p++;}else if(!strncmp(p,"r10",3)){p+=3;SK;if(*p=='+')p++;int dv=NUM;if(r>=0){b(0x49);b(0x8B);b(0x42);b(dv);}SK;if(*p==']')p++;}else{int m=RG;if(r>=0&&m>=0)mov_reg_mreg64(r,m);}}else{int m=RG;if(r>=0&&m>=0)mov_reg_mreg64(r,m);}}
+        else if(!strcmp(mn,"取64")){SK;int r=RG;SK;if(*p==',')p++;SK;if(*p=='['){p++;if(!strncmp(p,"r13",3)){p+=3;SK;if(*p=='+')p++;int dv=NUM;if(r>=0){b(0x49);b(0x8B);b(0x40|((r&7)<<3)|5);b(dv);}SK;if(*p==']')p++;}else if(!strncmp(p,"r10",3)){p+=3;SK;if(*p=='+')p++;int dv=NUM;if(r>=0){b(0x49);b(0x8B);b(0x40|((r&7)<<3)|2);b(dv);}SK;if(*p==']')p++;}else{int m=RG;if(r>=0&&m>=0)mov_reg_mreg64(r,m);}}else{int m=RG;if(r>=0&&m>=0)mov_reg_mreg64(r,m);}} /* fix 2026-08-12 H2 对等: 取64[r13]/[r10] 原硬编码 rax, 忽略 r */
         else if(!strcmp(mn,"存值")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==',')p++;int r=RG;if(r>=0&&m>=0)mov_mreg_reg(m,r);}
         else if(!strcmp(mn,"存帧64")){int v=MEM;SK;if(*p==',')p++;int r=RG;mov_mbrp_reg64(v,r);}
         else if(!strcmp(mn,"取帧64")){SK;int r=RG;SK;if(*p==',')p++;int v=MEM;if(r>=0)mov_reg_mbrp64(r,v);}
@@ -457,6 +463,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"弹浮")){pop_xmm0();}
         else if(!strcmp(mn,".堆计")){int v=NUM;if(v>0)asm_stc_n=v;}
         else if(!strcmp(mn,".布局")){SK;if(!strncmp(p,"code_end=",9)){p+=9;exp_code_end=NUM;}SK;if(!strncmp(p,"data_base=0x",12)||!strncmp(p,"data_base=0X",12)){p+=12;exp_data_base=(int)strtoul(p,NULL,16);}}
+        else if(!strcmp(mn,".段")){SK;if(!strncmp(p,"data_vsize=0x",13)){char *ep;p+=13;exp_data_vsize=(int)strtoul(p,&ep,16);p=ep;}SK;if(!strncmp(p,"data_raw=0x",11)){char *ep;p+=11;exp_data_raw=(int)strtoul(p,&ep,16);p=ep;}} /* fix 2026-08-12 H2 对等 */
         else if(!strcmp(mn,".字串")){SK;if(*p=='"'){if(str_cnt2<1024)str_offs2[str_cnt2++]=sdp;p++;while(*p&&*p!='"'){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=*p;if(*p=='\\'&&p[1]&&p[1]=='n'){p++;sdp--;sdat[sdp++]=10;}else if(*p=='\\'&&p[1]&&p[1]=='t'){p++;sdp--;sdat[sdp++]=9;}else if(*p=='\\'&&p[1]&&p[1]=='"'){p++;sdp--;sdat[sdp++]=34;}else if(*p=='\\'&&p[1]&&p[1]=='\\'){p++;sdp--;sdat[sdp++]=92;}p++;}sdat[sdp++]=0;if(*p=='"')p++;}}
         else if(!strcmp(mn,".浮点")){while(sdp%8!=0){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=0;}if(dbl_cnt2<1024)dbl_offs2[dbl_cnt2++]=sdp;SK;double v=0;int sign=1;if(*p=='-'){sign=-1;p++;}while(*p>='0'&&*p<='9'){v=v*10+(*p-'0');p++;}if(*p=='.'){p++;double fr=0,sc=1;while(*p>='0'&&*p<='9'){fr=fr*10+(*p-'0');sc*=10;p++;}v+=fr/sc;/* fix 2026-08-06: 整数累加+单次除法，消除 fr*=0.1 累积误差（与 qcc fp_parse 同构）。6.123000 再解析 = ...CB 与直发一致，旧法 ...CA 差 1 ULP */}v*=sign;unsigned char*db=(unsigned char*)&v;for(int k=0;k<8;k++){if(sdp>=sdc-4){sdc+=256;sdat=realloc(sdat,sdc);}sdat[sdp++]=db[k];}}
         else { fprintf(stderr, "[ERR] asm_zh: unknown instruction '%s' at line %d\n", mn, line_no); exit(1); } /* fix 2026-08-05: unknown mnemonics were silently dropped → broken exe */

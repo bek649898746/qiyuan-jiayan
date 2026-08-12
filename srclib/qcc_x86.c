@@ -4864,10 +4864,10 @@ static void cg_f(int n) {
                 if (off >= 0) { if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); /* static struct ptr: 8B .data slot via RIP */
                                else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
                 if (fo != 0) add_rax_imm8(fo);
-                b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); /* movsd xmm0, [rax] */
+                asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); /* movsd xmm0, [rax] */
             } else {
                 if (var_isstatic(vn)) movsd_xmm0_rip(coff_static_disp(off, 2) + fo - 2); /* static struct.d field via RIP (8-byte movsd) */
-                else if (var_big_param(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); if (fo != 0) add_rax_imm8(fo); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* big struct param: slot holds ptr → ptr+fo, movsd [rax] (fix 2026-08-07) */
+                else if (var_big_param(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); if (fo != 0) add_rax_imm8(fo); asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* big struct param: slot holds ptr → ptr+fo, movsd [rax] (fix 2026-08-07) */
                 else movsd_xmm0_mbrp(off - stypes[si].sz + fo - cur_frame_sz);
             }
             return;
@@ -4905,6 +4905,7 @@ static void bf_shl_imm(int reg, int cnt) { /* shl r32, cl  (cnt compile-time 0..
     if (cnt <= 0) return;
     mov_ri_ext(9, cnt);
     mov_rr(1, 9); /* ecx = cnt */
+    asm_emit("    左移 r%d, cl\n", (char*)(long long)(reg), (char*)(long long)0, (char*)(long long)0);
     rex(0, 0, 0, reg & 8); b(0xD3); modrm(3, 4, reg & 7);
 }
 static void bf_extract(const char *sn, const char *fn) {
@@ -5219,6 +5220,7 @@ static void emit_hex_prefix_pad(int tail, int upper, int prefix) {
     set_label(lcount);
     asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9d */
     rex(0,0,0,1); b(0xC1); modrm(3, 5, 0); b(4); /* shr r8d, 4 */
+    asm_emit("    逻辑右移 r8, 4\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); /* fix 2026-08-12 H2 对等: 裸发射补 asm_emit 文本 (asm_zh 汇编需要) */
     test_rr(8, 8); jnz_rel(-1); patch_label(cp-4, lcount, 3);
     /* pad = W - len - (hash?2:0) */
     mov_reg_mbrp(0, scratch_base - cur_frame_sz + 232); /* eax = W */
@@ -5231,7 +5233,7 @@ static void emit_hex_prefix_pad(int tail, int upper, int prefix) {
     mov_r_imm(1, 0); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8E); b4(0); patch_label(cp-4, lpref, 6); /* cmp eax,0; jle lpref: 无填充直接前缀+digits */
     /* pad > 0: 检查 0 flag */
     mov_reg_mbrp(0, scratch_base - cur_frame_sz + 264); /* eax = 0flag */
-    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lsp, 3); /* jz lsp: 空格填充 */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lsp, 1); /* jz lsp: 空格填充 (fix 2026-08-12: is_jmp 3→1, 文本非零跳→为零跳, H2 对等) */
     /* 零填充: 先前缀, 再 pad 个 '0' */
     mov_reg_mbrp(1, scratch_base - cur_frame_sz + 260); /* ecx = #flag */
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lzp, 1);
@@ -6839,7 +6841,7 @@ static void cg(int n) {
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = &arr[i] */
                             if (foff != 0) add_rax_imm8(foff);
                             pop_xmm0(); /* xmm0 = rhs */
-                            b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
+                            asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
                         } else {
                         cg(n1[n]); push_r(0); /* save rhs */
                         cg_no_deref = 1; /* arr[i] must yield the ADDRESS (struct* param / struct array) */
@@ -6882,7 +6884,7 @@ static void cg(int n) {
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
                                 if(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
                                 pop_xmm0(); /* xmm0 = rhs */
-                                b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
+                                asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
                             } else {
                                 cg(n1[n]); if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196) */
                                 if(off>=0){ if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
@@ -6901,7 +6903,7 @@ static void cg(int n) {
                                 cg_f(n1[n]); push_xmm0(); /* save rhs */
                                 lea_rax_rip(coff_static_disp(off, 1) + foff - 1); /* rax = &field */
                                 pop_xmm0();
-                                b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
+                                asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
                             } else {
                                 cg(n1[n]); push_r(0); /* save rhs */
                                 lea_rax_rip(coff_static_disp(off, 1) + foff - 1); /* rax = &field */
@@ -7001,10 +7003,10 @@ static void cg(int n) {
                         mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
                     }
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
-                    if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
+                    if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                     else if(cg_mem_frow == 1 || cg_mem_frow == 0){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
                     else if(cg_mem_frow == 8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit) */
-                    else if(cg_mem_frow == 2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
+                    else if(cg_mem_frow == 2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
                     else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } else if(off>=0){
@@ -7016,10 +7018,10 @@ static void cg(int n) {
                     if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}else if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);} /* IMUL r11d, r9d */
                     int base=off-vars[vi].arr_sz*esz;
                     lea_r_mbrp(0,base - cur_frame_sz); asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
-                    if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
+                    if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                     else if(esz==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
                     else if(esz==8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit fnptr element) */
-                    else if(esz==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
+                    else if(esz==2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
                     else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     did=1; break;
@@ -7030,10 +7032,10 @@ static void cg(int n) {
                         if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}else if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                         load_ptr_slot(off, vn); /* rax = ptr (static → RIP, else frame) */
                         asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
-                        if (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
+                        if (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
                         else if(esz==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
                         else if(esz==8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
-                        else if(esz==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
+                        else if(esz==2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
                         else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
                         mov_rr(0, 3); /* eax = stored value (chained a=b=c assignments need it) */
                         did = 1;
@@ -7045,10 +7047,10 @@ static void cg(int n) {
                         if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}else if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}
                         else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                         lea_rax_rip(coff_static_disp(off, 1)-1); asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0);b(0x01);modrm(3,3,0);
-                        if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
+                        if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                         else if(esz==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
                         else if(esz==8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
-                        else if(esz==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
+                        else if(esz==2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
                         else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);}
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         did=1;
@@ -7068,10 +7070,10 @@ static void cg(int n) {
                     pop_r(11);
                     if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-09: cg may clobber r3) */
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
-                    if (var_pdbl(vn)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
+                    if (var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
                     else if(esz==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
                     else if(esz==8){asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx */
-                    else if(esz==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx */
+                    else if(esz==2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx */
                     else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
@@ -7079,12 +7081,12 @@ static void cg(int n) {
                     int peszp = var_esz(vn);
                     if (!arr_dbl) pop_r(3); /* ebx = rhs (fix 2026-08-05) */
                     mov_rr(11, 0); /* r11d = index */
-                    if(peszp==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}else if(peszp==2){rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}else if(peszp>4){mov_r_imm(0,peszp);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
+                    if(peszp==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}else if(peszp==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}else if(peszp>4){mov_r_imm(0,peszp);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                     load_param_val(vn); /* eax = ptr (reg or [rbp+disp]) */
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
-                    if (var_pdbl(vn)) { pop_xmm0(); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double* param) */
-                    else if(peszp==1){rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
-                    else if(peszp==2){b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
+                    if (var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double* param) */
+                    else if(peszp==1){asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
+                    else if(peszp==2){asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
                     else{asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
@@ -7189,10 +7191,10 @@ static void cg(int n) {
             if (nt[n0[n]] == 1) el = var_esz((char*)(nn + n0[n])); /* named var: element size */
             else if (nt[n0[n]] == 14) { char *av = (char*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
             if (pesz[n0[n]]) el = pesz[n0[n]]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
-            if (ndbl[n] || (nt[n0[n]] == 1 && var_pdbl((char*)(nn + n0[n])))) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
+            if (ndbl[n] || (nt[n0[n]] == 1 && var_pdbl((char*)(nn + n0[n])))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
-            if (el == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break; } /* word load (short*) fix 2026-08-08 */
+            if (el == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break; } /* word load (short*) fix 2026-08-08 */
             asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0x00); /* MOVZX eax, byte [eax] */
         } break;
         case 13: /* fall through to 15 */
@@ -7265,7 +7267,7 @@ else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long lon
                         lea_rax_rip(coff_static_disp(o, 1) + fo - 1); /* address only (fix 2026-08-05: was unconditional deref → ++s.v crashed) */
                     } else {
                     lea_rax_rip(coff_static_disp(o, 1) + fo - 1);
-                    if (st_field_is_dbl(stypes[s].name, fn)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
+                    if (st_field_is_dbl(stypes[s].name, fn)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
                     else if (fsz > 4) {
                         int fty = st_field_ty_idx(stypes[s].name, fn);
                         if (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址) */
@@ -7363,10 +7365,10 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 if (cg_fdepth >= 0 && cg_fdepth < 4) cg_fdepth++; /* next outer dimension (fix 2026-08-07: struct 字段第一维从 0 递增) */
                 asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                 if (!cg_no_deref && cg_fdepth >= cg_fdepth_max) { /* deref only at OUTERMOST index (fix 2026-08-05) */
-                    if (cg_mem_dbl) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
+                    if (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
                     else if (cg_mem_frow == 1 || cg_mem_frow == 0) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
                     else if (cg_mem_frow == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
-                    else if (cg_mem_frow == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                    else if (cg_mem_frow == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
                     else if (cg_mem_frow == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                 }
@@ -7388,11 +7390,11 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         int base = off - vars[vi].arr_sz * elemsz;
                         lea_r_mbrp(0, base - cur_frame_sz); asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0);
                         if (!cg_no_deref) {
-                            if (var_is_dbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays: p_dbl means double-return, elem is a pointer) */
+                            if (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays: p_dbl means double-return, elem is a pointer) */
                             else if (vars[vi].p_esz > 0 && esz > vars[vi].p_esz) { /* 2D row: ADDRESS (C decay) */ }
                             else if (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
                             else if (esz == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* 64-bit fnptr / pointer / long long element (fix 2026-08-06: LL 数组元素需 nll，否则链式 a[0]+a[1]+a[2] 走 32 位加法) */
-                    else if (esz == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                    else if (esz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
                             else { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
                         }
                         did = 1; break;
@@ -7406,11 +7408,11 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     load_ptr_slot(off, vname); /* rax = ptr (static → RIP, else frame) */
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax,r11 */
                     if (!cg_no_deref) {
-                        if (var_pdbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* elem → xmm0 */
+                        if (var_pdbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* elem → xmm0 */
                         else if (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
                         else if (esz > 8) { /* row of a pointer-to-array (char (*)[N], N>8): leave the ADDRESS (C decay) */ }
                         else if (esz == 8) { mov_reg_mreg64(0, 0); } /* char** / int**: load the 8-byte pointer element */
-                        else if (esz == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                        else if (esz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
                         else { mov_reg_mreg(0, 0); }
                     }
                     did = 1;
@@ -7437,12 +7439,12 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     lea_rax_rip(coff_static_disp(off, 1) - 1); /* rax = &static[0] (lea is 7 bytes: stc_disp assumes 6) */
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                     if (!cg_no_deref) {
-                        if (var_is_dbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays) */
+                        if (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays) */
                         else if (is_struct_elem) { /* address mode for member access */
                             if (esz <= 8) { if (esz == 8) { mov_reg_mreg64(0, 0); } else { mov_reg_mreg(0, 0); } } /* fix 2026-08-06: ≤8 字节 struct 元素作值 → 解引用 (原留地址 → x = arr[1] 存地址 4207368) */
                         } else if (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); }
                         else if (esz == 8) { mov_reg_mreg64(0, 0); } /* char* / pointer element: 64-bit */
-                        else if (esz == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                        else if (esz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
                         else { mov_reg_mreg(0, 0); }
                     }
                     did = 1;
@@ -7478,10 +7480,10 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 else load_param_val(vname); /* eax = ptr (reg or [rbp+disp]) */
                 asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                 if (!cg_no_deref) {
-                    if (var_pdbl(vname)) { b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* param elem → xmm0 */
+                    if (var_pdbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* param elem → xmm0 */
                     else if (peszp == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
                     else if (peszp > 4) { mov_reg_mreg64(0, 0); }         /* mov rax,[rax] (char** ?ptr / struct*) */
-                    else if (peszp == 2) { asm_emit("    wordread eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                    else if (peszp == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
                     else { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
                 }
             }
@@ -8039,6 +8041,10 @@ void gen_code(void) {
     asm_emit("\n.堆计 %d\n", (char*)(long long)(stc_n), (char*)(long long)0, (char*)(long long)0);
     /* tell asm_zh the exact code_end (before sdat) so it can align its layout */
     asm_emit(".布局 code_end=%d data_base=0x%X\n", (char*)(long long)(cp - sdp), (char*)(long long)(data_rva_base), (char*)(long long)0);
+    /* fix 2026-08-12 H2 对等: 告诉 asm_zh 直发的 .data 段尺寸 (data_extent 修复后 vsize/raw 是动态的,
+       asm_zh 旧写死 0x5000000/0x4000 → H2 产物 .data 段 ≠ 直发 → H2 对等失败) */
+    { int lvsize = (data_extent() + 0x100000 + 4095) & ~4095; if (lvsize < 0x6000000) lvsize = 0x6000000; /* 96MB 地板 (write_pe 同) */
+      asm_emit(".段 data_vsize=0x%X data_raw=0x%X\n", (char*)(long long)lvsize, (char*)(long long)(data_extent() + 0x3000), (char*)(long long)0); }
 
     /* ??main ???????? �?mini-CRT stub is the real entry (it calls main) */
     int entry_rva = 0x1000 + crt_entry_off;
