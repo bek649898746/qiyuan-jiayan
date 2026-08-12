@@ -54,7 +54,7 @@ for name in tests:
     except Exception:
         head = ''
     for line in head.split('\n'):
-        m = re.search(r'//\s*@EXPECTED\s+exit:(\S+)', line)
+        m = re.search(r'//\s*@EXPECTED\s+exit:\s*(\S+)', line)
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()

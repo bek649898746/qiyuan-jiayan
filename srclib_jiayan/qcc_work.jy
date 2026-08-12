@@ -4694,6 +4694,7 @@ __attribute__((unused))
                     }
                 }
                 若 (tt[tk] == SK) tk++; /* ; */
+                parse_base = 0; /* fix 2026-08-12: 文件级 fnptr 变量同样防原型 parse_base 泄漏 */
                 var_static(vn, 4); /* 8-byte .data slot (fnptr = pointer) */
                 vars[vcnt - 1].arr_esz = 8; /* fnptr: *gfp loads 8 bytes */
                 若 (fn_ret_dbl) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr: gfp(x) yields xmm0 */
@@ -4773,7 +4774,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 若 (tt[tk] == CK) tk++;
                 若 (tt[tk] == DT) { 循环 (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
             }
-            若 (tt[tk] == SK) { tk++; 续; } /* no-paren decl misparsed as fn: static unsigned char *code; */
+            若 (tt[tk] == SK) { parse_base = 0; tk++; 续; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏) */
             tk++; /* skip ) */
             若 (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 若 (tt[tk] == KK) tk++;
@@ -4786,7 +4787,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     }
                 }
             }
-            若 (tt[tk] == SK) { fn_dbl_set_ret((字*)(nn + fdef), fn_ret_dbl); tk++; 续; } /* function prototype: record double return for call sites */
+            若 (tt[tk] == SK) { fn_dbl_set_ret((字*)(nn + fdef), fn_ret_dbl); parse_base = 0; tk++; 续; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明被误标函数局部 static (var_static_kw=1) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             Nc(fdef, blk());
             若 (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
@@ -7424,12 +7425,27 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 静 空 w2(FILE *f, 整 v) { fputc(v & 0xff, f); fputc((v >> 8) & 0xff, f); }
 静 空 pad(FILE *f, 整 n) { 循环 (n-- > 0) fputc(0, f); }
 
+/* fix 2026-08-12 自举收敛 (根因): .data 覆盖范围必须 ≥ statics + bump 堆 + 自切栈.
+   旧公式 max(cp*84, 0x800000) 只按输出代码量估算 — 自举时 cp*84≈83.7MB,
+   但 statics ≈46MB + bump 堆 ≈42MB (tt/tv/tn/nn/tuns/tll/tll_hi 34MB + code 4MB + 源缓冲 + sdat)
+   ≈ 88MB > 83.7MB → stk_top 落进 tll_hi (v1: 0x52B15D8 = heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB)
+   → 栈帧向下写穿 token 数组 → 运行时 tll 垃圾 → 伪 nll=1 → 628 movabs → v1≠v2 2-cycle.
+   新公式: statics 终点 (DATA_RVA_OFF + 4*stc_n + 2560) 之上加 0x3400000
+   (堆上限 0x2C00000=44MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB), 与 cp*84 取大者. */
+静 整 data_extent(空) {
+    整 e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x3400000;
+    若 (e > heap_top) 返 e;
+    返 heap_top;
+}
+
 静 空 write_pe(FILE *f, 整 entry_rva) {
     整 text_rva = 0x1000, text_size = ((cp + 4095) & ~4095);
     若 (text_size < 512) text_size = 512;
     整 text_foff = FILE_ALIGNMENT;
     整 data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
-    整 data_vsize = 0x6000000;   /* .data 96MB virtual: statics + bump heap (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
+    整 data_vsize = (data_extent() + 0x100000 + 4095) & ~4095; /* fix 2026-08-12: 随 extent 动态 — 自举 stk_top≈97MB 超旧固定 96MB; +1MB 余量, 覆盖栈底之下 */
+    若 (data_vsize < 0x6000000) data_vsize = 0x6000000; /* 保持旧 96MB 地板 (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
     整 image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
 
     /* DOS Header (64 bytes) */
@@ -7498,7 +7514,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     fputc('.', f); fputc('d', f); fputc('a', f); fputc('t', f); fputc('a', f); fputc(0, f); fputc(0, f); fputc(0, f);
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, (cp * 84 > 0x800000 ? cp * 84 : 0x800000) + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源动态) */ /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 镜像 C 源) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, data_extent() + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-12: data_extent = statics+堆+栈; 旧 cp*84 自举时 83.7MB < 88MB 堆终点 → 栈落进堆) */ /* fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区 */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7588,7 +7604,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (整)ftell(f);
-    整 data_end = data_foff + (cp * 84 > 0x800000 ? cp * 84 : 0x800000) + 0x3000; /* fix 2026-08-08 镜像 C 源动态 */ /* fix 2026-08-08 镜像 C 源: 覆盖栈顶 */
+    整 data_end = data_foff + data_extent() + 0x3000; /* fix 2026-08-12: data_extent 覆盖 statics+堆+栈 (旧 cp*84 不够) */
     循环 (pos < data_end) { fputc(0, f); pos++; }
 }
 
@@ -7609,7 +7625,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    整 stk_top = IMAGE_BASE + data_rva_base + (cp * 84 > 0x800000 ? cp * 84 : 0x800000); /* fix 2026-08-08 镜像 C 源: 动态栈顶按产物大小 */
+    整 stk_top = IMAGE_BASE + data_rva_base + data_extent(); /* fix 2026-08-12 自举收敛根因: 栈顶必须在 bump 堆终点之上 — 旧 max(cp*84,8MB) 自举时落进 tll_hi → 栈帧写穿 token 数组 → 2-cycle. 实测 v1g: stk_top=0x52B15D8=heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB */
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
