@@ -230,6 +230,26 @@ long strtol(const char *s, char **endptr, int base) {
     return r;
 }
 
+/* ---- 复制分配 (fix 2026-08-13: Phase 2, Git 硬需求 strdup/strndup) ---- */
+char *strdup(const char *s) {
+    int n = 0; char *d;
+    while (s[n] != 0) n = n + 1;
+    d = (char*)malloc(n + 1);
+    n = 0;
+    while (1) { d[n] = s[n]; if (s[n] == 0) break; n = n + 1; }
+    return d;
+}
+
+char *strndup(const char *s, size_t max) {
+    int n = 0; char *d;
+    while (n < max && s[n] != 0) n = n + 1;
+    d = (char*)malloc(n + 1);
+    n = 0;
+    while (n < max && s[n] != 0) { d[n] = s[n]; n = n + 1; }
+    d[n] = 0;
+    return d;
+}
+
 /* ---- 排序/搜索 (fix 2026-08-13: Phase 2, Git hash-table 排序需要) ---- */
 void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
     /* 冒泡: 简单可靠, n 通常小 (Git 的 hash 表/数组) */
