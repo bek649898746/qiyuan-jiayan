@@ -3,6 +3,16 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## D551FFF3 (2026-08-13)
+
+**Phase 2 标准库补齐第一批: strrchr/memchr/memmove/atoi/atol/strtol/isspace/qsort/bsearch**
+
+- qcc_rt.c 注入运行时补 9 个纯计算函数 (qcc 自宿主实现, #ifndef __GNUC__ 块)
+- 教训: qcc 对"强转指针+索引"嵌套 (如 ((char*)s)[i], (char*)base+j*sz) 编译异常
+  → 必须先赋值局部 char* 变量再操作 (memchr/memmove/qsort 首版踩坑)
+- b_stdlib.c 回归测试 (strrchr/memchr/memmove 重叠/atoi/atol/strtol 0x/isspace/qsort/bsearch)
+- 验证: v1..v5 = d551fff3, H1==H2 254/255, H2 218/219, 自宿主 H2 218/219, 测试 219/219
+
 ## D5A037A8 (2026-08-13)
 
 **审计 P0/P1 修复: dbl 数组 512→1024 + fn_static 体系补全 + build.ps1 1-cycle**
