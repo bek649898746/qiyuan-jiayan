@@ -49,7 +49,7 @@ jobs:
       - name: 自举不动点 (v2==v3==v4 全等 + 匹配仓库记录)
         shell: powershell
         run: |
-          $expected = 'AAB7E4114201614E8FD00782994D07B0D40B8A8A4642846825808381B1703BD8'
+          $expected = '4DD38FB6192628F43CF85A3FC943AA290FA2AE388F748EEA494461B184980EDF'
           qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe | Out-Null
           .\v1.exe srclib_jiayan/qcc_work.jy -o v2.exe | Out-Null
           .\v2.exe srclib_jiayan/qcc_work.jy -o v3.exe | Out-Null

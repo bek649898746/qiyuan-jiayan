@@ -428,6 +428,20 @@ __attribute__((unused))
             若 (op == 6) 返 x > y;
         }
     }
+    /* 算术 +/- (fix 2026-08-13: 同步 C — git-compat-util.h 的 __STDC_VERSION__ - 0 < 199901L) */
+    遍 (整 ai = 1, adp = 0; e[ai]; ai = ai + 1) {
+        若 (e[ai] == '(') adp = adp + 1;
+        否 若 (e[ai] == ')') adp = adp - 1;
+        若 (adp == 0 && (e[ai] == '-' || e[ai] == '+')) {
+            字 a[512], b[512];
+            整 la = ai;
+            循环 (la > 0 && (e[la-1] == ' ' || e[la-1] == '\t')) la = la - 1;
+            memcpy(a, e, la); a[la] = 0;
+            strcpy(b, e + ai + 1);
+            整 x = pp_eval(a), y = pp_eval(b);
+            返 e[ai] == '-' ? x - y : x + y;
+        }
+    }
     整 negv = 0; /* fix 2026-08-06: 支持负数字面量 #if -5 < 0 (镜像 qcc_x86.c) */
     若 (e[0] == '-') { negv = 1; e++; }
     若 (e[0] == '0' && (e[1] == 'x' || e[1] == 'X')) {
@@ -8471,6 +8485,16 @@ __attribute__((unused))
         若 (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS\n"); 返 0; }
         若 (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; 续; }
         若 (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; 续; }
+        若 (strcmp(argv[argi], "-D") == 0 && argc > argi + 1) { /* -D NAME=VALUE (fix 2026-08-13: 同步 C — Git 编译 C99 环境宏) */
+            字 *dp = argv[argi + 1]; 字 *eq = dp;
+            循环 (*eq && *eq != '=') eq = eq + 1;
+            若 (eq > dp && eq - dp < 32) {
+                字 nm[32]; 整 dl = (整)(eq - dp);
+                memcpy(nm, dp, dl); nm[dl] = 0;
+                若 (*eq == '=') macro_add(nm, atoi(eq + 1)); 否 macro_add(nm, 1);
+            }
+            argi += 2; 续;
+        }
         若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
             若 (hb) {
