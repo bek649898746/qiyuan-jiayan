@@ -475,6 +475,21 @@ static int pp_eval(const char *e) {
             if (op == 6) return x > y;
         }
     }
+    /* arithmetic +/- (fix 2026-08-13: git-compat-util.h 的 __STDC_VERSION__ - 0 < 199901L;
+       原整串当宏名 → 0 → #error. 优先级低于比较: 比较先拆, 算术在更内层) */
+    for (int i = 1, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && (e[i] == '-' || e[i] == '+')) {
+            char a[512], b[512];
+            int la = i;
+            while (la > 0 && (e[la-1] == ' ' || e[la-1] == '\t')) la--;
+            memcpy(a, e, la); a[la] = 0;
+            strcpy(b, e + i + 1);
+            int x = pp_eval(a), y = pp_eval(b);
+            return e[i] == '-' ? x - y : x + y;
+        }
+    }
     /* number or macro name (fix 2026-08-06: 支持负数字面量 #if -5 < 0; 原 -5 落到 macro_find 失败 → 0) */
     int neg = 0;
     if (e[0] == '-') { neg = 1; e++; }
@@ -8283,6 +8298,16 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
         if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
         if (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
+        if (strcmp(argv[argi], "-D") == 0 && argc > argi + 1) { /* -D NAME=VALUE (fix 2026-08-13: Git 编译需要 C99 环境宏 __STDC_VERSION__ 等) */
+            const char *dp = argv[argi + 1]; const char *eq = dp;
+            while (*eq && *eq != '=') eq++;
+            if (eq > dp && eq - dp < 32) {
+                char nm[32]; int dl = (int)(eq - dp);
+                memcpy(nm, dp, dl); nm[dl] = 0;
+                if (*eq == '=') macro_add(nm, atoi(eq + 1)); else macro_add(nm, 1);
+            }
+            argi += 2; continue;
+        }
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
             if (hb) {
