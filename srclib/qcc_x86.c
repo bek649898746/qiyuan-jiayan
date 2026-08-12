@@ -1672,6 +1672,10 @@ static int var_lookup(const char *n) {
         }
         return vars[i].rsp_off; /* backward: latest shadows */
     }
+    /* fix 2026-08-12: codegen 时 vs_n()=vs_end 是当前函数 var 上限 — 声明在 vs_end 之后的
+       file-scope static (kw=0) 全局可见却被上限排除 (镜像 func_n 场景, 原静默残留; extern 报错后暴露).
+       局部变量 (kw=1/非static) 仍受 vs_end/fvb 限制, 不跨函数泄漏 (BLOCKER-1). */
+    if (vs_end) for (int i = vcnt - 1; i >= vs_end; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i] && var_codegen_visible(i)) return vars[i].rsp_off;
     return -1;
 }
 static int var_stidx(const char *n) {
@@ -3537,8 +3541,8 @@ static int blk(void) {
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
                 tk++;
             }
-            int is_ptr = (tt[tk] == DK);
-            if (is_ptr) tk++; /* skip * for pointers */
+            int is_ptr = 0;
+            while (tt[tk] == DK) { is_ptr = 1; tk++; } /* fix 2026-08-12: 循环消费所有 * — 原只消费一个, int **pp 双重指针第二个 * 挡在 VR 检查前 → pp 未注册 → extern 误报/残留垃圾 (b_ptrarith) */
             int d = Nd(7);
             int acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             for (int i = 0; i < 8; i++) adimv[i] = 0;

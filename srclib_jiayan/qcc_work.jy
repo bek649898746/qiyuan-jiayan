@@ -1695,6 +1695,9 @@ __attribute__((unused))
         }
         返 vars[i].rsp_off; /* backward: latest shadows */
     }
+    /* fix 2026-08-12: codegen 时 vs_n()=vs_end 是当前函数 var 上限 — 声明在 vs_end 之后的
+       file-scope static (kw=0) 全局可见却被上限排除 (镜像 func_n 场景). 局部变量仍受 vs_end/fvb 限制. */
+    若 (vs_end) 遍 (整 i = vcnt - 1; i >= vs_end; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i] && var_codegen_visible(i)) 返 vars[i].rsp_off;
     返 -1;
 }
 静 整 var_stidx(常 字 *n) {
@@ -3570,8 +3573,8 @@ __attribute__((unused))
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
                 tk++;
             }
-            整 is_ptr = (tt[tk] == DK);
-            若 (is_ptr) tk++; /* skip * for pointers */
+            整 is_ptr = 0;
+            循环 (tt[tk] == DK) { is_ptr = 1; tk++; } /* fix 2026-08-12: 循环消费所有 * — 原只消费一个, int **pp 双重指针漏注册 (同 b_ptrarith) */
             整 d = Nd(7);
             整 acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             遍 (整 i = 0; i < 8; i++) adimv[i] = 0;
