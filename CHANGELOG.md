@@ -3,7 +3,17 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
-## AAB7E411 (2026-08-13)
+## 4DD38FB6 (2026-08-13)
+
+**镜像同步 Git 编译能力: -D 宏定义 + #if 算术减法 (v4 可编译 Git)**
+
+- 镜像 qcc_work.jy 同步宿主: -D NAME=VALUE 参数 + pp_eval #if X - 0 < Y 算术
+- Git 试编译里程碑: 15/16 核心文件通过 (hex/strbuf/oid-array/strvec/date/path/environment/
+  strmap/string-list/trace2/pretty/revision/commit/object/cache-tree), 唯一 dir.c 受 hash-ll.h
+  宏别名区 (TAB 分隔 #define) 阻塞 — qcc 宏系统增强为下一座山
+- 验证: v1..v5 = 4DD38FB6, H1==H2 254/255, H2 218/219, 自宿主 H2 218/219, 测试 219/219
+
+## 4AAE562 (2026-08-13)
 
 **Phase 2 标准库补齐第二批: strdup/strndup (Git 硬需求)**
 
