@@ -4696,6 +4696,7 @@ static int parse(const char *s) {
                     }
                 }
                 if (tt[tk] == SK) tk++; /* ; */
+                parse_base = 0; /* fix 2026-08-12: 文件级 fnptr 变量同样防原型 parse_base 泄漏 (var_static 按 parse_base 标 kw) */
                 var_static(vn, 4); /* 8-byte .data slot (fnptr = pointer) */
                 vars[vcnt - 1].arr_esz = 8; /* fnptr: *gfp loads 8 bytes */
                 if (fn_ret_dbl) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr: gfp(x) yields xmm0 */
@@ -4777,7 +4778,7 @@ static int parse(const char *s) {
                 if (tt[tk] == CK) tk++;
                 if (tt[tk] == DT) { while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
             }
-            if (tt[tk] == SK) { tk++; continue; } /* no-paren decl misparsed as fn: static unsigned char *code; */
+            if (tt[tk] == SK) { parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
             if (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 if (tt[tk] == KK) tk++;
@@ -4790,7 +4791,7 @@ static int parse(const char *s) {
                     }
                 }
             }
-            if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); tk++; continue; } /* function prototype: record double return for call sites */
+            if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             Nc(fdef, blk());
             if (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
@@ -7460,6 +7461,20 @@ static void w8(FILE *f, int v) { w4(f, v); w4(f, 0); } /* 64-bit write: high wor
 static void w2(FILE *f, int v) { fputc(v & 0xff, f); fputc((v >> 8) & 0xff, f); }
 static void pad(FILE *f, int n) { while (n-- > 0) fputc(0, f); }
 
+/* fix 2026-08-12 自举收敛 (根因): .data 覆盖范围必须 ≥ statics + bump 堆 + 自切栈.
+   旧公式 max(cp*84, 0x800000) 只按输出代码量估算 — 自举时 cp*84≈83.7MB,
+   但 statics ≈46MB + bump 堆 ≈42MB (tt/tv/tn/nn/tuns/tll/tll_hi 34MB + code 4MB + 源缓冲 ~1.5MB + sdat/misc ~3MB)
+   ≈ 88MB > 83.7MB → stk_top 落进 tll_hi (v1: 0x52B15D8 = heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB)
+   → 栈帧向下写穿 token 数组 → 运行时 tll 垃圾 → 伪 nll=1 → 628 movabs → v1≠v2 2-cycle.
+   新公式: statics 终点 (DATA_RVA_OFF + 4*stc_n + 2560) 之上加 0x3400000
+   (堆上限 0x2C00000=44MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB, 递归 parse/codegen 取 8MB),
+   与 cp*84 取大者 — 小程序的 8MB 地板不变. */
+static int data_extent(void) {
+    int e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
+    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x3400000;
+    return e > heap_top ? e : heap_top;
+}
+
 static void write_pe(FILE *f, int entry_rva) {
     int text_rva = 0x1000, text_size = ((cp + 4095) & ~4095);
     if (text_size < 512) text_size = 512;
@@ -7471,7 +7486,8 @@ static void write_pe(FILE *f, int entry_rva) {
     if (text_size < need) text_size = need;
     int text_foff = FILE_ALIGNMENT;
     int data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
-    int data_vsize = 0x6000000;   /* .data 96MB virtual: statics + bump heap (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
+    int data_vsize = (data_extent() + 0x100000 + 4095) & ~4095; /* fix 2026-08-12: 随 extent 动态 — 自举 stk_top≈97MB 超旧固定 96MB; +1MB 余量, 覆盖栈底之下 */
+    if (data_vsize < 0x6000000) data_vsize = 0x6000000; /* 保持旧 96MB 地板 (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
     int image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
 
     /* DOS Header (64 bytes) */
@@ -7540,7 +7556,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fwrite(".data", 1, 5, f); pad(f, 3); /* ".data\0\0\0" — split write (see .text note) */
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, (cp * 84 > 0x800000 ? cp * 84 : 0x800000) + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08 动态) */ /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区) */ /* SizeOfRawData �?import table + pad only; loader zero-fills the rest */
+    w4(f, data_extent() + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-12: data_extent = statics+堆+栈; 旧 cp*84 自举时 83.7MB < 88MB 堆终点 → 栈落进堆) */ /* fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区 */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -7610,7 +7626,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
-    int data_end = data_foff + (cp * 84 > 0x800000 ? cp * 84 : 0x800000) + 0x3000; /* fix 2026-08-08 动态 */ /* fix 2026-08-08: 覆盖栈顶 */
+    int data_end = data_foff + data_extent() + 0x3000; /* fix 2026-08-12: data_extent 覆盖 statics+堆+栈 (旧 cp*84 不够) */
     while (pos < data_end) { fputc(0, f); pos++; }
 }
 
@@ -7630,7 +7646,7 @@ static void emit_crt_stub(void) {
        （loader 把主线程栈放在镜�?SizeOfImage 内部 ~91.6-92.6MB，页面不可靠 �?
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
-    int stk_top = IMAGE_BASE + data_rva_base + (cp * 84 > 0x800000 ? cp * 84 : 0x800000); /* fix 2026-08-08: 动态栈顶按产物大小 (编译器 852KB->72MB, 测试程序 4KB->4MB) */
+    int stk_top = IMAGE_BASE + data_rva_base + data_extent(); /* fix 2026-08-12 自举收敛根因: 栈顶必须在 bump 堆终点之上 — 旧 max(cp*84,8MB) 自举时落进 tll_hi → 栈帧写穿 token 数组 → 2-cycle. 实测 v1g: stk_top=0x52B15D8=heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB. data_extent = statics_end + 堆44MB + 栈8MB */
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
     mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */

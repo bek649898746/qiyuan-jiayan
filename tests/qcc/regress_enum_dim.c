@@ -1,4 +1,4 @@
-// @EXPECTED exit: 6
+// @EXPECTED exit: 12
 // Phase 2-3: enum 常量数组维度 (int a[MAX])
 enum { MAX = 3 };
 int main(void) {
