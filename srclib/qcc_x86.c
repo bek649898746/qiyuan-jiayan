@@ -1317,7 +1317,7 @@ static int coff_func_name_sym(const char *name) {
 }
 /* -c 模式：builtin 名（编译器内联发射，不是外部函数） */
 static int coff_is_builtin(const char *n) {
-    static const char *bn[] = { "printf", "fprintf", "sprintf", "snprintf", "putstr",
+    static const char *bn[] = { "printf", "fprintf", "sprintf", "snprintf", "putstr", "scanf",
         "fopen", "fread", "fwrite", "fputc", "fputs", "fclose", "fseek", "ftell", "rewind",
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
@@ -5027,6 +5027,50 @@ static void emit_print(const char *fname, int nargs) {
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
 
+/* fix 2026-08-12 scanf: args already pushed (fmt first, then &a, &b...).
+   Read stdin (GetStdHandle(-10) + ReadFile) into [rbp-4368] buf, then call
+   _scanf_rt(fmt, args, buf, len) from qcc_rt.c to parse fmt and write back.
+   Returns count of converted items in eax. */
+static void emit_scanf(int nargs) {
+    int ffi = func_find("_scanf_rt");
+    lea_r_mrsp(13, 8 * (nargs - 1)); /* r13 = &fmt (arg0, pushed first = deepest; args at [r13+8..]) */
+    mov_rr64(15, 4); /* r15 = pre-alignment rsp */
+    asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp, -16 */
+    mov_r_imm(1, -10); /* ecx = -10 = STD_INPUT_HANDLE */
+    sub_rsp_imm(32);
+    call_iat(0); /* eax = stdin handle */
+    add_rsp_imm(32);
+    mov_rr64(10, 0); /* r10 = handle */
+    lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf (callee-saved — ReadFile clobbers r11, 同 printf) */
+    lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz);   /* r9 = &read */
+    sub_rsp_imm(48);
+    mov_rr64(1, 10); mov_rr64(2, 12);
+    mov_ri_ext(8, 4096);
+    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (overlapped) */
+    call_iat(3); /* ReadFile */
+    add_rsp_imm(48);
+    mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes read */
+    mov_rr64(9, 0); /* r9 = len */
+    asm_emit("    取64 r1, [r13]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x4D); b(0); /* rcx = fmt */
+    /* 构造正序 args 数组到 [rbp+aoff]: args[k] = [r13-8-8k] 槽值 (参数按 fmt,&a,&b 压栈 → &a 在 [r13-8], &b 在 [r13-16]...).
+       负索引 args[-argi] 在 qcc 编译会丢符号 (2026-08-12) → 显式正序拷贝. */
+    { int aoff = -(272 + 8 * nargs);
+      for (int k = 0; k < nargs - 1; k++) {
+          asm_emit("    取64 r0, [r13%+d]\n", (char*)(long long)(-(8 + 8 * k)), (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x45); b(-(8 + 8 * k)); /* mov rax, [r13-8-8k] */
+          asm_emit("    存64 [rbp%+d], r0\n", (char*)(long long)(aoff + 8 * k), (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x89); modrm(2, 0, 5); b4(aoff + 8 * k); /* mov [rbp+aoff+8k], rax */
+      }
+      lea_r_mbrp(2, aoff); /* rdx = args 数组 */
+    }
+    mov_rr64(8, 12); /* r8 = buf */
+    if (ffi >= 0) { /* _scanf_rt(fmt=rcx, args=rdx, buf=r8, len=r9) */
+        sub_rsp_imm(32); /* shadow */
+        call_rel(0);
+        patch_label(cp - 4, func_tbl[ffi].label, 0);
+        add_rsp_imm(32);
+    }
+    mov_rr64(4, 15); /* rsp = r15 (restore pre-alignment) */
+}
+
 /* shared %d/%s/%c/%% format loop: r11=fmt r12=out(advancing) r13=next-arg ptr.
    Returns the ldone label the caller must set_label() after the loop. */
 /* shared decimal-digit emitter: prints |ebx| (with '-' sign) into the r12 buffer,
@@ -6492,6 +6536,8 @@ static void cg(int n) {
                 mov_r_imm(0, 0);
             } else if (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
+            } else if (!strcmp(fname, "scanf")) { /* fix 2026-08-12: 变参输入 builtin */
+                emit_scanf(nargs);
             } else if (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs")) {
                 emit_fileio(fname);
             } else if (!strcmp(fname, "sprintf")) {
