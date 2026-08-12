@@ -3,6 +3,20 @@
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。
 > 每个改动都必须同步 C 版与甲言版，重打不动点后登记。
 
+## asm_zh.jy 对齐 (2026-08-12)
+
+**asm_zh 甲言版深漂移全量对齐：host asm_zh (C) vs v2 (qcc 编译 asm_zh.jy) 抽样 34/34 产物 SHA 一致**
+
+- 补 5 个处理器: 存64 位移形式 / 存字节 imm 形式 / 存32rax 寄存器操作数 / 存浮 [rM] 泛化 / 浮取 新增
+- 补 .段 指令 (data_vsize/data_raw) + NUM() 支持大写 hex (qcc %X 输出)
+- 补 存字 / 逻辑右移 cl/imm 双形式 / 取64 [r13]/[r10] 寄存器编码
+- write_pe 全量移植: IAT1@+8 + IAT2@+0x50 + ILT1@+0xD8 + ILT2@+0x120 + desc@+0x1A8
+  + names@+0x1E4 (8 kernel32 + 16 msvcrt) + statics@+0x300 + heap counter 对齐
+  + StackReserve/Commit 0x400000 + .段 vsize/raw
+- call_iat IAT2@+0x50 公式 (`slot<8 ? 8+8*slot : 0x50+8*(slot-8)`) — 旧版全槽 8+8*slot, msvcrt 槽偏 8
+- real_base 改取 .布局 data_base (对齐 C), 非 static 变量规避 qcc 静态跨函数读写错位
+- 验证: 抽样 34 文件 host==v2 SHA 一致 (位域/浮点/scanf/静态/结构体/复合字面量全覆盖), CI 新增 asmzh job
+
 ## 02142A5D (2026-08-12)
 
 **H2 全量对等收官（qcc -S → asm_zh 汇编产物与直发 SHA 一致，217/218 + 1 预期跳过）：**
