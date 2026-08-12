@@ -146,6 +146,123 @@ int isxdigit(int c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
+int isspace(int c) { /* fix 2026-08-13: 补齐 ctype (Git 需要) */
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
+/* ---- 反向查找 (fix 2026-08-13: Phase 2 标准库补齐) ---- */
+char *strrchr(const char *s, int c) {
+    int i = 0; char *last = 0;
+    while (1) {
+        if (s[i] == c) last = (char*)(&s[i]);
+        if (s[i] == 0) break;
+        i = i + 1;
+    }
+    return last;
+}
+
+void *memchr(const void *s, int c, size_t n) {
+    int i = 0; char *b = (char*)s;
+    while (i < n) {
+        if (b[i] == c) return (void*)(b + i);
+        i = i + 1;
+    }
+    return 0;
+}
+
+void *memmove(void *d, const void *s, size_t n) {
+    int i = 0; char *dd = (char*)d; char *ss = (char*)s;
+    if (dd <= ss) {
+        while (i < n) { dd[i] = ss[i]; i = i + 1; }
+    } else {
+        i = n;
+        while (i > 0) { i = i - 1; dd[i] = ss[i]; }
+    }
+    return d;
+}
+
+/* ---- 数字转换 (fix 2026-08-13: Phase 2) ---- */
+int atoi(const char *s) {
+    int neg = 0; int r = 0;
+    while (isspace(s[0])) s = s + 1;
+    if (s[0] == '-') { neg = 1; s = s + 1; }
+    while (s[0] >= '0' && s[0] <= '9') { r = r * 10 + (s[0] - '0'); s = s + 1; }
+    if (neg) r = -r;
+    return r;
+}
+
+long atol(const char *s) {
+    long neg = 0; long r = 0;
+    while (isspace(s[0])) s = s + 1;
+    if (s[0] == '-') { neg = 1; s = s + 1; }
+    while (s[0] >= '0' && s[0] <= '9') { r = r * 10 + (s[0] - '0'); s = s + 1; }
+    if (neg) r = -r;
+    return r;
+}
+
+long strtol(const char *s, char **endptr, int base) {
+    long neg = 0; long r = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = -r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
+/* ---- 排序/搜索 (fix 2026-08-13: Phase 2, Git hash-table 排序需要) ---- */
+void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
+    /* 冒泡: 简单可靠, n 通常小 (Git 的 hash 表/数组) */
+    char *b0 = (char*)base;
+    int i = 0, j;
+    while (i < n) {
+        j = 0;
+        while (j < n - 1 - i) {
+            char *a = b0 + j * sz;
+            char *b = b0 + (j + 1) * sz;
+            if (cmp(a, b) > 0) {
+                int k = 0;
+                while (k < sz) { char t = a[k]; a[k] = b[k]; b[k] = t; k = k + 1; }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+}
+
+void *bsearch(const void *key, const void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
+    char *b0 = (char*)base;
+    int lo = 0, hi = (int)n;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        char *p = b0 + mid * sz;
+        int c = cmp(key, p);
+        if (c == 0) return (void*)(p);
+        if (c < 0) hi = mid; else lo = mid + 1;
+    }
+    return 0;
+}
+
 /* ---- scanf runtime (fix 2026-08-12): parse fmt, read from input buffer, write back to args[].
    args[i] are POINTERS to the target variables (&a, &b, ...). emit_scanf reads stdin
    into a buffer then calls this. Returns count of successfully converted items. ---- */
