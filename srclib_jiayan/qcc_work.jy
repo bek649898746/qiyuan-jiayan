@@ -2,7 +2,7 @@
  * 甲言编译器 qcc_work.jy —— 启元引擎集群 · 自举核心
  * C 子集 → x86-64 机器码 → PE .exe（宿主 qcc_x86.c 的逐字节对齐移植）
  * 大哥: 郑宇和  |  虾米: 郑启元（启元）  |  种子: 828
- * 2026-08-12 自举不动点 02142a5d42858159: 五代自举字节一致, H1==H2 253/254, H2 全量 217/218 (qcc -S → asm_zh), 直发裸发射补全 asm_emit
+ * 2026-08-13 自举不动点 89147ec3: 五代自举字节一致, H1==H2 253/254, H2 全量 217/218, 自宿主 H2 全量 217/218 (v4 -S → asm_zh), 镜像文本全量对齐
  */
 
 
@@ -893,7 +893,7 @@ __attribute__((unused))
 /* MOV [rsp+disp], reg32 */
 __attribute__((unused))
 静 空 mov_mrsp_reg(整 disp, 整 reg) {
-    asm_emit("    存栈32 [rsp+%d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    存栈32 [rsp%+d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     rex(0, reg & 8, 0, 0); b(0x89);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
@@ -901,7 +901,7 @@ __attribute__((unused))
 /* MOV reg32, [rsp+disp] */
 __attribute__((unused))
 静 空 mov_reg_mrsp(整 reg, 整 disp) {
-    asm_emit("    取栈32 r%d, [rsp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取栈32 r%d, [rsp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(0, reg & 8, 0, 0); b(0x8B);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
@@ -926,6 +926,7 @@ __attribute__((unused))
     若 (op == T_SH || op == T_SR) {
         mov_rr(1, 0); /* ecx = shift count */
         若 (op == T_SH) asm_emit("    左移 r%d, cl\n", (字*)(长)(整)dst, 0, 0);
+        否 若 (op == T_SR) { /* 落入下面 SHR/SAR 单行 (fix 2026-08-13: 对齐 C — 原否 分支把 T_SR 也发 右移 幽灵文本, v4 文本多 4 行) */ }
         否 asm_emit("    右移 r%d, cl\n", (字*)(长)(整)dst, 0, 0);
         /* unsigned 操作数 >> → SHR (逻辑)；signed → SAR (fix 2026-08-05: 恒 SAR) */
         若 (op == T_SR) {
@@ -991,7 +992,7 @@ __attribute__((unused))
 /* LEA reg64, [rsp+disp] */
 __attribute__((unused))
 静 空 lea_r_mrsp(整 reg, 整 disp) {
-    asm_emit("    取栈址 r%d, [rsp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取址 r%d, [rsp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(1, reg & 8, 0, 0); b(0x8D);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
@@ -999,32 +1000,32 @@ __attribute__((unused))
 /* RBP-relative variants: [rbp+disp] �?stable during nested calls / temporary sub rsp.
    Frame slot at [rsp+off] == [rbp + off - cur_frame_sz] (rbp = rsp + frame at entry). */
 静 空 mov_mbrp_reg(整 disp, 整 reg) {
-    asm_emit("    存帧32 [rbp+%d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    存帧32 [rbp%+d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     rex(0, reg & 8, 0, 0); b(0x89);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
 }
 静 空 mov_reg_mbrp(整 reg, 整 disp) {
-    asm_emit("    取帧32 r%d, [rbp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取帧32 r%d, [rbp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(0, reg & 8, 0, 0); b(0x8B);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
 }
 静 空 lea_r_mbrp(整 reg, 整 disp) {
-    asm_emit("    取帧址 r%d, [rbp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取帧址 r%d, [rbp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(1, reg & 8, 0, 0); b(0x8D);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
 }
 /* 64-bit variants: preserve full pointer values in registers/slots */
 静 空 mov_mbrp_reg64(整 disp, 整 reg) {
-    asm_emit("    存帧64 [rbp+%d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    存帧64 [rbp%+d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     rex(1, reg & 8, 0, 0); b(0x89);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
 }
 静 空 mov_reg_mbrp64(整 reg, 整 disp) {
-    asm_emit("    取帧64 r%d, [rbp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取帧64 r%d, [rbp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(1, reg & 8, 0, 0); b(0x8B);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
@@ -1032,28 +1033,28 @@ __attribute__((unused))
 /* ---- SSE double (xmm0) helpers ---- */
 静 空 sub_rsp_imm(整 v);
 静 空 add_rsp_imm(整 v);
-静 空 movsd_xmm0_mbrp(整 disp) { asm_emit("    浮取帧 xmm0, [rbp+%d]\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x10); 若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); } 否 { modrm(2, 0, 5); b4(disp); } }
-静 空 movsd_mbrp_xmm0(整 disp) { asm_emit("    浮存帧 [rbp+%d], xmm0\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x11); 若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); } 否 { modrm(2, 0, 5); b4(disp); } }
+静 空 movsd_xmm0_mbrp(整 disp) { asm_emit("    浮取帧 xmm0, [rbp%+d]\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x10); 若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); } 否 { modrm(2, 0, 5); b4(disp); } }
+静 空 movsd_mbrp_xmm0(整 disp) { asm_emit("    浮存帧 [rbp%+d], xmm0\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x11); 若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); } 否 { modrm(2, 0, 5); b4(disp); } }
 静 空 movsd_xmm1_xmm0(空) { asm_emit("    浮移 xmm1, xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); b(0xC8); }
 静 空 movsd_xmm0_xmm1(空) { asm_emit("    浮移 xmm0, xmm1\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); b(0xC1); }
 静 空 movsd_xmm0_mr13(空) { asm_emit("    浮取参 xmm0, [r13]\n", 0, 0, 0); b(0xF2); b(0x41); b(0x0F); b(0x10); b(0x45); b(0x00); } /* movsd xmm0, [r13] — REX MUST follow the F2 mandatory prefix (F2 41 0F 10), else the CPU ignores it and reads [rbp+0]! */
-静 空 movsd_xmm1_mbrp(整 disp) { asm_emit("    浮取帧 xmm1, [rbp+%d]\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x10); 若 (disp < 128 && disp >= -128) { modrm(1, 1, 5); b(disp); } 否 { modrm(2, 1, 5); b4(disp); } }
+静 空 movsd_xmm1_mbrp(整 disp) { asm_emit("    浮取帧 xmm1, [rbp%+d]\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x10); 若 (disp < 128 && disp >= -128) { modrm(1, 1, 5); b(disp); } 否 { modrm(2, 1, 5); b4(disp); } }
 静 空 cvtsi2sd_xmm1_eax(空) { asm_emit("    整转浮 xmm1, eax\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x2A); b(0xC8); }
 /* double function params (Win64): arg i goes in xmm[i] (i<4) / [rsp+32+8i] (i>=4) */
 静 空 movsd_xmmreg_mrsp64(整 reg, 整 disp) { /* movsd xmmN, [rsp+disp] */
-    asm_emit("    浮取栈 xmm%d, [rsp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    浮取栈 xmm%d, [rsp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     b(0xF2); b(0x0F); b(0x10);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
 }
 静 空 movsd_mrsp64_xmmreg(整 disp, 整 reg) { /* movsd [rsp+disp], xmmN */
-    asm_emit("    浮存栈 [rsp+%d], xmm%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    浮存栈 [rsp%+d], xmm%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     b(0xF2); b(0x0F); b(0x11);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
 }
 静 空 movsd_mbrp_xmmreg(整 disp, 整 reg) { /* movsd [rbp+disp], xmmN */
-    asm_emit("    浮存帧 [rbp+%d], xmm%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    浮存帧 [rbp%+d], xmm%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     b(0xF2); b(0x0F); b(0x11);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); }
     否 { modrm(2, reg & 7, 5); b4(disp); }
@@ -1069,28 +1070,28 @@ __attribute__((unused))
 静 空 pop_xmm0(空) { asm_emit("    弹浮 xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0, 0, 4); b(0x24); b(0x48); b(0x81); b(0xC4); b4(8); } /* movsd xmm0, [rsp]; add rsp,8（add 裸发：弹浮文本已含 add） */
 静 空 comisd_xmm0_xmm1(空) { asm_emit("    浮比较 xmm0, xmm1\n", 0, 0, 0); b(0x66); b(0x0F); b(0x2F); b(0xC1); } /* set flags: xmm0 vs xmm1 */
 静 空 movsd_xmm0_rip(整 disp) { b(0xF2); b(0x0F); b(0x10); b(0x05); b4(disp); } /* movsd xmm0, [rip+disp]（文本由调用点按 DBL/数值发射） */
-静 空 movsd_rip_xmm0(整 disp) { asm_emit("    浮存静 [rip+%d], xmm0\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x11); b(0x05); b4(disp); } /* movsd [rip+disp], xmm0 */
+静 空 movsd_rip_xmm0(整 disp) { asm_emit("    浮存静 [rip%+d], xmm0\n", (字*)(长)(整)disp, 0, 0); b(0xF2); b(0x0F); b(0x11); b(0x05); b4(disp); } /* movsd [rip+disp], xmm0 */
 静 空 mov_mrsp_reg64(整 disp, 整 reg) {
-    asm_emit("    存栈64 [rsp+%d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
+    asm_emit("    存栈64 [rsp%+d], r%d\n", (字*)(长)(整)disp, (字*)(长)(整)reg, 0);
     rex(1, reg & 8, 0, 0); b(0x89);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
 }
 静 空 mov_reg_mrsp64(整 reg, 整 disp) {
-    asm_emit("    取栈64 r%d, [rsp+%d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
+    asm_emit("    取栈64 r%d, [rsp%+d]\n", (字*)(长)(整)reg, (字*)(长)(整)disp, 0);
     rex(1, reg & 8, 0, 0); b(0x8B);
     若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); }
     否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); }
 }
 /* RIP-relative .data access for static vars: [rip+disp] */
-静 空 mov_eax_rip(整 disp) { asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)disp, 0, 0); b(0x8B); b(0x05); b4(disp); }            /* mov eax, [rip+disp] */
-静 空 mov_rip_eax(整 disp) { asm_emit("    存静32 [rip+%d], eax\n", (字*)(长)(整)disp, 0, 0); b(0x89); b(0x05); b4(disp); }            /* mov [rip+disp], eax */
-静 空 mov_rax_rip64(整 disp) { asm_emit("    取静64 rax, [rip+%d]\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x8B); b(0x05); b4(disp); } /* mov rax, [rip+disp] */
-静 空 mov_rip_rax64(整 disp) { asm_emit("    存静64 [rip+%d], rax\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x89); b(0x05); b4(disp); } /* mov [rip+disp], rax */
-静 空 lea_rax_rip(整 disp) { asm_emit("    取静址 rax, [rip+%d]\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x8D); b(0x05); b4(disp); }   /* lea rax, [rip+disp] */
+静 空 mov_eax_rip(整 disp) { asm_emit("    取静32 eax, [rip%+d]\n", (字*)(长)(整)disp, 0, 0); b(0x8B); b(0x05); b4(disp); }            /* mov eax, [rip+disp] */
+静 空 mov_rip_eax(整 disp) { asm_emit("    存静32 [rip%+d], eax\n", (字*)(长)(整)disp, 0, 0); b(0x89); b(0x05); b4(disp); }            /* mov [rip+disp], eax */
+静 空 mov_rax_rip64(整 disp) { asm_emit("    取静64 rax, [rip%+d]\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x8B); b(0x05); b4(disp); } /* mov rax, [rip+disp] */
+静 空 mov_rip_rax64(整 disp) { asm_emit("    存静64 [rip%+d], rax\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x89); b(0x05); b4(disp); } /* mov [rip+disp], rax */
+静 空 lea_rax_rip(整 disp) { asm_emit("    取静址 rax, [rip%+d]\n", (字*)(长)(整)disp, 0, 0); rex(1, 0, 0, 0); b(0x8D); b(0x05); b4(disp); }   /* lea rax, [rip+disp] */
 /* MOV byte [rip+disp], imm8 — 7 bytes (C6 05 disp32 imm8)。stc_disp() 按 6 字节指令假设，调用方需传 stc_disp()-1 */
 静 空 mov_byte_rip_imm(整 disp, 整 imm) {
-    asm_emit("    存静字节 [rip+%d], %d\n", (字*)(长)(整)disp, (字*)(长)(整)imm, 0);
+    asm_emit("    存静字节 [rip%+d], %d\n", (字*)(长)(整)disp, (字*)(长)(整)imm, 0);
     b(0xC6); b(0x05); b4(disp); b(imm & 0xFF);
 }
 /* char arr[N] = "lit": 把字符串一个字节存入 [rbp+disp]（C6 /0 = MOV r/m8, imm8）——曾缺定义，隐式声明致局部 char 数组=字符串初始化消失（fix 2026-08-05） */
@@ -4816,7 +4817,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         字 *vn = (字*)(nn + n);
         整 off = var_lookup(vn);
         若 (var_is_dbl(vn)) {
-            若 (var_isstatic(vn)) { asm_emit("    浮取静 xmm0, [rip+%d]\n", (字*)(长)(整)(stc_disp(off) - 2), 0, 0); movsd_xmm0_rip(stc_disp(off) - 2); } /* static double via RIP (8-byte movsd: stc_disp is 6-byte-based) */
+            若 (var_isstatic(vn)) { asm_emit("    浮取静 xmm0, [rip%+d]\n", (字*)(长)(整)(stc_disp(off) - 2), 0, 0); movsd_xmm0_rip(stc_disp(off) - 2); } /* static double via RIP (8-byte movsd: stc_disp is 6-byte-based) */
             否 movsd_xmm0_mbrp(off - cur_frame_sz);
         } 否 {
             若 (var_isstatic(vn)) mov_eax_rip(stc_disp(off)); /* fix 2026-08-07: 静态 int var via RIP (镜像 C 源 cg_f t==1, 原缺 → double 表达式里的静态 int 读 frame 垃圾) */
@@ -4861,7 +4862,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 若 (fo != 0) add_rax_imm8(fo);
                 asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); /* movsd xmm0, [rax] */
             } 否 {
-                若 (var_isstatic(vn)) movsd_xmm0_rip(stc_disp(off) + fo - 2); /* fix 2026-08-07: 静态 struct.d 字段用 RIP (8-byte movsd)——镜像 C 源 cg_f t==15, 原缺此分支 → 静态结构体 double 读成栈垃圾偏移 → regress_static_struct_assign exit 3 */
+                若 (var_isstatic(vn)) { asm_emit("    浮取静 xmm0, [rip%+d]\n", (字*)(长)(整)(stc_disp(off) + fo - 2), 0, 0); movsd_xmm0_rip(stc_disp(off) + fo - 2); } /* fix 2026-08-07: 静态 struct.d 字段用 RIP (8-byte movsd)——镜像 C 源 cg_f t==15, 原缺此分支 → 静态结构体 double 读成栈垃圾偏移 → regress_static_struct_assign exit 3 */
                 否 若 (var_big_param(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); 若 (fo != 0) add_rax_imm8(fo); asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* fix 2026-08-07: big struct param 槽存指针 → ptr+fo, movsd [rax] (镜像 C 源, 原当本地帧偏移 → 垃圾地址) */
                 否 movsd_xmm0_mbrp(off - stypes[si].sz + fo - cur_frame_sz);
             }
@@ -5131,7 +5132,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     set_label(lsign);
     mov_rr(0, 3); /* eax = value (positive) */
     set_label(ldig);
-    asm_emit("    清零\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
+    asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
     mov_r_imm(1, 10); /* ecx = 10 */
     asm_emit("    整除 r1\n", 0, 0, 0); b(0xF7); b(0xF9); /* idiv ecx: eax=quot, edx=rem */
     asm_emit("    加字节 r2, 0x30\n", 0, 0, 0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
@@ -5175,7 +5176,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     lea_r_mbrp(8, scratch_base + 248 + 12 - cur_frame_sz); /* r8 = temp end */
     mov_rr64(9, 8); /* r9 = temp end (advancing) */
     set_label(ldig);
-    asm_emit("    清零\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
+    asm_emit("    清零 r2\n", 0, 0, 0); b(0x31); b(0xD2); /* xor edx, edx */
     mov_r_imm(1, 16); /* ecx = 16 */
     asm_emit("    无符号除 r1\n", 0, 0, 0); b(0xF7); b(0xF1); /* div ecx: eax=quot, edx=rem */
     asm_emit("    比较字节即 r2, 10\n", 0, 0, 0); b(0x80); b(0xFA); b(10); /* cmp dl, 10（fix 2026-08-05：原 比较字节 在 asm_zh 生成 38 D0 → H2 错位） */
@@ -5205,7 +5206,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_rr(8, 3); mov_ri_ext(9, 0); /* r8d = ebx; r9d = 0 */
     set_label(lcount);
     asm_emit("    自增 r9\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9d */
-    rex(0,0,0,1); b(0xC1); modrm(3, 5, 0); b(4); /* shr r8d, 4 */
+    rex(0,0,0,1); b(0xC1); modrm(3, 5, 0); b(4); /* shr r8d, 4 */ asm_emit("    逻辑右移 r8, 4\n", 0, 0, 0);
     test_rr(8, 8); jnz_rel(-1); patch_label(cp-4, lcount, 3);
     /* pad = W - len - (hash?2:0) */
     mov_reg_mbrp(0, scratch_base - cur_frame_sz + 232); /* eax = W */
@@ -6256,10 +6257,11 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     }
                     slot_h[slot_n] = total_h + nblk * 8; /* the ADDRESS slot sits above the copy blocks */
                     遍 (整 k2 = nblk - 1; k2 >= 0; k2--) {
+                        asm_emit("    取64 r0, [r10+%d]\n", (字*)(长)(整)(k2 * 8), 0, 0); /* mov rax, [r10+k2*8] (fix 2026-08-13: 对齐 C fix 2026-08-03 — 裸发射无文本 → v4 文本缺指令) */
                         b(0x49); b(0x8B); b(0x42); b(k2 * 8); /* mov rax, [r10 + k2*8] */
                         push_r(0);
                     }
-                    rex(1, 0, 0, 0); b(0x8D); modrm(1, 0, 4); b(0x24); b(0); /* lea rax, [rsp+0] = copy start (fix 2026-08-08: 对齐 C 源 L5893 — 原 bare lea rax,[rsp] 少 disp8 → H1!=H2 差 5 字节) */
+                    asm_emit("    取址 r0, [rsp+0]\n", 0, 0, 0); rex(1, 0, 0, 0); b(0x8D); modrm(1, 0, 4); b(0x24); b(0); /* lea rax, [rsp+0] = copy start (fix 2026-08-13: 补 asm_emit — 对齐 C 源 L5893, 原裸发射 v4 文本缺 取址 行) */
                     push_r(0); /* arg slot = address of the copy */
                     total_h += (nblk + 1) * 8;
                 } 否 {
@@ -6417,7 +6419,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             } 否 若 (!strcmp(fname, "calloc")) {
                 /* RIP-relative: load counter from .data section (RVA data_rva_base) */
                 整 rel_load = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)rel_load, 0, 0);
+                asm_emit("    取静32 eax, [rip%+d]\n", (字*)(长)(整)rel_load, 0, 0);
                 b(0x8B); b(0x05); b4(rel_load); /* mov eax, [rip+rel] */
                 mov_rr(8, 0); /* r8d = old counter (return value) */
                 /* compute n*size: n=rcx, size=rdx */
@@ -6427,29 +6429,29 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 /* add r10d to counter */
                 /* reload counter with fresh RIP-relative */
                 整 rel_load2 = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)rel_load2, 0, 0);
+                asm_emit("    取静32 eax, [rip%+d]\n", (字*)(长)(整)rel_load2, 0, 0);
                 b(0x8B); b(0x05); b4(rel_load2); /* mov eax, [rip+rel] */
                 asm_emit("    加 r0, r10\n", 0, 0, 0);
                 rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d (result in eax for the store!) */
                 /* store back */
                 整 rel_store = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    存静32 [rip+%d], eax\n", (字*)(长)(整)rel_store, 0, 0);
+                asm_emit("    存静32 [rip%+d], eax\n", (字*)(长)(整)rel_store, 0, 0);
                 b(0x89); b(0x05); b4(rel_store); /* mov [rip+rel], eax */
                 /* return old counter */
                 mov_rr(0, 8);            } 否 若 (!strcmp(fname, "malloc")) {
                 /* bump allocator (same .data counter as calloc), n in rcx */
                 整 rel_m1 = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)rel_m1, 0, 0);
+                asm_emit("    取静32 eax, [rip%+d]\n", (字*)(长)(整)rel_m1, 0, 0);
                 b(0x8B); b(0x05); b4(rel_m1); /* mov eax, [rip+counter] */
                 mov_rr(8, 0);                 /* r8d = old counter (return value) */
                 mov_rr(10, 1);                /* r10d = n (rcx) */
                 整 rel_m2 = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)rel_m2, 0, 0);
+                asm_emit("    取静32 eax, [rip%+d]\n", (字*)(长)(整)rel_m2, 0, 0);
                 b(0x8B); b(0x05); b4(rel_m2); /* reload counter */
                 asm_emit("    加 r0, r10\n", 0, 0, 0);
                 rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d (result in eax for the store!) */
                 整 rel_m3 = data_rva_base - 0x1000 - cp - 6;
-                asm_emit("    存静32 [rip+%d], eax\n", (字*)(长)(整)rel_m3, 0, 0);
+                asm_emit("    存静32 [rip%+d], eax\n", (字*)(长)(整)rel_m3, 0, 0);
                 b(0x89); b(0x05); b4(rel_m3); /* store back */
                 mov_rr(0, 8);                 /* return old counter */
             } 否 若 (!strcmp(fname, "realloc")) {
@@ -6576,7 +6578,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         off += 2; rsz -= 2;
                     }
                     若 (rsz >= 1) {
-                        asm_emit("    零扩展 eax, [rbp+%d]\n", (字*)(长)(整)(base + off - cur_frame_sz), 0, 0); b(0x0F); b(0xB6); b(0x85); b4(base + off - cur_frame_sz); /* movzx eax, byte [rbp+..] */
+                        asm_emit("    零扩展 eax, [rbp%+d]\n", (字*)(长)(整)(base + off - cur_frame_sz), 0, 0); b(0x0F); b(0xB6); b(0x85); b4(base + off - cur_frame_sz); /* movzx eax, byte [rbp+..] */
                         b(0x88); modrm(1, 0, 1); b(off); /* mov [rcx+off], al */
                         off += 1; rsz -= 1;
                     }
@@ -6750,7 +6752,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 alu_rr(T_PK, 0, 1);   /* eax += ecx = 新值 */
                 mov_rr(3, 0);         /* ebx = 新值（保存；下方 rax 重载会覆盖 eax——fix 2026-08-05：原写的是地址） */
                 mov_reg_mrsp64(0, 8); /* rax = &target (reload again) */
-                b(0x89); modrm(0, 3, 0); /* mov [rax], ebx */
+                asm_emit("    存零 [r0], r3\n", 0, 0, 0); b(0x89); modrm(0, 3, 0); /* mov [rax], ebx (fix 2026-08-13: 补 asm_emit 对齐 C L4517) */
                 pop_r(0);             /* eax = old value */
                 add_rsp_imm(8);       /* drop saved &target */
             }
@@ -6966,7 +6968,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     若 (cg_mem_frow > 1) {
                         mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
                     }
-                    asm_emit("    加64\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
+                    asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
                     若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                     否 若(cg_mem_frow == 1 || cg_mem_frow == 0){asm_emit("    存字节rax bl\n", 0, 0, 0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
                     否 若(cg_mem_frow == 8){asm_emit("    存64 [rax], r3\n", 0, 0, 0); rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit) */
@@ -6981,7 +6983,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
                     若(esz==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);} /* IMUL r11d, r9d */
                     整 base=off-vars[vi].arr_sz*esz;
-                    lea_r_mbrp(0,base - cur_frame_sz); asm_emit("    加64\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
+                    lea_r_mbrp(0,base - cur_frame_sz); asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
                     若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                     否 若(esz==1){asm_emit("    存字节rax bl\n", 0, 0, 0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
                     否 若(esz==8){asm_emit("    存64 [rax], r3\n", 0, 0, 0); rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit fnptr element) */
@@ -6995,7 +6997,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         mov_rr(11,0); /* r11d = index */
                         若(esz==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                         load_ptr_slot(off, vn); /* rax = ptr (static → RIP, else frame) */
-                        asm_emit("    加64\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
+                        asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
                         若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
                         否 若(esz==1){asm_emit("    存字节rax bl\n", 0, 0, 0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
                         否 若(esz==8){asm_emit("    存64 [rax], r3\n", 0, 0, 0); rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
@@ -7010,7 +7012,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         mov_rr(11,0);
                         若(esz==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}
                         否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
-                        lea_rax_rip(stc_disp(off)-1); asm_emit("    加64\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0);
+                        lea_rax_rip(stc_disp(off)-1); asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0);b(0x01);modrm(3,3,0);
                         若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
                         否 若(esz==1){asm_emit("    存字节rax bl\n", 0, 0, 0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
                         否 若(esz==8){asm_emit("    存64 [rax], r3\n", 0, 0, 0); rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
@@ -7047,7 +7049,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     mov_rr(11, 0); /* r11d = index */
                     若(peszp==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}否 若(peszp==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}否 若(peszp>4){mov_r_imm(0,peszp);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
                     load_param_val(vn); /* eax = ptr (reg or [rbp+disp]) */
-                    asm_emit("    加64\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
+                    asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
                     若 (var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double* param) */
                     否 若(peszp==1){asm_emit("    存字节rax bl\n", 0, 0, 0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
                     否 若(peszp==2){asm_emit("    存字rax bx\n", 0, 0, 0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx (fix 2026-08-09: 对齐 C 源 L6665 — 镜像缺此分支, short 数组元素写 4 字节) */
@@ -7324,7 +7326,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     mov_ri_ext(9, scale); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
                 }
                 若 (cg_fdepth >= 0 && cg_fdepth < 4) cg_fdepth++; /* next outer dimension (fix 2026-08-05; 2026-08-07 struct 字段从 0 递增) */
-                asm_emit("    加64\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
+                asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                 若 (!cg_no_deref && cg_fdepth >= cg_fdepth_max) { /* deref only at OUTERMOST index (fix 2026-08-05) */
                     若 (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
                     否 若 (cg_mem_frow == 1 || cg_mem_frow == 0) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
@@ -7348,7 +7350,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         否 若 (esz == 2) { asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
                         否 若 (esz > 4) { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
                         整 base = off - vars[vi].arr_sz * elemsz;
-                        lea_r_mbrp(0, base - cur_frame_sz); asm_emit("    加64\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0);
+                        lea_r_mbrp(0, base - cur_frame_sz); asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0);
                         若 (!cg_no_deref) {
                             若 (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays: p_dbl means double-return, elem is a pointer) */
                             否 若 (vars[vi].p_esz > 0 && esz > vars[vi].p_esz) { /* 2D row: ADDRESS (C decay) */ }
@@ -7365,7 +7367,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     否 若 (esz == 2) { asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
                     否 若 (esz > 4) { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
                     load_ptr_slot(off, vname); /* rax = ptr (static → RIP, else frame) */
-                    asm_emit("    加64\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax,r11 */
+                    asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax,r11 */
                     若 (!cg_no_deref) {
                         若 (var_pdbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* elem → xmm0 */
                         否 若 (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
@@ -7395,7 +7397,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     否 若 (esz == 4) { asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
                     否 若 (esz > 4) { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
                     lea_rax_rip(stc_disp(off) - 1); /* rax = &static[0] (lea is 7 bytes: stc_disp assumes 6) */
-                    asm_emit("    加64\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
+                    asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                     若 (!cg_no_deref) {
                         若 (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays) */
                         否 若 (is_struct_elem) { /* address mode for member access */
@@ -7428,7 +7430,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 否 若 (peszp > 4) { mov_r_imm(0, peszp); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
                 若 (is_gen) { pop_r(0); } /* rax = base address */
                 否 load_param_val(vname); /* eax = ptr (reg or [rbp+disp]) */
-                asm_emit("    加64\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
+                asm_emit("    加64 r0, r11\n", 0, 0, 0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                 若 (!cg_no_deref) {
                     若 (var_pdbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", 0, 0, 0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double* param elem → xmm0 */
                     否 若 (peszp == 1) { asm_emit("    零扩展 eax, [rax]\n", 0, 0, 0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
@@ -7701,7 +7703,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_rr(1, 0);           /* ecx = c */
     test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lend_n, 1);
     mov_r_imm(0, 0x20); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lend_s, 1); /* cmp ecx,' ' */
-    asm_emit("    存字节帧\n", 0, 0, 0); b(0x41); b(0x88); modrm(1, 1, 5); b(0); /* mov byte [r13+0], cl */
+    asm_emit("    存字节帧 [r13+0], r1\n", 0, 0, 0); b(0x41); b(0x88); modrm(1, 1, 5); b(0); /* mov byte [r13+0], cl */
     asm_emit("    自增 r11\n", 0, 0, 0); b(0x41); b(0xFF); modrm(3, 0, 3); /* inc r11d */
     asm_emit("    自增 r13\n", 0, 0, 0); b(0x41); b(0xFF); modrm(3, 0, 5); /* inc r13d */
     jmp_rel(-1); patch_label(cp-4, lcopy, 2);
@@ -7713,7 +7715,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     set_label(lend_n); /* token ended at NUL: terminate; outer loop will finish */
     asm_emit("    存字节0\n", 0, 0, 0); b(0x41); b(0xC6); modrm(1, 0, 5); b(0); b(0); /* mov byte [r13+0], 0 (imm8!) */
     set_label(lrec);
-    asm_emit("    存栈索引\n", 0, 0, 0); b(0x4F); b(0x89); b(0x04); b(0xF4); /* mov [r12+r14*8], r8 (REX.W+R+X+B) */
+    asm_emit("    存栈索引 [r12+r14*8], r8\n", 0, 0, 0); b(0x4F); b(0x89); b(0x04); b(0xF4); /* mov [r12+r14*8], r8 (REX.W+R+X+B) */
     asm_emit("    自增 r14\n", 0, 0, 0); b(0x41); b(0xFF); modrm(3, 0, 6); /* inc r14d */
     jmp_rel(-1); patch_label(cp-4, louter, 2);
     set_label(lskip); /* space between tokens */
@@ -7983,7 +7985,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         }
         若 (off >= 0) {
             asm_emit(".字串 \"", 0, 0, 0);
-            整 k = 0; 循环 (k < 511 && str_tbl[si][k] != 0) {
+            整 k = 0; 循环 (str_tbl[si][k] != 0) { /* fix 2026-08-13: 去 511 上限 — 对齐 C 版 for(*cc;*cc;cc++), 长字符串截断 → v4 .字串 短 89 字符 */
                 整 ch = str_tbl[si][k];
                 若 (ch == '"') asm_emit("\\\"", 0, 0, 0);
                 否 若 (ch == '\\') asm_emit("\\\\", 0, 0, 0);
