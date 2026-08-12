@@ -8406,7 +8406,7 @@ __attribute__((unused))
         字 *fb = read_file(argv[argi]);
         若 (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); 返 1; }
         整 fl = (整)strlen(fb);
-        all_src = realloc(all_src, (all_len + fl + 4) & ~3); /* fix 2026-08-12 UB-清除: realloc 是真实 bump 分配 (非 no-op)! 原 all_len+fl+2 非4倍数 → tt..tll 错位 → tll[tk] 读垃圾 → 伪 nll=1 */
+        all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-清除: realloc 是真实 bump 分配 (非 no-op)! 原 all_len+fl+2 非4倍数 → tt..tll 错位 → tll[tk] 读垃圾 → 伪 nll=1 */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
         all_src[all_len++] = '\n'; all_src[all_len] = 0;
         free(fb);

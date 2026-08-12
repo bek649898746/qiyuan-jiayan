@@ -8213,7 +8213,7 @@ int main(int argc, char **argv) {
         char *fb = read_file(argv[argi]);
         if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
         int fl = (int)strlen(fb);
-        all_src = realloc(all_src, (all_len + fl + 4) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1 */
+        all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1; +5=(needed+3)&~3: +4 under-allocates 1 byte when (all_len+fl)%4==3 -> all_src[all_len]=0 OOB */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
         all_src[all_len++] = '\n'; all_src[all_len] = 0;
         free(fb);
