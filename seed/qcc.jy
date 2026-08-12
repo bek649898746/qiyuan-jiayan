@@ -6908,7 +6908,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 /* NOTE: pop_r(3) 延迟到各存储分支——基址表达式（cg(n0[ac])，如 `vars[vcnt-1]`）可能
                    用 r3 做 `var - const` 减法而覆盖 RHS（fix 2026-08-05: vars[vcnt-1].frows[dims-1] = esz 被编译成存 vcnt-1） */
                 整 off=var_lookup(vn);
-                整 pesz=var_pesz(vn);
+                整 peszl=var_pesz(vn);
                 若 (nt[n0[ac]] == 15 || nt[n0[ac]] == 14) {
                     /* NESTED base store: u.c[0]=v / arr[i].field[k]=v — base is a member/array
                        chain (vname is a FIELD name, must NOT be resolved as a variable). */
@@ -6947,7 +6947,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     did=1; 断;
                     }
-                    若(!did && pesz>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
+                    若(!did && peszl>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
                         整 esz = var_esz(vn);
                         mov_rr(11,0); /* r11d = index */
                         若(esz==4){asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", 0, 0, 0); rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", 0, 0, 0); rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
@@ -7261,7 +7261,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             }
             字 *vname = (字*)(nn + n0[n]);
             整 off = var_lookup(vname);
-            整 pesz = var_pesz(vname);
+            整 peszl = var_pesz(vname);
             若 (nt[n0[n]] == 15 || nt[n0[n]] == 14) {
                 /* NESTED base (member/array chain) takes priority: vname is the member's
                    field name, NOT a variable — var_lookup could match an unrelated
@@ -7320,7 +7320,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         }
                         did = 1; 断;
                     }
-                若 (!did && pesz > 0 && var_arrsz(vname) == 0) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
+                若 (!did && peszl > 0 && var_arrsz(vname) == 0) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
                     整 esz = var_esz(vname);
                     mov_rr(11, 0); /* r11d = index */
                     若 (esz == 4) { asm_emit("    左移 r11, 2\n", 0, 0, 0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
