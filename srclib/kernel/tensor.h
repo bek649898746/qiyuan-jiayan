@@ -96,5 +96,41 @@
     }
     返 found?0:-1;
 }
+/* GC (2026-08-12 Gate5 收尾): 回收版本链超限的旧版本 — 每 key 保留最新 KEEPV 版.
+   tp_del 已隐式回收 (fl=0 槽被 tp_put 重用). 两遍: 先统计每条目同 key 版本数,
+   再回收 (单遍会因已回收条目使后续 cnt 变小 → 少回收, fix 2026-08-12). 返回回收数. */
+整 tp_gc(整 tbl){
+    整 KEEPV=4; 整 freed=0; 整 i=0;
+    整 cnts[TENTRIES];
+    循环(i<TENTRIES){cnts[i]=0;i=i+1;}
+    /* 第一遍: 每条目统计同 key 版本数 */
+    i=0;
+    循环(i<TENTRIES){
+        若(*(整*)(tbl+i*52+48)==1){
+            字 *nm=(字*)(tbl+i*52);
+            整 j=0;
+            循环(j<TENTRIES){
+                若(*(整*)(tbl+j*52+48)==1){
+                    字 *nj=(字*)(tbl+j*52);
+                    整 match=1; 整 k2=0;
+                    循环(nm[k2]&&k2<31){若(nj[k2]!=nm[k2]){match=0;break;}k2=k2+1;}
+                    若(match&&nj[k2]==0){cnts[i]=cnts[i]+1;}
+                }
+                j=j+1;
+            }
+        }
+        i=i+1;
+    }
+    /* 第二遍: 回收超限旧版本 */
+    i=0;
+    循环(i<TENTRIES){
+        若(*(整*)(tbl+i*52+48)==1){
+            整 v=*(整*)(tbl+i*52+40);
+            若(cnts[i]>KEEPV && v<(cnts[i]-KEEPV+1)){*(整*)(tbl+i*52+48)=0;freed=freed+1;}
+        }
+        i=i+1;
+    }
+    返 freed;
+}
 
 #endif /* KERNEL_TENSOR_H */

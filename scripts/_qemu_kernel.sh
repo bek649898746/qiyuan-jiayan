@@ -39,4 +39,4 @@ timeout 20 qemu-system-x86_64 -M q35 \
   -kernel $K/scratch_test/_${KERNEL}_nboot.bin \
   -device nvme,drive=nvme0,serial=JIAYAN \
   -drive file=/tmp/nvme_disk.img,format=raw,if=none,id=nvme0 \
-  -nographic -no-reboot -m 128M 2>&1 | grep -aE "v36|BAR|R0|ZERO|QSET|R1|T0|T2|GO|ID=|ST=|CCQ=|CSQ=|SQd|WR=|RD=|W=|R=|LOOPBACK|NOT" | head -25
+  -nographic -no-reboot -m 128M 2>&1 | grep -aE "TBL:|VN=|FREED|G=|v3|v4|v5|v56|BAR|R0|ZERO|QSET|R1|GO|ID=|ST=|CCQ=|CSQ=|SQd|WR=|RD=|W=|R=|LOOPBACK|TENSOR|MODULES|PASS|FAIL|NOT" | head -25
