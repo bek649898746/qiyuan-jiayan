@@ -51,8 +51,9 @@
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 静 字 __pad0[STACK_PAD_SIZE];
-静 字 str_tbl[1024][2048]; /* fix 2026-08-06: 512→2048 支持长字面量 */ 整 str_cnt;
+静 字 str_tbl[2048][2048]; /* fix 2026-08-06: 512→2048 支持长字面量 */ 整 str_cnt;
 静 构 { 字 name[32]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; 字 p_dbl, is_char, is_uns, is_ll; 整 frows[4]; } vars[4096]; 整 vcnt; /* is_ll: long long（8 字节整）变量（fix 2026-08-05） */
+静 字 var_static_kw[4096]; /* fix 2026-08-11 BLOCKER-3: 函数内 static 变量标记 (parse_base>0 时注册) — codegen 期限定本函数可见, 消除跨函数 static 泄漏 */
 静 整 stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
 静 整 fdef_list[1024]; 静 整 fdef_n; /* fix 2026-08-06: 根节点只容 256 子 → 第 257 个函数被丢 */
@@ -81,11 +82,11 @@ __attribute__((unused))
 静 整 sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
 静 整 vs_n(空) { 返 vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
-静 构 { 字 name[32]; 整 val; } macros[64]; 静 整 macro_n;
-静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 64) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
+静 构 { 字 name[32]; 整 val; } macros[2048]; 静 整 macro_n; /* Phase1-L3: 64->1024 */
+静 空 macro_add(常 字 *n, 整 v) { 若 (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 静 整 macro_find(常 字 *n) { 遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 macros[i].val; 返 -1; }
 /* string macros: #define NAME "value" (fix 2026-08-05: 与 C 版对齐 — 此前 jy 版缺失 str_macro_find，defined() 引用未定义函数但自举路径不触发) */
-静 构 { 字 name[32]; 字 val[2048]; } str_macros[64]; /* fix 2026-08-06 */ 静 整 str_macro_n;
+静 构 { 字 name[32]; 字 val[2048]; } str_macros[2048]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* fix 2026-08-07: 顺序 #define 定义表 (名字+数值) — pp_include_expand 与 fn_macro_collect 共用, 使 include 守卫生效 + #if 用真值 (镜像 qcc_x86.c) */
 静 字 pp_guard[128][32]; 静 整 pp_guard_val[128]; 静 整 pp_guard_n;
@@ -114,8 +115,8 @@ __attribute__((unused))
     *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
-静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[64]; 静 整 fn_macro_n; /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
-静 整 cl_if_parent[64]; 静 整 cl_if_taken[64]; 静 整 cl_if_n; 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
+静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[2048]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+静 整 cl_if_parent[1024]; 静 整 cl_if_taken[1024]; 静 整 cl_if_n; /* Phase1-L4: 64->1024 */ 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
 静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
     遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 1;
@@ -163,7 +164,7 @@ __attribute__((unused))
                     cond = pp_eval(expr); 
                 }
                 若 (is_if || is_ifdef || is_ifndef) {
-                    若 (cl_if_n < 64) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
+                    若 (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
                 } 否 若 (is_elif) {
                     若 (cl_if_n > 0) { 若 (!cl_if_taken[cl_if_n-1] && !cl_if_parent[cl_if_n-1]) { cl_if_taken[cl_if_n-1] = cond; cl_if_skip = cl_if_parent[cl_if_n-1] || !cond; } 否 cl_if_skip = 1; }
                 } 否 若 (is_else) {
@@ -196,7 +197,7 @@ __attribute__((unused))
             循环 (isalnum((无 字)s[p]) || s[p] == '_') { 若 (ni < 31) nm[ni++] = s[p]; p++; }
             nm[ni] = 0;
             循环 (s[p] == ' ' || s[p] == '\t') p++;
-            若 (s[p] == '(' && fn_macro_n < 64 && strcmp(nm, "_va_alloc")) {
+            若 (s[p] == '(' && fn_macro_n < 1024 && strcmp(nm, "_va_alloc")) {
                 strcpy(fn_macros[fn_macro_n].name, nm);
                 p++;
                 整 pi = 0;
@@ -1207,7 +1208,7 @@ __attribute__((unused))
 
 /* ?????? ??????: ???????????????????? */
 #define ASZ 262144
-#define MAX_LABELS 16384
+#define MAX_LABELS 32768
 静 整 label_pos[MAX_LABELS];
 静 整 label_set[MAX_LABELS];
 静 构 { 整 patch_at; 整 target_label; 整 is_jmp; } patches[65536]; 整 patch_n; /* fix 2026-08-06: 16384→65536 镜像 qcc_x86.c — qcc_work.jy 编译贴上限 */
@@ -1216,7 +1217,12 @@ __attribute__((unused))
 静 构 { 整 patch_at; 整 label; } fn_patches[2048]; 整 fnpn; /* function-address imm32 patches */
 静 整 ginit[4096]; 静 整 ginit_n; /* fix 2026-08-06: 128→4096 + 溢出报错 */ /* global variable initializer nodes (emitted at main entry) */
 静 整 coff_mode = 0;
-静 整 bin_mode = 0; /* -bin */
+静 整 bare_metal = 0; /* fix 2026-08-10 Gate 9: 编译器自身在裸机 (main 检测 __bare__ 参数设置) */
+整 bin_mode = 0;
+#define BIN_SRC_ADDR 0x3800000
+#define BIN_RT_ADDR 0x3900000
+#define BIN_OUT_ADDR 0x3A00000
+#define BIN_OUT_LEN_ADDR 0x3B00000 /* -bin */
 静 字 bin_hdr[256]; 静 整 bin_hdr_n = 0; /* 字 而非 字节: 字节全局数组触发自举破坏 (2026-08-09) */
 
 #define MAX_CREL 1024
@@ -1256,6 +1262,7 @@ __attribute__((unused))
 静 整 nll[262144]; /* per-node flag: expression is a 64-bit long long（fix 2026-08-05） */
 静 整 *nll_hi; /* per-node long long 字面量高 32 — 动态分配（静态 1MB 数组使 cf_1 .data 超限，fix 2026-08-05） */
 静 整 nuns[262144]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
+静 整 pesz[262144];
 
 
 静 整 new_label(空) { 若 (lc >= MAX_LABELS) { fprintf(stderr, "[LABEL-OVERFLOW] lc=%d\n", lc); abort(); } 整 l = lc++; label_set[l] = 0; 返 l; }
@@ -1403,27 +1410,34 @@ __attribute__((unused))
 }
 /* 规则：非静态变量只在自身函数 [fvb[gfn], fve[gfn]) 内可见；静态变量处处可见。codegen 时强制执行（C 原版 614 移植） */
 静 整 var_codegen_visible(整 i) {
-    若 (vars[i].is_static) 返 1;   /* .data slot: 任意函数可见 */
-    若 (!vs_end) 返 1;             /* parse 阶段：调用方 parse_base 下限生效 */
+    若 (vars[i].is_static) {
+        若 (!vs_end) 返 1;               /* parse: static 可见 (parse_base 下限已挡前序函数, 无泄漏) */
+        若 (cg_ginit_ctx) 返 1;          /* ginit: main 入口发射初始化器, 所有 static 可见 (fix 2026-08-11 BLOCKER-3) */
+        若 (var_static_kw[i]) 返 (i >= fvb[gfn]); /* 函数内 static: 仅本函数可见 (fix 2026-08-11 BLOCKER-3 — 消除 codegen 跨函数 static 泄漏) */
+        返 1;                            /* 全局 static: 任意函数可见 */
+    }
+    若 (!vs_end) 返 (i >= parse_base); /* parse 阶段: 只允许当前函数体 (parse_base 下限)。
+                                          fix 2026-08-11 BLOCKER-1: 原返 1 导致跨函数同名变量泄漏 —
+                                          var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
     返 (i >= fvb[gfn]);            /* codegen：只允许当前函数的 locals/params */
 }
 静 整 var_is_dbl(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_dbl;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_dbl;
     返 0;
 }
 /* long long 变量: 64 位整加载/存储（fix 2026-08-05） */
 静 整 var_is_ll(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_ll;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_ll;
     返 0;
 }
 /* unsigned 变量: >> 必须用逻辑右移 SHR（fix 2026-08-05） */
 静 整 var_is_uns(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_uns;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_uns;
     返 0;
 }
 /* pointer-to-double (double *p): p[i] reads/writes 8-byte doubles (movsd) */
 静 整 var_pdbl(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_dbl;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_dbl;
     返 0;
 }
 /* 8-byte frame slot for a local double */
@@ -1492,7 +1506,7 @@ __attribute__((unused))
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 静 整 var_static(常 字 *n, 整 pesz) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 只应遮蔽既有 STATIC 全局 — qcc_rt.c 前置的库函数局部变量会撞名（atof 的 `s` 等）导致输入全局变量永不注册 */
-    若 (vcnt >= 4000 || stc_n >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1500,6 +1514,7 @@ __attribute__((unused))
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0;
     vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-11 BLOCKER-3: 函数内 static 标记 (BLOCKER-3 codegen 作用域) */
     返 vars[vcnt++].rsp_off;
 }
 /* extern 全局变量声明: 负槽标记 (rsp_off<0), 无 .data 分配, is_static=1 走 RIP 相对 codegen;
@@ -1519,7 +1534,7 @@ __attribute__((unused))
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_isstatic(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_static;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_static;
     返 0;
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
@@ -1527,7 +1542,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off;
     整 slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     若 (esz > 4) slots = (count * esz + 3) / 4;
-    若 (vcnt >= 4000 || stc_n + slots >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n + slots >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1535,6 +1550,7 @@ __attribute__((unused))
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = esz;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0;
     vars[vcnt].p_esz = pesz; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-11 BLOCKER-3: 函数内 static 数组标记 */
     返 vars[vcnt++].rsp_off;
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
@@ -1542,7 +1558,7 @@ __attribute__((unused))
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) 返 vars[i].rsp_off; /* fix 2026-08-05: 同 var_static — 只应遮蔽既有 STATIC 全局 */
     整 slots = (stypes[si].sz + 3) / 4; 若 (slots < 1) slots = 1;
     整 total = slots * count;
-    若 (vcnt >= 4000 || stc_n + total >= 8388608) exit(1);
+    若 (vcnt >= 4000 || stc_n + total >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -1550,6 +1566,7 @@ __attribute__((unused))
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = slots * 4; vars[vcnt].arr_sz = (count > 1) ? count : 0; vars[vcnt].arr_esz = stypes[si].sz; /* fix 2026-08-06: count==1 是普通 struct 变量不是数组 */
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0;
     vars[vcnt].p_esz = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = -1; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 1;
+    var_static_kw[vcnt] = (parse_base > 0) ? 1 : 0; /* fix 2026-08-11 BLOCKER-3: 函数内 static struct 标记 */
     返 vars[vcnt++].rsp_off;
 }
 /* RIP-relative offset to .data static slot (RVA data_rva_base + DATA_RVA_OFF + 4*idx) from instr at 0x1000+cp */
@@ -1671,7 +1688,7 @@ __attribute__((unused))
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_lookup(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06 镜像) */
             遍 (整 j = i - 1; j >= 0; j--) 若 (!strcmp(vars[j].name, n) && vars[j].rsp_off >= 0 && var_codegen_visible(j)) 返 vars[j].rsp_off;
             返 vars[i].rsp_off; /* 无定义: extern 槽 */
@@ -1681,17 +1698,17 @@ __attribute__((unused))
     返 -1;
 }
 静 整 var_stidx(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].st_idx;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].st_idx;
     返 -1;
 }
 静 整 var_pesz(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_esz;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].p_esz;
     返 0;
 }
 /* ginit slot index for a function-local static with an initializer (emitted at main
    entry, not on every call). -1 = no ginit initializer. Uses pdisp (unused for statics). */
 静 整 var_ginit(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].pdisp;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].pdisp;
     返 -1;
 }
 /* byte size of a struct-typed var/param (0 = not a struct). st_sz is 0 for params
@@ -1701,7 +1718,7 @@ __attribute__((unused))
    assignment all move the whole struct as a single 8-byte value. Larger
    structs are not supported (no sret); leave them on the old path. */
 静 整 var_small_struct(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].st_idx >= 0) { 整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; 返 (sz > 0 && sz <= 8) ? 1 : 0; }
         返 0;
     }
@@ -1709,7 +1726,7 @@ __attribute__((unused))
 }
 /* big-struct PARAM specifically: its slot holds a POINTER to the caller-side copy */
 静 整 var_big_param(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].is_param && vars[i].st_idx >= 0) { 整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; 返 (sz > 8) ? 1 : 0; }
         返 0;
     }
@@ -1719,7 +1736,7 @@ __attribute__((unused))
    Local structs register rsp_off as the ALIGNED UPPER bound (field access uses
    off - sz); by-value struct params register the START. Returns an rbp offset. */
 静 整 var_sbase(常 字 *n, 整 off) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         若 (vars[i].st_idx >= 0) {
             整 sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz;
             返 vars[i].is_param ? off : off - sz;
@@ -1735,7 +1752,7 @@ __attribute__((unused))
 
 
 静 整 var_arrsz(常 字 *n) {
-    遍 (整 i = vs_n() - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].arr_sz;
+    遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].arr_sz;
     返 0;
 }
 /* element size for ptr[i] / arr[i]: arr_esz (arrays AND pointer params/locals now store
@@ -2298,6 +2315,8 @@ __attribute__((unused))
     若 (!strcmp(s, "unsigned")) 返 VK;
     若 (!strcmp(s, "int") || !strcmp(s, "double")) 返 VK;
     若 (!strcmp(s, "char")) 返 VK;
+    若 (!strcmp(s, "_Bool")) 返 VK;
+    若 (!strcmp(s, "inline")) 返 VK;
     若 (!strcmp(s, "short")) 返 VK; /* fix 2026-08-06: 镜像 qcc_x86.c — short 缺词法分类 → struct 字段当标识符注册成幻影字段 (回归测试 regress_struct_align 暴露) */
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "sizeof")) 返 BK;
@@ -2409,7 +2428,7 @@ __attribute__((unused))
                     续;
                 }
                 long long mval = 0; /* fix 2026-08-09 审计 BUG-3: int 累加 3000000000 溢出 UB → long long */
-                若 (s[i] == '"' && str_macro_n < 64) { /* string macro: #define NAME "value" — 解码存储 (fix 2026-08-07: 镜像 qcc_x86.c — 原缺失, 字符串宏注册成数值 0) */
+                若 (s[i] == '"' && str_macro_n < 1024) { /* string macro: #define NAME "value" — 解码存储 (fix 2026-08-07: 镜像 qcc_x86.c — 原缺失, 字符串宏注册成数值 0) */
                     i++;
                     整 j = 0;
                     循环 (s[i] && s[i] != '"' && j < 2046) {
@@ -2441,7 +2460,7 @@ __attribute__((unused))
             若 (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cval; ti++; 续;
         }
-        若 (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll_hi[ti] = 0; 长 长 v64 = 0; /* 64 位累加器：大 LL 字面量（fix 2026-08-05） */
+        若 (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; 长 长 v64 = 0; /* 64 位累加器：大 LL 字面量（fix 2026-08-05）；tll[ti]=0 fix 2026-08-12: 自举代 calloc bump 不清零 → tll[ti] 读堆旧数据 → 误标 nll */
             若 (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2;
                 /* 十六进制浮点字面量 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
@@ -2504,6 +2523,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "读取")) strcpy(tn[ti], "fread");
             否 若 (!strcmp(tn[ti], "写入")) strcpy(tn[ti], "fwrite");
             /* 甲言关键字: 中文 → 英文名 (解析器二次 strcmp 判断需要英文 tn) */
+            否 若 (!strcmp(tn[ti], "字节")) strcpy(tn[ti], "char"); /* 中文类型名 字节→char */
             否 若 (!strcmp(tn[ti], "构")) strcpy(tn[ti], "struct");
             否 若 (!strcmp(tn[ti], "联")) strcpy(tn[ti], "union");
             否 若 (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
@@ -2534,8 +2554,8 @@ __attribute__((unused))
             否则 若 (!strcmp(tn[ti], "字节")) strcpy(tn[ti], "char"); /* fix 2026-08-08 root: byte(2chars) type */
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             否 若 (!strcmp(tn[ti], "__attribute__")) { 整 aj = i; 循环 (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++; 若 (s[aj] == '(') { i = aj; 整 ad = 0; 循环 (s[i]) { 若 (s[i] == '"') { i++; 循环 (s[i] && s[i] != '"') { 若 (s[i] == '\\') i++; i++; } 续; } 若 (s[i] == '(') ad++; 否 若 (s[i] == ')') { ad--; 若 (ad <= 0) { i++; 断; } } i++; } 续; } }
-            整 k = kw(tn[ti]);            若 (k == NK) { 字 *sm = str_macro_find(tn[ti]); 若 (sm) { 若 (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 整 k2 = 0; 循环 (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } 若 (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } 整 found_num = 0, nvv = 0; 遍 (整 mi = 0; mi < macro_n; mi++) 若 (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; 断; } 若 (found_num) { tt[ti] = NK; tv[ti] = nvv; ti++; 续; } /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 */ tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
-        若 (s[i] == '"') { 若 (str_cnt >= 1024) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; 整 j = 0; 循环 (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 若 (s[i] == '0') str_tbl[str_cnt][j++] = 0; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } i++; 整 ni = i; 循环 (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; 若 (s[ni] == '"') { i = ni + 1; 续; } 断; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; 续; }
+            整 k = kw(tn[ti]);            若 (k == NK) { 字 *sm = str_macro_find(tn[ti]); 若 (sm) { 若 (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 整 k2 = 0; 循环 (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } 若 (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } 整 found_num = 0, nvv = 0; 遍 (整 mi = 0; mi < macro_n; mi++) 若 (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; 断; } 若 (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; 续; } /* fix 2026-08-12: 数字宏 NK 也须清 tll/tuns - 残留 calloc 垃圾 → spurious nll → 2-cycle */ /* fix 2026-08-12: 数字宏 NK 也须清 tll/tuns - 残留 calloc 垃圾 → spurious nll → 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 */ tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
+        若 (s[i] == '"') { 若 (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; 整 j = 0; 循环 (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ 循环 (s[i] && s[i] != '"' && j < 2046) { 若 (s[i] == '\\' && s[i + 1]) { i++; 若 (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; 否 若 (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; 否 若 (s[i] == '0') str_tbl[str_cnt][j++] = 0; 否 str_tbl[str_cnt][j++] = s[i]; } 否 str_tbl[str_cnt][j++] = s[i]; i++; } 若 (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06)\n"); exit(1); } i++; 整 ni = i; 循环 (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; 若 (s[ni] == '"') { i = ni + 1; 续; } 断; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; 续; }
         若 (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; 整 cv = s[i];
             若 (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
@@ -2808,6 +2828,8 @@ __attribute__((unused))
     若 (n255[p] < 0) { n255[p] = c; 返; }
 }
 
+静 整 cl_blk = -1; /* 当前 blk() 块 (compound literal 初始化挂这里, fix 2026-08-11) */
+静 整 compound_literal(整 is_struct, 整 si, 整 is_array, 整 arr_n, 整 arr_esz);
 静 整 prim(空);
 静 整 stmt(空);
 静 整 expr(空);
@@ -2824,7 +2846,7 @@ __attribute__((unused))
         若 (tt[tk] == OK) tk++; /* skip ( */
         若 (tt[tk] == VK) { /* sizeof(int/char/double/...) + 指针 (fix 2026-08-05: was hardcoded 4 for every type) */
             整 tsz = 4;
-            若 (!strcmp(tn[tk], "char")) tsz = 1;
+            若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) tsz = 1;
             否 若 (!strcmp(tn[tk], "double")) tsz = 8;
             否 若 (!strcmp(tn[tk], "short")) tsz = 2;
             tk++;
@@ -2843,7 +2865,7 @@ __attribute__((unused))
                 整 funs = 0; /* unsigned 位域标记 */
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == DK) tk++; 若 (tt[tk] == VR) { 字 fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
                     否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                     若 (tt[tk] == CL) { /* 无名位域 */
@@ -2962,14 +2984,45 @@ __attribute__((unused))
     若 (tt[tk] == OK) {
         /* type cast: (type)expr �?type keywords/struct/typedef then ) */
         若 (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
-            字 *cast_ty = 0;
+            字 *cast_ty = 0; 字 *cast_ty2 = 0;
+            字 cast_sname[32] = ""; 整 cast_is_struct = 0;
             tk++; /* ( */
-            若 (tt[tk] == VK) { cast_ty = tn[tk]; 循环 (tt[tk] == VK) tk++; } /* first type kw: int/double */
+            若 (tt[tk] == VK) { cast_ty = tn[tk]; tk++; 若 (tt[tk] == VK) { cast_ty2 = tn[tk]; tk++; } 循环 (tt[tk] == VK) tk++; } /* first/second type kw */
             否 循环 (tt[tk] == VK) tk++;
-            若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; }
+            若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { strcpy(cast_sname, tn[tk]); cast_is_struct = 1; tk++; } } /* struct Tag — 保存 tag 名 (compound literal 用) */
             否 若 (tt[tk] == VR && td_is(tn[tk])) tk++;
-            循环 (tt[tk] == DK) tk++; /* pointer * */
+            若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fix 2026-08-10: 函数指针类型 cast (int (*)(int))expr — 跳过 (*) (args) 到类型结束 ) */
+                整 fp_d = 1; tk++; /* (* 的 ( 已含在深度内 */
+                循环 (tk < TS) {
+                    若 (tt[tk] == OK) fp_d++;
+                    否 若 (tt[tk] == KK) { 若 (fp_d == 0) { tk++; 断; } fp_d--; }
+                    tk++;
+                }
+            }
+            整 cast_nstar = 0; 循环 (tt[tk] == DK) { cast_nstar++; tk++; } /* pointer * */
+            整 cast_arrn = 0; 整 cast_arresz = 0; /* compound literal 数组 dims: (int[N]){...} */
+            若 (tt[tk] == LB) { /* (T[N]) 数组类型后缀 (compound literal 用, fix 2026-08-11) */
+                tk++; 若 (tt[tk] == NK) { cast_arrn = tv[tk]; tk++; } 否 若 (tt[tk] == VR) { cast_arrn = 0; tk++; }
+                若 (tt[tk] == RB) tk++;
+                cast_arresz = cast_ty2 ? 8 : 4; /* double/long long → 8, else 4 */
+            }
             若 (tt[tk] == KK) tk++; /* ) */
+            /* C99 compound literal: (T){ init } — 表达式位置初始化 (fix 2026-08-11 Phase 2-3) */
+            若 (tt[tk] == FK) {
+                若 (cast_is_struct && cast_sname[0]) {
+                    整 si2 = st_find(cast_sname);
+                    若 (si2 >= 0) 返 compound_literal(1, si2, 0, 0, 0);
+                    /* 未知 struct tag: 跳过 {} 当表达式失败处理 */
+                    tk++; 整 d0 = 1;
+                    循环 (tk < TS && d0 > 0) { 若 (tt[tk] == FK) d0++; 否 若 (tt[tk] == UK) d0--; tk++; }
+                    返 -1;
+                }
+                若 (cast_arresz > 0) { /* (int[N]){...} 或 (int[]){...} — 显式数组后缀走数组路径, dims 由 compound_literal 推断 */
+                    返 compound_literal(0, -1, 1, cast_arrn, cast_arresz);
+                }
+                /* 标量 (int){5} 或 struct (已在上方处理): 走普通标量路径 */
+                返 compound_literal(0, -1, 0, 0, 0);
+            }
             整 ce = prim(); /* cast 操作数是 UNARY 表达式——用 prim() 而非 expr()：`(long long)1<<32` 必须先做 64 位 cast 再移位，不能解析成 `(long long)(1<<32)`（fix 2026-08-05） */
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si) */
             若 (cast_ty && !strcmp(cast_ty, "int") && (ndbl[ce] || expr_is_double(ce))) { 整 m = Nd(19); Nc(m, ce); ndbl[m] = 0; 返 m; } /* fix 2026-08-07: +expr_is_double — (int)double 调用(ndbl 只在 codegen 设) 真截断 (镜像 C 源) */
@@ -2984,7 +3037,18 @@ __attribute__((unused))
                 否 若 (tt[tk] == PP || tt[tk] == MM) { 整 is_dec = (tt[tk] == MM); tk++; 整 m = Nd(23); nv[m] = is_dec; Nc(m, ce); ce = m; } /* fix 2026-08-08: (cast)++ 后缀补齐 */
                 否 断;
             }
-            返 ce; /* cast is no-op: value unchanged */
+            若 (cast_nstar >= 1) { /* fix 2026-08-08 width bug: (T*) cast no-op drops type info, *((T*)x) width by target element size */
+    整 cpe = 0;
+    若 (cast_nstar >= 2) cpe = 8; /* T** -> pointer */
+    否 若 (cast_ty && (!strcmp(cast_ty, "char") || !strcmp(cast_ty, "_Bool"))) cpe = 1;
+    否 若 (cast_ty && !strcmp(cast_ty, "short")) cpe = 2;
+    否 若 (cast_ty && !strcmp(cast_ty, "unsigned")) { cpe = 4; 若 (cast_ty2 && (!strcmp(cast_ty2, "char") || !strcmp(cast_ty2, "_Bool"))) cpe = 1; 否 若 (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2; 否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8; }
+    否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
+    否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
+    否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
+    若 (cpe) pesz[ce] = cpe;
+}
+返 ce; /* cast is no-op: value unchanged */
         }
         tk++; 整 n = expr();
         /* comma operator inside parens: (a, b, c) �?needed for (i++, PP) in the
@@ -3071,6 +3135,26 @@ __attribute__((unused))
     循环 (tt[tk] != UK) {
         若 (tt[tk] == CK || tt[tk] == SK) { tk++; 续; }
         若 (tt[tk] == UK) 断;
+        若 (tt[tk] == LB) { /* Phase 2: designated initializer [idx] = expr (fix 2026-08-11, 对齐宿主) */
+            整 dsubs[8]; 整 dn_cnt = 0;
+            循环 (tt[tk] == LB) { /* 支持多维 [i][j] 设计器 */
+                tk++; /* [ */
+                整 dn = expr();
+                整 didx = (dn > 0 && nt[dn] == 0) ? nv[dn] : -1; /* 常量下标: expr() 返回 Nd(0) 节点, nv 存值 */
+                若 (didx < 0) { 循环 (tt[tk] != CK && tt[tk] != UK && tt[tk] != EK) tk++; 续; }
+                若 (tt[tk] == RB) tk++; /* ] */
+                若 (dn_cnt < 8) dsubs[dn_cnt++] = didx;
+            }
+            若 (tt[tk] == AK) tk++; /* = */
+            /* 跳到指定下标: 顶层扁平 → gi_idx[0..dn_cnt-1]=dsubs (其余维清零); 嵌套行 → 本层 depth */
+            若 (depth == 0) {
+                遍 (整 i = 0; i < nd; i++) gi_idx[i] = 0;
+                遍 (整 i = 0; i < dn_cnt; i++) gi_idx[i] = dsubs[i];
+            } 否 {
+                gi_idx[depth] = dsubs[0];
+            }
+            /* 落 leaf 消费值 (C99: [2]=9 后随值落 a[3] — leaf 的 ++ 推进保持语义) */
+        }
         若 (tt[tk] == FK && depth < nd - 1) { /* 嵌套行 { ... } */
             gi_idx[depth + 1] = 0; /* 重置子游标 (fix: next row continued from the previous row's column) */
             brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
@@ -3164,9 +3248,58 @@ __attribute__((unused))
 静 整 f(整 x) { 若 (x > 0) 返 1; 返 0; }
 静 整 f(整 x) { 循环 (x > 0) x = x - 1; 返 x; }
 静 整 甲绝对值(整 x) { 若 (x < 0) 返 -x; 返 x; }
+/* C99 compound literal: (T){ init } — 匿名自动存储期临时对象 (fix 2026-08-11 Phase 2-3).
+   cast 分支在 ')' 后见 FK 时调用。注册 _cl<N> 临时变量, 复用 brace_fields/brace_arr_init 填充,
+   初始化块挂到 cl_blk (blk() 当前块), 返回临时对象的地址节点 (Nd(1)). */
+静 整 cl_cnt = 0;
+静 整 compound_literal(整 is_struct, 整 si, 整 is_array, 整 arr_n, 整 arr_esz) {
+    字 vn[32]; snprintf(vn, 32, "_cl%d", cl_cnt++);
+    整 b = Nd(5); /* block: decl + init assigns */
+    整 d = Nd(7); memcpy((字*)(nn + d), vn, 32); /* decl node */
+    整 init_blk = Nd(5); /* init assignments (挂到 cl_blk) */
+    若 (is_array) {
+        若 (arr_n <= 0) { /* (T[]){} : 数 FK 内顶层元素数推断 dims */
+            整 save_tk = tk; 整 cnt = 0; 整 depth0 = 1; tk++; /* skip { */
+            循环 (tk < TS && depth0 > 0) {
+                若 (tt[tk] == FK) depth0++;
+                否 若 (tt[tk] == UK) { depth0--; 若 (depth0 == 0) 断; }
+                否 若 (tt[tk] == CK && depth0 == 1) cnt++;
+                tk++;
+            }
+            arr_n = cnt + 1;
+            tk = save_tk;
+        }
+        var_array(vn, arr_n, arr_esz);
+        Nc(b, d); /* declare */
+        整 idn = Nd(1); memcpy((字*)(nn + idn), vn, 32);
+        整 dims[1]; dims[0] = arr_n;
+        tk++; /* skip { */
+        brace_arr_init(init_blk, idn, dims, 1, 0);
+    } 否 若 (is_struct) {
+        var_struct(vn, si);
+        Nc(b, d);
+        整 idn = Nd(1); memcpy((字*)(nn + idn), vn, 32);
+        tk++; /* skip { 先跳 FK (brace_fields 从 FK 后开始) */
+        整 bi = brace_fields(si, idn);
+        Nc(init_blk, bi);
+        若 (tt[tk] == UK) tk++; /* } */
+    } 否 { /* scalar: (T){5} → 临时 = 5 (C99: 标量 compound literal 是值, 非地址) */
+        tk++; /* skip { */
+        整 val = expr(); /* { 后的表达式值 */
+        若 (tt[tk] == UK) tk++; /* } */
+        /* 标量不需要临时变量 — 直接返回值 */
+        返 val;
+    }
+    /* 声明挂当前块, 初始化挂 cl_blk (compound literal 语义: 初始化在包含语句前执行) */
+    若 (cl_blk >= 0) Nc(cl_blk, b);
+    若 (cl_blk >= 0) Nc(cl_blk, init_blk);
+    整 n = Nd(1); memcpy((字*)(nn + n), vn, 32); /* 返回临时对象地址 */
+    返 n;
+}
 静 整 blk(空) {
     整 b = Nd(5); tk++;
     整 b_root = b;  /* first block = sequence root; extra blocks chain as children */
+    整 cl_prev = cl_blk; cl_blk = b; /* compound literal 初始化挂当前块 (fix 2026-08-11) */
     整 b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     循环 (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 */
         若 (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
@@ -3406,7 +3539,7 @@ __attribute__((unused))
             整 ltd_si = -1; /* typedef'd struct 索引（C 原版 2187） */
             若 (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); }
             整 tdi2v = tdef_lookup(tn[tk]); 整 tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); 整 tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl); /* fnptr typedef 变量/数组: ops_t ops[2] / ops_t f（fix 2026-08-05: 原注册成 int → 4 字节元素，fnptr 调用取错地址；p_dbl=0 破坏 case-10 赋值的 double 返回调用） */
-            整 is_char = (tt[tk] == VK && !strcmp(tn[tk], "char"));
+            整 is_char = (tt[tk] == VK && !strcmp(tn[tk], "char")) || (tt[tk] == VK && !strcmp(tn[tk], "_Bool"));
             整 is_short = (tt[tk] == VK && !strcmp(tn[tk], "short")); /* fix */
             整 is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             整 is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
@@ -3430,7 +3563,7 @@ __attribute__((unused))
                 }
                 若 (tt[tk] == UK) tk++; /* } */
             }
-            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
+            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long（fix 2026-08-06） */
             若 (tt[tk] == VR && td_is(tn[tk])) { /* 第 2/3 个 token 是 typedef'd 类型 (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07 镜像 C 源) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
@@ -3483,6 +3616,7 @@ __attribute__((unused))
                 整 cnt = 1; 整 first = 1; 整 dims = 0;
                 循环 (tt[tk] == LB) {
                     tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; 若 (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
+                    否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000) { 若 (dims == 0) first = evc; 若 (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } 否 tk++; } /* 真 VLA: 跳过避免死循环 (fix 2026-08-11) */
                     若 (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `整 a[] = {1,2,3}` / `字 *names[] = {...}`
@@ -3682,6 +3816,7 @@ __attribute__((unused))
         否 { Nc(b, stmt()); b_cnt++; }
     }
     若 (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 */ /* NOTE: vcnt NOT restored -- C has function scope, not block scope */
+    cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
     返 b_root;
 }
 
@@ -3720,7 +3855,7 @@ __attribute__((unused))
                 /* for(int i = 0; ...) �?declaration as init */
                 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; }
                 整 is_char = 0, is_ptr = 0;
-                循环 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) is_char = 1; tk++; }
+                循环 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; tk++; }
                 若 (tt[tk] == DK) { is_ptr = 1; tk++; }
                 整 d = Nd(7);
                 若 (tt[tk] == VR) {
@@ -3858,7 +3993,7 @@ __attribute__((unused))
                     整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
                     循环 (tk < TS && tt[tk] != UK) {
                         整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0; 整 fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
-                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
+                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         否 若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             若 (tt[tk] == VR) {
@@ -3870,7 +4005,7 @@ __attribute__((unused))
                                     整 ifuns = 0; /* unsigned 位域标记（fix 2026-08-05） */
                                     循环 (tk < TS && tt[tk] != UK) {
                                         整 ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
-                                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) ifuns = 1; 若 (!strcmp(tn[tk], "char")) ifsz = 1; 否 若 (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
+                                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) ifuns = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; 否 若 (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
                                         否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == DK) tk++; }
                                         若 (tt[tk] == CL) { /* 无名位域（fix 2026-08-05） */
                                             tk++; 整 ubw = 0;
@@ -4012,7 +4147,7 @@ __attribute__((unused))
         若 (tt[tk] == VK && !strcmp(tn[tk], "extern")) { /* fix 2026-08-06: 注册 extern 外部符号 (Task 5.1 多 .o 链接, 镜像 qcc_x86.c) */
         tk++; /* skip extern */
         整 e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
-        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
+        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; }
         若 (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明: 记录返回类型后跳过 */
             若 (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
             循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -4121,7 +4256,9 @@ __attribute__((unused))
                     /* rename struct to typedef name */
                     若 (tt[tk] == VR) {
                         strcpy(stypes[si].name, tn[tk]); /* use typedef name as struct name */
-                        td_reg(tn[tk]); tk++;
+                        td_reg(tn[tk]);
+                        tdef_add(tn[tk], 1, stypes[si].name, 0); /* 同步宿主 fix 2026-08-03: 只 td_reg → td_st_index 返回 -1 → typedef struct 局部/全局注册成 int → member 赋值 store 丢失 */
+                        tk++;
                     }
                 } 否 若 (tt[tk] == VR) { /* struct tag name — remember for typedef X */
                     strcpy(td_stname, tn[tk]); td_isst = 1; tk++;
@@ -4133,7 +4270,7 @@ __attribute__((unused))
                         整 tfuns = 0; /* unsigned 位域标记（fix 2026-08-05） */
                         循环 (tk < TS && tt[tk] != UK) {
                             整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) tfuns = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) tfuns = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             否 若 (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
                                 若 (tt[tk] == VR) {
@@ -4256,7 +4393,7 @@ __attribute__((unused))
                 整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
-                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     否 若 (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
                         若 (tt[tk] == VR) {
@@ -4325,14 +4462,18 @@ __attribute__((unused))
                     若 (tt[tk] == SK) tk++;
                 }
                 若 (tt[tk] == UK) tk++;
-                若 (tt[tk] == VR) {
+                若 (tt[tk] == VR || tt[tk] == DK) {
+                    整 anon_ptr = 0;
+                    若 (tt[tk] == DK) { anon_ptr = 1; tk++; } /* fix 2026-08-10: struct {...} *p -- ptr global was skipped (latent bug) */
+                    若 (tt[tk] == VR) {
                     /* struct gets a unique type name (NOT the var name: that would make
                        blk() misparse "tbl[i].f = x" as a struct type declaration) */
                     字 tmp[32]; sprintf(tmp, "__anon_%d", si);
                     strcpy(stypes[si].name, tmp);
                     整 cnt = 1;
                     若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
-                    var_static_struct(tn[tk], si, cnt);
+                    若 (anon_ptr) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; }
+                    否 var_static_struct(tn[tk], si, cnt);
                     字 vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
                     循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; }
@@ -4349,6 +4490,7 @@ __attribute__((unused))
                             Nc(decl, expr());
                             若 (ginit_n < 4096) ginit[ginit_n++] = decl;
                         }
+                    }
                     }
                 }
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
@@ -4391,7 +4533,7 @@ __attribute__((unused))
             } 否 若 (is_type && (tt[tk] == VR || tt[tk] == DK)) {
                 /* global variable(s): int a, b, c; (comma-separated) */
                 整 g_is_char = 0;
-                遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "char")) g_is_char = 1;
+                遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && (!strcmp(tn[ti2], "char") || !strcmp(tn[ti2], "_Bool"))) g_is_char = 1;
                 整 g_is_double = 0;
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "double")) g_is_double = 1;
                 若 (!g_is_double) { 整 tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_dbl) g_is_double = 1; } /* typedef double alias (fix 2026-08-07 镜像 C 源: g_tdef 覆盖 static 前缀) */
@@ -4420,6 +4562,14 @@ __attribute__((unused))
                             gcnt *= tv[tk];
                             若 (gdim_n < 8) { gdims[gdim_n] = tv[tk]; gdim_n++; }
                             tk++;
+                        } 否 若 (tt[tk] == VR) { /* fix 2026-08-11: enum/宏 常量维度 */
+                            整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]);
+                            若 (evc != 0x80000000) {
+                                若 (gcnt == 0) { gfirst = evc; gcnt = 1; }
+                                gcnt *= evc;
+                                若 (gdim_n < 8) { gdims[gdim_n] = evc; gdim_n++; }
+                                tk++;
+                            } 否 tk++; /* 真 VLA: 跳过避免死循环 (fix 2026-08-11) */
                         }
                         若 (tt[tk] == RB) tk++;
                     }
@@ -4566,11 +4716,11 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 整 p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr 参数：8 字节指针槽（C 原版 3045 移植） */
                 整 pis_uns = 0; /* unsigned 参数: >> 逻辑 (fix 2026-08-05) */
                 整 pis_ll = 0; /* long long 参数: 8 字节槽（fix 2026-08-05） */
-                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
+                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                 否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
-                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long（fix 2026-08-06） */
                 循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -4611,7 +4761,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         pis_ptr = 1;
                         若 (esz == 0) esz = 4; /* element size for arr[i] scaling */
                     }
-                    var_param(tn[tk], pr, pis_ptr ? 4 : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* double* is a POINTER (rcx), not an xmm double */
+                    var_param(tn[tk], pr, pis_ptr ? (ptr_depth > 1 ? 8 : 4) : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* fix 2026-08-11: 指针参数 p_esz 原硬编码 4 - 多级指针(char pp / int pp)应 8 */
                     若 (pis_char && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_char = 1; /* sizeof(char 参数) (fix 2026-08-05) */
                     若 (pis_uns && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_uns = 1; /* unsigned 参数: >> 逻辑 (fix 2026-08-05) */
                     若 (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long 参数: 8 字节槽（fix 2026-08-05） */
@@ -4837,6 +4987,24 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     /* len = r12 - r14 */
     mov_rr64(0, 12); asm_emit("    减64 r0, r14\n", 0, 0, 0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0); /* sub rax, r14 */
     mov_rr(8, 0); /* r8 = len */
+    若 (bin_mode) { /* fix 2026-08-10 Gate 9: bin printf -> 串口 COM1 0x3F8 */
+        整 lbin_loop = new_label(), lbin_wait = new_label(), lbin_done = new_label();
+        set_label(lbin_loop);
+        test_rr(8, 8); jz_rel(-1); patch_label(cp-4, lbin_done, 1);
+        set_label(lbin_wait);
+        mov_r_imm(2, 0x3FD);
+        asm_emit("    读端口 al, dx\n", 0, 0, 0); b(0xEC);
+        b(0xA8); b(0x20);
+        jz_rel(-1); patch_label(cp-4, lbin_wait, 1);
+        rex(0,0,0,1); b(0x8A); modrm(0, 0, 6);
+        mov_r_imm(2, 0x3F8);
+        asm_emit("    写端口 dx, al\n", 0, 0, 0); b(0xEE);
+        asm_emit("    自增 r14\n", 0, 0, 0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 6);
+        rex(0,0,0,1); b(0xFF); modrm(3, 1, 0);
+        jmp_rel(-1); patch_label(cp-4, lbin_loop, 2);
+        set_label(lbin_done);
+    } 否 {
+
     sub_rsp_imm(32);
     mov_rr64(1, 10); /* rcx = handle */
     mov_rr64(2, 14); /* rdx = buf */
@@ -4844,6 +5012,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (8-byte NULL overlapped �?arg5 at [rsp+32] per real ABI) */
     call_iat(1);       /* WriteFile */
     add_rsp_imm(32);
+    }
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
 
@@ -5585,6 +5754,164 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     }
 }
 
+/* fix 2026-08-11 汇编本身: __asm("指令") 字符串汇编编码器 (bin_mode) — 镜像版.
+   strcmp 链 (镜像无 struct 数组 brace-init); 行内 hex/dec 解析 (镜像无 strtol/atoi). */
+静 整 asm_reg_id(常 字 *s) {
+    若 (!strcmp(s, "rax")) 返 0;
+    若 (!strcmp(s, "rcx")) 返 1;
+    若 (!strcmp(s, "rdx")) 返 2;
+    若 (!strcmp(s, "rbx")) 返 3;
+    若 (!strcmp(s, "rsp")) 返 4;
+    若 (!strcmp(s, "rbp")) 返 5;
+    若 (!strcmp(s, "rsi")) 返 6;
+    若 (!strcmp(s, "rdi")) 返 7;
+    若 (!strcmp(s, "eax")) 返 0;
+    若 (!strcmp(s, "ecx")) 返 1;
+    若 (!strcmp(s, "edx")) 返 2;
+    若 (!strcmp(s, "ebx")) 返 3;
+    若 (!strcmp(s, "esp")) 返 4;
+    若 (!strcmp(s, "ebp")) 返 5;
+    若 (!strcmp(s, "esi")) 返 6;
+    若 (!strcmp(s, "edi")) 返 7;
+    若 (!strcmp(s, "al")) 返 0;
+    若 (!strcmp(s, "cl")) 返 1;
+    若 (!strcmp(s, "dl")) 返 2;
+    若 (!strcmp(s, "bl")) 返 3;
+    若 (!strcmp(s, "spl")) 返 4;
+    若 (!strcmp(s, "bpl")) 返 5;
+    若 (!strcmp(s, "sil")) 返 6;
+    若 (!strcmp(s, "dil")) 返 7;
+    若 (!strcmp(s, "r8")) 返 8;
+    若 (!strcmp(s, "r9")) 返 9;
+    若 (!strcmp(s, "r10")) 返 10;
+    若 (!strcmp(s, "r11")) 返 11;
+    若 (!strcmp(s, "r12")) 返 12;
+    若 (!strcmp(s, "r13")) 返 13;
+    若 (!strcmp(s, "r14")) 返 14;
+    若 (!strcmp(s, "r15")) 返 15;
+    若 (!strcmp(s, "r8d")) 返 8;
+    若 (!strcmp(s, "r9d")) 返 9;
+    若 (!strcmp(s, "r10d")) 返 10;
+    若 (!strcmp(s, "r11d")) 返 11;
+    若 (!strcmp(s, "r12d")) 返 12;
+    若 (!strcmp(s, "r13d")) 返 13;
+    若 (!strcmp(s, "r14d")) 返 14;
+    若 (!strcmp(s, "r15d")) 返 15;
+    返 -1;
+}
+静 空 asm_enc_string(常 字 *asmtext) {
+    字 buf[256]; 整 bi = 0;
+    循环 (asmtext[bi] && bi < 255) { buf[bi] = asmtext[bi]; bi++; }
+    buf[bi] = 0;
+    整 op = 0; 循环 (buf[op] == ' ' || buf[op] == '\t') op++;
+    整 rest = op; 循环 (buf[rest] && buf[rest] != ' ' && buf[rest] != '\t' && buf[rest] != ',') rest++;
+    字 opc[32]; 整 opl = rest - op; 若 (opl > 31) opl = 31;
+    整 oi = 0; 循环 (oi < opl) { opc[oi] = buf[op + oi]; oi++; }
+    opc[oi] = 0;
+    循环 (buf[rest] == ' ' || buf[rest] == '\t' || buf[rest] == ',') rest++;
+    整 arg1 = rest; 循环 (buf[arg1] == ' ' || buf[arg1] == '\t') arg1++;
+    若 (!strcmp(opc, "hlt")) { b(0xF4); 返; }
+    若 (!strcmp(opc, "nop")) { b(0x90); 返; }
+    若 (!strcmp(opc, "ret") || !strcmp(opc, "retq")) { b(0xC3); 返; }
+    若 (!strcmp(opc, "sti")) { b(0xFB); 返; }
+    若 (!strcmp(opc, "cli")) { b(0xFA); 返; }
+    若 (!strcmp(opc, "int3")) { b(0xCC); 返; }
+    若 (!strcmp(opc, "iretq")) { b(0x48); b(0xCF); 返; }
+    若 (!strcmp(opc, "push") || !strcmp(opc, "pop")) {
+        整 a1 = arg1; 循环 (buf[a1] == '%') a1++;
+        字 an[16]; 整 ai = 0;
+        循环 (buf[a1] && buf[a1] != ' ' && buf[a1] != '\t' && ai < 15) { an[ai] = buf[a1]; ai++; a1++; }
+        an[ai] = 0;
+        整 r = asm_reg_id(an);
+        若 (r >= 0) {
+            若 (r < 8) {
+                若 (!strcmp(opc, "push")) b(0x50 + r); 否 b(0x58 + r);
+            } 否 {
+                整 lo = r - 8;
+                若 (!strcmp(opc, "push")) { b(0x41); b(0x50 + lo); }
+                否 { b(0x41); b(0x58 + lo); }
+            }
+            返;
+        }
+    }
+    整 comma = arg1; 循环 (buf[comma] && buf[comma] != ',') comma++;
+    若 (buf[comma] == ',') {
+        comma++;
+        循环 (buf[comma] == ' ' || buf[comma] == '\t') comma++;
+        整 d0 = arg1; 循环 (buf[d0] == '%') d0++;
+        整 s0 = comma; 循环 (buf[s0] == '%') s0++;
+        字 dstb[16]; 整 di = 0;
+        循环 (buf[d0] && buf[d0] != ' ' && buf[d0] != '\t' && buf[d0] != ',' && di < 15) { dstb[di] = buf[d0]; di++; d0++; }
+        dstb[di] = 0;
+        字 srcb[16]; 整 si2 = 0;
+        循环 (buf[s0] && buf[s0] != ' ' && buf[s0] != '\t' && buf[s0] != ',' && si2 < 15) { srcb[si2] = buf[s0]; si2++; s0++; }
+        srcb[si2] = 0;
+        整 dr = asm_reg_id(dstb);
+        整 sr = asm_reg_id(srcb);
+        整 imm = 0; 整 is_imm = (srcb[0] == '$') || (srcb[0] >= '0' && srcb[0] <= '9');
+        若 (is_imm) {
+            整 sp = 0; 若 (srcb[0] == '$') sp++;
+            若 (srcb[sp] == '0' && (srcb[sp+1] == 'x' || srcb[sp+1] == 'X')) {
+                sp += 2;
+                循环 (srcb[sp] && ((srcb[sp] >= '0' && srcb[sp] <= '9') || (srcb[sp] >= 'a' && srcb[sp] <= 'f') || (srcb[sp] >= 'A' && srcb[sp] <= 'F'))) {
+                    整 dc = srcb[sp];
+                    若 (dc >= '0' && dc <= '9') dc = dc - '0';
+                    否 若 (dc >= 'a' && dc <= 'f') dc = dc - 'a' + 10;
+                    否 dc = dc - 'A' + 10;
+                    imm = imm * 16 + dc;
+                    sp++;
+                }
+            } 否 {
+                循环 (srcb[sp] >= '0' && srcb[sp] <= '9') { imm = imm * 10 + (srcb[sp] - '0'); sp++; }
+            }
+            若 (dr >= 0) {
+                整 is64 = dstb[0] == 'r';
+                若 (!strcmp(opc, "mov")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0xC7); b(0xC0 + dr); b4(imm); }
+                    否 { b(0x49); b(0xC7); b(0xC0 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "add")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xC0 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xC0 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "sub")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xE8 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xE8 + dr - 8); b4(imm); }
+                    返;
+                }
+                若 (!strcmp(opc, "cmp")) {
+                    若 (dr < 8) { 若 (is64) b(0x48); b(0x81); b(0xF8 + dr); b4(imm); }
+                    否 { b(0x49); b(0x81); b(0xF8 + dr - 8); b4(imm); }
+                    返;
+                }
+            }
+        }
+        若 (dr >= 0 && sr >= 0) {
+            整 d64 = dstb[0] == 'r';
+            若 (!strcmp(opc, "mov")) {
+                若 (dr < 8 && sr < 8) {
+                    若 (d64) b(0x48);
+                    b(0x89); b(0xC0 + sr * 8 + dr);
+                } 否 若 (dr >= 8 && sr < 8) { b(0x4D); b(0x89); b(0xC0 + sr * 8 + (dr - 8)); }
+                否 若 (dr < 8 && sr >= 8) { b(0x4C); b(0x89); b(0xC0 + (sr - 8) * 8 + dr); }
+                否 { b(0x4D); b(0x89); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                返;
+            }
+            若 (!strcmp(opc, "add") || !strcmp(opc, "sub") || !strcmp(opc, "cmp")) {
+                整 base = !strcmp(opc, "add") ? 0x01 : (!strcmp(opc, "sub") ? 0x29 : 0x39);
+                若 (dr < 8 && sr < 8) { 若 (d64) b(0x48); b(base); b(0xC0 + sr * 8 + dr); }
+                否 若 (dr >= 8 && sr < 8) { b(0x4D); b(base); b(0xC0 + sr * 8 + (dr - 8)); }
+                否 若 (dr < 8 && sr >= 8) { b(0x4C); b(base); b(0xC0 + (sr - 8) * 8 + dr); }
+                否 { b(0x4D); b(base); b(0xC0 + (sr - 8) * 8 + (dr - 8)); }
+                返;
+            }
+        }
+    }
+    fprintf(stderr, "[ERR] __asm 未编码: %s\n", asmtext);
+}
+
 静 空 cg(整 n) {
     若 (n < 0) 返;
     若 (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
@@ -5819,6 +6146,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                     整 c = kids[i];
                     若 (c == fn || c < 0) 续;
                     若 (nt[c] == 0) b(nv[c] & 0xFF);
+                    否 若 (nt[c] == STR) asm_enc_string(str_tbl[nv[c]]); /* fix 2026-08-11: __asm("mov rax,0x10") 字符串指令 */
                 }
                 断;
             }
@@ -6059,8 +6387,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 asm_emit("    存静32 [rip+%d], eax\n", (字*)(长)(整)rel_store, 0, 0);
                 b(0x89); b(0x05); b4(rel_store); /* mov [rip+rel], eax */
                 /* return old counter */
-                mov_rr(0, 8);
-            } 否 若 (!strcmp(fname, "malloc")) {
+                mov_rr(0, 8);            } 否 若 (!strcmp(fname, "malloc")) {
                 /* bump allocator (same .data counter as calloc), n in rcx */
                 整 rel_m1 = data_rva_base - 0x1000 - cp - 6;
                 asm_emit("    取静32 eax, [rip+%d]\n", (字*)(长)(整)rel_m1, 0, 0);
@@ -6110,7 +6437,24 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 asm_emit("    自增 r0\n", 0, 0, 0); b(0xFF); b(0xC0); /* inc eax */
                 jmp_rel(-1); patch_label(cp-4, ls, 2);
                 set_label(ld);
-            } 否 若 (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
+            } 否 若 (!strcmp(fname, "inb")) {
+    mov_rr(2, 1);
+    asm_emit("    读端口 al, dx\n", 0, 0, 0); b(0xEC);
+    movzx_eax_al();
+} 否 若 (!strcmp(fname, "outb")) {
+    mov_rr(0, 2);
+    mov_rr(2, 1);
+    asm_emit("    写端口 dx, al\n", 0, 0, 0); b(0xEE);
+    mov_r_imm(0, 0);
+} 否 若 (!strcmp(fname, "inl")) {
+    mov_rr64(2, 1);
+    asm_emit("    读端口32 eax, dx\n", 0, 0, 0); b(0xED);
+} 否 若 (!strcmp(fname, "outl")) {
+    mov_rr64(0, 2);
+    mov_rr64(2, 1);
+    asm_emit("    写端口32 dx, eax\n", 0, 0, 0); b(0xEF);
+    mov_r_imm(0, 0);
+} 否 若 (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
             } 否 若 (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs")) {
                 emit_fileio(fname);
@@ -6214,7 +6558,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 若 (vname[0] != 0) {
                 整 off = var_lookup(vname); 若 (off < 0) { fprintf(stderr, "[DCL-MISS] unregistered decl: %s\n", vname); 返; } /* fix 2026-08-07: 镜像 C 源 — 严格报错 (原 var_offset 兜底 → [rbp+正偏移] 毁帧) */
                 整 sti = var_stidx(vname);
-                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && nt[n0[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n0[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: sync host 434006 fix 2026-08-03 */
                 若 (sret_tgt) { /* big-struct init: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n0[n]); /* case-4 emits the sret call (lea rcx=&target) */
@@ -6324,7 +6668,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-09: 指针变量用 p_esz; 原只用 arr_esz, 指针 var arr_esz=0 → 各指针类型 步进=1) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
                 若 (var_isstatic(vn)) mov_eax_rip(stc_disp(off));
                 否 mov_reg_mbrp(0, off - cur_frame_sz);
                 push_r(0); /* save old value */
@@ -6366,7 +6710,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             整 off = var_lookup(vn);
             若 (nt[n0[n]] == 1 && off >= 0) {
                 整 step = 1; /* 指针: 按元素大小步进 (fix 2026-08-05) */
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; } /* fix 2026-08-09: 参数用 arr_esz(元素宽), 局部用 p_esz — 参数 p_esz 硬编码4 BUG-NEW-1 */
                 mov_r_imm(1, is_dec ? -step : step); /* ecx = ±step */
                 若 (var_isstatic(vn)) { mov_eax_rip(stc_disp(off)); alu_rr(T_PK, 0, 1); mov_rip_eax(stc_disp(off)); }
                 否 { mov_reg_mbrp(0, off - cur_frame_sz); alu_rr(T_PK, 0, 1); mov_mbrp_reg(off - cur_frame_sz, 0); }
@@ -6664,6 +7008,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 整 pnode = n0[n0[n]];
                 整 pe = 4;
                 若 (nt[pnode] == 1) pe = var_esz((字*)(nn + pnode));
+                若 (pesz[pnode] == 8) pe = 8; /* fix 2026-08-08 width bug: (T*) cast deref store (条件式读取规避 case-12 RHS bug, fix 2026-08-10) */
+                否 若 (pesz[pnode] == 4) pe = 4;
+                否 若 (pesz[pnode] == 2) pe = 2;
+                否 若 (pesz[pnode] == 1) pe = 1;
                 整 is_dp = (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode)));
                 cg(pnode); /* ptr �?eax */
                 push_r(0); /* save ptr on stack */
@@ -6679,7 +7027,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 字 *vname = (字*)(nn + n0[n]);
                 整 off = var_lookup(vname);
                 整 sti = var_stidx(vname);
-                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                整 sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars */
                 若 (sret_tgt) { /* big-struct assign: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n1[n]);
@@ -6757,6 +7105,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
             若 (cg_no_deref) 断; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原例-12 忽略 cg_no_deref 永远加载值 */
             若 (nt[n0[n]] == 1) el = var_esz((字*)(nn + n0[n])); /* named var: element size */
             否 若 (nt[n0[n]] == 14) { 字 *av = (字*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
+            若 (pesz[n0[n]] == 8) el = 8; /* fix 2026-08-08 width bug: (T*) cast deref read (条件式读取规避 case-12 RHS bug, fix 2026-08-10) */
+            否 若 (pesz[n0[n]] == 4) el = 4;
+            否 若 (pesz[n0[n]] == 2) el = 2;
+            否 若 (pesz[n0[n]] == 1) el = 1;
             若 (el == 8) { mov_reg_mreg64(0, 0); 断; } /* 64-bit load */
             若 (el == 4) { mov_reg_mreg(0, 0); 断; }   /* dword load */
             若 (el == 2) { b(0x0F); b(0xB7); modrm(0, 0, 0); 断; } /* fix */
@@ -7044,7 +7396,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 /* str */
 /* string data */
 静 无 字 *sdat; 静 整 sdp, sdc;
-静 整 str_offs[1024]; /* RVA offset for each string (str_tbl 上限 1024，必须匹配) */
+静 整 str_offs[2048]; /* RVA offset for each string (str_tbl 上限 2048，必须匹配) (fix 2026-08-11: 编码器加 62 字符串 → 1090 > 1024 → 扩容) */
 
 静 整 dbl_offs[1024]; /* byte offset of each double literal in sdat; -1 = not placed */
 静 整 dbl_place(整 idx) {
@@ -7077,7 +7429,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
     若 (text_size < 512) text_size = 512;
     整 text_foff = FILE_ALIGNMENT;
     整 data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
-    整 data_vsize = 0x5000000;   /* .data 80MB virtual: statics + bump heap (compiler needs ~70MB) */
+    整 data_vsize = 0x6000000;   /* .data 96MB virtual: statics + bump heap (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
     整 image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
 
     /* DOS Header (64 bytes) */
@@ -7169,6 +7521,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        ILT1@+0xD8 (8+term) ILT2@+0x120 (16+term) desc@+0x1A8 (3*20=60B) names@+0x1E4 */
     fseek(f, data_foff, SEEK_SET);
     整 heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
+    heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump 堆基址 8 字节对齐 — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     整 iat1 = 0x08, iat2 = 0x50, ilt1 = 0xD8, ilt2 = 0x120, desc_off = 0x1A8, name_off = 0x1E4;
@@ -7328,7 +7681,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                    otherwise pass-2 new_label() numbers overlap the pass-1 function
                    labels and epilogue/return jumps resolve to the wrong functions. */
     lc = g_lc_save; rsp_used = g_rsp_save;
-    memset(str_offs, -1, 1024 * 4);;
+    memset(str_offs, -1, 2048 * 4);;
     memset(dbl_offs, -1, 1024 * 4);;
     /* label_pos/label_set MUST be cleared per pass: pass 2 re-uses pass 1's label
        IDs (lc = g_lc_save) but a label that pass 2 never re-sets would keep a stale
@@ -7451,7 +7804,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
        故必须保证 dbl_offs[di]/str_offs[si] 随索引单调递增（放置序==索引序），
        -S 发射序（偏移序）== 索引序，H2 位次解析 == H1 直接引用。 */
     sdp = 0;
-    memset(str_offs, -1, 1024 * 4);
+    memset(str_offs, -1, 2048 * 4);
     memset(dbl_offs, -1, 1024 * 4);
     遍 (整 si = 0; si < str_cnt; si++) str_place(si); /* 字符串先（C 原版 5137） */
     遍 (整 di = 0; di < dbl_n; di++) dbl_place(di);   /* double 后 */
@@ -7970,6 +8323,12 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
 
 
 静 字 *read_file(常 字 *path) {
+    若 (bare_metal) { /* fix 2026-08-10 Gate 9: 裸机无文件系统 -> 内存读 */
+        若 (strcmp(path, "srclib/qcc_rt.c") == 0 || strcmp(path, "qcc_rt.c") == 0) {
+            返 (字 *)BIN_RT_ADDR; /* 运行时 */
+        }
+        返 (字 *)BIN_SRC_ADDR;  /* 主源码 */
+    }
     字 *b = NULL;
     FILE *f;
     整 sz;
@@ -7980,7 +8339,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
         rewind(f);
         若 (sz < 0) { fclose(f); 返 NULL; } /* fix 2026-08-09 BUG-12: ftell 失败显式检查 */
         若 (sz > 0 && sz <= 1048576) {
-            b = malloc(sz + 1);
+            b = malloc((sz + 4) & ~3); /* fix 2026-08-11 BLOCKER-3: 尺寸取整 4 — 防 bump 计数器错位 → tt..tll 对齐 */
             fread(b, 1, sz, f);
             b[sz] = 0;
             /* 跳过 UTF-8 BOM (EF BB BF): 原当 CJK 标识符 (如 "主") 吃掉 → 首个 token 坏 → main 被吞 (fix 2026-08-06 镜像 qcc_x86.c)。
@@ -8019,6 +8378,8 @@ __attribute__((unused))
     字 *hdrs = NULL; 整 hdr_len = 0, hdr_cap = 0;
     字 *all_src = NULL; 整 all_len = 0;
 
+    /* fix 2026-08-10 Gate 9: 引导传 "__bare__" 标记编译器裸机运行 */
+    遍 (整 bi = 1; bi < argc; bi++) { 若 (argv[bi] && strcmp(argv[bi], "__bare__") == 0) { bare_metal = 1; 断; } }
     循环 (argc > argi) {
         若 (strcmp(argv[argi], "--help") == 0) {
             printf("qcc_x86 v5.0\nUsage: qcc_x86 [-I header.h] [-o out.exe] file.c [file2.c ...]\n");
@@ -8045,7 +8406,7 @@ __attribute__((unused))
         字 *fb = read_file(argv[argi]);
         若 (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); 返 1; }
         整 fl = (整)strlen(fb);
-        all_src = realloc(all_src, all_len + fl + 2);
+        all_src = realloc(all_src, (all_len + fl + 4) & ~3); /* fix 2026-08-12 UB-清除: realloc 是真实 bump 分配 (非 no-op)! 原 all_len+fl+2 非4倍数 → tt..tll 错位 → tll[tk] 读垃圾 → 伪 nll=1 */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
         all_src[all_len++] = '\n'; all_src[all_len] = 0;
         free(fb);
@@ -8053,7 +8414,7 @@ __attribute__((unused))
     }
     若 (all_len > 0) {
         整 total = hdr_len + all_len + 2;
-        字 *combined = malloc(total);
+        字 *combined = malloc((total + 3) & ~3); /* fix 2026-08-11 BLOCKER-3: 尺寸取整 4 */
         整 pos = 0;
         若 (hdr_len > 0) { memcpy(combined, hdrs, hdr_len); pos = hdr_len; }
         memcpy(combined + pos, all_src, all_len); pos += all_len;
@@ -8097,7 +8458,7 @@ __attribute__((unused))
             整 rl = (整)strlen(rtb);
             整 al = (整)strlen(src);
             rt_line_skip = 1; 遍 (整 rk = 0; rk < rl; rk++) 若 (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
-            字 *combined2 = malloc(rl + al + 2);
+            字 *combined2 = malloc((rl + al + 5) & ~3); /* fix 2026-08-11 BLOCKER-3: 尺寸取整 4 — 原 rl+al+2 使 bump 错位 → tll[tk] 读错位垃圾 → 伪 nll=1 → 2-cycle */
             memcpy(combined2, rtb, rl);
             combined2[rl] = '\n';
             memcpy(combined2 + rl + 1, src, al);
@@ -8109,6 +8470,7 @@ __attribute__((unused))
 
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 32); nn = calloc(ASZ, 32); tuns = calloc(TS, 4); tll = calloc(TS, 4); tll_hi = calloc(TS, 4); /* unsigned/LL 后缀/LL 字面量高32 标记（fix 2026-08-05） */
     nll_hi = _va_alloc(ASZ * 4); /* per-node LL 字面量高32（动态：静态 1MB 数组使 cf_1 .data 超限，fix 2026-08-05） */
+    若 (nll_hi) memset(nll_hi, 0, ASZ * 4); /* fix 2026-08-12 UB-清除: _va_alloc 不归零 — nll 被污染时 nll_hi 读垃圾 (布局依赖 UB) */
     nt = _va_alloc(ASZ * 4); nv = _va_alloc(ASZ * 4); n0 = _va_alloc(ASZ * 4); n1 = _va_alloc(ASZ * 4);
     n2 = _va_alloc(ASZ * 4); n3 = _va_alloc(ASZ * 4); n4 = _va_alloc(ASZ * 4); n5 = _va_alloc(ASZ * 4);
     n6 = _va_alloc(ASZ * 4); n7 = _va_alloc(ASZ * 4); n8 = _va_alloc(ASZ * 4); n9 = _va_alloc(ASZ * 4);
@@ -8148,7 +8510,7 @@ __attribute__((unused))
 
     code = malloc(CODE_BUF_CAP); cc = IMAGE_BASE; cp = 0; lc = 0; /* 4MB 预分配（C 原版 5469）：直接传常量给 malloc，cc 单独赋值——qcc 对 `cc=N;malloc(cc)` 会丢 cc 全局写 */
     sdc = 256; sdat = malloc(sdc); sdp = 0; strpn = 0;
-    memset(str_offs, -1, 1024 * 4);;
+    memset(str_offs, -1, 2048 * 4);;
 
     整 root = parse(src);
     若 (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); 返 1; }
@@ -8214,28 +8576,54 @@ __attribute__((unused))
     }
 
     /* ??PE */
-    FILE *f = fopen(outf, "wb");
-    若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
-    若 (bin_mode) {
+    /* fix 2026-08-10 Gate 9: 裸机产物输出到内存 (无文件系统) */
+    整 bin_out_len = 0;
+    无 字 *ob = (无 字 *)BIN_OUT_ADDR;
+    整 oi = 0;
+    若 (bare_metal) {
         若 (bin_hdr_n > 0) {
-            fwrite(bin_hdr, 1, bin_hdr_n, f);
+            memcpy(ob, bin_hdr, bin_hdr_n); oi = bin_hdr_n;
         } 否 {
             整 code_off = 0x1000;
-            整 cur = 0;
-            若 (cur < code_off) { 遍 (整 i = cur; i < code_off; i++) fputc(0, f); cur = code_off; }
-            fwrite(code, 1, cp, f);
-            cur += cp;
-            若 (cur < data_rva_base) { 遍 (整 i = cur; i < data_rva_base; i++) fputc(0, f); }
-            w4(f, 0); /* heap counter */
-            w4(f, 0); /* padding */
+            若 (oi < code_off) { memset(ob+oi, 0, code_off-oi); oi = code_off; }
+            memcpy(ob+oi, code, cp); oi += cp;
+            若 (oi < data_rva_base) { memset(ob+oi, 0, data_rva_base-oi); oi = data_rva_base; }
+            *(整*)(ob+oi) = 0; oi += 4;
+            *(整*)(ob+oi) = 0; oi += 4;
             整 stub_off = data_rva_base + 0x300 + 4 + 4 * stc_n;
             整 stub_va = 0x100000 + stub_off;
-            遍 (整 i = 8; i < 0x300; i += 8) { w4(f, stub_va); w4(f, 0); }
-            遍 (整 i = 0; i < stc_n; i++) w4(f, 0);
-            fputc(0xEB, f); fputc(0xFE, f); /* stub: jmp . */
+            遍 (整 i = 8; i < 0x300; i += 8) { *(整*)(ob+oi) = stub_va; *(整*)(ob+oi+4) = 0; oi += 8; }
+            遍 (整 i = 0; i < stc_n; i++) { *(整*)(ob+oi) = 0; oi += 4; }
+            ob[oi++] = 0xEB; ob[oi++] = 0xFE;
         }
-    } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
-    fclose(f);
+        bin_out_len = oi;
+        *(整*)BIN_OUT_LEN_ADDR = bin_out_len;
+        printf("OK: bin -> mem (code=%d out=%d)\n", cp, bin_out_len);
+    } 否 {
+        FILE *f = fopen(outf, "wb");
+        若 (!f) { fprintf(stderr, "qcc_x86: cannot write %s\n", outf); 返 1; }
+        若 (bin_mode) {
+            若 (bin_hdr_n > 0) {
+                fwrite(bin_hdr, 1, bin_hdr_n, f);
+            } 否 {
+                整 code_off2 = 0x1000;
+                整 cur = 0;
+                若 (cur < code_off2) { 遍 (整 i = cur; i < code_off2; i++) fputc(0, f); cur = code_off2; }
+                fwrite(code, 1, cp, f);
+                cur += cp;
+                若 (cur < data_rva_base) { 遍 (整 i = cur; i < data_rva_base; i++) fputc(0, f); }
+                w4(f, 0); w4(f, 0);
+                整 stub_off2 = data_rva_base + 0x300 + 4 + 4 * stc_n;
+                整 stub_va2 = 0x100000 + stub_off2;
+                遍 (整 i = 8; i < 0x300; i += 8) { w4(f, stub_va2); w4(f, 0); }
+                遍 (整 i = 0; i < stc_n; i++) w4(f, 0);
+                fputc(0xEB, f); fputc(0xFE, f);
+            }
+        } 否 若 (coff_mode) write_coff_obj(f); 否 write_pe(f, entry_rva_global);
+        若 (fflush(f) != 0 || ferror(f)) { fprintf(stderr, "qcc_x86: I/O error writing %s (disk full? handle lost?)\n", outf); fclose(f); 返 1; } /* fix 2026-08-11 QA-1: fwrite 不检查返回值 → 截断静默成功 */
+        fclose(f);
+    }
+
     若 (asm_out) { fclose(asm_out); asm_out = 0; }
 
     若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
