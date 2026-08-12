@@ -83,7 +83,7 @@
 静 空 jz_rel(整 rel) { b(0x0F); b(0x84); b4(rel); }
 静 空 jnz_rel(整 rel) { b(0x0F); b(0x85); b4(rel); }
 静 空 call_iat(整 slot) { 整 at = cp; 整 iat_off = 0; 若 (slot < 8) { iat_off = 8 + 8 * slot; } 否 { iat_off = 0x50 + 8 * (slot - 8); } b(0xFF); b(0x15); b4((data_rva_base + iat_off) - (0x1000 + at + 6)); } /* IAT1@+0x08 / IAT2@+0x50 (fix 2026-08-12: 对齐 C) */
-静 空 resolve_patches(空) { 整 i; 遍 (i = 0; i < pn; i = i + 1) { 若 (labels[patches[i].target].defined == 0) { 输出("[ERR] asm_zh: undefined label '%s' at line %d\n", labels[patches[i].target].name, labels[patches[i].target].line); exit(1); } 整 t = labels[patches[i].target].pos; 整 at = patches[i].at; 若 (patches[i].is_jmp == 3) { 整 v = t - (at + 1); b_at(at, v & 0xff); } 否 { 整 v = t - (at + 4); b4_at(at, v); } } } /* fix 2026-08-05：rel8（is_jmp==3）与 rel32 回填；未定义标签 → 报错而非坏跳转 */
+静 空 resolve_patches(空) { 整 i; 遍 (i = 0; i < pn; i = i + 1) { 整 t = labels[patches[i].target].pos; 整 at = patches[i].at; 若 (patches[i].is_jmp == 3) { 整 v = t - (at + 1); b_at(at, v & 0xff); } 否 { 整 v = t - (at + 4); b4_at(at, v); } } } /* 对齐 C 版 (fix 2026-08-13): 未定义标签 (如无 main 的库文件 CRT call main) 宽容解析为 0 占位, 不报错 */
 静 无 字 *sdat; 静 整 sdp, sdc;
 构 { 整 at; 整 idx; } str_patches2[2048]; 静 整 spn2;
 静 整 str_offs2[1024]; 静 整 str_cnt2;
