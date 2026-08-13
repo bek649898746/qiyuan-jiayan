@@ -4188,6 +4188,13 @@ static int parse(const char *s) {
                         while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
+                            if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 跳过 body 但注册字段名(8字节近似) (fix 2026-08-13 Phase3: regex re_token_t union opr) */
+                                int d = 1; tk++;
+                                while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
+                                if (tt[tk] == VR) { char ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); } /* 字段名 opr — 8 字节近似 union 大小, 防后续字段偏移错位 */
+                                if (tt[tk] == SK) tk++; /* ; */
+                                continue;
+                            }
                             if (tt[tk] == VR) {
                                 char iname[32]; strcpy(iname, tn[tk]); tk++; /* Inner */
                                 int inner_si = st_find(iname);
@@ -4406,6 +4413,13 @@ static int parse(const char *s) {
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
+                            if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                                int d = 1; tk++;
+                                while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
+                                if (tt[tk] == VR) { char ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); } /* 字段名 opr */
+                                if (tt[tk] == SK) tk++; /* ; */
+                                continue;
+                            }
                             if (tt[tk] == VR) {
                                 int inner_si = st_find(tn[tk]); tk++;
                                 int fptr = 0;
@@ -4476,6 +4490,13 @@ static int parse(const char *s) {
                             while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                             if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
+                                if (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                                    int d = 1; tk++;
+                                    while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
+                                    if (tt[tk] == VR) { char ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(tsi, ufn, 8, 8); }
+                                    if (tt[tk] == SK) tk++;
+                                    continue;
+                                }
                                 if (tt[tk] == VR) {
                                     int inner_si = st_find(tn[tk]); tk++;
                                     int fptr = 0;
@@ -4603,6 +4624,13 @@ static int parse(const char *s) {
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                     if (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
+                        if (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                            int d = 1; tk++;
+                            while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
+                            if (tt[tk] == VR) { char ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); }
+                            if (tt[tk] == SK) tk++;
+                            continue;
+                        }
                         if (tt[tk] == VR) {
                             int inner_si = st_find(tn[tk]); tk++;
                             int fptr = 0;
@@ -4943,6 +4971,13 @@ static int parse(const char *s) {
                             tk++;
                         }
                     }
+                    continue;
+                }
+                if (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == OK) { /* 匿名函数指针参数: type (fn (args)) — 无 * (fix 2026-08-13 Phase3: regex preorder 参数 reg_errcode_t (fn (void*,...))) */
+                    tk++; /* ( */
+                    if (tt[tk] == VR) { var_param(tn[tk], pr, 4, 8, -1, 0, 0); tk++; pr++; } /* fn */
+                    if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
+                    if (tt[tk] == KK) tk++; /* 跳过 fnptr 参数结束的 ) — 否则后续参数错位 (fix 2026-08-13 Phase3) */
                     continue;
                 }
                 if (tt[tk] == LB) { /* 匿名数组参数: uint32_t[5] 无参数名 (fix 2026-08-13 Phase3: 原无此分支 → LB 卡住死循环, sha1.h sha1_compression_states) */
