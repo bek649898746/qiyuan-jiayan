@@ -53,7 +53,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
-static char str_tbl[2048][2048]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-09 审计#2: 条目 1024 实测未满(967), 2048 打破自举静态布局 → 保持 */ int str_cnt;
+static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
 static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -824,7 +824,7 @@ static char *pp_include_expand(const char *src, int depth) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[32]; char fnames[64][32]; int foffs[64]; int fsizes[64]; int frows[64]; int ftypes[64]; int fbits[64]; int fbitof[64]; char fdbls[64]; char fsgn[64]; int fels[64]; int fn; int sz; int algn; } stypes[64]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 Phase3: 字段表 32→64 (re_dfa_t 31 字段 + 位域逼近上限) */
+static struct { char name[32]; char fnames[128][32]; int foffs[128]; int fsizes[128]; int frows[128]; int ftypes[128]; int fbits[128]; int fbitof[128]; char fdbls[128]; char fsgn[128]; int fels[128]; int fn; int sz; int algn; } stypes[128]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 全量链接: 字段表 64→128 (diff_options 71 字段) + struct 表 64→128 */
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) return i;
@@ -836,13 +836,13 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
         stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
 }
 static int st_add(const char *n) {
-    if (st_n >= 64) return -1;
+    if (st_n >= 128) return -1;
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     return st_n++;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
-    if (stypes[si].fn >= 64) { fprintf(stderr, "[ERR] struct '%s' 字段超过 64 上限\n", stypes[si].name); exit(1); }
+    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct '%s' 字段超过 128 上限\n", stypes[si].name); exit(1); }
     int idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
        frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。
@@ -882,7 +882,7 @@ static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, in
     /* real bit-field semantics: pack consecutive bit-fields into shared int slots.
        foffs = slot byte offset; fbitof = bit offset inside the slot; fbits = width.
        uns = 1 for `unsigned` bit-fields (no sign extension on read); int → signed. */
-    if (stypes[si].fn >= 64) { fprintf(stderr, "[ERR] struct 字段超过 64 上限\n"); exit(1); }
+    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct 字段超过 128 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     if (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
@@ -929,7 +929,7 @@ static int st_field_is_dbl(const char *sn, const char *fn) {
 static void st_field_sz(int si, const char *fn, int fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 static void st_union_field(int si, const char *fn, int fsz) {
-    if (stypes[si].fn >= 64) { fprintf(stderr, "[ERR] struct 字段超过 64 上限\n"); exit(1); }
+    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct 字段超过 128 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = 0;
@@ -2753,7 +2753,7 @@ static void lex(const char *s) {
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
-        if (s[i] == '"') { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 2046) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 2046 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 2046 字符上限 (fix 2026-08-06: 原来截断后解析器错位死循环)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
+        if (s[i] == '"') { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 8190) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 8190 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 8190 字符上限 (fix 2026-08-13 全量链接: Git 超长拼接 help 文本)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
             if (cv == '\\' && s[i + 1]) { i++; cv = (s[i] == 'n') ? '\n' : (s[i] == 't') ? '\t' : (s[i] == '0') ? 0 : s[i]; i++; }
@@ -4249,6 +4249,7 @@ static int parse(const char *s) {
                     tk++;
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
+                        int tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
                         int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
                         if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
                             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
@@ -4271,8 +4272,9 @@ static int parse(const char *s) {
                                     int ifuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                                     while (tk < TS && tt[tk] != UK) {
                                         int ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
-                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; }
-                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == DK) tk++; }
+                                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; while (tt[tk] == DK) tk++; } /* fix 2026-08-13: 指针字段 * 未消费 → 死循环 (object_array_entry char *name) */
+                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } else if (tt[tk] == VR) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } if (tt[tk] == DK) tk++; } /* fix 2026-08-13: 三层嵌套 struct X { ... } *field; 定义 body 未消费 → 死循环 (pathspec_item.attr_match) */
+                                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* fix 2026-08-13: 匿名 enum 字段 (内层嵌套 struct body) */
                                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                             tk++; int ubw = 0;
                                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -4302,6 +4304,7 @@ static int parse(const char *s) {
                                     char fn[32]; strcpy(fn, tn[tk]); tk++;
                                     if (is_union) st_union_field(si, fn, fptr ? 8 : stypes[inner_si].sz);
                                     else { st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); st_field_ty(si, fn, inner_si); } /* fix 2026-08-07: 指针字段 frow=8 → 偏移 8 对齐 (原 frow=1 → align=1 → struct LNode* next 偏移 4, 读 [&b+4] 错位) */
+                                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; } /* fix 2026-08-13: 柔性数组 parent[] 未消费 → 死循环 (commit_graft) */
                                 }
                             }
                             if (tt[tk] == SK) tk++;
@@ -4322,7 +4325,7 @@ static int parse(const char *s) {
                             if (tt[tk] == SK) tk++;
                             continue;
                         }
-                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; } /* enum field: `enum Color c;` → int (fix 2026-08-05: was unhandled → infinite loop) */
+                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
                         else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
@@ -4353,6 +4356,7 @@ static int parse(const char *s) {
                         }
                         if (tt[tk] == CK) tk++; /* comma between fields */
                         if (tt[tk] == SK) tk++;
+                        if (tk == tk0) tk++; /* 安全前进守卫 */
                     }
                     if (tt[tk] == UK) tk++; /* } */
                     st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
