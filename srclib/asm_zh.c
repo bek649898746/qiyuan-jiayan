@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static unsigned char *code; static int cp;
+static unsigned char *code; static int cp; static int code_cap = 0x400000; /* fix 2026-08-14: 缓冲区容量 — 原 realloc 固定 0x400000+4096, cp 不变 while 条件不变 → 死循环 (f13.asm > 4.19MB) */
 static int data_rva_base = 0x2000;
 static int exp_code_end;  /* expected code_end from qcc's .布局 directive */
 static int exp_data_base; /* expected data_base from qcc */
@@ -472,8 +472,9 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
     resolve_patches();
     /* pad to qcc's exact code_end before resolving data refs (fix H1==H2) */
     if (emit_data && exp_code_end > cp) {
-        while (cp + (exp_code_end - cp) + sdp >= 0x400000) {
-            unsigned char*nc=realloc(code,0x400000+4096);
+        while (cp + (exp_code_end - cp) + sdp >= code_cap) {
+            code_cap *= 2;
+            unsigned char*nc=realloc(code,code_cap);
             if(!nc){fprintf(stderr,"asm_zh: OOM at pad\n");exit(1);}code=nc;
         }
         while (cp < exp_code_end) code[cp++] = 0x90;
@@ -504,7 +505,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
             b4_at(at, disp);
         }
     }
-    if (sdp>0){while(cp+sdp>=0x400000){unsigned char*nc=realloc(code,0x400000+4096);if(!nc){fprintf(stderr,"asm_zh: OOM at code buffer %d bytes\n",0x400000+4096);exit(1);}code=nc;}memcpy(code+cp,sdat,sdp);cp+=sdp;}
+    if (sdp>0){while(cp+sdp>=code_cap){code_cap*=2;unsigned char*nc=realloc(code,code_cap);if(!nc){fprintf(stderr,"asm_zh: OOM at code buffer %d bytes\n",code_cap);exit(1);}code=nc;}memcpy(code+cp,sdat,sdp);cp+=sdp;}
     return 0;
 }
 
