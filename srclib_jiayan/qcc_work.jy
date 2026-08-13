@@ -317,8 +317,10 @@ __attribute__((unused))
     }
 }
 静 整 fn_exp_stack[64]; 静 整 fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链; 同步 C) */
+静 字 g_eout[64][65536]; 静 整 g_eout_depth; /* fix 2026-08-13 Phase3 根治: eout 深度槽静态缓冲 */
 静 空 fn_macro_expand_to(常 字 *seg, 字 **outp, 整 *o, 整 *cap, 整 self_fmi) {
     字 *out = *outp;
+    g_eout_depth++;
     整 in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     遍 (整 i = 0; seg[i]; ) {
         若 (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; 同步 C) */
@@ -370,11 +372,11 @@ __attribute__((unused))
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开; 同步 C),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 字 exp_args[16][256];
-                字 *eout = malloc(4096); /* fix 2026-08-13 Phase3: 复用 eout 缓冲 — bump realloc 泄漏 */
+                字 *eout = g_eout[g_eout_depth < 64 ? g_eout_depth : 63]; /* fix 2026-08-13 Phase3 根治: 深度槽静态缓冲 */
                 遍 (整 ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选; 同步 C) */
                     整 save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
-                    整 eo = 0, ecap = 4096;
+                    整 eo = 0, ecap = 65536;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
                     strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
@@ -452,6 +454,7 @@ __attribute__((unused))
             out[(*o)++] = seg[i++];
         }
     }
+    g_eout_depth--;
     *outp = out;
 }
 
@@ -6666,6 +6669,14 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 asm_emit("    存静32 [rip%+d], eax\n", (字*)(长)(整)rel_m3, 0, 0);
                 b(0x89); b(0x05); b4(rel_m3); /* store back */
                 mov_rr(0, 8);                 /* return old counter */
+            } 否 若 (!strcmp(fname, "_bump_top")) {
+                /* 读堆 counter — 供 qcc_rt.c realloc/free 原地扩展/回退 (fix 2026-08-13 Phase3 根治) */
+                整 rel_b = data_rva_base - 0x1000 - cp - 6;
+                mov_eax_rip(rel_b);
+            } 否 若 (!strcmp(fname, "_bump_set")) {
+                mov_rr(0, 1); /* eax = ecx (new counter) */
+                整 rel_b = data_rva_base - 0x1000 - cp - 6;
+                mov_rip_eax(rel_b);
             } 否 若 (!strcmp(fname, "realloc")) {
                 mov_rr(0, 1); /* return same ptr */
             } 否 若 (!strcmp(fname, "free") || !strcmp(fname, "fclose") || !strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
@@ -7698,7 +7709,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
    (堆上限 0x4000000=64MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB), 与 cp*84 取大者. */
 静 整 data_extent(空) {
     整 e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10800000;
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
     若 (e > heap_top) 返 e;
     返 heap_top;
 }

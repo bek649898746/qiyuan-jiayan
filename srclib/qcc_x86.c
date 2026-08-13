@@ -357,11 +357,13 @@ static void fn_macro_collect(const char *s) {
 }
 
 static int fn_exp_stack[64]; static int fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链 + revision.c) */
+static char g_eout[64][65536]; static int g_eout_depth; /* fix 2026-08-13 Phase3 根治: eout 深度槽静态缓冲 — bump 下递归 malloc eout 泄漏 (非堆顶 free 无效), 用深度索引复用 */
 
 /* expand fn-macro calls inside seg (recursive for nested macros) into *out at *o (grows).
    fix 2026-08-07: #x 字符串化 / ## 拼接 / __VA_ARGS__ 变参 / 自引用防递归 / 字符串字面量内不展开 / 参数扫描不拆串内逗号 */
 static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, int self_fmi) {
     char *out = *outp;
+    g_eout_depth++; /* fix 2026-08-13 Phase3 根治: 递归深度索引 eout 槽 */
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
         if (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; obj_macro_expand 同款) */
@@ -413,11 +415,11 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 char exp_args[16][256];
-                char *eout = malloc(4096); /* fix 2026-08-13 Phase3: 复用 eout 缓冲 — bump realloc 泄漏, sha1.c 海量宏展开时每次 malloc 4096 爆堆 */
+                char *eout = g_eout[g_eout_depth < 64 ? g_eout_depth : 63]; /* fix 2026-08-13 Phase3 根治: 深度槽静态缓冲替代 malloc (bump 非堆顶 free 无效 → 递归 malloc 泄漏) */
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
-                    int eo = 0, ecap = 4096;
+                    int eo = 0, ecap = 65536;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
                     strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
@@ -497,6 +499,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             out[(*o)++] = seg[i++];
         }
     }
+    g_eout_depth--;
     *outp = out;
 }
 
@@ -6677,6 +6680,15 @@ static void cg(int n) {
                 int rel_m3 = data_rva_base - 0x1000 - cp - 6;
                 mov_rip_eax(rel_m3);          /* store back */
                 mov_rr(0, 8);                 /* return old counter */
+            } else if (!strcmp(fname, "_bump_top")) {
+                /* 读堆 counter (32 位地址, .data RVA 0) — 供 qcc_rt.c realloc/free 原地扩展/回退 (fix 2026-08-13 Phase3 根治) */
+                int rel_b = data_rva_base - 0x1000 - cp - 6;
+                mov_eax_rip(rel_b);          /* mov eax, [rip+counter] */
+            } else if (!strcmp(fname, "_bump_set")) {
+                /* 写堆 counter — 参数在 rcx */
+                mov_rr(0, 1);                 /* eax = ecx (new counter) */
+                int rel_b = data_rva_base - 0x1000 - cp - 6;
+                mov_rip_eax(rel_b);          /* [rip+counter] = eax */
             } else if (!strcmp(fname, "realloc")) {
                 mov_rr(0, 1); /* return same ptr */
             } else if (!strcmp(fname, "free") || !strcmp(fname, "fclose") || !strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
@@ -7736,7 +7748,7 @@ static void pad_zero(FILE *f, int n) {
    与 cp*84 取大者 — 小程序的 8MB 地板不变. */
 static int data_extent(void) {
     int e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10800000;
+    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
     return e > heap_top ? e : heap_top;
 }
 
