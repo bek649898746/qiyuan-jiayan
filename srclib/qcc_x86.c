@@ -135,6 +135,11 @@ static char *obj_macro_expand(const char *s) {
         }
         if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
         if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
+        if (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死) */
+            while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; }
+            if (s[i]) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; if (s[i]) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; } }
+            continue;
+        }
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') out[o++] = s[i++]; continue; }
         if (isalnum((unsigned char)s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) {
             int j = i;
@@ -311,8 +316,7 @@ static void fn_macro_collect(const char *s) {
             char nm[32]; int ni = 0;
             while (isalnum((unsigned char)s[p]) || s[p] == '_') { if (ni < 31) nm[ni++] = s[p]; p++; }
             nm[ni] = 0;
-            while (s[p] == ' ' || s[p] == '\t') p++;
-            if (s[p] == '(' && fn_macro_n < 1024 && strcmp(nm, "_va_alloc")) { /* _va_alloc: qcc 内置机制(宏定义被跳过, codegen 按名字识别) — 不能展开 */
+            if (s[p] == '(' && fn_macro_n < 1024 && strcmp(nm, "_va_alloc")) { /* fix 2026-08-13: 函数宏需 ( 紧贴名字无空格 — #define A (x) 是表达式宏 (Git hash-ll.h GIT_HASH_NALGOS/HEXSZ) */
                 strcpy(fn_macros[fn_macro_n].name, nm);
                 p++;
                 int pi = 0;
@@ -2944,7 +2948,7 @@ static int prim(void) {
                         if (bitw > 0) { st_field_bit(si, fn, fsz, fsz, bitw, funs); if (fdbl) st_field_dbl(si, fn); funs = 0; }
                         else {
                             int fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                             if (dims >= 1) frow = fsz / first; else frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
@@ -2994,6 +2998,20 @@ static int prim(void) {
                     if (base_si >= 0) { int fs = st_field_size(stypes[base_si].name, tn[tk]); if (fs > 0) sz = fs; }
                     tk++;
                 }
+            }
+            if (tt[tk] == KK) tk++; /* ) */
+            int n = Nd(0); nv[n] = sz; return n;
+        }
+        if (tt[tk] == DK) { /* sizeof(*ptr) — 指针 deref: 指向类型大小 (fix 2026-08-13: 原 return -1 → token 错位, 镜像 v4 0xC0000005; hash-ll.h Clone memcpy(dst,src,sizeof(*dst))) */
+            tk++; /* * */
+            int sz = 8;
+            if (tt[tk] == VR) {
+                for (int vi = vs_n() - 1; vi >= 0; vi--)
+                    if (!strcmp(vars[vi].name, tn[tk]) && var_codegen_visible(vi)) {
+                        if (vars[vi].p_esz > 0) sz = vars[vi].p_esz;
+                        break;
+                    }
+                tk++; /* var name */
             }
             if (tt[tk] == KK) tk++; /* ) */
             int n = Nd(0); nv[n] = sz; return n;
@@ -3440,7 +3458,7 @@ static int blk(void) {
                             funs = 0;
                         } else {
                         int fel = fsz; /* fix 2026-08-07 */
-                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                         if (dims >= 1) frow = fsz / first;
                         else frow = fsz;
                         st_field_sz_r(nsi, fn, fsz, frow);
@@ -4110,7 +4128,7 @@ static int parse(const char *s) {
                                             if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { ibw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: inline nested struct loop) */
                                             if (ibw > 0) { st_field_bit(ni, fn, ifsz, ifsz, ibw, ifuns); ifuns = 0; }
                                             else {
-                                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000) { if (ifdims == 0) ifirst = evc; ifdims++; ifsz *= evc; } tk++; } /* fix 2026-08-13: struct 成员数组维度标识符 (hash[GIT_MAX_RAWSZ]) — 原只认 NK, VR 死循环 */ if (tt[tk] == RB) tk++; }
                                             if (ifdims >= 1) ifrow = ifsz / ifirst; else ifrow = ifsz;
                                             st_field_sz_r(ni, fn, ifsz, ifrow);
                                             }
@@ -4137,7 +4155,7 @@ static int parse(const char *s) {
                             if (tt[tk] == VR) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
                                 int fsz8 = 8, first = 1, fdims = 0;
-                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ if (tt[tk] == RB) tk++; }
                                 if (is_union) st_union_field(si, fn, fsz8);
                                 else { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); } /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — 原 1 触发 brace_fields 数组路径) */
                                 if (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
@@ -4166,7 +4184,7 @@ static int parse(const char *s) {
                             } else {
                             int unsized = 0; /* 柔性数组 int arr[] (fix 2026-08-05: was sized 4 → sizeof overcounted) */
                             int fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else unsized = 1; if (tt[tk] == RB) tk++; }
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } else unsized = 1; tk++; } else unsized = 1; /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                             if (dims >= 1) frow = fsz / first; /* element/row byte size (same as anon branch) */
                             else frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             if (unsized) { fsz = 0; frow = 4; } /* 柔性数组: 不占 struct 空间, 元素大小保留 */
@@ -4187,7 +4205,7 @@ static int parse(const char *s) {
                         if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
                         var_static_struct(tn[tk], si, cnt);
                         tk++;
-                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; }
+                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; }
                     }
                     if (tt[tk] == SK) tk++; /* ; */
                 } else {
@@ -4323,7 +4341,7 @@ static int parse(const char *s) {
                             if (tt[tk] == VR) {
                                 char fn[32]; strcpy(fn, tn[tk]); tk++;
                                 int fsz8 = 8, first = 1, fdims = 0;
-                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ if (tt[tk] == RB) tk++; }
                                 st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — typedef 匿名) */
                                 if (tt[tk] == KK) tk++;
                                 if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
@@ -4346,7 +4364,7 @@ static int parse(const char *s) {
                             if (bitw > 0) { st_field_bit(si, fn, fdflt, fdflt, bitw, funs); funs = 0; }
                             else {
                             int fel = fsz; /* fix 2026-08-07 */
-                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                             st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz); /* frow = ELEMENT size (fix 2026-08-03: was fsz, so char name[128] scaled indices by 128) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
                             }
@@ -4393,7 +4411,7 @@ static int parse(const char *s) {
                                 if (tt[tk] == VR) {
                                     char fn[32]; strcpy(fn, tn[tk]); tk++;
                                     int fsz8 = 8, first = 1, fdims = 0;
-                                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ if (tt[tk] == RB) tk++; }
                                     st_field_sz_r(tsi, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(tsi, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — typedef 带标签) */
                                     if (tt[tk] == KK) tk++;
                                     if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
@@ -4416,7 +4434,7 @@ static int parse(const char *s) {
                                 if (bitw > 0) { st_field_bit(tsi, fn, fsz, fsz, bitw, tfuns); if (fdbl) st_field_dbl(tsi, fn); tfuns = 0; }
                                 else {
                                 int fel = fsz; /* fix 2026-08-07 */
-                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                                 if (dims >= 1) frow = fsz / first;
                                 else frow = fsz;
                                 st_field_sz_r(tsi, fn, fsz, frow);
@@ -4520,7 +4538,7 @@ static int parse(const char *s) {
                         if (tt[tk] == VR) {
                             char fn[32]; strcpy(fn, tn[tk]); tk++;
                             int fsz8 = 8, first = 1, fdims = 0;
-                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ if (tt[tk] == RB) tk++; }
                             st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
                             if (tt[tk] == KK) tk++;
                             if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
@@ -4544,7 +4562,7 @@ static int parse(const char *s) {
                             funs = 0;
                         } else {
                             int fel = fsz; /* fix 2026-08-07 */
-                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  if (tt[tk] == RB) tk++; }
                             /* frow = element size in BYTES (row for 2D+): fsz / first dim.
                                char fnames[16][32] -> 512/16=32; int fsizes[16] -> 64/16=4;
                                char name[32] -> 32/32=1. Lets nested-base store/read scale
@@ -4574,7 +4592,7 @@ static int parse(const char *s) {
                     else var_static_struct(tn[tk], si, cnt);
                     char vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
-                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; }
+                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; }
                     if (tt[tk] == AK) { /* = init (fix 2026-08-07: was skipped entirely → global anon struct fields never initialized) */
                         tk++;
                         if (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
@@ -4848,7 +4866,7 @@ static int parse(const char *s) {
                         var_param(tn[tk], pr, 4, 8, -1, 0, 0);
                         if (p_fptr_dbl) vars[vcnt - 1].p_dbl = 1;
                         tk++; pr++;
-                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; } /* skip [N] */
+                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                         if (tt[tk] == CK) tk++;
                         if (tt[tk] == DT) { while (tt[tk] == DT) tk++; } /* variadic ellipsis */
                         continue;
@@ -4871,7 +4889,7 @@ static int parse(const char *s) {
                     if (pis_dbl && pis_ptr) vars[vcnt - 1].p_dbl = 1; /* double* param */
                     fn_dbl_put((char*)(nn + fdef), pr, pis_dbl && !pis_ptr); /* caller routes scalar doubles to xmm */
                     tk++; pr++;
-                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; if (tt[tk] == RB) tk++; } /* skip [N] */
+                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                 }
                 if (tt[tk] == CK) tk++;
                 if (tt[tk] == DT) { while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
