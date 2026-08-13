@@ -13,6 +13,7 @@ SKIP = {
     'compat\\mingw.c',                                                                          # msvc.c 内联
     'compat\\win32\\headless.c',                                                               # L 宽字符
     'compat\\simple-ipc\\ipc-win32.c',                                                        # accctrl.h Windows SDK
+    'compat\\simple-ipc\\ipc-shared.c', 'compat\\simple-ipc\\ipc-unix-socket.c',              # 需 SUPPORTS_SIMPLE_IPC 平台宏 + Unix socket 系统头
 }
 
 files = []
@@ -29,6 +30,8 @@ for rel in files:
     p = os.path.join(GIT, rel)
     out = os.path.join(GIT, '_c_' + os.path.basename(rel)[:-2] + '.exe')
     args = [V4] + D
+    # 预置头: 补 <errno.h> 系统头被跳过后的 errno + E* 常量
+    args += ['-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'compat_prelude.h')]
     if rel == 'compat\\regex\\regex.c':  # regex.c 的 <regex.h> 是系统头(qcc 跳过), 手动预置
         args += ['-I', os.path.join(GIT, 'compat', 'regex', 'regex.h')]
     args += [p, '-o', out]
