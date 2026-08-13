@@ -11,6 +11,8 @@ extern int errno;
 #define EIO 5
 #define ENXIO 6
 #define ENOEXEC 8
+#define E2BIG 7
+#define ENOTBLK 15
 #define EBADF 9
 #define ECHILD 10
 #define EAGAIN 11
@@ -76,6 +78,7 @@ typedef long long intmax_t;
 typedef unsigned long long uintptr_t;
 typedef long long intptr_t;
 typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */
+typedef unsigned short wchar_t; /* <wchar.h> 宽字符 (MSVC 16 位) */
 
 /* 标准 C <stdbool.h> (qcc 跳过系统头, Git 用 bool/false/true) */
 #define false 0
@@ -132,6 +135,21 @@ typedef int bool;
 #define GetFileExMaxInfoLevel 1
 #define ERROR_INSUFFICIENT_BUFFER 122
 #define ERROR_NO_MORE_FILES 18
+#define ERROR_INVALID_PARAMETER 87
+#define ERROR_FILE_NOT_FOUND 2
+#define ERROR_PATH_NOT_FOUND 3
+#define ERROR_ACCESS_DENIED 5
+#define ERROR_INVALID_HANDLE 6
+#define ERROR_NOT_ENOUGH_MEMORY 8
+#define ERROR_ALREADY_EXISTS 183
+#define ERROR_FILE_EXISTS 80
+#define ERROR_DIR_NOT_EMPTY 145
+#define ERROR_CALL_NOT_IMPLEMENTED 120
+#define ERROR_SHARING_VIOLATION 32
+#define ERROR_LOCK_VIOLATION 33
+#define ERROR_BROKEN_PIPE 109
+#define ERROR_INVALID_NAME 123
+#define ERROR_BUFFER_OVERFLOW 111
 #define INVALID_HANDLE_VALUE (-1)
 #define MAX_PATH 260
 #define MOVEFILE_REPLACE_EXISTING 1
@@ -150,3 +168,38 @@ typedef int bool;
 #define CP_UTF8 65001
 #define CP_ACP 0
 #define MB_ERR_INVALID_CHARS 0x8
+
+/* <stdio.h> 宏 (qcc 跳过系统头) */
+#define EOF (-1)
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#define BUFSIZ 4096
+#define FOPEN_MAX 20
+#define FILENAME_MAX 260
+
+/* <fcntl.h> 文件打开标志 (MSVC/MinGW 值) */
+#define O_RDONLY 0
+#define O_WRONLY 1
+#define O_RDWR 2
+#define O_CREAT 0x0100
+#define O_TRUNC 0x0200
+#define O_APPEND 0x0008
+#define O_EXCL 0x0400
+#define O_BINARY 0x8000
+#define O_NOINHERIT 0x0080
+#define O_TEXT 0x4000
+
+/* Windows API 文件访问权限 (CreateFile 用) */
+#define FILE_READ_DATA 0x0001
+#define FILE_WRITE_DATA 0x0002
+#define FILE_APPEND_DATA 0x0004
+#define FILE_LIST_DIRECTORY 0x0001
+#define FILE_ADD_FILE 0x0002
+#define DELETE 0x10000
+#define FILE_READ_ATTRIBUTES 0x0080
+#define FILE_WRITE_ATTRIBUTES 0x0100
+#define FILE_READ_EA 0x0008
+#define FILE_WRITE_EA 0x0010
+#define READ_CONTROL 0x20000
+#define SYNCHRONIZE 0x100000
