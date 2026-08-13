@@ -364,6 +364,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
     char *out = *outp;
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
+        if (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; obj_macro_expand 同款) */
+            while (seg[i] && seg[i] != '\n') { if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
+            continue;
+        }
         if (seg[i] == '"' && !in_str) in_str = 1;
         else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         if (in_str) {

@@ -1,3 +1,12 @@
+## 26CAD768 (2026-08-13)
+
+**Git 编译攻坚第 3 波: fn_macro 预处理行跳过 + C 宏参数预展开 (revision.c 链路定位)**
+
+- fn_macro_expand_to 跳过预处理行: #define 行内宏名被当调用展开 → commit-slab 大宏递归 (obj_macro_expand 同款)
+- C 宏替换参数预展开 (蓝色油漆不含实参): ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开 — regress_fn_macro_nest 回归修复
+- revision.c v4 崩溃精确定位: string-list.h 拼入 + refs.h + decorate.h 组合 → v4 pp_include_expand 字符串越界读 (0xC0000005; qcc 的 exp_src v4 可处理 → 确证 pp 阶段); 下一轮攻坚目标
+- 验证: v1..v5 = 26CAD768 (1-cycle), 测试 220/220, Git 核心 qcc 15/16 + v4 12/16
+
 ## FA38C42B (2026-08-13)
 
 **Git 编译攻坚第 2 波: 宏体系 4 修复 + 声明体系 3 修复 + pp_guard 扩容 (revision.c 链路)**

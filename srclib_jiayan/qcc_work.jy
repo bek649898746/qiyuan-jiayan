@@ -321,6 +321,10 @@ __attribute__((unused))
     字 *out = *outp;
     整 in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     遍 (整 i = 0; seg[i]; ) {
+        若 (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; 同步 C) */
+            循环 (seg[i] && seg[i] != '\n') { 若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
+            续;
+        }
         若 (seg[i] == '"' && !in_str) in_str = 1;
         否 若 (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         若 (in_str) {
