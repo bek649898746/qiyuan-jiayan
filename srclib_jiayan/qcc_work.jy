@@ -93,10 +93,10 @@ __attribute__((unused))
 静 构 { 字 name[32]; 字 val[2048]; } str_macros[4096]; /* fix 2026-08-06; Phase1-L3: 64->1024 */ 静 整 str_macro_n;
 静 字 *str_macro_find(常 字 *n) { 遍 (整 i = 0; i < str_macro_n; i++) 若 (!strcmp(str_macros[i].name, n)) 返 str_macros[i].val; 返 0; }
 /* fix 2026-08-07: 顺序 #define 定义表 (名字+数值) — pp_include_expand 与 fn_macro_collect 共用, 使 include 守卫生效 + #if 用真值 (镜像 qcc_x86.c) */
-静 字 pp_guard[128][32]; 静 整 pp_guard_val[128]; 静 整 pp_guard_n;
+静 字 pp_guard[2048][32]; 静 整 pp_guard_val[2048]; 静 整 pp_guard_n; /* fix 2026-08-13: 128→2048 (dir.c 头文件链满 → CONFIG_H 注册被丢 → 重复 include → 同名 fn_macro 重复收集 → fn_macro_expand_to 互递归栈溢出; 同步 C) */
 静 整 macro_exists(常 字 *n); /* fwd: 定义在下方 */
 静 整 pp_eval(常 字 *e); /* fwd: 定义在下方 */
-静 空 pp_guard_add(常 字 *n, 整 v) { 若 (pp_guard_n >= 128) 返; 遍 (整 i = 0; i < pp_guard_n; i++) 若 (!strcmp(pp_guard[i], n)) { pp_guard_val[i] = v; 返; } strcpy(pp_guard[pp_guard_n], n); pp_guard_val[pp_guard_n] = v; pp_guard_n = pp_guard_n + 1; }
+静 空 pp_guard_add(常 字 *n, 整 v) { 若 (pp_guard_n >= 2048) 返; 遍 (整 i = 0; i < pp_guard_n; i++) 若 (!strcmp(pp_guard[i], n)) { pp_guard_val[i] = v; 返; } strcpy(pp_guard[pp_guard_n], n); pp_guard_val[pp_guard_n] = v; pp_guard_n = pp_guard_n + 1; }
 静 空 pp_guard_del(常 字 *n) { 遍 (整 i = 0; i < pp_guard_n; i++) 若 (!strcmp(pp_guard[i], n)) { 遍 (整 j = i; j < pp_guard_n - 1; j++) strcpy(pp_guard[j], pp_guard[j + 1]); pp_guard_n = pp_guard_n - 1; 返; } }
 静 整 pp_guard_exists(常 字 *n) { 若 (macro_exists(n)) 返 1; 遍 (整 i = 0; i < pp_guard_n; i++) 若 (!strcmp(pp_guard[i], n)) 返 1; 返 0; }
 静 整 pp_guard_val_of(常 字 *n) { 遍 (整 i = 0; i < pp_guard_n; i++) 若 (!strcmp(pp_guard[i], n)) 返 pp_guard_val[i]; 返 0; }
@@ -316,6 +316,7 @@ __attribute__((unused))
     }
     }
 }
+静 整 fn_exp_stack[64]; 静 整 fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链; 同步 C) */
 静 空 fn_macro_expand_to(常 字 *seg, 字 **outp, 整 *o, 整 *cap, 整 self_fmi) {
     字 *out = *outp;
     整 in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
@@ -334,6 +335,13 @@ __attribute__((unused))
             整 fmi = -1;
             遍 (整 k = 0; k < fn_macro_n; k++) 若 (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; 断; }
             若 (fmi >= 0 && seg[i] == '(') {
+                整 in_stack = 0; 遍 (整 s = 0; s < fn_exp_n; s++) 若 (fn_exp_stack[s] == fmi) { in_stack = 1; 断; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 */
+                若 (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
+                    若 (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+                    遍 (整 k = 0; k < ni; k++) out[(*o)++] = nm[k];
+                    续;
+                }
+                fn_exp_stack[fn_exp_n] = fmi; fn_exp_n = fn_exp_n + 1; /* 压栈 */
                 字 args[16][256]; 整 an = 0; /* 变参: 超 15 参数并进末槽 */
                 i++;
                 整 depth = 1, aj = 0, ain_str = 0;
@@ -355,6 +363,19 @@ __attribute__((unused))
                 }
                 args[an][aj] = 0; an++;
                 若 (seg[i] == ')') i++;
+                /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开; 同步 C),
+                   #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
+                字 exp_args[16][256];
+                遍 (整 ai = 0; ai < an; ai++) {
+                    整 save_exp_n = fn_exp_n;
+                    fn_exp_n = 0; /* 实参展开独立栈 */
+                    字 *eout = malloc(4096); 整 eo = 0, ecap = 4096;
+                    fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
+                    eout[eo] = 0;
+                    strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
+                    free(eout);
+                    fn_exp_n = save_exp_n;
+                }
                 字 tmp[8192]; 整 ti2 = 0;
                 常 字 *body = fn_macros[fmi].body;
                 遍 (整 b = 0; body[b] && ti2 < 8190; ) {
@@ -403,10 +424,10 @@ __attribute__((unused))
                         若 (matched >= 0 && !strcmp(pn2, "__VA_ARGS__")) { /* 变参: 余参逗号连接 (可空) */
                             遍 (整 ai = matched; ai < an && ti2 < 8188; ai++) {
                                 若 (ai > matched) { tmp[ti2++] = ','; 若 (ti2 < 8189) tmp[ti2++] = ' '; }
-                                遍 (整 k = 0; args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = args[ai][k];
+                                遍 (整 k = 0; exp_args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[ai][k];
                             }
                         } 否 若 (matched >= 0 && matched < an) {
-                            遍 (整 k = 0; args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = args[matched][k];
+                            遍 (整 k = 0; exp_args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[matched][k];
                         } 否 {
                             遍 (整 k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
                         }
@@ -416,6 +437,7 @@ __attribute__((unused))
                 }
                 tmp[ti2] = 0;
                 fn_macro_expand_to(tmp, outp, o, cap, fmi); /* 递归: body 可能含嵌套宏 (fix 2026-08-07: 对齐 C 源 5 参数, 原全局缓冲 g_mout) */
+                fn_exp_n = fn_exp_n - 1; /* 弹栈 (fix 2026-08-13) */
                 out = *outp;
                 续;
             }
@@ -433,6 +455,7 @@ __attribute__((unused))
     整 cap = (整)strlen(s) * 2 + 1024;
     字 *out = malloc(cap); 若 (!out) { fprintf(stderr, "[ERR] OOM malloc\n"); exit(1); }
     整 o = 0;
+    fn_exp_n = 0; /* fix 2026-08-13: 重置展开栈 */
     fn_macro_expand_to(s, &out, &o, &cap, -1);
     若 (o + 1 > cap) { cap = o + 1; out = realloc(out, cap); }
     out[o] = 0;
@@ -3241,7 +3264,7 @@ __attribute__((unused))
     Nc(arr_blk, asgn);
     arr_blk_cnt++;
 }
-静 空 brace_arr_init(整 b, 整 d, 整 *dims, 整 nd, 整 depth) {
+静 空 brace_arr_init(整 b, 整 d, 整 *dims, 整 nd, 整 depth, 整 esz) { /* fix 2026-08-13: +esz 参数 — char *arr[] STR 存地址 (同步 C) */
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
@@ -3274,11 +3297,11 @@ __attribute__((unused))
         }
         若 (tt[tk] == FK && depth < nd - 1) { /* 嵌套行 { ... } */
             gi_idx[depth + 1] = 0; /* 重置子游标 (fix: next row continued from the previous row's column) */
-            brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
+            brace_arr_init(b, d, dims, nd, depth + 1, esz); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
             gi_idx[depth]++; /* 行推进 */
             续;
         }
-        若 (tt[tk] == STR) { /* char 行 = 字符串: char s[2][4] = {"ab","cd"} — 把字符串字节拷入行（fix 2026-08-05: 原存字符串地址 → 垃圾） */
+        若 (tt[tk] == STR && esz <= 1) { /* char 行 = 字符串: char s[2][4] = {"ab","cd"} — 把字符串字节拷入行（fix 2026-08-05: 原存字符串地址 → 垃圾）; fix 2026-08-13: 指针数组 char *arr[]={} esz=8 → 走 leaf 存地址 (同步 C) */
             整 idn = Nd(1); memcpy((字*)(nn + idn), (字*)(nn + d), 32);
             字 *sval = str_tbl[tv[tk]]; tk++;
             整 row_sz = dims[nd - 1] ? dims[nd - 1] : 1;
@@ -3391,7 +3414,7 @@ __attribute__((unused))
         整 idn = Nd(1); memcpy((字*)(nn + idn), vn, 32);
         整 dims[1]; dims[0] = arr_n;
         tk++; /* skip { */
-        brace_arr_init(init_blk, idn, dims, 1, 0);
+        brace_arr_init(init_blk, idn, dims, 1, 0, arr_esz);
     } 否 若 (is_struct) {
         var_struct(vn, si);
         Nc(b, d);
@@ -3681,8 +3704,14 @@ __attribute__((unused))
                 }
                 若 (tt[tk] == UK) tk++; /* } */
             }
-            若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; 若 (!strcmp(tn[tk], "double")) is_double = 1; 若 (!strcmp(tn[tk], "short")) is_short = 1; 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
-            若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long（fix 2026-08-06） */
+            循环 (tt[tk] == VK) { /* fix 2026-08-13: 循环消费所有类型关键字 (static const int / const char * — 原只消费 2 个, const 后 int/char 残留 → 变量未注册 → 运行 0xC0000005; revision.c lookup_other_head; 同步 C) */
+                若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1;
+                否 若 (!strcmp(tn[tk], "double")) is_double = 1;
+                否 若 (!strcmp(tn[tk], "short")) is_short = 1;
+                否 若 (!strcmp(tn[tk], "unsigned")) is_uns = 1;
+                否 若 (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) is_ll = 1; /* long long */
+                tk = tk + 1;
+            }
             若 (tt[tk] == VR && td_is(tn[tk])) { /* 第 2/3 个 token 是 typedef'd 类型 (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07 镜像 C 源) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
@@ -3690,6 +3719,7 @@ __attribute__((unused))
             }
             整 is_ptr = 0;
             循环 (tt[tk] == DK) { is_ptr = 1; tk++; } /* fix 2026-08-12: 循环消费所有 * — 原只消费一个, int **pp 双重指针漏注册 (同 b_ptrarith) */
+            循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* fix 2026-08-13: * 后的 const — `const char *const arr[]` 第二个 const 不消费 → 声明被跳过 → 变量未注册 → 运行 0xC0000005 (revision.c lookup_other_head; 同步 C) */
             整 d = Nd(7);
             整 acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             遍 (整 i = 0; i < 8; i++) adimv[i] = 0;
@@ -3802,7 +3832,7 @@ __attribute__((unused))
                 Nc(b, d); b_cnt++; /* declare first */
                 遍 (整 i = 0; i < 8; i++) gi_idx[i] = 0;
                 str_row = 0; /* 字符串初始化行计数器（fix 2026-08-05） */
-                brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0); /* 自管 { } */
+                brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0, tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4)))))); /* 自管 { }; fix 2026-08-13: 传 esz → char *arr[] STR 存地址 (同步 C) */
                 循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 若 (tt[tk] == SK) tk++;
                 续;
@@ -3821,7 +3851,15 @@ __attribute__((unused))
             } 否 若 (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
-                若 (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07 镜像 C 源: 原 Nc(decl,expr()) — expr() 不能解析 '{') */
+                若 (tt[tk] == FK && acnt > 0) { /* static 数组 brace init: static int a[2]={1,2} / static char *s[]={"x"} — brace_arr_init, main 入口执行一次 (fix 2026-08-13: 原走 expr() 无法解析 {…} → 运行 0xC0000005; revision.c lookup_other_head; 同步 C) */
+                    整 blk = Nd(5);
+                    Nc(blk, d); /* 先声明 */
+                    遍 (整 i = 0; i < 8; i++) gi_idx[i] = 0;
+                    str_row = 0;
+                    brace_arr_init(blk, d, adimv, adims > 0 ? adims : 1, 0, tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))));
+                    若 (ginit_n < 4096) ginit[ginit_n++] = blk;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                } 否 若 (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07 镜像 C 源: 原 Nc(decl,expr()) — expr() 不能解析 '{') */
                     tk++;
                     整 idn = Nd(1); memcpy((字*)(nn + idn), (字*)(nn + d), 32); /* 变量名在声明节点 d (vn 超出作用域) */
                     整 blkinit = brace_fields(ltd_si, idn);
@@ -4763,7 +4801,7 @@ __attribute__((unused))
                             整 idn = Nd(1); memcpy((字*)(nn + idn), gname, 32);
                             遍 (整 i = 0; i < 8; i++) gi_idx[i] = 0;
                             str_row = 0; /* 字符串初始化行计数器（fix 2026-08-05） */
-                            brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0); /* 自管 { } 配平 */
+                            brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0, g_is_fnptr ? 8 : (g_stidx >= 0 ? stypes[g_stidx].sz : (ptrd > 0 ? 8 : (g_is_char ? 1 : (g_is_double ? 8 : (g_is_ll ? 8 : 4)))))); /* 自管 { } 配平; fix 2026-08-13: 传 esz → char *names[] STR 存地址 (同步 C) */
                             若 (ginit_n < 4096) ginit[ginit_n++] = blk;
                         } 否 若 (ginit_n < 4096) {
                             整 decl = Nd(7); memcpy((字*)(nn + decl), gname, 32);

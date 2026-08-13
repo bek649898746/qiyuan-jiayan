@@ -180,9 +180,9 @@ static struct { char name[32]; char val[2048]; } str_macros[4096]; /* fix 2026-0
 static char *str_macro_find(const char *n) { for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) return str_macros[i].val; return 0; }
 /* fix 2026-08-07: include 展开阶段收集 #define 名字 — 使 include 守卫 (#ifndef X ... #endif) 在
    pp_include_expand 内生效, 重复 #include 的头不再重复展开其内部 #include (防指数膨胀) */
-static char pp_guard[128][32]; static int pp_guard_val[128]; static int pp_guard_n; /* fix 2026-08-07: 含数值 — fn_macro_collect 与 pp_include_expand 共用的顺序 #define 定义表 */
+static char pp_guard[2048][32]; static int pp_guard_val[2048]; static int pp_guard_n; /* fix 2026-08-13: 128→2048 (dir.c 头文件链满 → CONFIG_H 注册被丢 → 重复 include 重复展开 → 同名 fn_macro 重复收集 → fn_macro_expand_to 互递归栈溢出) */
 static int macro_exists(const char *n); /* fwd: 定义在下方 (pp_guard_exists 用到) */
-static void pp_guard_add(const char *n, int v) { if (pp_guard_n >= 128) return; for (int i = 0; i < pp_guard_n; i++) if (!strcmp(pp_guard[i], n)) { pp_guard_val[i] = v; return; } strcpy(pp_guard[pp_guard_n], n); pp_guard_val[pp_guard_n] = v; pp_guard_n++; }
+static void pp_guard_add(const char *n, int v) { if (pp_guard_n >= 2048) return; for (int i = 0; i < pp_guard_n; i++) if (!strcmp(pp_guard[i], n)) { pp_guard_val[i] = v; return; } strcpy(pp_guard[pp_guard_n], n); pp_guard_val[pp_guard_n] = v; pp_guard_n++; }
 static void pp_guard_del(const char *n) { for (int i = 0; i < pp_guard_n; i++) if (!strcmp(pp_guard[i], n)) { for (int j = i; j < pp_guard_n - 1; j++) strcpy(pp_guard[j], pp_guard[j + 1]); pp_guard_n--; return; } }
 static int pp_guard_exists(const char *n) { if (macro_exists(n)) return 1; for (int i = 0; i < pp_guard_n; i++) if (!strcmp(pp_guard[i], n)) return 1; return 0; }
 static int pp_guard_val_of(const char *n) { for (int i = 0; i < pp_guard_n; i++) if (!strcmp(pp_guard[i], n)) return pp_guard_val[i]; return 0; }
@@ -356,6 +356,8 @@ static void fn_macro_collect(const char *s) {
     }
 }
 
+static int fn_exp_stack[64]; static int fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链 + revision.c) */
+
 /* expand fn-macro calls inside seg (recursive for nested macros) into *out at *o (grows).
    fix 2026-08-07: #x 字符串化 / ## 拼接 / __VA_ARGS__ 变参 / 自引用防递归 / 字符串字面量内不展开 / 参数扫描不拆串内逗号 */
 static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, int self_fmi) {
@@ -376,6 +378,13 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             int fmi = -1;
             for (int k = 0; k < fn_macro_n; k++) if (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; break; } /* 自引用宏不重入 (fix 2026-08-07: #define A(x) A(x) 防死递归) */
             if (fmi >= 0 && seg[i] == '(') {
+                int in_stack = 0; for (int s = 0; s < fn_exp_n; s++) if (fn_exp_stack[s] == fmi) { in_stack = 1; break; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 (原 self_fmi 只防直接自递归) */
+                if (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
+                    if (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+                    for (int k = 0; k < ni; k++) out[(*o)++] = nm[k];
+                    continue;
+                }
+                fn_exp_stack[fn_exp_n++] = fmi; /* 压栈 */
                 char args[16][256]; int an = 0; /* fix 2026-08-07: 8→16×256, 超 15 参数并进末槽 */
                 i++;
                 int depth = 1, aj = 0, ain_str = 0;
@@ -397,6 +406,19 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 }
                 args[an][aj] = 0; an++;
                 if (seg[i] == ')') i++;
+                /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
+                   #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
+                char exp_args[16][256];
+                for (int ai = 0; ai < an; ai++) {
+                    int save_exp_n = fn_exp_n;
+                    fn_exp_n = 0; /* 实参展开独立栈 */
+                    char *eout = malloc(4096); int eo = 0, ecap = 4096;
+                    fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
+                    eout[eo] = 0;
+                    strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
+                    free(eout);
+                    fn_exp_n = save_exp_n;
+                }
                 /* expand body with params → args */
                 char tmp[8192]; int ti2 = 0;
                 const char *body = fn_macros[fmi].body;
@@ -446,10 +468,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         if (matched >= 0 && !strcmp(pn2, "__VA_ARGS__")) { /* 变参: 余参逗号连接 (可空, fix 2026-08-07) */
                             for (int ai = matched; ai < an && ti2 < 8188; ai++) {
                                 if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 8189) tmp[ti2++] = ' '; }
-                                for (int k = 0; args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = args[ai][k];
+                                for (int k = 0; exp_args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[ai][k];
                             }
                         } else if (matched >= 0 && matched < an) {
-                            for (int k = 0; args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = args[matched][k];
+                            for (int k = 0; exp_args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[matched][k];
                         } else {
                             for (int k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
                         }
@@ -459,6 +481,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 }
                 tmp[ti2] = 0;
                 fn_macro_expand_to(tmp, outp, o, cap, fmi); /* recurse: body may contain nested macro calls */
+                fn_exp_n--; /* 弹栈 (fix 2026-08-13) */
                 out = *outp;
                 continue;
             }
@@ -477,6 +500,7 @@ static char *fn_macro_expand(const char *s) {
     int cap = (int)strlen(s) * 2 + 1024;
     char *out = malloc(cap);
     int o = 0;
+    fn_exp_n = 0; /* fix 2026-08-13: 重置展开栈 */
     fn_macro_expand_to(s, &out, &o, &cap, -1);
     if (o + 1 > cap) { cap = o + 1; out = realloc(out, cap); }
     out[o] = 0;
@@ -3221,7 +3245,7 @@ static void arr_chain_add(int asgn) {
     Nc(arr_blk, asgn);
     arr_blk_cnt++;
 }
-static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
+static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) {
     /* 递归初始化器: int a[2][3] = {1,2,3,4,5,6} 或 {{1,2,3},{4,5,6}}
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
@@ -3254,11 +3278,11 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth) {
         }
         if (tt[tk] == FK && depth < nd - 1) { /* nested row { ... } */
             gi_idx[depth + 1] = 0; /* reset the child cursor (fix: next row continued from the previous row's column) */
-            brace_arr_init(b, d, dims, nd, depth + 1); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
+            brace_arr_init(b, d, dims, nd, depth + 1, esz); /* 递归开头统一吃 '{' (fix 2026-08-05: FK also tk++'d → double-ate on 3D) */
             gi_idx[depth]++; /* 行推进 */
             continue;
         }
-        if (tt[tk] == STR) { /* char 行 = 字符串: char s[2][4] = {"ab","cd"} — copy the string BYTES into the row (fix 2026-08-05: was stored as a string ADDRESS → garbage) */
+        if (tt[tk] == STR && esz <= 1) { /* char 行 = 字符串: char s[2][4] = {"ab","cd"} — copy the string BYTES into the row (fix 2026-08-05: was stored as a string ADDRESS → garbage); fix 2026-08-13: 指针数组 char *arr[] = {"A"} esz=8 → 走 leaf 存地址 (原 copy bytes → 元素=字符 → 解引用崩溃) */
             int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32);
             char *sval = str_tbl[tv[tk]]; tk++;
             int row_sz = dims[nd - 1] ? dims[nd - 1] : 1;
@@ -3348,7 +3372,7 @@ static int compound_literal(int is_struct, int si, int is_array, int arr_n, int 
         int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
         int dims[1]; dims[0] = arr_n;
         tk++; /* skip { */
-        brace_arr_init(init_blk, idn, dims, 1, 0);
+        brace_arr_init(init_blk, idn, dims, 1, 0, arr_esz);
     } else if (is_struct) {
         var_struct(vn, si);
         Nc(b, d);
@@ -3641,8 +3665,14 @@ static int blk(void) {
                 }
                 if (tt[tk] == UK) tk++; /* } */
             }
-            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; if (!strcmp(tn[tk], "double")) is_double = 1; if (!strcmp(tn[tk], "short")) is_short = 1; if (!strcmp(tn[tk], "unsigned")) is_uns = 1; tk++; } /* skip 2nd keyword */
-            if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* skip 3rd keyword of unsigned long long (fix 2026-08-06) */
+            while (tt[tk] == VK) { /* fix 2026-08-13: 循环消费所有类型关键字 (static const int / const char * — 原只消费 2 个, const 后 int/char 残留 → 变量未注册 → 运行 0xC0000005; revision.c lookup_other_head static const char *const []) */
+                if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1;
+                else if (!strcmp(tn[tk], "double")) is_double = 1;
+                else if (!strcmp(tn[tk], "short")) is_short = 1;
+                else if (!strcmp(tn[tk], "unsigned")) is_uns = 1;
+                else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) is_ll = 1; /* long long */
+                tk++;
+            }
             if (tt[tk] == VR && td_is(tn[tk])) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07) */
                 if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
@@ -3650,6 +3680,7 @@ static int blk(void) {
             }
             int is_ptr = 0;
             while (tt[tk] == DK) { is_ptr = 1; tk++; } /* fix 2026-08-12: 循环消费所有 * — 原只消费一个, int **pp 双重指针第二个 * 挡在 VR 检查前 → pp 未注册 → extern 误报/残留垃圾 (b_ptrarith) */
+            while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* fix 2026-08-13: * 后的 const — `const char *const arr[]` 第二个 const 不消费 → 声明被跳过 → 变量未注册 → 运行时 0xC0000005 (revision.c lookup_other_head) */
             int d = Nd(7);
             int acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             for (int i = 0; i < 8; i++) adimv[i] = 0;
@@ -3688,12 +3719,12 @@ static int blk(void) {
                 continue;
             }
             if (tt[tk] == VR) { char vn[32]; strcpy(vn, tn[tk]); tk++;
+            int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))); /* fix 2026-08-08: +is_short 2 字节; 2026-08-13: 提升作用域 — brace_arr_init 需传 esz (char *arr[] STR 存地址) */
             if (tt[tk] == LB) { /* array (static char names[3][16] too) */
                 /* typedef'd struct array: P arr[3] — element size = struct size,
                    st_idx set so arr[i].field resolves (fix 2026-08-03: this branch
                    shadowed the second typedef branch, registering P arr[3] as an
                    INT array with no st_idx → arr[i].a read garbage). */
-                int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))); /* fix 2026-08-08: +is_short 2 字节 (VGA 无短) */
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
                     tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
@@ -3766,7 +3797,7 @@ static int blk(void) {
                 Nc(b, d); b_cnt++; /* declare first */
                 for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                 str_row = 0; /* string-init row counter (fix 2026-08-05) */
-                brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0); /* 自管 { } */
+                brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0, tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4)))))); /* 自管 { }; fix 2026-08-13: 传 esz → char *arr[] STR 存地址 */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
                 continue;
@@ -3785,7 +3816,15 @@ static int blk(void) {
             } else if (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
-                if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07: was Nc(decl,expr()) — expr() 不能解析 '{') */
+                if (tt[tk] == FK && acnt > 0) { /* static ARRAY brace init: static int a[2]={1,2} / static char *s[]={"x"} — brace_arr_init, run once at main entry (fix 2026-08-13: 原走 expr() 无法解析 {…} → 运行 0xC0000005; revision.c lookup_other_head) */
+                    int blk = Nd(5);
+                    Nc(blk, d); /* declare first */
+                    for (int i = 0; i < 8; i++) gi_idx[i] = 0;
+                    str_row = 0;
+                    brace_arr_init(blk, d, adimv, adims > 0 ? adims : 1, 0, tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))));
+                    if (ginit_n < 4096) ginit[ginit_n++] = blk;
+                    vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
+                } else if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) { /* static typedef'd struct brace init (fix 2026-08-07: was Nc(decl,expr()) — expr() 不能解析 '{') */
                     tk++;
                     int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32); /* name in decl node d (vn out of scope) */
                     int blkinit = brace_fields(ltd_si, idn);
@@ -4750,7 +4789,7 @@ static int parse(const char *s) {
                             int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
                             for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                             str_row = 0; /* string-init row counter (fix 2026-08-05) */
-                            brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0); /* 自管 { } 配平 */
+                            brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0, g_is_fnptr ? 8 : (g_stidx >= 0 ? stypes[g_stidx].sz : (ptrd > 0 ? 8 : (g_is_char ? 1 : (g_is_double ? 8 : (g_is_ll ? 8 : 4)))))); /* 自管 { } 配平; fix 2026-08-13: 传 esz → char *names[] STR 存地址 */
                             if (ginit_n < 4096) ginit[ginit_n++] = blk;
                         } else if (ginit_n < 4096) {
                             int decl = Nd(7); memcpy((char*)(nn + decl), gname, 32);

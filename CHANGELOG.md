@@ -1,3 +1,17 @@
+## FA38C42B (2026-08-13)
+
+**Git 编译攻坚第 2 波: 宏体系 4 修复 + 声明体系 3 修复 + pp_guard 扩容 (revision.c 链路)**
+
+- 宏互递归防展开栈: fn_macro_expand_to 加 fn_exp_stack — self_fmi 只防直接自递归, A→B→A 无限递归栈溢出 (Git hashmap_for_each_entry 链; 最小复现 AA→BB→CC→AA)
+- C 宏替换参数预展开: 普通实参完全展开 (蓝色油漆不含实参), #/## 参数用原样 — ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开 (regress_fn_macro_nest 回归修复)
+- pp_guard 128→2048: dir.c 头文件链满 → CONFIG_H 注册被丢 → 重复 include 重复展开 → 同名 fn_macro 重复收集 → 互递归 (dir.c 0xC000003D)
+- 声明多 VK 循环消费: static const int arr 的 int 残留 → 变量未注册 → 运行崩溃 (revision.c lookup_other_head)
+- * 后 const 消费: const char *const arr[] 声明被跳过 (同步镜像)
+- static 数组 brace 初始化: 原走 expr() 无法解析 {…} → 崩溃; 改 brace_arr_init 挂 ginit (main 入口一次)
+- brace_arr_init 加 esz 参数: char *arr[]={} STR 存地址 (原 copy bytes → 元素=字符 → 解引用崩溃); 同步 C 版 (原镜像缺 → static const char*[] 崩)
+- 镜像 struct 字段 DK 循环 ×6: const char *name 的 * 不消费 → 字段死循环 (hash-ll.h git_hash_algo)
+- 验证: v1..v5 = FA38C42B (1-cycle), 测试 220/220, Git 头文件全可编译, 核心文件 qcc 15/16 + v4 12/16
+
 ## 0BFBB420 (2026-08-13)
 
 **Git 编译攻坚: hash-ll.h 卡死全解 + 镜像 struct 指针字段/DK 补全 + sizeof(*ptr)**
