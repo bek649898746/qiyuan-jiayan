@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 第8波: bump allocator 根治 free/realloc 泄漏):
+# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13: 铸基 郑宇和 / 自举 郑启元 刻名进自举链):
 # v1==v2==v3==v4==v5 五代全等。
-$expected = 'BB7AA7B59D06AC20CA042D81A3BFEB001929BB594D4D4FBD68ABF947069C4FE8'
+$expected = '330345BA0ECE1E65A6BE51A893222EF641BFCA19B43226A60B0225B8734F1AAD'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
