@@ -119,7 +119,7 @@ __attribute__((unused))
     *val = (整)(neg ? -v : v); /* fix BUG-3: 截断回 int */
 }
 /* function-like macros: #define NAME(p1,p2) body — collect 定义, fn_macro_expand 在 lex 前展开调用 (fix 2026-08-05; _va_alloc 是 qcc 内置机制不能展开) */
-静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[512]; } fn_macros[4096]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+静 构 { 字 name[32]; 字 params[16][32]; 整 pn; 字 body[16384]; } fn_macros[1024]; 静 整 fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
 静 整 cl_if_parent[1024]; 静 整 cl_if_taken[1024]; 静 整 cl_if_n; /* Phase1-L4: 64->1024 */ 静 整 cl_if_skip; /* collect 的条件编译栈 (fix 2026-08-07) */
 静 整 macro_exists(常 字 *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆 (镜像 qcc_x86.c) */
     遍 (整 i = 0; i < macro_n; i++) 若 (!strcmp(macros[i].name, n)) 返 1;
@@ -148,8 +148,8 @@ __attribute__((unused))
             字 nm[32]; 整 ni = 0;
             循环 (isalnum((无 字)s[p]) || s[p] == '_' || ((无 字)s[p] >= 0x80)) { 若 (ni < 31) nm[ni++] = s[p]; p = p + 1; }
             nm[ni] = 0;
-            循环 (s[p] == ' ' || s[p] == '\t') p = p + 1;
-            若 (nm[0] && s[p] != '(' && s[p] != '"') { /* 非函数宏非字符串宏 → 对象宏候选 */
+            若 (nm[0] && s[p] != '(' && s[p] != '"') { /* 非函数宏非字符串宏 → 对象宏候选; fix 2026-08-13 Phase3: ( 必须紧贴名字才算函数宏, #define A (x) 是对象宏值 "(x)" */
+                循环 (s[p] == ' ' || s[p] == '\t') p = p + 1;
                 字 av[512]; 整 ai = 0;
                 循环 (s[p] && s[p] != '\n' && ai < 510) { 若 (s[p] == '\\' && s[p + 1] == '\n') { p += 2; av[ai++] = ' '; 续; } av[ai++] = s[p]; p = p + 1; }
                 循环 (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t' || av[ai - 1] == '\r')) ai = ai - 1;
@@ -175,8 +175,8 @@ __attribute__((unused))
         若 (s[i] == '"') { out[o] = s[i]; o = o + 1; i = i + 1; 循环 (s[i] && (s[i] != '"' || s[i - 1] == '\\')) { out[o] = s[i]; o = o + 1; i = i + 1; } 若 (s[i]) { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
         若 (s[i] == '\'') { out[o] = s[i]; o = o + 1; i = i + 1; 循环 (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) { out[o] = s[i]; o = o + 1; i = i + 1; } 若 (s[i]) { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
         若 (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死, 同步 C) */
-            循环 (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; }
-            若 (s[i]) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; 若 (s[i]) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; } }
+            循环 (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { 若 (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 */; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; }
+            若 (s[i]) { 若 (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 */; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; 若 (s[i]) { 若 (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 */; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; } }
             续;
         }
         若 (s[i] == '/' && s[i + 1] == '/') { 循环 (s[i] && s[i] != '\n') { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
@@ -204,7 +204,7 @@ __attribute__((unused))
             续;
         }
         out[o] = s[i]; o = o + 1; i = i + 1;
-        若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); }
+        若 (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 */; out = realloc(out, cap); }
     }
     out[o] = 0;
     返 out;
@@ -299,9 +299,9 @@ __attribute__((unused))
                 若 (s[p] == ')') p++;
                 循环 (s[p] == ' ' || s[p] == '\t') p++;
                 整 bi = 0;
-                循环 (s[p] && s[p] != '\n' && bi < 511) {
+                循环 (s[p] && s[p] != '\n' && bi < 16383) {
                     若 (s[p] == '\\' && (s[p + 1] == '\n' || (s[p + 1] == '\r' && s[p + 2] == '\n'))) { /* 多行 body: \ 续行 → 空格 (fix 2026-08-05) */
-                        若 (bi < 511) fn_macros[fn_macro_n].body[bi++] = ' ';
+                        若 (bi < 16383) fn_macros[fn_macro_n].body[bi++] = ' ';
                         p++;
                         若 (s[p] == '\r') p++;
                         若 (s[p] == '\n') p++;
@@ -322,13 +322,13 @@ __attribute__((unused))
     整 in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     遍 (整 i = 0; seg[i]; ) {
         若 (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; 同步 C) */
-            循环 (seg[i] && seg[i] != '\n') { 若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
+            循环 (seg[i] && seg[i] != '\n') { 若 (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
             续;
         }
         若 (seg[i] == '"' && !in_str) in_str = 1;
         否 若 (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         若 (in_str) {
-            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            若 (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
             续;
         }
@@ -341,7 +341,7 @@ __attribute__((unused))
             若 (fmi >= 0 && seg[i] == '(') {
                 整 in_stack = 0; 遍 (整 s = 0; s < fn_exp_n; s++) 若 (fn_exp_stack[s] == fmi) { in_stack = 1; 断; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 */
                 若 (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
-                    若 (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+                    若 (*o + ni + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
                     遍 (整 k = 0; k < ni; k++) out[(*o)++] = nm[k];
                     续;
                 }
@@ -370,19 +370,19 @@ __attribute__((unused))
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开; 同步 C),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 字 exp_args[16][256];
+                字 *eout = malloc(4096); /* fix 2026-08-13 Phase3: 复用 eout 缓冲 — bump realloc 泄漏 */
                 遍 (整 ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选; 同步 C) */
                     整 save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
-                    字 *eout = malloc(4096); 整 eo = 0, ecap = 4096;
+                    整 eo = 0, ecap = 4096;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
                     strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
-                    free(eout);
                     fn_exp_n = save_exp_n;
                 }
-                字 tmp[8192]; 整 ti2 = 0;
+                字 tmp[16384]; 整 ti2 = 0;
                 常 字 *body = fn_macros[fmi].body;
-                遍 (整 b = 0; body[b] && ti2 < 8190; ) {
+                遍 (整 b = 0; body[b] && ti2 < 16382; ) {
                     若 (body[b] == '#' && body[b + 1] == '#') { /* ## 拼接: 去尾空 + 跳过 ## 及后随空白 */
                         循环 (ti2 > 0 && (tmp[ti2-1] == ' ' || tmp[ti2-1] == '\t')) ti2--;
                         b += 2;
@@ -398,24 +398,24 @@ __attribute__((unused))
                         整 matched = -1;
                         遍 (整 p2 = 0; p2 < fn_macros[fmi].pn; p2++) 若 (!strcmp(fn_macros[fmi].params[p2], pn2)) { matched = p2; 断; }
                         若 (matched >= 0 && matched < an) {
-                            若 (ti2 < 8190) tmp[ti2++] = '"';
-                            遍 (整 ai = matched; ai < an && ti2 < 8188; ai++) { /* #__VA_ARGS__: 余参逗号连接后一起字符串化 */
-                                若 (ai > matched) { tmp[ti2++] = ','; 若 (ti2 < 8189) tmp[ti2++] = ' '; }
+                            若 (ti2 < 16382) tmp[ti2++] = '"';
+                            遍 (整 ai = matched; ai < an && ti2 < 16380; ai++) { /* #__VA_ARGS__: 余参逗号连接后一起字符串化 */
+                                若 (ai > matched) { tmp[ti2++] = ','; 若 (ti2 < 16381) tmp[ti2++] = ' '; }
                                 常 字 *src = args[ai];
                                 整 sk = 0, sp = 0;
                                 循环 (src[sk] && (src[sk] == ' ' || src[sk] == '\t')) sk++; /* 去首空白 */
                                 整 sl = 0; 循环 (src[sk + sl]) sl++; 循环 (sl > 0 && (src[sk + sl - 1] == ' ' || src[sk + sl - 1] == '\t')) sl--; /* 去尾空白 */
-                                遍 (整 k = sk; k < sk + sl && ti2 < 8188; k++) {
+                                遍 (整 k = sk; k < sk + sl && ti2 < 16380; k++) {
                                     若 ((src[k] == ' ' || src[k] == '\t') && sp) 续; /* 内部连续空白 -> 单空格 */
                                     sp = (src[k] == ' ' || src[k] == '\t');
-                                    若 (src[k] == '\\' || src[k] == '"') { 若 (ti2 < 8188) tmp[ti2++] = '\\'; } /* 转义 */
+                                    若 (src[k] == '\\' || src[k] == '"') { 若 (ti2 < 16380) tmp[ti2++] = '\\'; } /* 转义 */
                                     tmp[ti2++] = src[k];
                                 }
                             }
-                            若 (ti2 < 8190) tmp[ti2++] = '"';
+                            若 (ti2 < 16382) tmp[ti2++] = '"';
                         } 否 { /* 非参数: 原样输出 # + 名字 (畸形宏, 不崩) */
-                            若 (ti2 < 8190) tmp[ti2++] = '#';
-                            遍 (整 k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
+                            若 (ti2 < 16382) tmp[ti2++] = '#';
+                            遍 (整 k = 0; k < pi2 && ti2 < 16382; k++) tmp[ti2++] = pn2[k];
                         }
                         续;
                     }
@@ -426,17 +426,17 @@ __attribute__((unused))
                         整 matched = -1;
                         遍 (整 p2 = 0; p2 < fn_macros[fmi].pn; p2++) 若 (!strcmp(fn_macros[fmi].params[p2], pn2)) { matched = p2; 断; }
                         若 (matched >= 0 && !strcmp(pn2, "__VA_ARGS__")) { /* 变参: 余参逗号连接 (可空) */
-                            遍 (整 ai = matched; ai < an && ti2 < 8188; ai++) {
-                                若 (ai > matched) { tmp[ti2++] = ','; 若 (ti2 < 8189) tmp[ti2++] = ' '; }
-                                遍 (整 k = 0; exp_args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[ai][k];
+                            遍 (整 ai = matched; ai < an && ti2 < 16380; ai++) {
+                                若 (ai > matched) { tmp[ti2++] = ','; 若 (ti2 < 16381) tmp[ti2++] = ' '; }
+                                遍 (整 k = 0; exp_args[ai][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[ai][k];
                             }
                         } 否 若 (matched >= 0 && matched < an) {
-                            遍 (整 k = 0; exp_args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[matched][k];
+                            遍 (整 k = 0; exp_args[matched][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[matched][k];
                         } 否 {
-                            遍 (整 k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
+                            遍 (整 k = 0; k < pi2 && ti2 < 16382; k++) tmp[ti2++] = pn2[k];
                         }
                     } 否 {
-                        若 (ti2 < 8190) tmp[ti2++] = body[b++];
+                        若 (ti2 < 16382) tmp[ti2++] = body[b++];
                     }
                 }
                 tmp[ti2] = 0;
@@ -445,10 +445,10 @@ __attribute__((unused))
                 out = *outp;
                 续;
             }
-            若 (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            若 (*o + ni + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             遍 (整 k = 0; k < ni; k++) out[(*o)++] = nm[k];
         } 否 {
-            若 (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            若 (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
         }
     }
@@ -568,6 +568,17 @@ __attribute__((unused))
     遍 (整 k = 0; k < pos && s[k]; k++) 若 (s[k] == '\n') ln++;
     返 ln - rt_line_skip;
 }
+
+/* include 目录栈: #include "x.h" 先相对当前源文件目录搜索, 再相对 cwd (fix 2026-08-13 Phase3) */
+静 字 inc_dir_stack[16][512]; 静 整 inc_dir_n;
+静 字 g_src_dir[512]; /* 顶层源文件目录 */
+静 空 dir_of_path(常 字 *path, 字 *out, 整 cap) {
+    整 i = 0, last = -1;
+    循环 (path[i]) { 若 (path[i] == '/' || path[i] == '\\') last = i; i = i + 1; }
+    若 (last > 0) { 整 n = last < cap - 1 ? last : cap - 1; memcpy(out, path, n); out[n] = 0; }
+    否则 out[0] = 0;
+}
+静 字 *pp_read_file_inc(常 字 *fname);
 /* #include 读文件: 4MB 上限 (fix 2026-08-07 镜像 C 源 pp_read_file, 原用 read_file 1MB → include 大文件行为分歧) */
 静 字 *pp_read_file(常 字 *path) {
     FILE *f = fopen(path, "rb");
@@ -582,10 +593,21 @@ __attribute__((unused))
     buf[rd] = 0; fclose(f);
     返 buf;
 }
+静 字 *pp_read_file_inc(常 字 *fname) {
+    若 (inc_dir_n > 0 && inc_dir_stack[inc_dir_n - 1][0]) {
+        字 full[1024];
+        strcpy(full, inc_dir_stack[inc_dir_n - 1]);
+        strcat(full, "/");
+        strcat(full, fname);
+        字 *fc = pp_read_file(full);
+        若 (fc) 返 fc;
+    }
+    返 pp_read_file(fname);
+}
 /* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
 静 字 *pp_include_expand(常 字 *src, 整 depth) {
     若 (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
-    若 (depth == 0) pp_guard_n = 0; /* fix 2026-08-07: 每次编译重置守卫名表 */
+    若 (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; 若 (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n = inc_dir_n + 1; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
     整 cap = strlen(src) + 16384;
     字 *out = malloc(cap); 整 oi = 0;
     常 字 *p = src;
@@ -638,9 +660,19 @@ __attribute__((unused))
                     q++; 循环 (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
                     fname[fi] = 0;
                     若 (fi > 0) {
-                        字 *fc = pp_read_file(fname);
+                        字 *fc = pp_read_file_inc(fname);
                         若 (!fc) { fprintf(stderr, "[ERR] 第%d行 #include: 找不到文件 '%s'\n", line_at(src, (整)(p - src)), fname); exit(1); } /* fix 2026-08-06 Task 5.3: 行号定位 */
+                        字 fdir[512]; dir_of_path(fname, fdir, sizeof(fdir)); /* fix 2026-08-13 Phase3: 子目录 include 相对当前源文件目录 */
+                        字 newdir[1024]; newdir[0] = 0;
+                        若 (inc_dir_n > 0 && inc_dir_stack[inc_dir_n - 1][0]) {
+                            strcpy(newdir, inc_dir_stack[inc_dir_n - 1]); /* 继承父目录 */
+                            若 (fdir[0]) { strcat(newdir, "/"); strcat(newdir, fdir); }
+                        } 否 {
+                            strcpy(newdir, fdir);
+                        }
+                        若 (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir); inc_dir_n = inc_dir_n + 1; }
                         字 *exp = pp_include_expand(fc, depth + 1);
+                        inc_dir_n = inc_dir_n - 1;
                         free(fc);
                         整 el = strlen(exp);
                         若 (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
@@ -670,7 +702,7 @@ __attribute__((unused))
         } 否 {
             整 k; 遍 (k = 0; k <= llen; k++) { out[oi] = p[k]; oi++; }
         }
-        若 (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        若 (oi >= cap - 4096) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 */; out = realloc(out, cap); }
         p = *le ? le + 1 : le;
     }
     out[oi] = 0;
@@ -837,7 +869,7 @@ __attribute__((unused))
 }
 
 /* ?????? typedef ??????????? */
-静 构 { 字 name[32]; 整 is_struct; 字 st_name[32]; 字 is_dbl; 字 is_fnptr; 字 fnptr_dbl; } tdefs[64]; 静 整 tdef_n;
+静 构 { 字 name[32]; 整 is_struct; 字 st_name[32]; 字 is_dbl; 字 is_fnptr; 字 fnptr_dbl; } tdefs[512]; 静 整 tdef_n;
 
 __attribute__((unused))
 静 整 tdef_lookup(常 字 *n) {
@@ -852,7 +884,7 @@ __attribute__((unused))
 }
 __attribute__((unused))
 静 空 tdef_add(常 字 *n, 整 is_st, 常 字 *sn, 整 is_dbl) {
-    若 (tdef_n >= 64) 返;
+    若 (tdef_n >= 512) 返;
     /* check for duplicate */
     遍 (整 i = 0; i < tdef_n; i++) 若 (!strcmp(tdefs[i].name, n)) 返;
     strcpy(tdefs[tdef_n].name, n);
@@ -865,7 +897,7 @@ __attribute__((unused))
 }
 /* fnptr typedef: typedef int (*fp_t)(int,int); —— 8 字节元素，绝不是 double 槽（C 原版 221 移植） */
 静 空 tdef_add_fnptr(常 字 *n, 整 ret_dbl) {
-    若 (tdef_n >= 64) 返;
+    若 (tdef_n >= 512) 返;
     遍 (整 i = 0; i < tdef_n; i++) 若 (!strcmp(tdefs[i].name, n)) 返;
     strcpy(tdefs[tdef_n].name, n);
     tdefs[tdef_n].is_struct = 0;
@@ -877,10 +909,10 @@ __attribute__((unused))
 }
 
 /* 闁冲厜鍋撻柍鍏夊亾闁冲厜�?typedef lexer�? 婵炲鍔岄崬浠嬪礆椤愩垺�?�?blk/parse濞戞挾鎹奷_is闁告帇鍊栭弻?闁冲厜鍋撻柍鍏夊亾闁冲厜�?*/
-静 字 tdn[64][32]; 静 整 tdn_n;
+静 字 tdn[512][32]; 静 整 tdn_n;
 静 空 td_reg(常 字 *n) {
     遍 (整 i = 0; i < tdn_n; i++) 若 (!strcmp(tdn[i], n)) 返;
-    若 (tdn_n < 64) { strcpy(tdn[tdn_n], n); tdn_n++; }
+    若 (tdn_n < 512) { strcpy(tdn[tdn_n], n); tdn_n++; }
 }
 静 整 td_is(常 字 *n) {
     遍 (整 i = 0; i < tdn_n; i++) 若 (!strcmp(tdn[i], n)) 返 1;
@@ -3681,6 +3713,7 @@ __attribute__((unused))
         若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && tt[tk + 1] == VR &&
             (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK)) {
             unknown_ty_decl = 1;
+            td_reg(tn[tk]); /* fix 2026-08-13 Phase3: 注册 unknown typedef → 后续 (uint32_t*) cast 可 td_is */
         }
         若 (tt[tk] == VK || tt[tk] == EN || (tt[tk] == VR && td_is(tn[tk])) || unknown_ty_decl) { /* int/char/enum/typedef type (C 原版 2184) */
             整 was_enum = (tt[tk] == EN);
@@ -4143,6 +4176,7 @@ __attribute__((unused))
         字 *osrc = obj_macro_expand(exp_src);
         若 (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
+    pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表; 清 pp_guard 防 fn_macro_collect 污染 */
     lex(exp_src);
     free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
@@ -4899,6 +4933,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                 否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                 否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* fix 2026-08-13 Phase3: const 前缀后 typedef 漏处理 */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long（fix 2026-08-06） */
                 循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -4917,6 +4952,10 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                             tk++;
                         }
                     }
+                    续;
+                }
+                若 (tt[tk] == LB) { /* 匿名数组参数: uint32_t[5] 无参数名 (fix 2026-08-13 Phase3: 原无此分支 → LB 卡死死循环) */
+                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; 若 (tt[tk] == RB) tk++; }
                     续;
                 }
                 若 (tt[tk] == VR) {
@@ -7659,7 +7698,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
    (堆上限 0x4000000=64MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB), 与 cp*84 取大者. */
 静 整 data_extent(空) {
     整 e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10800000;
     若 (e > heap_top) 返 e;
     返 heap_top;
 }
@@ -8665,6 +8704,7 @@ __attribute__((unused))
         /* input file */
         字 *fb = read_file(argv[argi]);
         若 (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); 返 1; }
+        dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录 */
         整 fl = (整)strlen(fb);
         all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-清除: realloc 是真实 bump 分配 (非 no-op)! 原 all_len+fl+2 非4倍数 → tt..tll 错位 → tll[tk] 读垃圾 → 伪 nll=1 */
         memcpy(all_src + all_len, fb, fl); all_len += fl;

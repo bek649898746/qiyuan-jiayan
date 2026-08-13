@@ -39,10 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 第6波: 全局 long long/double/unsigned 算术
-# 64 位修复 + build.ps1 测试入口修复):
+# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 第7波: Phase 3 Git 全量编译攻坚):
 # v1==v2==v3==v4==v5 五代全等。
-$expected = 'DB4BEBC35D2007FF0902C00A11334F97B91D7213C3F60847F3431B4768DF5DCE'
+$expected = 'B21878D6C3CD406A38AE49BFBA324A9D81D60005966029DC39715F33402445A9'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

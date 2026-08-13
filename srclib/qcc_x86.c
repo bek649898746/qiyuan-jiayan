@@ -136,8 +136,8 @@ static char *obj_macro_expand(const char *s) {
         if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
         if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
         if (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死) */
-            while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; }
-            if (s[i]) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; if (s[i]) { if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o++] = s[i++]; } }
+            while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; }
+            if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; } }
             continue;
         }
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') out[o++] = s[i++]; continue; }
@@ -166,7 +166,7 @@ static char *obj_macro_expand(const char *s) {
             continue;
         }
         out[o++] = s[i++];
-        if (o >= cap - 4) { cap += 32768; out = realloc(out, cap); }
+        if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); }
     }
     out[o] = 0;
     return out;
@@ -207,7 +207,7 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
 static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macro_collect 的条件编译感知用) */
 
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
-static struct { char name[32]; char params[16][32]; int pn; char body[512]; } fn_macros[4096]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
+static struct { char name[32]; char params[16][32]; int pn; char body[16384]; } fn_macros[1024]; static int fn_macro_n; /* Phase1-L4: 64->1024 */ /* fix 2026-08-07: params 8×16 → 16×32 (变参/多参宏) */
 static int cl_if_parent[1024]; static int cl_if_taken[1024]; static int cl_if_n; /* Phase1-L4: 64->1024 */ static int cl_if_skip; /* fn_macro_collect 的条件编译栈 (fix 2026-08-07) */
 static int macro_exists(const char *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆, defined(NEG) 判假 */
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return 1;
@@ -236,8 +236,8 @@ static void obj_macro_collect(const char *s) {
             char nm[32]; int ni = 0;
             while (isalnum((unsigned char)s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 31) nm[ni++] = s[p]; p++; }
             nm[ni] = 0;
-            while (s[p] == ' ' || s[p] == '\t') p++;
-            if (nm[0] && s[p] != '(' && s[p] != '"') { /* 非函数宏非字符串宏 → 对象宏候选 */
+            if (nm[0] && s[p] != '(' && s[p] != '"') { /* 非函数宏非字符串宏 → 对象宏候选; fix 2026-08-13 Phase3: ( 必须紧贴名字才算函数宏, #define A (x) 是对象宏值 "(x)" */
+                while (s[p] == ' ' || s[p] == '\t') p++;
                 char av[512]; int ai = 0;
                 while (s[p] && s[p] != '\n' && ai < 510) { if (s[p] == '\\' && s[p + 1] == '\n') { p += 2; av[ai++] = ' '; continue; } av[ai++] = s[p]; p++; }
                 while (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t' || av[ai - 1] == '\r')) ai--;
@@ -338,9 +338,9 @@ static void fn_macro_collect(const char *s) {
                 if (s[p] == ')') p++;
                 while (s[p] == ' ' || s[p] == '\t') p++;
                 int bi = 0;
-                while (s[p] && s[p] != '\n' && bi < 511) {
+                while (s[p] && s[p] != '\n' && bi < 16383) {
                     if (s[p] == '\\' && (s[p + 1] == '\n' || (s[p + 1] == '\r' && s[p + 2] == '\n'))) { /* 多行 body: \ 续行 → 空格 (fix 2026-08-05) */
-                        if (bi < 511) fn_macros[fn_macro_n].body[bi++] = ' ';
+                        if (bi < 16383) fn_macros[fn_macro_n].body[bi++] = ' ';
                         p++;
                         if (s[p] == '\r') p++;
                         if (s[p] == '\n') p++;
@@ -365,13 +365,13 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
         if (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; obj_macro_expand 同款) */
-            while (seg[i] && seg[i] != '\n') { if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
+            while (seg[i] && seg[i] != '\n') { if (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
             continue;
         }
         if (seg[i] == '"' && !in_str) in_str = 1;
         else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         if (in_str) {
-            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            if (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
             continue;
         }
@@ -384,7 +384,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             if (fmi >= 0 && seg[i] == '(') {
                 int in_stack = 0; for (int s = 0; s < fn_exp_n; s++) if (fn_exp_stack[s] == fmi) { in_stack = 1; break; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 (原 self_fmi 只防直接自递归) */
                 if (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
-                    if (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+                    if (*o + ni + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
                     for (int k = 0; k < ni; k++) out[(*o)++] = nm[k];
                     continue;
                 }
@@ -413,20 +413,20 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 char exp_args[16][256];
+                char *eout = malloc(4096); /* fix 2026-08-13 Phase3: 复用 eout 缓冲 — bump realloc 泄漏, sha1.c 海量宏展开时每次 malloc 4096 爆堆 */
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
-                    char *eout = malloc(4096); int eo = 0, ecap = 4096;
+                    int eo = 0, ecap = 4096;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
                     strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
-                    free(eout);
                     fn_exp_n = save_exp_n;
                 }
                 /* expand body with params → args */
-                char tmp[8192]; int ti2 = 0;
+                char tmp[16384]; int ti2 = 0;
                 const char *body = fn_macros[fmi].body;
-                for (int b = 0; body[b] && ti2 < 8190; ) {
+                for (int b = 0; body[b] && ti2 < 16382; ) {
                     if (body[b] == '#' && body[b + 1] == '#') { /* ## 拼接: 去尾空 + 跳过 ## 及后随空白 (fix 2026-08-07) */
                         while (ti2 > 0 && (tmp[ti2 - 1] == ' ' || tmp[ti2 - 1] == '\t')) ti2--;
                         b += 2;
@@ -442,24 +442,24 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         int matched = -1;
                         for (int p2 = 0; p2 < fn_macros[fmi].pn; p2++) if (!strcmp(fn_macros[fmi].params[p2], pn2)) { matched = p2; break; }
                         if (matched >= 0 && matched < an) {
-                            if (ti2 < 8190) tmp[ti2++] = '"';
-                            for (int ai = matched; ai < an && ti2 < 8188; ai++) { /* #__VA_ARGS__: 余参逗号连接后一起字符串化 */
-                                if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 8189) tmp[ti2++] = ' '; }
+                            if (ti2 < 16382) tmp[ti2++] = '"';
+                            for (int ai = matched; ai < an && ti2 < 16380; ai++) { /* #__VA_ARGS__: 余参逗号连接后一起字符串化 */
+                                if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 16381) tmp[ti2++] = ' '; }
                                 const char *src = args[ai];
                                 int sk = 0, sp = 0;
                                 while (src[sk] && (src[sk] == ' ' || src[sk] == '\t')) sk++; /* 去首空白 */
                                 int sl = 0; while (src[sk + sl]) sl++; while (sl > 0 && (src[sk + sl - 1] == ' ' || src[sk + sl - 1] == '\t')) sl--; /* 去尾空白 */
-                                for (int k = sk; k < sk + sl && ti2 < 8188; k++) {
+                                for (int k = sk; k < sk + sl && ti2 < 16380; k++) {
                                     if ((src[k] == ' ' || src[k] == '\t') && sp) continue; /* 内部连续空白 → 单空格 */
                                     sp = (src[k] == ' ' || src[k] == '\t');
-                                    if (src[k] == '\\' || src[k] == '"') { if (ti2 < 8188) tmp[ti2++] = '\\'; } /* 转义 \ 与 " */
+                                    if (src[k] == '\\' || src[k] == '"') { if (ti2 < 16380) tmp[ti2++] = '\\'; } /* 转义 \ 与 " */
                                     tmp[ti2++] = src[k];
                                 }
                             }
-                            if (ti2 < 8190) tmp[ti2++] = '"';
+                            if (ti2 < 16382) tmp[ti2++] = '"';
                         } else { /* 非参数: 原样输出 # + 名字 (畸形宏, 不崩) */
-                            if (ti2 < 8190) tmp[ti2++] = '#';
-                            for (int k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
+                            if (ti2 < 16382) tmp[ti2++] = '#';
+                            for (int k = 0; k < pi2 && ti2 < 16382; k++) tmp[ti2++] = pn2[k];
                         }
                         continue;
                     }
@@ -470,17 +470,17 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         int matched = -1;
                         for (int p2 = 0; p2 < fn_macros[fmi].pn; p2++) if (!strcmp(fn_macros[fmi].params[p2], pn2)) { matched = p2; break; }
                         if (matched >= 0 && !strcmp(pn2, "__VA_ARGS__")) { /* 变参: 余参逗号连接 (可空, fix 2026-08-07) */
-                            for (int ai = matched; ai < an && ti2 < 8188; ai++) {
-                                if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 8189) tmp[ti2++] = ' '; }
-                                for (int k = 0; exp_args[ai][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[ai][k];
+                            for (int ai = matched; ai < an && ti2 < 16380; ai++) {
+                                if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 16381) tmp[ti2++] = ' '; }
+                                for (int k = 0; exp_args[ai][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[ai][k];
                             }
                         } else if (matched >= 0 && matched < an) {
-                            for (int k = 0; exp_args[matched][k] && ti2 < 8188; k++) tmp[ti2++] = exp_args[matched][k];
+                            for (int k = 0; exp_args[matched][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[matched][k];
                         } else {
-                            for (int k = 0; k < pi2 && ti2 < 8190; k++) tmp[ti2++] = pn2[k];
+                            for (int k = 0; k < pi2 && ti2 < 16382; k++) tmp[ti2++] = pn2[k];
                         }
                     } else {
-                        if (ti2 < 8190) tmp[ti2++] = body[b++];
+                        if (ti2 < 16382) tmp[ti2++] = body[b++];
                     }
                 }
                 tmp[ti2] = 0;
@@ -490,10 +490,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 continue;
             }
             /* plain identifier */
-            if (*o + ni + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            if (*o + ni + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             for (int k = 0; k < ni; k++) out[(*o)++] = nm[k];
         } else {
-            if (*o + 1 > *cap) { *cap += 4096; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            if (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
         }
     }
@@ -609,6 +609,17 @@ static int pp_eval(const char *e) {
     return pp_guard_val_of(e); /* fix 2026-08-07: 顺序定义表的值 (#define MODE 2 → #if MODE==1 用真值而非存在性) */
 }
 
+/* include 目录栈: #include "x.h" 先相对当前源文件所在目录搜索, 再相对 cwd (fix 2026-08-13 Phase3) */
+static char inc_dir_stack[16][512]; static int inc_dir_n;
+static char g_src_dir[512]; /* 顶层源文件目录 */
+static void dir_of_path(const char *path, char *out, int cap) {
+    int i = 0, last = -1;
+    while (path[i]) { if (path[i] == '/' || path[i] == '\\') last = i; i++; }
+    if (last > 0) { int n = last < cap - 1 ? last : cap - 1; memcpy(out, path, n); out[n] = 0; }
+    else out[0] = 0;
+}
+static char *pp_read_file_inc(const char *fname);
+
 /* #include "file" — 预处理器包含展开（lex 前；条件编译感知；fix 2026-08-06） */
 static char *pp_read_file(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -622,6 +633,17 @@ static char *pp_read_file(const char *path) {
     buf[rd] = 0; fclose(f);
     return buf;
 }
+static char *pp_read_file_inc(const char *fname) {
+    if (inc_dir_n > 0 && inc_dir_stack[inc_dir_n - 1][0]) {
+        char full[1024];
+        strcpy(full, inc_dir_stack[inc_dir_n - 1]);
+        strcat(full, "/");
+        strcat(full, fname);
+        char *fc = pp_read_file(full);
+        if (fc) return fc;
+    }
+    return pp_read_file(fname);
+}
 /* 第N行: 计算源码 pos 处的行号 (fix 2026-08-06 Task 5.3 中文诊断) */
 static int rt_line_skip = 0; /* prepend 的 qcc_rt.c 行数 (用户源码行号校正) */
 static int line_at(const char *s, int pos) {
@@ -631,7 +653,7 @@ static int line_at(const char *s, int pos) {
 }
 static char *pp_include_expand(const char *src, int depth) {
     if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
-    if (depth == 0) pp_guard_n = 0; /* fix 2026-08-07: 每次编译重置守卫名表 */
+    if (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; if (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n++; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
     int cap = (int)strlen(src) + 16384;
     char *out = malloc(cap); if (!out) { fprintf(stderr, "[ERR] OOM malloc\n"); exit(1); } int oi = 0;
     const char *p = src;
@@ -684,9 +706,19 @@ static char *pp_include_expand(const char *src, int depth) {
                     q++; while (*q && *q != '"' && fi < 510) fname[fi++] = *q++;
                     fname[fi] = 0;
                     if (fi > 0) {
-                        char *fc = pp_read_file(fname);
+                        char *fc = pp_read_file_inc(fname);
                         if (!fc) { fprintf(stderr, "[ERR] 第%d行 #include: 找不到文件 '%s'\n", line_at(src, (int)(p - src)), fname); exit(1); } /* fix 2026-08-06 Task 5.3: 行号定位 */
+                        char fdir[512]; dir_of_path(fname, fdir, sizeof(fdir)); /* fix 2026-08-13 Phase3: 子目录 include 相对当前源文件目录 */
+                        char newdir[1024]; newdir[0] = 0;
+                        if (inc_dir_n > 0 && inc_dir_stack[inc_dir_n - 1][0]) {
+                            strcpy(newdir, inc_dir_stack[inc_dir_n - 1]); /* 继承父目录 */
+                            if (fdir[0]) { strcat(newdir, "/"); strcat(newdir, fdir); }
+                        } else {
+                            strcpy(newdir, fdir);
+                        }
+                        if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir); inc_dir_n++; }
                         char *exp = pp_include_expand(fc, depth + 1);
+                        inc_dir_n--;
                         free(fc);
                         int el = (int)strlen(exp);
                         if (oi + el + 2 >= cap) { cap = oi + el + 16384; out = realloc(out, cap); }
@@ -716,7 +748,7 @@ static char *pp_include_expand(const char *src, int depth) {
         } else {
             memcpy(out + oi, p, llen + 1); oi += llen + 1;
         }
-        if (oi >= cap - 4096) { cap += 32768; out = realloc(out, cap); }
+        if (oi >= cap - 4096) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); }
         p = *le ? le + 1 : le;
     }
     out[oi] = 0;
@@ -884,7 +916,7 @@ static int st_field_size(const char *sn, const char *fn) {
 
 /* ?????? typedef ??????????? */
 static struct { char name[32]; int is_struct; char st_name[32]; char is_dbl;
-                 char is_fnptr; char fnptr_dbl; } tdefs[64]; static int tdef_n;
+                 char is_fnptr; char fnptr_dbl; } tdefs[512]; static int tdef_n;
 
 __attribute__((unused))
 static int tdef_lookup(const char *n) {
@@ -899,7 +931,7 @@ static int td_st_index(const char *n) {
 }
 __attribute__((unused))
 static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl) {
-    if (tdef_n >= 64) return;
+    if (tdef_n >= 512) return;
     /* check for duplicate */
     for (int i = 0; i < tdef_n; i++) if (!strcmp(tdefs[i].name, n)) return;
     strcpy(tdefs[tdef_n].name, n);
@@ -912,7 +944,7 @@ static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl) {
 }
 /* fnptr typedef: typedef int (*fp_t)(int,int); — 8-byte element, never a double slot */
 static void tdef_add_fnptr(const char *n, int ret_dbl) {
-    if (tdef_n >= 64) return;
+    if (tdef_n >= 512) return;
     for (int i = 0; i < tdef_n; i++) if (!strcmp(tdefs[i].name, n)) return;
     strcpy(tdefs[tdef_n].name, n);
     tdefs[tdef_n].is_struct = 0;
@@ -924,10 +956,10 @@ static void tdef_add_fnptr(const char *n, int ret_dbl) {
 }
 
 /* 闁冲厜鍋撻柍鍏夊亾闁冲厜�?typedef lexer�? 婵炲鍔岄崬浠嬪礆椤愩垺�?�?blk/parse濞戞挾鎹奷_is闁告帇鍊栭弻?闁冲厜鍋撻柍鍏夊亾闁冲厜�?*/
-static char tdn[64][32]; static int tdn_n;
+static char tdn[512][32]; static int tdn_n;
 static void td_reg(const char *n) {
     for (int i = 0; i < tdn_n; i++) if (!strcmp(tdn[i], n)) return;
-    if (tdn_n < 64) { strcpy(tdn[tdn_n], n); tdn_n++; }
+    if (tdn_n < 512) { strcpy(tdn[tdn_n], n); tdn_n++; }
 }
 static int td_is(const char *n) {
     for (int i = 0; i < tdn_n; i++) if (!strcmp(tdn[i], n)) return 1;
@@ -3098,7 +3130,7 @@ static int prim(void) {
         }
         return n; }
     if (tt[tk] == OK) {
-        /* type cast: (type)expr �?type keywords/struct/typedef then ) */
+        /* type cast: (type)expr — type keywords/struct/typedef then ). fix 2026-08-13 Phase3: unknown typedef (uint32_t 来自跳过 <stdint.h>) 也当 cast 类型 — var_lookup==-1 排除变量 (a) */
             if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
             char *cast_ty = 0; char *cast_ty2 = 0;
             char cast_sname[32] = ""; int cast_is_struct = 0;
@@ -3642,6 +3674,7 @@ static int blk(void) {
         if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && tt[tk + 1] == VR &&
             (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK)) {
             unknown_ty_decl = 1;
+            td_reg(tn[tk]); /* fix 2026-08-13 Phase3: 注册 unknown typedef (uint32_t) → 后续 (uint32_t*) cast 可 td_is (不用 var_lookup 防 2-cycle) */
         }
         if (tt[tk] == VK || tt[tk] == EN || (tt[tk] == VR && td_is(tn[tk])) || unknown_ty_decl) { /* int/char/enum/typedef type */
             int was_enum = (tt[tk] == EN);
@@ -4127,6 +4160,7 @@ static int parse(const char *s) {
         char *osrc = obj_macro_expand(exp_src);
         if (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
+    pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
     lex(exp_src);
     free(exp_src);
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
@@ -4887,6 +4921,7 @@ static int parse(const char *s) {
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                 else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
+                if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* fix 2026-08-13 Phase3: const 前缀后 typedef 漏处理 (const uint32_t block[16]) */
                 if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -4905,6 +4940,10 @@ static int parse(const char *s) {
                             tk++;
                         }
                     }
+                    continue;
+                }
+                if (tt[tk] == LB) { /* 匿名数组参数: uint32_t[5] 无参数名 (fix 2026-08-13 Phase3: 原无此分支 → LB 卡住死循环, sha1.h sha1_compression_states) */
+                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
                     continue;
                 }
                 if (tt[tk] == VR) {
@@ -7697,7 +7736,7 @@ static void pad_zero(FILE *f, int n) {
    与 cp*84 取大者 — 小程序的 8MB 地板不变. */
 static int data_extent(void) {
     int e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
+    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10800000;
     return e > heap_top ? e : heap_top;
 }
 
@@ -8468,6 +8507,7 @@ int main(int argc, char **argv) {
         /* input file */
         char *fb = read_file(argv[argi]);
         if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
+        dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录, 供子目录 #include 相对搜索 */
         int fl = (int)strlen(fb);
         all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1; +5=(needed+3)&~3: +4 under-allocates 1 byte when (all_len+fl)%4==3 -> all_src[all_len]=0 OOB */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
