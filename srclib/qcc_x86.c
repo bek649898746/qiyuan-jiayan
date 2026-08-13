@@ -482,7 +482,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                             args[an][aj] = 0;
                             if (an < 15) { an++; aj = 0; }
                             else { if (aj < 255) args[an][aj++] = ','; if (aj < 255) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
-                            i++; continue;
+                            i++; while (seg[i] == ' ' || seg[i] == '\t') i++; continue; /* fix 2026-08-14: 跳逗号后前导空格 — DECLARE_PROC_ADDR(..., strftime) 的 strftime 前带空格 → ## 拼接 proc_addr_ strftime 有空隙 */
                         }
                     }
                     if (aj < 255) args[an][aj++] = seg[i];
