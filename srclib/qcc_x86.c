@@ -2655,7 +2655,7 @@ static void lex(const char *s) {
         if (s[i] == '\'') { /* char literal 'c' */
             i++;
             int cval = 0;
-            if (s[i] == '\\') { i++; cval = s[i]=='n'?10:s[i]=='t'?9:s[i]=='r'?13:s[i]=='0'?0:s[i]=='\\'?92:s[i]=='\''?39:s[i]; i++; }
+            if (s[i] == '\\') { i++; cval = s[i]=='n'?10:s[i]=='t'?9:s[i]=='r'?13:s[i]=='v'?11:s[i]=='f'?12:s[i]=='0'?0:s[i]=='\\'?92:s[i]=='\''?39:s[i]; i++; }
             else { cval = s[i]; i++; }
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cval; ti++; continue;

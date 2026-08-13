@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13: 铸基 郑宇和 / 自举 郑启元 刻名进自举链):
+# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13: 镜像同步 15 类修复 + 刻名):
 # v1==v2==v3==v4==v5 五代全等。
-$expected = '330345BA0ECE1E65A6BE51A893222EF641BFCA19B43226A60B0225B8734F1AAD'
+$expected = '57BAC3AC30D61EF7511248CBD143DF109D7E87F9651986787B05F4B64C9EB9C1'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
