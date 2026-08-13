@@ -130,10 +130,10 @@ static char *obj_macro_expand(const char *s) {
     char *out = malloc(cap);
     int o = 0;
     for (int i = 0; s[i]; ) {
-        if (s[i] == '#' && (s[i + 1] == 'd' || s[i + 1] == 'u' || s[i + 1] == 'i' || s[i + 1] == 'e' || s[i + 1] == 'l' || s[i + 1] == 'p' || s[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被自引用展开) */
+        if (s[i] == '#') { int q2 = i + 1; while (s[q2] == ' ' || s[q2] == '\t') q2++; if (s[q2] == 'd' || s[q2] == 'u' || s[q2] == 'i' || s[q2] == 'e' || s[q2] == 'l' || s[q2] == 'p' || s[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开; fix 2026-08-13 Phase3: # 后空白 (缩进 #  define 原被展开) */
             while (s[i] && s[i] != '\n') out[o++] = s[i++];
             continue;
-        }
+        } }
         if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
         if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
         if (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死) */
@@ -428,10 +428,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
     g_eout_depth++; /* fix 2026-08-13 Phase3 根治: 递归深度索引 eout 槽 */
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
-        if (seg[i] == '#' && (seg[i + 1] == 'd' || seg[i + 1] == 'u' || seg[i + 1] == 'i' || seg[i + 1] == 'e' || seg[i + 1] == 'l' || seg[i + 1] == 'p' || seg[i + 1] == 'n')) { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开 → commit-slab 大宏递归; obj_macro_expand 同款) */
+        if (seg[i] == '#') { int q2 = i + 1; while (seg[q2] == ' ' || seg[q2] == '\t') q2++; if (seg[q2] == 'd' || seg[q2] == 'u' || seg[q2] == 'i' || seg[q2] == 'e' || seg[q2] == 'l' || seg[q2] == 'p' || seg[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开); fix 2026-08-13 Phase3: # 后空白 (缩进 #  define __REPB_PREFIX(name) 原被展开成 #define name name) */
             while (seg[i] && seg[i] != '\n') { if (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
             continue;
-        }
+        } }
         if (seg[i] == '"' && !in_str) in_str = 1;
         else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
         if (in_str) {
