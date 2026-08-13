@@ -174,6 +174,11 @@ __attribute__((unused))
         }
         若 (s[i] == '"') { out[o] = s[i]; o = o + 1; i = i + 1; 循环 (s[i] && (s[i] != '"' || s[i - 1] == '\\')) { out[o] = s[i]; o = o + 1; i = i + 1; } 若 (s[i]) { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
         若 (s[i] == '\'') { out[o] = s[i]; o = o + 1; i = i + 1; 循环 (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) { out[o] = s[i]; o = o + 1; i = i + 1; } 若 (s[i]) { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
+        若 (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死, 同步 C) */
+            循环 (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; }
+            若 (s[i]) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; 若 (s[i]) { 若 (o >= cap - 4) { cap += 32768; out = realloc(out, cap); } out[o] = s[i]; o = o + 1; i = i + 1; } }
+            续;
+        }
         若 (s[i] == '/' && s[i + 1] == '/') { 循环 (s[i] && s[i] != '\n') { out[o] = s[i]; o = o + 1; i = i + 1; } 续; }
         若 (isalnum((无 字)s[i]) || s[i] == '_' || ((无 字)s[i] >= 0x80)) {
             整 j = i;
@@ -2963,6 +2968,7 @@ __attribute__((unused))
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
                     若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                     否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == DK) tk++; 若 (tt[tk] == VR) { 字 fn[32]; strcpy(fn, tn[tk]); tk++; st_field_sz_r(si, fn, 4, 1); } }
                     否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
                     若 (tt[tk] == CL) { /* 无名位域 */
@@ -2978,7 +2984,7 @@ __attribute__((unused))
                         若 (bitw > 0) { st_field_bit(si, fn, fsz, fsz, bitw, funs); 若 (fdbl) st_field_dbl(si, fn); funs = 0; }
                         否 {
                             整 fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */ 若 (tt[tk] == RB) tk++; }
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
@@ -3028,6 +3034,20 @@ __attribute__((unused))
                     若 (base_si >= 0) { 整 fs = st_field_size(stypes[base_si].name, tn[tk]); 若 (fs > 0) sz = fs; }
                     tk++;
                 }
+            }
+            若 (tt[tk] == KK) tk++; /* ) */
+            整 n = Nd(0); nv[n] = sz; 返 n;
+        }
+        若 (tt[tk] == DK) { /* sizeof(*ptr) — 指针 deref: 指向类型大小 (fix 2026-08-13: 原返 -1 → token 错位, 镜像 v4 0xC0000005; hash-ll.h Clone memcpy(dst,src,sizeof(*dst)); 同步 C) */
+            tk++; /* * */
+            整 sz = 8;
+            若 (tt[tk] == VR) {
+                遍 (整 vi = vs_n() - 1; vi >= 0; vi--)
+                    若 (!strcmp(vars[vi].name, tn[tk]) && var_codegen_visible(vi)) {
+                        若 (vars[vi].p_esz > 0) sz = vars[vi].p_esz;
+                        断;
+                    }
+                tk++; /* 变量名 */
             }
             若 (tt[tk] == KK) tk++; /* ) */
             整 n = Nd(0); nv[n] = sz; 返 n;
@@ -3423,6 +3443,7 @@ __attribute__((unused))
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
                     若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) fsz = 1; 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                    循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                     否 若 (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
                         tk++;
                         若 (tt[tk] == VR) {
@@ -3480,7 +3501,7 @@ __attribute__((unused))
                             funs = 0;
                         } 否 {
                         整 fel = fsz; /* fix 2026-08-07 */
-                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */ 若 (tt[tk] == RB) tk++; }
                         若 (dims >= 1) frow = fsz / first;
                         否 frow = fsz;
                         st_field_sz_r(nsi, fn, fsz, frow);
@@ -4096,6 +4117,7 @@ __attribute__((unused))
                     循环 (tk < TS && tt[tk] != UK) {
                         整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0; 整 fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
                         若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
+                        循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → const char *name 的 * 不消费 → struct 字段死循环, hash-ll.h git_hash_algo) */
                         否 若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             若 (tt[tk] == VR) {
@@ -4121,7 +4143,7 @@ __attribute__((unused))
                                             若 (tt[tk] == CL) { tk++; 若 (tt[tk] == NK) { ibw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: inline nested struct loop) */
                                             若 (ibw > 0) { st_field_bit(ni, fn, ifsz, ifsz, ibw, ifuns); ifuns = 0; }
                                             否{
-                                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000) { 若 (ifdims == 0) ifirst = evc; ifdims++; ifsz *= evc; } tk++; } /* fix 2026-08-13: struct 成员数组维度标识符 (hash[GIT_MAX_RAWSZ]) — 原只认 NK, VR 死循环 */ 若 (tt[tk] == RB) tk++; }
                                             若 (ifdims >= 1) ifrow = ifsz / ifirst; 否 ifrow = ifsz;
                                             st_field_sz_r(ni, fn, ifsz, ifrow);
                                             }
@@ -4148,7 +4170,7 @@ __attribute__((unused))
                             若 (tt[tk] == VR) {
                                 字 fn[32]; strcpy(fn, tn[tk]); tk++;
                                 整 fsz8 = 8, first = 1, fdims = 0;
-                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                                 若 (is_union) st_union_field(si, fn, fsz8);
                                 否 { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); } /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
                                 若 (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
@@ -4176,7 +4198,7 @@ __attribute__((unused))
                                 funs = 0;
                             } 否 {
                             整 fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } 否 unsized = 1; tk++; } 否 unsized = 1; /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                             若 (dims >= 1) frow = fsz / first; /* element/row byte size (same as anon branch) */
                             否 frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             若 (is_union) st_union_field(si, fn, fsz);
@@ -4195,7 +4217,7 @@ __attribute__((unused))
                         若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
                         var_static_struct(tn[tk], si, cnt);
                         tk++;
-                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; }
+                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; }
                     }
                     若 (tt[tk] == SK) tk++; /* ; */
                 } 否 {
@@ -4304,8 +4326,10 @@ __attribute__((unused))
                     aname[0] = 0;
                     整 si = st_add(aname); /* placeholder name */
                     整 funs = 0; /* unsigned 位域标记（fix 2026-08-05） */
+                    整 fdflt = 4; /* fix 2026-08-13: 对齐 C 版 fdflt 体系 (char=1/double=8) */
                     循环 (tk < TS && tt[tk] != UK) {
-                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; tk++; }
+                        若 (tt[tk] == VK) { fdflt = 4; 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* fix 2026-08-13: 对齐 C 版 fdflt */
+                        循环 (tt[tk] == DK) { fdflt = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → const char *name 的 * 不消费死循环) */
                         否 若 (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
                             若 (tt[tk] == VR) {
@@ -4326,7 +4350,7 @@ __attribute__((unused))
                             若 (tt[tk] == VR) {
                                 字 fn[32]; strcpy(fn, tn[tk]); tk++;
                                 整 fsz8 = 8, first = 1, fdims = 0;
-                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                                 st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
                                 若 (tt[tk] == KK) tk++;
                                 若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
@@ -4343,13 +4367,15 @@ __attribute__((unused))
                         }
                         若 (tt[tk] == VR) {
                             字 fn[32]; strcpy(fn, tn[tk]); tk++;
-                            整 fsz = 4;
+                            整 fsz = fdflt, first = 1, dims = 0; /* fdflt = 1/4/8 from the VK type (fix 2026-08-13: 对齐 C 版) */
                             整 bitw = 0;
                             若 (tt[tk] == CL) { tk++; 若 (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: typedef anon struct loop) */
                             若 (bitw > 0) { st_field_bit(si, fn, fsz, fsz, bitw, funs); funs = 0; }
                             否 {
-                            若 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { fsz = tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
-                            st_field_sz_r(si, fn, fsz, fsz); /* scalar: frow==fsz */
+                            整 fel = fsz;
+                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */ 若 (tt[tk] == RB) tk++; }
+                            st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz);
+                            stypes[si].fels[stypes[si].fn - 1] = fel;
                             }
                         }
                         若 (tt[tk] == CK) { tk++; } 若 (tt[tk] == SK) tk++;
@@ -4373,6 +4399,7 @@ __attribute__((unused))
                         循环 (tk < TS && tt[tk] != UK) {
                             整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
                             若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) tfuns = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                             否 若 (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
                                 若 (tt[tk] == VR) {
@@ -4393,7 +4420,7 @@ __attribute__((unused))
                                 若 (tt[tk] == VR) {
                                     字 fn[32]; strcpy(fn, tn[tk]); tk++;
                                     整 fsz8 = 8, first = 1, fdims = 0;
-                                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                                     st_field_sz_r(tsi, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(tsi, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
                                     若 (tt[tk] == KK) tk++;
                                     若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
@@ -4416,7 +4443,7 @@ __attribute__((unused))
                                 若 (bitw > 0) { st_field_bit(tsi, fn, fsz, fsz, bitw, tfuns); 若 (fdbl) st_field_dbl(tsi, fn); tfuns = 0; }
                                 否 {
                                 整 fel = fsz; /* fix 2026-08-07 */
-                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */ 若 (tt[tk] == RB) tk++; }
                                 若 (dims >= 1) frow = fsz / first;
                                 否 frow = fsz;
                                 st_field_sz_r(tsi, fn, fsz, frow);
@@ -4496,6 +4523,7 @@ __attribute__((unused))
                 循环 (tk < TS && tt[tk] != UK) {
                     整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
                     若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                     否 若 (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
                         若 (tt[tk] == VR) {
@@ -4516,7 +4544,7 @@ __attribute__((unused))
                         若 (tt[tk] == VR) {
                             字 fn[32]; strcpy(fn, tn[tk]); tk++;
                             整 fsz8 = 8, first = 1, fdims = 0;
-                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 若 (tt[tk] == RB) tk++; }
+                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                             st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8) */
                             若 (tt[tk] == KK) tk++;
                             若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
@@ -4538,7 +4566,7 @@ __attribute__((unused))
                         整 unsized = 0; /* 柔性数组 int arr[] (fix 2026-08-05: was sized 4 → sizeof overcounted) */
                         整 bitw = 0;
                         整 fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 unsized = 1; 若 (tt[tk] == RB) tk++; }
+                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } 否 unsized = 1; tk++; } 否 unsized = 1; /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
                         /* 位域宽度: unsigned a : 3 — 真实位语义：连续位域打包共享 int 槽（fix 2026-08-05） */
                         若 (tt[tk] == CL) {
                             tk++;
@@ -4578,7 +4606,7 @@ __attribute__((unused))
                     否 var_static_struct(tn[tk], si, cnt);
                     字 vn_anon[32]; strcpy(vn_anon, tn[tk]);
                     tk++;
-                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; }
+                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; }
                     若 (tt[tk] == AK) { /* = init (fix 2026-08-07 镜像 C 源: 原被整体跳过 → 全局匿名结构体字段从未初始化) */
                         tk++;
                         若 (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
@@ -4851,7 +4879,7 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                         var_param(tn[tk], pr, 4, 8, -1, 0, 0);
                         若 (p_fptr_dbl) vars[vcnt - 1].p_dbl = 1;
                         tk++; pr++;
-                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 若 (tt[tk] == RB) tk++; } /* skip [N] */
+                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; } /* skip [N] */
                         若 (tt[tk] == CK) tk++;
                         若 (tt[tk] == DT) { 循环 (tt[tk] == DT) tk++; } /* variadic ellipsis */
                         续;

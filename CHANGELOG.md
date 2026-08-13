@@ -1,3 +1,13 @@
+## 0BFBB420 (2026-08-13)
+
+**Git 编译攻坚: hash-ll.h 卡死全解 + 镜像 struct 指针字段/DK 补全 + sizeof(*ptr)**
+
+- 根因1: obj_macro_expand 不处理块注释 /* */ → 注释里撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死. C+镜像加块注释原样保留 (内部不展开).
+- 根因2: 镜像 sizeof(*ptr) 崩溃 (0xC0000005) — prim sizeof 分支不处理指针 deref → return -1 + token 错位. C+镜像加 sizeof(*ptr) → 指向类型大小.
+- 根因3: 镜像 parse/typedef/匿名全局 struct 字段缺 while(tt[tk]==DK) 指针消费 → const char *name 的 * 不消费 → 字段循环死循环. 补 6 处 DK 循环 + typedef 匿名 fdflt 对齐 C.
+- 根因4: prim() NK 分支 (数字字面量) 被 sizeof 修改误删 → 恢复.
+- 验证: v1..v5 = 0BFBB420 (1-cycle), 测试 220/220, Git 头文件 (hash-ll.h/hash.h/git-compat-util.h/strbuf.h...) v4 全可编译.
+
 # CHANGELOG — 启元 · 甲言
 
 > 版本标识 = 自举不动点 SHA256 前 8 位（当前标准：**v2==v3==v4 三代一致**，v1 为 gcc 种子不要求相等）。

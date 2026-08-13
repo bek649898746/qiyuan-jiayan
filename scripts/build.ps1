@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 dbl 数组 512→1024 + fn_static 体系后):
+# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 块注释修复 + sizeof(*ptr) + struct 指针字段 DK + 维度 VR 后):
 # v1==v2==v3==v4==v5 五代全等。
-$expected = 'D5A037A81EEF1D8127AB10240B472500DF700AC4ED4375EE7F8944C5A4FF3CF8'
+$expected = '0BFBB42073AD79B7F654DC40B0C9FD294DB782FDC5A3F514A06DEFFDD518905D'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
