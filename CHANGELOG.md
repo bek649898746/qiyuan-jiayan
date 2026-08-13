@@ -1,3 +1,12 @@
+## DB4BEBC3 (2026-08-13)
+
+**Git 编译攻坚第 6 波: 全局 long long/double/unsigned 算术 64 位修复 + 测试入口修复**
+
+- 根因: var_is_ll/var_is_dbl/var_is_uns 三个 parse 期查找只扫 `i >= parse_base`(函数内 = fvb[fvn]), 把全局变量(在 parse_base 之下)漏掉 → 全局 long long 变量在 parse 期没标 nll → 乘法/复合赋值走 32 位路径 (b_global `6000000000` 打印成低 32 位 `1705032704`)
+- 修法: 三个 var_is_* 各加一段全局回退扫描 `[parse_base-1, 0]`, 只取 `is_static && !var_static_kw`(排除函数内 static); 宿主 + 镜像同步
+- 附带修复: b_hex.expected 更新为已实现的 %08x/%#x 行为; build.ps1 [4/4] 朴素测试循环改为 run_tests.py(处理 @EXPECTED compile_fail); run_behavior.py 跳过无 .expected 的测试; _git_trycompile.py hash.c→hash-lookup.c
+- 验证: v1..v5 = DB4BEBC3 (1-cycle), 测试 220/220, H1==H2 196/196, v4 Git 核心 17/17
+
 ## 0A3E16B5 (2026-08-13)
 
 **Git 编译攻坚第 5 波: bump 堆预算 44MB→64MB — revision.c v4 崩溃根因修复**

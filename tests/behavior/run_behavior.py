@@ -14,6 +14,8 @@ fails = []
 for src in cases:
     name = os.path.basename(src)[:-2]
     exp = os.path.join(BDIR, name + '.expected')
+    if not os.path.exists(exp):
+        continue  # 无 .expected 的测试由 run_tests.py 的 @EXPECTED 机制覆盖 (fix 2026-08-13)
     exe = '_bt.exe'
     try:
         if os.path.exists(exe): os.remove(exe)
