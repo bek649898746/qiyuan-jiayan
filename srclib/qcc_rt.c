@@ -15,6 +15,8 @@ void *_va_alloc(int n);
 int _setpos(void *f, int off, int whence);
 int _getpos(void *f);
 void _exit_proc(int c);
+unsigned int _bump_top(void);
+void _bump_set(unsigned int);
 #else
 /* qcc 自宿主: 标准头被跳过；size_t 由 qcc 自己提供 */
 typedef unsigned int size_t;
@@ -23,11 +25,15 @@ typedef unsigned int size_t;
 
 #ifndef __GNUC__ /* gcc: 用 libc 版本；qcc 自宿主: 自定义实现 */
 
-/* ---- heap: realloc = fresh malloc + copy (bump allocator never frees;
-       the over-read stays inside .data, which is fully mapped) ---- */
+/* ---- heap: realloc 原地扩展 (p == 堆顶) / fresh malloc+copy (非堆顶);
+       free 堆顶回退 (fix 2026-08-13 Phase3 根治 bump 泄漏, 替代 256MB 堆预算治标) ---- */
 void *realloc(void *p, size_t n) { /* fix M6: int->size_t 与 stdlib 一致 */
     char *q;
     if (n <= 0) n = 1;
+    if (p && p == (void*)(unsigned long)_bump_top()) {
+        _bump_set((unsigned int)((unsigned long)p + n));
+        return p;
+    }
     q = malloc(n);
     if (p && q) {
         memcpy(q, p, n);
@@ -35,7 +41,9 @@ void *realloc(void *p, size_t n) { /* fix M6: int->size_t 与 stdlib 一致 */
     return q;
 }
 
-void free(void *p) { }
+void free(void *p) {
+    if (p && p == (void*)(unsigned long)_bump_top()) _bump_set((unsigned int)(unsigned long)p);
+}
 
 /* ---- process termination ---- */
 void exit(int c) {
