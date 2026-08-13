@@ -1,3 +1,5 @@
+// @EXPECTED exit:0
+// @EXPECTED out:bsearch=4
 // Phase 2 标准库补齐回归: strrchr/memchr/memmove/atoi/atol/strtol/isspace/qsort/bsearch
 #include <stdio.h>
 #include <string.h>

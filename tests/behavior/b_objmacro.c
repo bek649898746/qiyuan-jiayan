@@ -1,8 +1,10 @@
+﻿// @EXPECTED exit:0
+// @EXPECTED out:c=42 arr=-7
 // 对象宏/别名宏展开回归 (fix 2026-08-13: Git hash-ll.h TAB 别名)
 #define A B
 #define B C
 #define C 42
-#define git_SHA_CTX\tplatform_SHA_CTX
+#define git_SHA_CTX	platform_SHA_CTX
 typedef unsigned int platform_SHA_CTX;
 #define GIT_MAX 32
 #define NEGALIAS -7
