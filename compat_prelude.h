@@ -81,3 +81,72 @@ typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */
 #define false 0
 #define true 1
 typedef int bool;
+
+/* <stdint.h> 极限宏 (Git 用 UINTMAX_MAX/SIZE_MAX 等) */
+#define UINTMAX_MAX 18446744073709551615ULL
+#define INTMAX_MAX 9223372036854775807LL
+#define INTMAX_MIN (-9223372036854775807LL - 1)
+#define SIZE_MAX 18446744073709551615ULL
+#define UINTPTR_MAX 18446744073709551615ULL
+#define INTPTR_MAX 9223372036854775807LL
+
+/* <inttypes.h> 格式化宏 (printf/scanf 用, Git 用 PRIuMAX 等) */
+#define PRIuMAX "llu"
+#define PRIdMAX "lld"
+#define PRIxMAX "llx"
+#define PRIu32 "u"
+#define PRId32 "d"
+#define PRIx32 "x"
+#define PRIu64 "llu"
+#define PRId64 "lld"
+#define PRIx64 "llx"
+#define SCNuMAX "llu"
+
+/* <sys/stat.h> 文件权限宏 (MSVC/MinGW 值) */
+#define S_IREAD 0x0100
+#define S_IWRITE 0x0080
+#define S_IEXEC 0x0040
+#define S_IFMT 0xF000
+#define S_IFDIR 0x4000
+#define S_IFREG 0x8000
+
+/* Windows API 文件属性常量 (<windows.h> 跳过, Git compat 用) */
+#define FILE_ATTRIBUTE_READONLY 0x01
+#define FILE_ATTRIBUTE_HIDDEN 0x02
+#define FILE_ATTRIBUTE_SYSTEM 0x04
+#define FILE_ATTRIBUTE_DIRECTORY 0x10
+#define FILE_ATTRIBUTE_ARCHIVE 0x20
+#define FILE_ATTRIBUTE_NORMAL 0x80
+#define FILE_ATTRIBUTE_REPARSE_POINT 0x400
+#define INVALID_FILE_ATTRIBUTES 0xFFFFFFFF
+#define GENERIC_READ 0x80000000
+#define GENERIC_WRITE 0x40000000
+#define FILE_SHARE_READ 1
+#define FILE_SHARE_WRITE 2
+#define OPEN_EXISTING 3
+#define CREATE_ALWAYS 2
+#define OPEN_ALWAYS 4
+#define FILE_ATTRIBUTE_TEMPORARY 0x100
+#define FILE_FLAG_BACKUP_SEMANTICS 0x02000000
+#define GetFileExInfoStandard 0
+#define GetFileExMaxInfoLevel 1
+#define ERROR_INSUFFICIENT_BUFFER 122
+#define ERROR_NO_MORE_FILES 18
+#define INVALID_HANDLE_VALUE (-1)
+#define MAX_PATH 260
+#define MOVEFILE_REPLACE_EXISTING 1
+#define MOVEFILE_COPY_ALLOWED 2
+#define LOAD_LIBRARY_SEARCH_SYSTEM32 0x800
+#define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS 0x1000
+#define DETACHED_PROCESS 0x00000008
+#define CREATE_NEW_PROCESS_GROUP 0x00000200
+#define CREATE_UNICODE_ENVIRONMENT 0x00000400
+#define STARTF_USESTDHANDLES 0x100
+#define INFINITE 0xFFFFFFFF
+#define WAIT_OBJECT_0 0
+#define STD_INPUT_HANDLE (-10)
+#define STD_OUTPUT_HANDLE (-11)
+#define STD_ERROR_HANDLE (-12)
+#define CP_UTF8 65001
+#define CP_ACP 0
+#define MB_ERR_INVALID_CHARS 0x8
