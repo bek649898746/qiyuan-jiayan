@@ -1,7 +1,8 @@
 /* qcc compat 预置头: 补 <errno.h> 系统头被跳过后的 errno 声明 + E* 常量
  * 值取 MinGW / MSVCRT 标准 errno (与 git Windows 构建一致)
+ * fix 2026-08-14: errno 改 extern 声明 (多 .o 链接时由 jyld 提供唯一定义, 原 int errno; 每 .o 各一份 → duplicate symbol)
  */
-int errno; /* qcc 单文件编译基线: 定义 errno 全局变量 (真实 CRT errno 由链接器提供, 此处占位) */
+extern int errno;
 
 /* 标准 C errno (MSVCRT 1..42) */
 #define EPERM 1
@@ -55,3 +56,23 @@ int errno; /* qcc 单文件编译基线: 定义 errno 全局变量 (真实 CRT e
 #define INT_MAX 2147483647
 #define ULONG_MAX 4294967295
 #define LONG_MAX 2147483647
+
+/* 标准 C <stdint.h> / <stddef.h> typedef (qcc 跳过系统头, Git 依赖这些类型;
+   fix 2026-08-14: uint32_t 未识别 → static inline uint32_t fn(...) 函数检测错位 → default_swab32 全局符号冲突) */
+typedef unsigned char uint8_t;
+typedef signed char int8_t;
+typedef unsigned short uint16_t;
+typedef short int16_t;
+typedef unsigned int uint32_t;
+typedef int int32_t;
+typedef unsigned long long uint64_t;
+typedef long long int64_t;
+typedef unsigned int size_t;
+typedef int ssize_t;
+typedef long long off_t;
+typedef long long time_t;
+typedef unsigned long long uintmax_t;
+typedef long long intmax_t;
+typedef unsigned long long uintptr_t;
+typedef long long intptr_t;
+typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */

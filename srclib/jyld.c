@@ -363,6 +363,29 @@ static void add_builtin_main(void) {
     obj_n++;
 }
 
+/* ---------- 内置 errno: 多 .o 链接时提供唯一定义 (compat_prelude.h extern int errno) ---------- */
+static void add_builtin_errno(void) {
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-errno>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)calloc(4, 1); /* int errno = 0 */
+    o->secs[0].size = 4;
+    o->secs[0].align = 4;
+    memcpy(o->secs[0].name, ".data", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "errno");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2; /* 定义 */
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    obj_n++;
+}
+
 /* ---------- 全局符号表 ---------- */
 static GSym *gsym_add(const char *name) {
     for (int i = 0; i < gsym_n; i++) if (!strcmp(gsyms[i].name, name)) return &gsyms[i];
@@ -526,6 +549,16 @@ static int resolve_all(void) {
             gm->obj = obj_n - 1;
             gm->sym = 0;
             gm->defined = 1;
+        }
+    }
+    /* errno 变量: compat_prelude.h extern int errno → 提供唯一定义 (fix 2026-08-14 全量链接) */
+    {
+        GSym *ge = gsym_add("errno");
+        if (!ge->defined) {
+            add_builtin_errno();
+            ge->obj = obj_n - 1;
+            ge->sym = 0;
+            ge->defined = 1;
         }
     }
     int progress = 1;

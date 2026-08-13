@@ -3048,6 +3048,7 @@ static int prim(void) {
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
         if (tt[tk] == OK) tk++; /* skip ( */
+        if (tt[tk] == STR) { int n = Nd(0); nv[n] = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; return n; } /* sizeof "string" (fix 2026-08-14: regcomp.c REG_NOMATCH_IDX = ... + sizeof "Success" — 原 STR 未消费泄漏 → 死循环) */
         if (tt[tk] == VK) { /* sizeof(int/char/double/...) + pointers (fix 2026-08-05: was hardcoded 4 for every type) */
             int tsz = 4;
             if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) tsz = 1;
@@ -3435,6 +3436,12 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) 
             continue;
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
+        if (tt[tk] == FK) { /* struct 嵌套初始化 { ... }: 跳过配平大括号 (fix 2026-08-14: struct 数组 dv_info_t sha1_dvs[] 元素嵌套 { 泄漏到 expr() → 死循环) */
+            int d2 = 1; tk++;
+            while (tk < TS && d2 > 0) { if (tt[tk] == FK) d2++; else if (tt[tk] == UK) { d2--; if (d2 <= 0) { tk++; break; } } tk++; }
+            if (depth == 0 && !has_nested) { for (int i = nd - 1; i >= 0; i--) { gi_idx[i]++; if (gi_idx[i] < dims[i]) break; gi_idx[i] = 0; } } else { gi_idx[depth]++; }
+            continue;
+        }
         int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32);
         int node = idn;
         for (int i = 0; i < nd; i++) {
@@ -4684,7 +4691,7 @@ static int parse(const char *s) {
             int g_tdef = -1;  /* typedef index of the declared type (static prefix pushes type name to 2nd token, fix 2026-08-07) */
             if (tt[tk] == VK && !strcmp(tn[tk], "static")) tk++; /* skip static */
             int is_type = 0;
-            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; is_type = 1; }
+            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } is_type = 1; } /* fix 2026-08-14: 消费 VK 后还要消费 typedef 名 (static inline uint32_t fn) — 原 uint32_t 被当变量名 → static 标记丢失 → default_swab32 全局符号冲突 */
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
             else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; is_type = 1; }
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
