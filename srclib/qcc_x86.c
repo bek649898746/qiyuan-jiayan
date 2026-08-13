@@ -238,6 +238,7 @@ static void macro_remove(const char *n) {
 static void obj_macro_collect(const char *s) {
     obj_macro_n = 0;
     cl_if_n = 0; cl_if_skip = 0; /* fix 2026-08-13 Phase3: 条件编译感知 — 假分支里的 #define 不收 (否则 #else 里的 TAG "C" 覆盖 #if 里的 "A") */
+    pp_guard_n = 0; /* fix 2026-08-13 Phase3: 自建顺序定义表 — 复用 fn_macro_collect 的全表会误判文件后部的 #define 已定义 (RE_TRANSLATE_TYPE 在 #ifndef 处被误判) */
     for (int i = 0; s[i]; i++) {
         if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; i++; continue; }
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; }
@@ -285,6 +286,7 @@ static void obj_macro_collect(const char *s) {
                 continue;
             }
             if (is_def) {
+                { char gnm[32]; int gv = 0; pp_def_parse(s + i, gnm, &gv); if (gnm[0]) pp_guard_add(gnm, gv); } /* 顺序定义表: #ifdef 判断用 */
                 int p = dj + 6;
                 while (s[p] == ' ' || s[p] == '\t') p++;
                 char nm[32]; int ni = 0;
