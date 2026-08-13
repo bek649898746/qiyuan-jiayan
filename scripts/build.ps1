@@ -39,10 +39,10 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 第5波: bump 堆预算 44MB→64MB,
-# 修 revision.c v4 崩溃 = 堆越界写穿栈帧):
+# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13 第6波: 全局 long long/double/unsigned 算术
+# 64 位修复 + build.ps1 测试入口修复):
 # v1==v2==v3==v4==v5 五代全等。
-$expected = '0A3E16B524667C379A706B5425697C064199625A7A3788312E988F3A96489AB4'
+$expected = 'DB4BEBC35D2007FF0902C00A11334F97B91D7213C3F60847F3431B4768DF5DCE'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
@@ -50,20 +50,13 @@ if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and 
     Write-Host "       （若源码有合法修改，此为新的不动点，请更新 README 记录）"
 }
 
-# 4. 跑 171 编译测试（直发，验证不崩溃且可执行）
-Write-Host "[4/4] 跑 tests/qcc 171 测试 ..." -ForegroundColor Yellow$pass = 0; $fail = 0
-Get-ChildItem tests\qcc\*.c | ForEach-Object {
-    $out = "$($_.BaseName)_test.exe"
-    & .\qcc_x86.exe $_.FullName -o $out 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        $pass++
-    } else {
-        $fail++
-        Write-Host "  [FAIL] $($_.Name)"
-    }
-    Remove-Item $out -ErrorAction SilentlyContinue
+# 4. 跑完整测试套件（编译+运行+断言, 处理 @EXPECTED compile_fail — 修复原朴素循环撞故意编译失败测试触发 NativeCommandError）
+Write-Host "[4/4] 跑完整测试套件 run_tests.py ..." -ForegroundColor Yellow
+python scripts/run_tests.py
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[FAIL] 测试套件失败" -ForegroundColor Red
+    exit 1
 }
-Write-Host "  编译通过: $pass / $($pass + $fail)" -ForegroundColor Green
 
 # 5. 行为断言（fix 2026-08-09 实测复验审计: 此前从不运行行为测试, 2 失败无人知）
 Write-Host "[5/5] 跑行为断言 tests/behavior ..." -ForegroundColor Yellow

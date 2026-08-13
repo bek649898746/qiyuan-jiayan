@@ -1542,16 +1542,19 @@ static int var_codegen_visible(int i) {
 }
 static int var_is_dbl(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_dbl; /* 全局 double (fix 2026-08-13: parse 期 parse_base 排除全局 → 全局 double 算术丢 64 位) */
     return 0;
 }
 /* long long var: 64-bit int loads/stores (fix 2026-08-05) */
 static int var_is_ll(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_ll;
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_ll; /* 全局 long long (fix 2026-08-13: 全局 LL 算术被当 32 位, b_global 6000000000→低32) */
     return 0;
 }
 /* unsigned variable: >> must use SHR (logical), not SAR (fix 2026-08-05) */
 static int var_is_uns(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_uns;
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_uns; /* 全局 unsigned (fix 2026-08-13) */
     return 0;
 }
 /* pointer-to-double (double *p): p[i] reads/writes 8-byte doubles (movsd) */

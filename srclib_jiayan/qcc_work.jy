@@ -1545,16 +1545,19 @@ __attribute__((unused))
 }
 静 整 var_is_dbl(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_dbl;
+    遍 (整 i = parse_base - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) 返 vars[i].is_dbl; /* 全局 double (fix 2026-08-13) */
     返 0;
 }
 /* long long 变量: 64 位整加载/存储（fix 2026-08-05） */
 静 整 var_is_ll(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_ll;
+    遍 (整 i = parse_base - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) 返 vars[i].is_ll; /* 全局 long long (fix 2026-08-13) */
     返 0;
 }
 /* unsigned 变量: >> 必须用逻辑右移 SHR（fix 2026-08-05） */
 静 整 var_is_uns(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_uns;
+    遍 (整 i = parse_base - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) 返 vars[i].is_uns; /* 全局 unsigned (fix 2026-08-13) */
     返 0;
 }
 /* pointer-to-double (double *p): p[i] reads/writes 8-byte doubles (movsd) */
