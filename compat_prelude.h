@@ -79,6 +79,8 @@ typedef unsigned long long uintptr_t;
 typedef long long intptr_t;
 typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */
 typedef unsigned short wchar_t; /* <wchar.h> 宽字符 (MSVC 16 位) */
+typedef int BOOL; /* Windows BOOL (int, 32 位) */
+#define SEC_ENTRY /* Windows 调用约定宏 (空) */
 
 /* 标准 C <stdbool.h> (qcc 跳过系统头, Git 用 bool/false/true) */
 #define false 0
