@@ -76,3 +76,8 @@ typedef long long intmax_t;
 typedef unsigned long long uintptr_t;
 typedef long long intptr_t;
 typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */
+
+/* 标准 C <stdbool.h> (qcc 跳过系统头, Git 用 bool/false/true) */
+#define false 0
+#define true 1
+typedef int bool;

@@ -134,8 +134,8 @@ static char *obj_macro_expand(const char *s) {
             while (s[i] && s[i] != '\n') out[o++] = s[i++];
             continue;
         } }
-        if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
-        if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || s[i - 1] == '\\')) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; }
+        if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || (s[i - 1] == '\\' && s[i - 2] != '\\'))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: "\\" 两反斜杠后 " 应结束 — 原把 \\" 的 " 当转义吞后续 */
+        if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || (s[i - 1] == '\\' && s[i - 2] != '\\'))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: '\\' 字符字面量 — 原 ' 当转义吞 423 字符 (regex.c case '|' RE_LIMITED_OPS) */
         if (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死) */
             while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; }
             if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; } }
@@ -419,13 +419,11 @@ static void fn_macro_collect(const char *s) {
 }
 
 static int fn_exp_stack[64]; static int fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链 + revision.c) */
-static char g_eout[64][65536]; static int g_eout_depth; /* fix 2026-08-13 Phase3 根治: eout 深度槽静态缓冲 — bump 下递归 malloc eout 泄漏 (非堆顶 free 无效), 用深度索引复用 */
 
 /* expand fn-macro calls inside seg (recursive for nested macros) into *out at *o (grows).
    fix 2026-08-07: #x 字符串化 / ## 拼接 / __VA_ARGS__ 变参 / 自引用防递归 / 字符串字面量内不展开 / 参数扫描不拆串内逗号 */
 static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, int self_fmi) {
     char *out = *outp;
-    g_eout_depth++; /* fix 2026-08-13 Phase3 根治: 递归深度索引 eout 槽 */
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
         if (seg[i] == '#') { int q2 = i + 1; while (seg[q2] == ' ' || seg[q2] == '\t') q2++; if (seg[q2] == 'd' || seg[q2] == 'u' || seg[q2] == 'i' || seg[q2] == 'e' || seg[q2] == 'l' || seg[q2] == 'p' || seg[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开); fix 2026-08-13 Phase3: # 后空白 (缩进 #  define __REPB_PREFIX(name) 原被展开成 #define name name) */
@@ -433,7 +431,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             continue;
         } }
         if (seg[i] == '"' && !in_str) in_str = 1;
-        else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
+        else if (seg[i] == '"' && in_str && !(seg[i - 1] == '\\' && seg[i - 2] != '\\')) in_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
         if (!in_str && seg[i] == '/' && seg[i + 1] == '*') { /* fix 2026-08-14: 缺块注释处理, 注释里的 " 触发字符串分支吞掉后续 → KHASH_INIT 未展开 */
             while (seg[i] && !(seg[i] == '*' && seg[i + 1] == '/')) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; }
             if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; } }
@@ -465,7 +463,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 int depth = 1, aj = 0, ain_str = 0;
                 while (seg[i] && depth > 0) {
                     if (seg[i] == '"' && !ain_str) ain_str = 1;
-                    else if (seg[i] == '"' && ain_str && seg[i - 1] != '\\') ain_str = 0;
+                    else if (seg[i] == '"' && ain_str && !(seg[i - 1] == '\\' && seg[i - 2] != '\\')) ain_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
                     if (!ain_str) {
                         if (seg[i] == '(') depth++;
                         else if (seg[i] == ')') { depth--; if (depth == 0) break; }
@@ -484,14 +482,15 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 char exp_args[16][256];
-                char *eout = g_eout[g_eout_depth < 64 ? g_eout_depth : 63]; /* fix 2026-08-13 Phase3 根治: 深度槽静态缓冲替代 malloc (bump 非堆顶 free 无效 → 递归 malloc 泄漏) */
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
+                    char *eout = malloc(65536); /* fix 2026-08-14: 改堆缓冲 — 原 g_eout 静态槽 realloc 是 UB (realloc 只能用于堆内存), 且 fn_macro_expand 输出不确定 */
                     int eo = 0, ecap = 65536;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
                     strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
+                    free(eout); /* 堆顶配对 (bump allocator 最后分配可回收) */
                     fn_exp_n = save_exp_n;
                 }
                 /* expand body with params → args */
@@ -568,7 +567,6 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             out[(*o)++] = seg[i++];
         }
     }
-    g_eout_depth--;
     *outp = out;
 }
 
@@ -2661,7 +2659,7 @@ static void lex(const char *s) {
         if (s[i] == '\'') { /* char literal 'c' */
             i++;
             int cval = 0;
-            if (s[i] == '\\') { i++; cval = s[i]=='n'?10:s[i]=='t'?9:s[i]=='r'?13:s[i]=='v'?11:s[i]=='f'?12:s[i]=='0'?0:s[i]=='\\'?92:s[i]=='\''?39:s[i]; i++; }
+            if (s[i] == '\\') { i++; if (s[i] == 'x') { i++; int hv = 0; while (isxdigit((unsigned char)s[i])) { int c = s[i]; hv = hv * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); i++; } cval = hv; } else { cval = s[i]=='n'?10:s[i]=='t'?9:s[i]=='r'?13:s[i]=='v'?11:s[i]=='f'?12:s[i]=='0'?0:s[i]=='\\'?92:s[i]=='\''?39:s[i]; i++; } } /* fix 2026-08-14: \xHH 十六进制转义 (regexec.c '\xff') */
             else { cval = s[i]; i++; }
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cval; ti++; continue;
@@ -3965,7 +3963,7 @@ static int blk(void) {
         } Nc(b, d); b_cnt++;
             while (tt[tk] == CK) { /* comma-separated: int a = 0, b = 0; */
                 tk++;
-                int is_ptr2 = (tt[tk] == DK); if (is_ptr2) tk++;
+                int is_ptr2 = 0; while (tt[tk] == DK) { is_ptr2 = 1; tk++; } /* fix 2026-08-14: 循环消费所有 * — 原只吃一个, **dest_states_word 双指针第二个 * 挡 VR 前 → 变量未注册 (regexec.c) */
                 int d2 = Nd(7);
                 if (tt[tk] == VR) {
                     char vn2[32]; strcpy(vn2, tn[tk]); tk++;
