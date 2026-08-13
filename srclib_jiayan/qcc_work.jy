@@ -4202,6 +4202,13 @@ __attribute__((unused))
                         循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → const char *name 的 * 不消费 → struct 字段死循环, hash-ll.h git_hash_algo) */
                         否 若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
+                            若 (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                                整 d = 1; tk++;
+                                循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) d--; tk++; }
+                                若 (tt[tk] == VR) { 字 ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); }
+                                若 (tt[tk] == SK) tk++; /* ; */
+                                续;
+                            }
                             若 (tt[tk] == VR) {
                                 字 iname[32]; strcpy(iname, tn[tk]); tk++; /* Inner */
                                 整 inner_si = st_find(iname);
@@ -4414,6 +4421,13 @@ __attribute__((unused))
                         循环 (tt[tk] == DK) { fdflt = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → const char *name 的 * 不消费死循环) */
                         否 若 (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
+                            若 (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                                整 d = 1; tk++;
+                                循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) d--; tk++; }
+                                若 (tt[tk] == VR) { 字 ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); }
+                                若 (tt[tk] == SK) tk++;
+                                续;
+                            }
                             若 (tt[tk] == VR) {
                                 整 inner_si = st_find(tn[tk]); tk++;
                                 整 fptr = 0;
@@ -4484,6 +4498,13 @@ __attribute__((unused))
                             循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                             否 若 (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
+                                若 (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                                    整 d = 1; tk++;
+                                    循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) d--; tk++; }
+                                    若 (tt[tk] == VR) { 字 ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(tsi, ufn, 8, 8); }
+                                    若 (tt[tk] == SK) tk++;
+                                    续;
+                                }
                                 若 (tt[tk] == VR) {
                                     整 inner_si = st_find(tn[tk]); tk++;
                                     整 fptr = 0;
@@ -4608,6 +4629,13 @@ __attribute__((unused))
                     循环 (tt[tk] == DK) { fsz = 8; tk++; } /* 指针字段 (fix 2026-08-13: 镜像缺 → * 不消费死循环) */
                     否 若 (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
+                        若 (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
+                            整 d = 1; tk++;
+                            循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) d--; tk++; }
+                            若 (tt[tk] == VR) { 字 ufn[32]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); }
+                            若 (tt[tk] == SK) tk++;
+                            续;
+                        }
                         若 (tt[tk] == VR) {
                             整 inner_si = st_find(tn[tk]); tk++;
                             整 fptr = 0;
@@ -4955,6 +4983,13 @@ fr_start[fvn] = rsp_used; /* record frame-bound start: pure frame footprint befo
                             tk++;
                         }
                     }
+                    续;
+                }
+                若 (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == OK) { /* 匿名函数指针参数: type (fn (args)) (fix 2026-08-13 Phase3) */
+                    tk++; /* ( */
+                    若 (tt[tk] == VR) { var_param(tn[tk], pr, 4, 8, -1, 0, 0); tk++; pr++; }
+                    若 (tt[tk] == OK) { 整 depth = 0; 循环 (tk < TS && tt[tk] != EK) { 若 (tt[tk] == OK) depth++; 否 若 (tt[tk] == KK) { depth--; 若 (depth <= 0) { tk++; 断; } } tk++; } }
+                    若 (tt[tk] == KK) tk++; /* 跳过 fnptr 参数结束的 ) */
                     续;
                 }
                 若 (tt[tk] == LB) { /* 匿名数组参数: uint32_t[5] 无参数名 (fix 2026-08-13 Phase3: 原无此分支 → LB 卡死死循环) */
