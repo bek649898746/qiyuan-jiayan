@@ -1,3 +1,12 @@
+## 0A3E16B5 (2026-08-13)
+
+**Git 编译攻坚第 5 波: bump 堆预算 44MB→64MB — revision.c v4 崩溃根因修复**
+
+- 根因: revision.c (Git) 编译时 bump 堆实测 55.2MB > data_extent 堆预算 44MB (0x2C00000) → malloc 越界 ~2MB 写穿栈帧 → obj_macro_expand 局部 s 被源码文本覆盖 → s[i] 读非法地址 0xC0000005 (之前误判为 isalnum 包装函数 codegen bug, gdb watch 红鲱鱼)
+- 修法: data_extent 堆预算 0x2C00000→0x4000000 (44MB→64MB), stk_top 抬高 20MB; 宿主 + 镜像同步
+- 结果: v4 编译 Git 核心 17/17 (revision/commit/object/cache-tree/pretty/date 全部通过, 原 12/16)
+- 验证: v1..v5 = 0A3E16B5 (1-cycle), 测试 220/220
+
 ## 53744A1D (2026-08-13)
 
 **revision.c 崩溃深挖: v4 obj_macro_expand 大输入栈破坏 (qcc codegen 深层 bug 定位)**
