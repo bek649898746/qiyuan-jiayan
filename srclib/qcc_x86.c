@@ -4471,6 +4471,7 @@ static int parse(const char *s) {
             {
                 int bt = tk, bdbl = 0;
                 while (tt[bt] == VK) { if (!strcmp(tn[bt], "double")) bdbl = 1; bt++; }
+                if (tt[bt] == VR && td_is(tn[bt])) bt++; /* fix 2026-08-14: typedef 类型名作基类型 — typedef BOOL (SEC_ENTRY *fn)(...) 的 BOOL 是 VR typedef, 原只消费 VK → lookahead 失败 → BOOL 被当 struct tag */
                 if (tt[bt] == ST) { bt++; if (tt[bt] == VR) bt++; }
                 if (tt[bt] == OK && tt[bt + 1] == DK) { /* fnptr typedef confirmed */
                     tk = bt; tk++; tk++; /* skip ( * */
