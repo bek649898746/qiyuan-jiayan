@@ -524,7 +524,8 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         for (int p2 = 0; p2 < fn_macros[fmi].pn; p2++) if (!strcmp(fn_macros[fmi].params[p2], pn2)) { matched = p2; break; }
                         if (matched >= 0 && matched < an) {
                             if (ti2 < 16382) tmp[ti2++] = '"';
-                            for (int ai = matched; ai < an && ti2 < 16380; ai++) { /* #__VA_ARGS__: 余参逗号连接后一起字符串化 */
+                            int va_end = !strcmp(pn2, "__VA_ARGS__") ? an : matched + 1; /* fix 2026-08-14: 只有 #__VA_ARGS__ 才逗号连接余参, 普通 #param 只字符串化一个参数 (原 #dll 把所有参数连接 → "secur32.dll, BOOL, ..." 错) */
+                            for (int ai = matched; ai < va_end && ti2 < 16380; ai++) {
                                 if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 16381) tmp[ti2++] = ' '; }
                                 const char *src = args[ai];
                                 int sk = 0, sp = 0;
@@ -4699,7 +4700,10 @@ static int parse(const char *s) {
             continue;
         }
         /* global variable declarations: [static] type name [= init] ; */
-        if (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk])) || tt[tk] == EN || tt[tk] == ST) {
+        int unknown_ty_decl = 0;
+        { int _uty = tk; if (tt[_uty] == VK && !strcmp(tn[_uty], "static")) _uty++; /* fix 2026-08-14: static 前缀后 unknown typedef (static sig_handler_t timer_fn = SIG_DFL) */
+          if (tt[_uty] == VR && !td_is(tn[_uty]) && st_find(tn[_uty]) < 0 && tt[_uty + 1] == VR && (tt[_uty + 2] == AK || tt[_uty + 2] == SK || tt[_uty + 2] == LB || tt[_uty + 2] == DK)) { unknown_ty_decl = 1; td_reg(tn[_uty]); } } /* fix 2026-08-14: 未定义 typedef 作全局声明类型 (Windows CRITICAL_SECTION pinfo_cs;) — 原 break 提前结束 */
+        if (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk])) || tt[tk] == EN || tt[tk] == ST || unknown_ty_decl) {
             int save_tk = tk;
             int g_stidx = -1; /* struct type index when the declared type is a struct */
             int g_tdef = -1;  /* typedef index of the declared type (static prefix pushes type name to 2nd token, fix 2026-08-07) */
