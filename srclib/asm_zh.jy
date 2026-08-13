@@ -6,7 +6,7 @@
  * 结构：4 个分派函数（各~20分支）绕开 qcc 大函数编译 bug
  */
 
-静 无 字 *code; 静 整 cp;
+静 无 字 *code; 静 整 cp; 静 整 code_cap = 0x400000; /* fix 2026-08-14: 缓冲区容量 — 原 realloc 固定 0x400000+4096 死循环 */
 静 整 data_rva_base = 0x2000;
 静 整 exp_code_end;  /* from qcc .布局 */
 整 exp_data_base;  /* from qcc .布局 data_base= — 非static (fix 2026-08-12) */
@@ -495,8 +495,9 @@
     resolve_patches();
     /* pad to qcc's exact code_end before resolving data refs */
     若 (emit_data && exp_code_end > cp) {
-        循环 (cp + (exp_code_end - cp) + sdp >= 0x400000) {
-            无 字 *nc = realloc(code, 0x400000 + 4096);
+        循环 (cp + (exp_code_end - cp) + sdp >= code_cap) {
+            code_cap = code_cap * 2;
+            无 字 *nc = realloc(code, code_cap);
             若 (nc == 0) { 输出("asm_zh: OOM at pad\n"); exit(1); } code = nc;
         }
         循环 (cp < exp_code_end) { code[cp] = 0x90; cp = cp + 1; }
@@ -510,7 +511,7 @@
     若 (emit_data && dpn2 > 0) {
         整 code_end = cp; 整 i2; 遍 (i2 = 0; i2 < dpn2; i2 = i2 + 1) { 整 off = dbl_offs2[dbl_patches2[i2].idx]; 整 at = dbl_patches2[i2].at; 整 disp = code_end + off - at - 4; b4_at(at, disp); }
     }
-    若 (emit_data && sdp > 0) { 循环 (cp + sdp >= 0x400000) { 无 字 *nc = realloc(code, 0x400000 + 4096); 若 (nc == 0) { 输出("asm_zh: OOM at buffer\n"); exit(1); } code = nc; } 整 k; 遍 (k = 0; k < sdp; k = k + 1) { code[cp] = sdat[k]; cp = cp + 1; } }
+    若 (emit_data && sdp > 0) { 循环 (cp + sdp >= code_cap) { code_cap = code_cap * 2; 无 字 *nc = realloc(code, code_cap); 若 (nc == 0) { 输出("asm_zh: OOM at buffer\n"); exit(1); } code = nc; } 整 k; 遍 (k = 0; k < sdp; k = k + 1) { code[cp] = sdat[k]; cp = cp + 1; } }
     若 (emit_data == 0) { /* pass1: 预计算 data_base 存入 data_rva_base（qcc 对 edb 赋值 bug，跨函数读不可靠） */
         整 rb = ((0x1000 + cp + sdp + 4095) & ~4095);
         若 (rb < 0x2000) rb = 0x2000;
