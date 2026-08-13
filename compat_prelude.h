@@ -48,3 +48,10 @@ int errno; /* qcc 单文件编译基线: 定义 errno 全局变量 (真实 CRT e
 #define EOVERFLOW 132
 #define ETIMEDOUT 138
 #define ESHUTDOWN 10058
+
+/* 标准 C <limits.h> 宏 (qcc 跳过系统头后补全, 值取 MSVCRT/MinGW) */
+#define CHAR_BIT 8
+#define UINT_MAX 4294967295
+#define INT_MAX 2147483647
+#define ULONG_MAX 4294967295
+#define LONG_MAX 2147483647

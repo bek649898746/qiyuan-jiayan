@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#define MAX_OBJS 256
+#define MAX_OBJS 1024
 #define MAX_SECS 512
 #define MAX_SYMS 65536
 #define MAX_ARCH 1024
@@ -68,7 +68,7 @@ static JObj objs[MAX_OBJS];
 static int obj_n = 0;
 
 typedef struct { char name[NSYMLEN]; int obj; int sym; int defined; } GSym;
-static GSym gsyms[65536];
+static GSym gsyms[262144];
 static int gsym_n = 0;
 
 /* kernel32 IAT 动态槽（qcc write_pe 同源 + Gate-1 sqlite3 扩展 60+ 函数, fix 2026-08-07） */
@@ -366,7 +366,7 @@ static void add_builtin_main(void) {
 /* ---------- 全局符号表 ---------- */
 static GSym *gsym_add(const char *name) {
     for (int i = 0; i < gsym_n; i++) if (!strcmp(gsyms[i].name, name)) return &gsyms[i];
-    if (gsym_n >= 65536) { fprintf(stderr, "jyld: symbol overflow\n"); exit(1); }
+    if (gsym_n >= 262144) { fprintf(stderr, "jyld: symbol overflow\n"); exit(1); }
     GSym *g = &gsyms[gsym_n++];
     strncpy(g->name, name, NSYMLEN - 1); g->name[NSYMLEN - 1] = 0;
     g->obj = -1; g->sym = -1; g->defined = 0;
