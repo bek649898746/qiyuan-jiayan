@@ -434,6 +434,12 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
         } }
         if (seg[i] == '"' && !in_str) in_str = 1;
         else if (seg[i] == '"' && in_str && seg[i - 1] != '\\') in_str = 0;
+        if (!in_str && seg[i] == '/' && seg[i + 1] == '*') { /* fix 2026-08-14: 缺块注释处理, 注释里的 " 触发字符串分支吞掉后续 → KHASH_INIT 未展开 */
+            while (seg[i] && !(seg[i] == '*' && seg[i + 1] == '/')) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; }
+            if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; } }
+            continue;
+        }
+        if (!in_str && seg[i] == '/' && seg[i + 1] == '/') { while (seg[i] && seg[i] != '\n') { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; } continue; }
         if (in_str) {
             if (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
             out[(*o)++] = seg[i++];
