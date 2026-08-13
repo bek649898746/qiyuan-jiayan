@@ -7686,12 +7686,15 @@ static void pad_zero(FILE *f, int n) {
    但 statics ≈46MB + bump 堆 ≈42MB (tt/tv/tn/nn/tuns/tll/tll_hi 34MB + code 4MB + 源缓冲 ~1.5MB + sdat/misc ~3MB)
    ≈ 88MB > 83.7MB → stk_top 落进 tll_hi (v1: 0x52B15D8 = heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB)
    → 栈帧向下写穿 token 数组 → 运行时 tll 垃圾 → 伪 nll=1 → 628 movabs → v1≠v2 2-cycle.
-   新公式: statics 终点 (DATA_RVA_OFF + 4*stc_n + 2560) 之上加 0x3400000
-   (堆上限 0x2C00000=44MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB, 递归 parse/codegen 取 8MB),
+   新公式: statics 终点 (DATA_RVA_OFF + 4*stc_n + 2560) 之上加 0x4800000
+   (堆上限 0x4000000=64MB + 栈余量 0x800000=8MB; 实测栈深 ≥2MB, 递归 parse/codegen 取 8MB),
+   fix 2026-08-13: 44MB 不够 — 编译 revision.c (Git) 时 bump 堆实测 55.2MB (token 35MB
+   + 源/宏展开缓冲 ~15MB + obj out 1.5MB), 越界 ~2MB 写穿栈帧 → obj_macro_expand 局部 s
+   被覆盖 → 0xC0000005. 提到 64MB 留 ~9MB 余量,
    与 cp*84 取大者 — 小程序的 8MB 地板不变. */
 static int data_extent(void) {
     int e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x3400000;
+    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
     return e > heap_top ? e : heap_top;
 }
 
