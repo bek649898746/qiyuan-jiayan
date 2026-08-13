@@ -1,3 +1,12 @@
+## 53744A1D (2026-08-13)
+
+**revision.c 崩溃深挖: v4 obj_macro_expand 大输入栈破坏 (qcc codegen 深层 bug 定位)**
+
+- exp_args 参数预展开加 ai<16 边界 (防御性, an 超限防越界写栈)
+- revision.c v4 崩溃链完整定位: 22前置+decorate+string-list+refs → v4 fn_macro_expand_to 展开 git-compat-util.h 的 BUG_fl/__attribute__ 宏 → parse 栈被破坏 → obj_macro_expand 入参 exp_src 被破坏 (0x40854b, strlen(s)*2 特征确认) → 崩溃
+- 根因: qcc (v4) 的 codegen 对 obj_macro_expand 处理 790KB 大输入时局部变量被破坏 (i/s 变垃圾); C 版 gcc 编译正常 → 需深入 qcc codegen
+- 验证: v1..v5 = 53744A1D (1-cycle), 测试 220/220
+
 ## 26CAD768 (2026-08-13)
 
 **Git 编译攻坚第 3 波: fn_macro 预处理行跳过 + C 宏参数预展开 (revision.c 链路定位)**
