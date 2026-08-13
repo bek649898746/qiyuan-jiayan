@@ -367,7 +367,7 @@ static void fn_macro_collect(const char *s) {
                 char un[32]; int ui = 0;
                 while (isalnum((unsigned char)s[q]) || s[q] == '_') { if (ui < 31) un[ui++] = s[q]; q++; }
                 un[ui] = 0;
-                if (ui > 0) pp_guard_del(un);
+                if (ui > 0) { pp_guard_del(un); macro_remove(un); } /* fix 2026-08-14: #undef 也要从宏表删 — 原只删 pp_guard, error 宏残留 → usage.c int error(...) 定义被当宏调用展开 → gettimeofday 后续函数没 parse */
                 while (s[i] && s[i] != '\n') i++;
                 continue;
             }
@@ -451,6 +451,17 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             for (int k = 0; k < fn_macro_n; k++) if (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; break; } /* 自引用宏不重入 (fix 2026-08-07: #define A(x) A(x) 防死递归) */
             if (fmi >= 0) { int pw = i; while (seg[pw] == ' ' || seg[pw] == '\t' || seg[pw] == '\r' || seg[pw] == '\n') pw++; if (seg[pw] == '(') i = pw; } /* fix 2026-08-13 Phase3: 函数宏调用允许名称与 ( 之间空白 — 仅真调用才跳过空白, 否则保留 (同名变量/函数指针不吞空白) */
             if (fmi >= 0 && seg[i] == '(') {
+                /* 函数声明检测: 宏名前面最近非空白词是类型关键字 → int error(...) 声明, 不展开 (fix 2026-08-14: git-compat-util.h 原型 int error(...) 在 #define error 之前, 但 fn_macro_collect 先收集所有宏 → 原型被误展开成 int (error(...), const_error())) */
+                int _b = i - ni - 1; /* error 词起始前一个字符 (i 已移到 '(' 后, 回退 ni+1 到 error 前) */
+                while (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--;
+                int _is_decl = 0;
+                if (_b > 0 && (isalnum((unsigned char)seg[_b]) || seg[_b] == '_')) {
+                    int _e = _b;
+                    while (_e > 0 && (isalnum((unsigned char)seg[_e - 1]) || seg[_e - 1] == '_')) _e--;
+                    char _pw[32]; int _pl = _b - _e + 1; if (_pl < 31) { memcpy(_pw, seg + _e, _pl); _pw[_pl] = 0; } else _pw[0] = 0;
+                    if (!strcmp(_pw, "int") || !strcmp(_pw, "void") || !strcmp(_pw, "char") || !strcmp(_pw, "double") || !strcmp(_pw, "long") || !strcmp(_pw, "short") || !strcmp(_pw, "unsigned") || !strcmp(_pw, "const") || !strcmp(_pw, "static") || !strcmp(_pw, "extern") || !strcmp(_pw, "FILE")) _is_decl = 1;
+                }
+                if (_is_decl) { if (*o + ni + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } for (int k = 0; k < ni; k++) out[(*o)++] = nm[k]; continue; }
                 int in_stack = 0; for (int s = 0; s < fn_exp_n; s++) if (fn_exp_stack[s] == fmi) { in_stack = 1; break; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 (原 self_fmi 只防直接自递归) */
                 if (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
                     if (*o + ni + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
@@ -2751,6 +2762,8 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 铸基者 郑宇和 · 种子 828 */
             else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 自举者 郑启元 · 种子 828 */
+            else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
+            else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__attribute__")) { /* fix 2026-08-08: GCC attr __attribute__((...)) in decl position hung the parser (bin_test.c) - lexer swallows the balanced-paren block, emits no token */
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
                 if (s[aj] == '(') { i = aj; int ad = 0; while (s[i]) { if (s[i] == '"') { i++; while (s[i] && s[i] != '"') { if (s[i] == '\\') i++; i++; } continue; } if (s[i] == '(') ad++; else if (s[i] == ')') { ad--; if (ad <= 0) { i++; break; } } i++; } continue; }
