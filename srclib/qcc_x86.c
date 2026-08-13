@@ -413,7 +413,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
                 char exp_args[16][256];
-                for (int ai = 0; ai < an; ai++) {
+                for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
                     char *eout = malloc(4096); int eo = 0, ecap = 4096;
