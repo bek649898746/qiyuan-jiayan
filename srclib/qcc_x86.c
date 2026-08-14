@@ -842,7 +842,7 @@ static char *pp_include_expand(const char *src, int depth) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[32]; char fnames[128][32]; int foffs[128]; int fsizes[128]; int frows[128]; int ftypes[128]; int fbits[128]; int fbitof[128]; char fdbls[128]; char fsgn[128]; int fels[128]; int fn; int sz; int algn; } stypes[128]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 全量链接: 字段表 64→128 (diff_options 71 字段) + struct 表 64→128 */
+static struct { char name[32]; char fnames[256][32]; int foffs[256]; int fsizes[256]; int frows[256]; int ftypes[256]; int fbits[256]; int fbitof[256]; char fdbls[256]; char fsgn[256]; int fels[256]; int fn; int sz; int algn; } stypes[256]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段) */
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) return i;
@@ -854,13 +854,13 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
         stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
 }
 static int st_add(const char *n) {
-    if (st_n >= 128) return -1;
+    if (st_n >= 256) return -1;
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     return st_n++;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
-    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct '%s' 字段超过 128 上限\n", stypes[si].name); exit(1); }
+    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct '%s' 字段超过 256 上限\n", stypes[si].name); exit(1); }
     int idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
        frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。
@@ -900,7 +900,7 @@ static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, in
     /* real bit-field semantics: pack consecutive bit-fields into shared int slots.
        foffs = slot byte offset; fbitof = bit offset inside the slot; fbits = width.
        uns = 1 for `unsigned` bit-fields (no sign extension on read); int → signed. */
-    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct 字段超过 128 上限\n"); exit(1); }
+    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct 字段超过 256 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     if (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
@@ -947,7 +947,7 @@ static int st_field_is_dbl(const char *sn, const char *fn) {
 static void st_field_sz(int si, const char *fn, int fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 static void st_union_field(int si, const char *fn, int fsz) {
-    if (stypes[si].fn >= 128) { fprintf(stderr, "[ERR] struct 字段超过 128 上限\n"); exit(1); }
+    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct 字段超过 256 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = 0;
@@ -4519,7 +4519,7 @@ static int parse(const char *s) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
             while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
-            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; } /* fix 2026-08-14: struct 类型 extern — extern const struct git_hash_algo hash_algos[] 原 struct 没消费 → hash_algos 未注册 → 当函数取地址 */
+            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* extern struct X {...}: body 配平跳过 */
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
                 if (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
