@@ -126,6 +126,8 @@ static struct { char name[32]; char val[512]; } obj_macros[2048]; static int obj
 static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } }
 static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
 static int obj_exp_depth; /* fix 2026-08-13 Phase3: 递归展开宏值防无限自引用 (深度≤32) */
+/* 引号是否被反斜杠转义: 前置连续反斜杠数为奇数 → 转义 (fix 2026-08-14: 原只判 \\" 1 个反斜杠, \\\" 3 个反斜杠误判未转义 → 串提前闭合 → in_str 奇偶翻转 → 后续宏不再展开) */
+static int quote_escaped(const char *s, int i) { int bs = 0; for (int j = i - 1; j >= 0 && s[j] == '\\'; j--) bs++; return (bs & 1); }
 /* 文本层对象宏展开: 词边界替换, 串内/注释内不换, 链式(深度≤32 防自引用循环) */
 static char *obj_macro_expand(const char *s) {
     int cap = (int)strlen(s) * 2 + 2048;
@@ -136,8 +138,8 @@ static char *obj_macro_expand(const char *s) {
             while (s[i] && s[i] != '\n') out[o++] = s[i++];
             continue;
         } }
-        if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || (s[i - 1] == '\\' && s[i - 2] != '\\'))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: "\\" 两反斜杠后 " 应结束 — 原把 \\" 的 " 当转义吞后续 */
-        if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || (s[i - 1] == '\\' && s[i - 2] != '\\'))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: '\\' 字符字面量 — 原 ' 当转义吞 423 字符 (regex.c case '|' RE_LIMITED_OPS) */
+        if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || quote_escaped(s, i))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: "\\" 两反斜杠后 " 应结束 — 原把 \\" 的 " 当转义吞后续 */
+        if (s[i] == '\'') { out[o++] = s[i++]; while (s[i] && (s[i] != '\'' || quote_escaped(s, i))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: '\\' 字符字面量 — 原 ' 当转义吞 423 字符 (regex.c case '|' RE_LIMITED_OPS) */
         if (s[i] == '/' && s[i + 1] == '*') { /* fix 2026-08-13: 块注释原样保留 (内部不展开; 否则注释里的 ' 撇号触发字符字面量分支吞掉后续 → hash-ll.h platform's 卡死) */
             while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; }
             if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; if (s[i]) { if (o >= cap - 4) { cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +32768 (bump realloc 泄漏) */; out = realloc(out, cap); } out[o++] = s[i++]; } }
@@ -433,7 +435,17 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             continue;
         } }
         if (seg[i] == '"' && !in_str) in_str = 1;
-        else if (seg[i] == '"' && in_str && !(seg[i - 1] == '\\' && seg[i - 2] != '\\')) in_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
+        else if (seg[i] == '"' && in_str && !quote_escaped(seg, i)) in_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
+        if (seg[i] == '\'' && !in_str) { /* 字符字面量 'x'/'\n'/'"' — 跳过 (fix 2026-08-14: attr.c *cp == '"' 的字符字面量被当字符串开始 → in_str 奇偶翻转 → GIT_PATH_FUNC 不展开 → 参数 STR 卡死) */
+            if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+            out[(*o)++] = seg[i++]; /* opening ' */
+            while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) {
+                if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; }
+                out[(*o)++] = seg[i++];
+            }
+            if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
+            continue;
+        }
         if (!in_str && seg[i] == '/' && seg[i + 1] == '*') { /* fix 2026-08-14: 缺块注释处理, 注释里的 " 触发字符串分支吞掉后续 → KHASH_INIT 未展开 */
             while (seg[i] && !(seg[i] == '*' && seg[i + 1] == '/')) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; }
             if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; if (seg[i]) { if (*o + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); out = *outp; } out[(*o)++] = seg[i++]; } }
@@ -476,7 +488,13 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 int depth = 1, aj = 0, ain_str = 0;
                 while (seg[i] && depth > 0) {
                     if (seg[i] == '"' && !ain_str) ain_str = 1;
-                    else if (seg[i] == '"' && ain_str && !(seg[i - 1] == '\\' && seg[i - 2] != '\\')) ain_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
+                    else if (seg[i] == '"' && ain_str && !quote_escaped(seg, i)) ain_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
+                    if (seg[i] == '\'' && !ain_str) { /* 字符字面量 '"' 在宏实参内 — 跳过, 防 " 翻转 ain_str (fix 2026-08-14) */
+                        if (aj < 1023) args[an][aj++] = seg[i++]; /* opening ' */
+                        while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) { if (aj < 1023) args[an][aj++] = seg[i]; i++; }
+                        if (seg[i]) { if (aj < 1023) args[an][aj++] = seg[i]; i++; }
+                        continue;
+                    }
                     if (!ain_str) {
                         if (seg[i] == '(') depth++;
                         else if (seg[i] == ')') { depth--; if (depth == 0) break; }
@@ -1740,7 +1758,7 @@ static int var_offset_ptr(const char *n, int pesz) {
 }
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 static int var_static(const char *n, int pesz) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } return vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
     if (vcnt >= 4000 || stc_n >= 33554432) exit(1);
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
@@ -1773,7 +1791,7 @@ static int var_isstatic(const char *n) {
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
 static int var_static_arr(const char *n, int pesz, int esz, int count) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } return vars[i].rsp_off; }
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
     if (vcnt >= 4000 || stc_n + slots >= 33554432) exit(1); /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
@@ -1788,7 +1806,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
 static int var_static_struct(const char *n, int si, int count) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) return vars[i].rsp_off;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; stc_n += sl3; vars[i].arr_sz = count; vars[i].st_idx = si; } return vars[i].rsp_off; }
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
     if (vcnt >= 4000 || stc_n + total >= 33554432) exit(1);
@@ -4841,7 +4859,7 @@ static int parse(const char *s) {
             int g_static = 0; /* 文件级 static: COFF 符号要标 scl=3 (fix 2026-08-14: khash.h __ac_HASH_UPPER 等 static const 被当全局 → 重复符号) */
             if (tt[tk] == VK && !strcmp(tn[tk], "static")) { g_static = 1; tk++; } /* skip static */
             int is_type = 0;
-            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } is_type = 1; } /* fix 2026-08-14: 消费 VK 后还要消费 typedef 名 (static inline uint32_t fn) — 原 uint32_t 被当变量名 → static 标记丢失 → default_swab32 全局符号冲突 */
+            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } } else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } is_type = 1; } /* fix 2026-08-14: const struct X / const enum X — VK 后跟 ST/EN 也要消费 (原只消费 typedef 名 → const struct git_hash_algo hash_algos[] 定义被误判 → undefined) */
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
             else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } is_type = 1; } /* static enum log_destination {..} log_destination = X: 跳过枚举体 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环) */
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
@@ -4993,6 +5011,7 @@ static int parse(const char *s) {
                                 else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } }
                                 tk++;
                             }
+                            if (tt[tk] == AK) { tk++; while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++; } /* = init (fix 2026-08-14: static int (*fp)(void) = f; 原 = 没消费 → 后续函数被吞 → usagef/usage/die 全消失 undefined) */
                             if (tt[tk] == SK) tk++;
                             var_static(vn, 4); /* 8-byte .data slot (fnptr = pointer) */
                             vars[vcnt - 1].arr_esz = 8; /* fnptr: *gfp loads 8 bytes */
@@ -5153,7 +5172,7 @@ static int parse(const char *s) {
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
-        else if (tt[tk] == VR && td_is(tn[tk])) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef double return */
+        else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
         while (tt[tk] == DK) tk++; /* skip pointer(s) * */

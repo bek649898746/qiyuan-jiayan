@@ -19,6 +19,14 @@ typedef char *va_list;
 #define va_arg(ap, type) (*(type*)0)
 #define va_copy(dst, src) ((dst) = (src))
 
+/* assert 宏 (qcc 跳 assert.h) — no-op (fix 2026-08-14: assert undefined symbol) */
+#define assert(x) ((void)0)
+
+/* regex 命名映射 — regex.c 定义 git_regexec/git_regcomp/git_regfree, 但 git-compat-util.h regexec_buf 直接调 regexec (fix 2026-08-14: regexec undefined) */
+#define regexec git_regexec
+#define regfree git_regfree
+#define regcomp git_regcomp
+
 /* 标准 C errno (MSVCRT 1..42) */
 #define EPERM 1
 #define ENOENT 2
@@ -50,6 +58,8 @@ typedef char *va_list;
 #define EPIPE 32
 #define ERANGE 34
 #define ENAMETOOLONG 38
+#define ELOOP 114
+#define EMLINK 31
 #define ENOSYS 40
 #define ENOTEMPTY 41
 #define EILSEQ 42
@@ -129,6 +139,14 @@ typedef int bool;
 #define S_IFMT 0xF000
 #define S_IFDIR 0x4000
 #define S_IFREG 0x8000
+#define S_IFLNK 0xA000
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
+#define S_ISCHR(m) (((m) & S_IFMT) == 0x2000)
+#define S_ISBLK(m) (((m) & S_IFMT) == 0x6000)
+#define S_ISFIFO(m) (((m) & S_IFMT) == 0x1000)
+#define S_ISSOCK(m) (((m) & S_IFMT) == 0xC000)
 
 /* Windows API 文件属性常量 (<windows.h> 跳过, Git compat 用) */
 #define FILE_ATTRIBUTE_READONLY 0x01
