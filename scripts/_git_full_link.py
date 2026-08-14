@@ -13,7 +13,7 @@ objdir = os.path.join(GIT, '_objs')
 # 有独立 main 的测试工具 (不在 git.exe 里)
 # regcomp_enhanced.o 与 compat/regex/regex.o 互斥 (git_regcomp 两处定义), Windows 用内置 GNU regex
 # compat_stub_procinfo.o 是 stub, Windows 有 compat/win32/trace2_win32_process_info.c 提供
-EXCLUDE = {'base85.o', '_x2.o', 'compat_regcomp_enhanced.o', 'compat_stub_procinfo.o',
+EXCLUDE = {'_x2.o', 'compat_regcomp_enhanced.o', 'compat_stub_procinfo.o',  # base85.o 移除排除: DEBUG_85 未定义时无 main, decode_85/encode_85 被 apply.c 需要 (fix 2026-08-15)
            'compat_mmap.o',  # mmap.o 是 POSIX, Windows 用 compat_win32mmap.o
            # 独立可执行程序 (各自有 cmd_main, 不链进 git.exe)
            'daemon.o', 'http-backend.o', 'http-fetch.o', 'http-push.o',

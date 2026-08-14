@@ -22,9 +22,82 @@ extern int errno;
 #define NO_PREAD 1
 #define NO_GETPAGESIZE 1
 
+/* zlib 常量 + stub (Windows 无系统 zlib 库, 压缩/解压路径返回错误; fix 2026-08-15: Z_FINISH undefined) */
+typedef int z_stream;
+#define Z_NO_FLUSH 0
+#define Z_PARTIAL_FLUSH 1
+#define Z_SYNC_FLUSH 2
+#define Z_FULL_FLUSH 3
+#define Z_FINISH 4
+#define Z_BLOCK 5
+#define Z_OK 0
+#define Z_STREAM_END 1
+#define Z_NEED_DICT 2
+#define Z_ERRNO (-1)
+#define Z_STREAM_ERROR (-2)
+#define Z_DATA_ERROR (-3)
+#define Z_MEM_ERROR (-4)
+#define Z_BUF_ERROR (-5)
+#define Z_VERSION_ERROR (-6)
+#define Z_DEFLATED 8
+#define Z_DEFAULT_COMPRESSION (-1)
+#define Z_BEST_COMPRESSION 9
+#define Z_BEST_SPEED 1
+#define Z_DEFAULT_STRATEGY 0
+#define ZLIB_VERNUM 0x1221
+static int inflate(z_stream *s, int f) { (void)s; (void)f; return Z_STREAM_ERROR; }
+static int deflate(z_stream *s, int f) { (void)s; (void)f; return Z_STREAM_ERROR; }
+static int inflateInit(z_stream *s) { (void)s; return Z_OK; }
+static int inflateInit2(z_stream *s, int w) { (void)s; (void)w; return Z_OK; }
+static int inflateEnd(z_stream *s) { (void)s; return Z_OK; }
+static int inflateReset(z_stream *s) { (void)s; return Z_OK; }
+static int deflateInit(z_stream *s, int l) { (void)s; (void)l; return Z_OK; }
+static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) { (void)s; (void)l; (void)m; (void)w; (void)ml; (void)st; return Z_OK; }
+static int deflateEnd(z_stream *s) { (void)s; return Z_OK; }
+static unsigned long deflateBound(z_stream *s, unsigned long n) { (void)s; return n + 256; }
+
+/* Win32 类型 typedef (pthread 映射展开后需要; fix 2026-08-15: CRITICAL_SECTION undefined) */
+typedef int CRITICAL_SECTION;
+typedef int CONDITION_VARIABLE;
+typedef unsigned long DWORD;
+typedef void *HANDLE;
+
+/* pthread → Win32 映射 (compat/win32/pthread.h 未被 qcc include 展开) (fix 2026-08-15: pthread_mutex_lock undefined) */
+#define pthread_mutex_t CRITICAL_SECTION
+#define pthread_mutex_init(a,b) InitializeCriticalSection(a)
+#define pthread_mutex_destroy DeleteCriticalSection
+#define pthread_mutex_lock EnterCriticalSection
+#define pthread_mutex_unlock LeaveCriticalSection
+#define pthread_mutexattr_t int
+#define pthread_mutexattr_init(a) (*(a) = 0)
+#define pthread_mutexattr_destroy(a) 0
+#define pthread_mutexattr_settype(a,t) 0
+#define PTHREAD_MUTEX_RECURSIVE 0
+#define pthread_cond_t CONDITION_VARIABLE
+#define pthread_cond_init(a,b) InitializeConditionVariable(a)
+#define pthread_cond_destroy(a) 0
+#define pthread_cond_wait(a,b) SleepConditionVariableCS(a,b,0xFFFFFFFF)
+#define pthread_cond_signal WakeConditionVariable
+#define pthread_cond_broadcast WakeAllConditionVariable
+#define pthread_key_t DWORD
+#define pthread_key_create(a,b) (*(a)=0)
+#define pthread_key_delete(a) 0
+#define pthread_setspecific(a,b) 0
+#define pthread_getspecific(a) 0
+#define pthread_create(a,b,c,d) 0
+#define pthread_join(a,b) 0
+#define pthread_self() 0
+#define pthread_equal(a,b) ((a)==(b))
+#define pthread_exit(a) 0
+#define pthread_sigmask(a,b,c) 0
+#define pthread_setcancelstate(a,b) 0
+
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 0; }
+static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
+static int readlink(const char *a, char *b, int c) { (void)a; (void)b; (void)c; return -1; }
+static int fchmod(int a, int b) { (void)a; (void)b; return -1; }
 
 /* stdarg 变参宏 stub (qcc 跳 stdarg.h) — die() 等变参函数体用 va_list/va_start/va_end (fix 2026-08-14: die 定义因 va_list 未知丢失 → undefined) */
 typedef char *va_list;
@@ -37,9 +110,38 @@ typedef char *va_list;
 #define assert(x) ((void)0)
 
 /* regex 命名映射 — regex.c 定义 git_regexec/git_regcomp/git_regfree, 但 git-compat-util.h regexec_buf 直接调 regexec (fix 2026-08-14: regexec undefined) */
+typedef int regex_t; /* regex_t 不透明类型近似 — static regex_t *stamp 声明需要 (fix 2026-08-15: stamp undefined) */
 #define regexec git_regexec
 #define regfree git_regfree
 #define regcomp git_regcomp
+#define regerror git_regerror
+
+/* POSIX regcomp/regexec cflags/eflags 常量 (qcc 未展开 compat/regex/regex.h 宏 → undefined symbol) (fix 2026-08-15: REG_EXTENDED) */
+#define REG_EXTENDED 1
+#define REG_ICASE 2
+#define REG_NEWLINE 4
+#define REG_NOSUB 8
+#define REG_NOTBOL 1
+#define REG_NOTEOL 2
+#define REG_NOERROR 0
+#define REG_NOMATCH 1
+
+/* C99 inttypes printf 格式宏 (MSVCRT I64 风格; fix 2026-08-15: PRIoMAX undefined) */
+#define PRIuMAX "I64u"
+#define PRIdMAX "I64d"
+#define PRIoMAX "I64o"
+#define PRIxMAX "I64x"
+#define PRIXMAX "I64X"
+#define PRIu64 "I64u"
+#define PRId64 "I64d"
+#define PRIo64 "I64o"
+#define PRIx64 "I64x"
+#define PRIX64 "I64X"
+#define PRIu32 "u"
+#define PRId32 "d"
+#define PRIo32 "o"
+#define PRIx32 "x"
+#define PRIX32 "X"
 
 /* POSIX 大小写不敏感比较 — Windows msvcrt 用 _stricmp/_strnicmp (fix 2026-08-14: strncasecmp undefined) */
 #define strcasecmp _stricmp
