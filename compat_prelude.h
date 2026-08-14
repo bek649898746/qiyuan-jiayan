@@ -7,6 +7,22 @@ extern int errno;
 /* Windows 平台标志 — fsmonitor daemon 后端可用 (fix 2026-08-14: fsmonitor-ipc.c 的 #ifndef HAVE_FSMONITOR_DAEMON_BACKEND stub 应被跳过, 否则与 fsm-ipc-win32.c 的 fsmonitor_ipc__get_path 重复) */
 #define __GNUC_MINOR__ 0 /* -D __GNUC__=5 但未给 __GNUC_MINOR__, #if 条件编译引用它 (fix 2026-08-15: __GNUC_MINOR__ undefined) */
 #define HAVE_FSMONITOR_DAEMON_BACKEND 1
+#define SUPPORTS_SIMPLE_IPC 1  /* simple-ipc.h 的 SIMPLE_IPC_QUIT 等 API 在 Windows 构建可用 (fix 2026-08-15: 未定义 → #ifdef 跳过 → SIMPLE_IPC_QUIT undefined symbol) */
+#define kill mingw_kill  /* mingw.h 的 kill 映射 (fix 2026-08-15: __MINGW32__ 未定义 → kill undefined; compat/mingw.c 提供 mingw_kill) */
+#define utime mingw_utime  /* mingw.h 的 utime 映射 (fix 2026-08-15: __MINGW32__ 未定义 → utime undefined; compat/mingw.c 提供 mingw_utime) */
+#define INT32_MAX 2147483647  /* stdint.h 被跳过 (fix 2026-08-15: builtin/gc.c TWO_GIGABYTES → INT32_MAX undefined) */
+#define S_IRUSR 0000400  /* POSIX mode bits (fix 2026-08-15: S_IWUSR/S_IXUSR undefined) */
+#define S_IWUSR 0000200
+#define S_IXUSR 0000100
+#define S_IRWXU 0000700
+#define S_IRGRP 0000040
+#define S_IWGRP 0000020
+#define S_IXGRP 0000010
+#define S_IRWXG 0000070
+#define S_IROTH 0000004
+#define S_IWOTH 0000002
+#define S_IXOTH 0000001
+#define S_IRWXO 0000007
 #define NEEDS_MODE_TRANSLATION 1  /* lstat/stat/fstat → git_lstat/git_stat/git_fstat (stat.c 提供) (fix 2026-08-14: 原 lstat 未映射 → undefined symbol) */
 
 /* Windows MSVCRT 缺 POSIX 函数 — 映射到 compat/*.c 的 git* 实现 (fix 2026-08-14: strlcpy 等 undefined symbol, git-compat-util.h 的 #ifdef NO_* 守卫) */
@@ -22,8 +38,15 @@ extern int errno;
 #define NO_INET_NTOP 1
 #define NO_PREAD 1
 #define NO_GETPAGESIZE 1
+#define NO_SETITIMER 1  /* git-compat-util.h 提供 git_setitimer stub (fix 2026-08-15: setitimer undefined) */
+#define ITIMER_REAL 0   /* mingw.h 值 (fix 2026-08-15: ITIMER_REAL undefined) */
 #define NO_LIBGEN_H 1  /* basename/dirname → gitbasename/gitdirname (compat/basename.c) (fix 2026-08-15: basename undefined) */
 #define ETC_GITATTRIBUTES "etc/gitattributes"  /* 系统级 gitattributes 路径 (Makefile -D 生成, qcc 跳过 Makefile; fix 2026-08-15: ETC_GITATTRIBUTES undefined) */
+#define GIT_EXEC_PATH "C:/git"  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_EXEC_PATH undefined) */
+#define GIT_MAN_PATH "man"       /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_MAN_PATH undefined) */
+#define GIT_INFO_PATH "info"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_INFO_PATH undefined) */
+#define GIT_HTML_PATH "html"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_HTML_PATH undefined) */
+#define GIT_LOCALE_PATH "locale" /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_LOCALE_PATH undefined) */
 
 /* zlib 常量 + stub (Windows 无系统 zlib 库, 压缩/解压路径返回错误; fix 2026-08-15: Z_FINISH undefined) */
 typedef int z_stream;
@@ -111,6 +134,9 @@ typedef void *HANDLE;
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 0; }
+static int execlp(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execlp undefined) */
+static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 1)) { n++; x >>= 1; } return n; } /* GCC builtin (fix 2026-08-15: __builtin_ctzll undefined) */
+static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
 static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -1; } /* ws2_32 accept stub (fix 2026-08-15: accept undefined) */
 static int shutdown(int s, int how) { (void)s; (void)how; return -1; } /* ws2_32 shutdown stub (fix 2026-08-15: shutdown undefined) */

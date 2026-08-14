@@ -119,7 +119,7 @@ static void asm_emit_dbl(const char *fmt, double v) {
 static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
 static struct { char name[32]; int val; } macros[4096]; static int macro_n; /* Phase1-L3: 64->1024 */
-static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
+static void macro_add(const char *n, int v) { if (macro_n < 4096) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } } /* fix 2026-08-15: 上限 1024→4096 对齐数组容量 — fsmonitor--daemon.c 头链数值宏超 1024, SIMPLE_IPC_QUIT 被丢 → undefined */
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
 static struct { char name[64]; char val[4096]; } obj_macros[2048]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
@@ -224,6 +224,7 @@ static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macr
 
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
 static struct { char name[32]; char params[16][32]; int pn; char body[16384]; } fn_macros[2048]; static int fn_macro_n; /* fix 2026-08-15: 1024→2048 — loose.c 等大文件 include 链函数宏超 1024, strbuf_reset 未收集 → undefined */
+static char fn_macro_multiline[2048]; /* fix 2026-08-15: #undef 只删多行函数宏(展开会爆 AST); 单行 CHECK(x) 保留以便展开 */
 static int cl_if_parent[1024]; static int cl_if_taken[1024]; static int cl_if_n; /* Phase1-L4: 64->1024 */ static int cl_if_skip; /* fn_macro_collect 的条件编译栈 (fix 2026-08-07) */
 static int macro_exists(const char *n) { /* fix 2026-08-06: 区分「未找到」(-1) 与「负值宏」— macro_find 的 -1 哨兵与负值混淆, defined(NEG) 判假 */
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return 1;
@@ -235,7 +236,7 @@ static int macro_exists(const char *n) { /* fix 2026-08-06: 区分「未找到�
 static void macro_remove(const char *n) {
     for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) { for (int j = i; j < macro_n - 1; j++) macros[j] = macros[j + 1]; macro_n--; return; }
     for (int i = 0; i < str_macro_n; i++) if (!strcmp(str_macros[i].name, n)) { for (int j = i; j < str_macro_n - 1; j++) str_macros[j] = str_macros[j + 1]; str_macro_n--; return; }
-    for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, n)) { for (int j = i; j < fn_macro_n - 1; j++) fn_macros[j] = fn_macros[j + 1]; fn_macro_n--; return; }
+    for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, n)) { for (int j = i; j < fn_macro_n - 1; j++) { fn_macros[j] = fn_macros[j + 1]; fn_macro_multiline[j] = fn_macro_multiline[j + 1]; } fn_macro_n--; return; }
 }
 
 /* 对象宏收集 (lex 前): #define A <表达式/标识符> — 非函数宏非字符串宏非纯数字 (fix 2026-08-13) */
@@ -371,7 +372,7 @@ static void fn_macro_collect(const char *s) {
                 char un[32]; int ui = 0;
                 while (isalnum((unsigned char)s[q]) || s[q] == '_') { if (ui < 31) un[ui++] = s[q]; q++; }
                 un[ui] = 0;
-                if (ui > 0) { pp_guard_del(un); macro_remove(un); } /* fix 2026-08-14: #undef 也要从宏表删 — 原只删 pp_guard, error 宏残留 → usage.c int error(...) 定义被当宏调用展开 → gettimeofday 后续函数没 parse */
+                if (ui > 0) { pp_guard_del(un); int fmi2 = -1; for (int k = 0; k < fn_macro_n; k++) if (!strcmp(fn_macros[k].name, un)) { fmi2 = k; break; } if (fmi2 < 0 || fn_macro_multiline[fmi2]) macro_remove(un); } /* fix 2026-08-15: 单行函数宏 #undef 保留 (CHECK(x) 定义后使用再 #undef 否则调用永不展开); 多行宏仍删 (PATTERNS/IPATTERN 展开爆 AST — userdiff.c timeout) */
                 while (s[i] && s[i] != '\n') i++;
                 continue;
             }
@@ -384,6 +385,7 @@ static void fn_macro_collect(const char *s) {
             nm[ni] = 0;
             if (s[p] == '(' && fn_macro_n < 2048 && strcmp(nm, "_va_alloc")) { /* fix 2026-08-13: 函数宏需 ( 紧贴名字无空格 — #define A (x) 是表达式宏 (Git hash-ll.h GIT_HASH_NALGOS/HEXSZ) */
                 strcpy(fn_macros[fn_macro_n].name, nm);
+                fn_macro_multiline[fn_macro_n] = 0;
                 p++;
                 int pi = 0;
                 while (s[p] && s[p] != ')' && pi < 16) { /* fix 2026-08-07: pi<16 防垃圾输入死循环 (原无界 → `...` 死转) */
@@ -410,6 +412,7 @@ static void fn_macro_collect(const char *s) {
                 int bi = 0;
                 while (s[p] && s[p] != '\n' && bi < 16383) {
                     if (s[p] == '\\' && (s[p + 1] == '\n' || (s[p + 1] == '\r' && s[p + 2] == '\n'))) { /* 多行 body: \ 续行 → 空格 (fix 2026-08-05) */
+                        fn_macro_multiline[fn_macro_n] = 1;
                         if (bi < 16383) fn_macros[fn_macro_n].body[bi++] = ' ';
                         p++;
                         if (s[p] == '\r') p++;
@@ -3321,6 +3324,13 @@ static int prim(void) {
             } else break;
         }
         return n; }
+    if (tt[tk] == OK && tt[tk + 1] == VR && !strcmp(tn[tk + 1], "__typeof__")) { /* __typeof__(x)(y) GCC 类型转换 — 忽略类型, 返回 y (fix 2026-08-15: MSB 宏展开后 __typeof__ undefined) */
+        tk++; /* ( */
+        tk++; /* __typeof__ */
+        if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } }
+        if (tt[tk] == KK) tk++; /* closing ) of (__typeof__(...)) */
+        return prim(); /* 解析被转换的表达式 */
+    }
     if (tt[tk] == OK) {
         /* type cast: (type)expr — type keywords/struct/typedef then ). fix 2026-08-13 Phase3: unknown typedef (uint32_t 来自跳过 <stdint.h>) 也当 cast 类型 — var_lookup==-1 排除变量 (a) */
             if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
@@ -3631,6 +3641,7 @@ static int compound_literal(int is_struct, int si, int is_array, int arr_n, int 
     int n = Nd(1); memcpy((char*)(nn + n), vn, 32); /* 返回临时对象地址 */
     return n;
 }
+static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数组维度用常量表达式) */
 static int blk(void) {
     int b = Nd(5); tk++;
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
@@ -3821,6 +3832,7 @@ static int blk(void) {
                 continue;
                 }
             } else { int is_ptr = 0;
+            int struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
             while (tt[tk] == DK) { is_ptr = 1; tk++; } /* 多级指针 **fragp */
             if (tt[tk] == VR) {
                 char vn[32]; strcpy(vn, tn[tk]); tk++;
@@ -3861,18 +3873,15 @@ static int blk(void) {
                         int bi;
                         if (unsized || scnt > 1) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); } /* 数组: brace_arr_init 自管 { */
                         else { tk++; bi = brace_fields(si, idn); } /* 标量 struct: brace_fields 从 { 后开始 */
-                        Nc(b, d); b_cnt++; /* declare first */
-                        int bt = Nd(5); Nc(bt, bi);
-                        Nc(b, bt); b_cnt++;
+                        struct_brace_blk = Nd(5); Nc(struct_brace_blk, bi); /* 延迟挂到 Nc(b,d) 之后 (fix 2026-08-15: 逗号声明不跳过) */
                         if (tt[tk] == UK) tk++;
-                        while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
-                        if (tt[tk] == SK) tk++;
-                        continue; /* handled; skip the normal decl attach + comma loop */
+                        /* no continue: fall through to normal Nc(b,d)+comma loop */
                     } else {
                         Nc(d, expr());
                     }
                 }
                 Nc(b, d); b_cnt++;
+                if (struct_brace_blk >= 0) { Nc(b, struct_brace_blk); b_cnt++; } /* 延迟挂 struct brace init 块 (fix 2026-08-15: merge.c autogen 逗号声明) */
                 while (tt[tk] == CK) { /* struct A a, c, d; — comma-separated */
                     tk++;
                     int is_ptr2 = 0;
@@ -3963,6 +3972,7 @@ static int blk(void) {
             int d = Nd(7);
             int acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             for (int i = 0; i < 8; i++) adimv[i] = 0;
+            int brace_init_blk = -1; /* struct brace init 块延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册 → undefined) */
             if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer: int (*fp)(args); */
                 tk++; tk++; /* skip ( * */
                 if (tt[tk] == VR) {
@@ -4006,8 +4016,9 @@ static int blk(void) {
                    INT array with no st_idx → arr[i].a read garbage). */
                 int cnt = 1; int first = 1; int dims = 0;
                 while (tt[tk] == LB) {
-                    tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; if (dims < 8) adimv[dims] = tv[tk]; dims++; cnt *= tv[tk]; tk++; }
-                    else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000) { if (dims == 0) first = evc; if (dims < 8) adimv[dims] = evc; dims++; cnt *= evc; tk++; } else tk++; } /* 真 VLA: 跳过维度名避免死循环 (fix 2026-08-11) */
+                    tk++; int cdim = 0;
+                    if (const_expr_eval(&cdim)) { if (dims == 0) first = cdim; if (dims < 8) adimv[dims] = cdim; dims++; cnt *= cdim; }
+                    else if (tt[tk] == VR) tk++; /* 真 VLA: 跳过维度名避免死循环 (fix 2026-08-11) */
                     if (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `int a[] = {1,2,3}` / `char *names[] = {...}`
@@ -4077,7 +4088,21 @@ static int blk(void) {
                 for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                 str_row = 0; /* string-init row counter (fix 2026-08-05) */
                 brace_arr_init(b, d, adimv, adims > 0 ? adims : 1, 0, tdi_fnptr_v ? 8 : (is_ptr ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4)))))); /* 自管 { }; fix 2026-08-13: 传 esz → char *arr[] STR 存地址 */
-                while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                while (tt[tk] == CK) { /* 逗号声明: const char *keys[]={...}, **k; (fix 2026-08-15: k 未注册 → undefined) */
+                    tk++;
+                    int is_ptr2b = 0; while (tt[tk] == DK) { is_ptr2b = 1; tk++; }
+                    if (tt[tk] == VR) {
+                        char vn2b[32]; strcpy(vn2b, tn[tk]); tk++;
+                        int d2b = Nd(7);
+                        if (is_ptr2b) var_offset_ptr(vn2b, is_char ? 1 : 4);
+                        else if (is_ll) { var_ll(vn2b); if (is_uns) vars[vcnt - 1].is_uns = 1; }
+                        else if (is_double) var_double(vn2b);
+                        else var_offset(vn2b);
+                        memcpy((char*)(nn + d2b), vn2b, 32);
+                        if (tt[tk] == AK) { tk++; Nc(d2b, expr()); }
+                        Nc(b, d2b); b_cnt++;
+                    }
+                }
                 if (tt[tk] == SK) tk++;
                 continue;
             } else if (ltd_si >= 0 && !is_ptr && tt[tk] == FK) {
@@ -4085,13 +4110,9 @@ static int blk(void) {
                 tk++;
                 int idn = Nd(1); memcpy((char*)(nn + idn), (char*)(nn + d), 32); /* name already in decl node d (vn out of scope) */
                 int bi = brace_fields(ltd_si, idn);
-                Nc(b, d); b_cnt++; /* declare first */
-                int bt = Nd(5); Nc(bt, bi);
-                Nc(b, bt); b_cnt++;
+                brace_init_blk = Nd(5); Nc(brace_init_blk, bi); /* 延迟挂到 Nc(b,d) 之后 (fix 2026-08-15: 逗号声明不跳过) */
                 if (tt[tk] == UK) tk++;
-                while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
-                if (tt[tk] == SK) tk++;
-                continue;
+                /* no continue: fall through to normal Nc(b,d)+comma loop */
             } else if (is_static && ginit_n < 4096) {
                 /* function-local static with initializer: run ONCE at main entry
                    (C semantics), not on every call. Record in ginit; case-7 skips it. */
@@ -4120,6 +4141,7 @@ static int blk(void) {
                 Nc(d, expr());
             }
         } Nc(b, d); b_cnt++;
+            if (brace_init_blk >= 0) { Nc(b, brace_init_blk); b_cnt++; } /* 延迟挂 struct brace init 块 (fix 2026-08-15: merge.c autogen 逗号声明) */
             while (tt[tk] == CK) { /* comma-separated: int a = 0, b = 0; */
                 tk++;
                 int is_ptr2 = 0; while (tt[tk] == DK) { is_ptr2 = 1; tk++; } /* fix 2026-08-14: 循环消费所有 * — 原只吃一个, **dest_states_word 双指针第二个 * 挡 VR 前 → 变量未注册 (regexec.c) */
@@ -4128,7 +4150,7 @@ static int blk(void) {
                     char vn2[32]; strcpy(vn2, tn[tk]); tk++;
                     if (tt[tk] == LB) { /* array in comma list: int a, b[3]; (fix 2026-08-05: was var_offset → adimv[8] registered as int, &adimv[0] NULL) */
                         int cnt2 = 1;
-                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { cnt2 *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
+                        while (tt[tk] == LB) { tk++; int cdim2 = 0; if (const_expr_eval(&cdim2)) cnt2 *= cdim2; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
                         int esz2 = is_char ? 1 : (is_double ? 8 : (is_ptr ? 8 : (is_ll ? 8 : 4))); /* fix 2026-08-06: 逗号声明 ll 数组 8 字节元素 */
                         if (is_ptr2) var_offset_ptr(vn2, 4); else var_array(vn2, cnt2, esz2);
                         vars[vcnt - 1].p_esz = esz2;
@@ -4153,10 +4175,38 @@ static int blk(void) {
                 int si = st_find(tn[tk]); tk++; /* struct type name */
                 if (si >= 0 && tt[tk] == VR) {
                     int d = Nd(7); /* reuse decl node */
+                    char vns[32]; strcpy(vns, tn[tk]);
                     var_struct(tn[tk], si);
                     memcpy((char*)(nn + d), tn[tk], 32); tk++;
-                    if (tt[tk] == SK) tk++; /* skip ; */
+                    int struct_brace_blk = -1;
+                    if (tt[tk] == AK) { /* = init (fix 2026-08-15: struct strbuf merge_names = STRBUF_INIT, *autogen = NULL; 原只处理 ; → autogen 未注册) */
+                        tk++;
+                        if (tt[tk] == FK) { /* brace init { .buf = ... } */
+                            tk++;
+                            int idn = Nd(1); memcpy((char*)(nn + idn), vns, 32);
+                            int bi = brace_fields(si, idn);
+                            struct_brace_blk = Nd(5); Nc(struct_brace_blk, bi);
+                            if (tt[tk] == UK) tk++; /* } */
+                        } else {
+                            Nc(d, expr());
+                        }
+                    }
                     Nc(b, d); b_cnt++;
+                    if (struct_brace_blk >= 0) { Nc(b, struct_brace_blk); b_cnt++; }
+                    while (tt[tk] == CK) { /* comma declarators: *autogen = NULL */
+                        tk++;
+                        int is_ptr4 = 0; while (tt[tk] == DK) { is_ptr4 = 1; tk++; }
+                        if (tt[tk] == VR) {
+                            char vn4[32]; strcpy(vn4, tn[tk]); tk++;
+                            int d4 = Nd(7);
+                            if (is_ptr4) { var_offset_ptr(vn4, 4); vars[vcnt - 1].st_idx = si; }
+                            else var_struct(vn4, si);
+                            memcpy((char*)(nn + d4), vn4, 32);
+                            if (tt[tk] == AK) { tk++; Nc(d4, expr()); }
+                            Nc(b, d4); b_cnt++;
+                        }
+                    }
+                    if (tt[tk] == SK) tk++; /* skip ; */
                     continue;
                 }
             }
@@ -4280,6 +4330,7 @@ static int stmt(void) {
             if (tt[tk] == VK || tt[tk] == ST || (tt[tk] == VR && td_is(tn[tk]))) {
                 /* for(int i = 0; ...) �?declaration as init */
                 if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; }
+                else if (tt[tk] == VR && td_is(tn[tk])) tk++; /* typedef 类型名 (size_t i = 0) — 原被当变量名, i 泄漏 undefined (fix 2026-08-15) */
                 int is_char = 0, is_ptr = 0;
                 while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; tk++; }
                 while (tt[tk] == DK) { is_ptr = 1; tk++; } /* 多级指针 **argp */
@@ -4917,6 +4968,13 @@ static int parse(const char *s) {
                     if (tt[tk] == UK) tk++; /* } */
                 }
             }
+            if (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == KK) { /* typedef ret (name)(args); — 函数类型 typedef (fix 2026-08-15: interval_fn 未注册 → static interval_fn *table[] 落函数定义分支 break → fsm_health__loop undefined) */
+                char tdfn[32]; strcpy(tdfn, tn[tk + 1]);
+                td_reg(tdfn);
+                tdef_add(tdfn, 0, "", td_isdbl);
+                tk += 3; /* skip ( name ) */
+                if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
+            }
             if (tt[tk] == VR) {
                 td_reg(tn[tk]); /* register alias as type name */
                 if (td_isst && td_stname[0]) tdef_add(tn[tk], 1, td_stname, 0); /* typedef struct X → Y */
@@ -5162,6 +5220,21 @@ static int parse(const char *s) {
                 while (1) {
                     int lead_ptr = 0;
                     while (tt[tk] == DK) { lead_ptr = 4; tk++; } /* leading * �?pointer */
+                    if (tt[tk] == OK) { /* struct T * (name[N]); — 括号数组声明 (fix 2026-08-15: pack-objects.c pbase_tree_cache[256] 解析断 → oe_get_size_slow undefined) */
+                        tk++; /* ( */
+                        if (tt[tk] == VR) {
+                            char gname2[32]; strcpy(gname2, tn[tk]); tk++;
+                            int gcnt2 = 1;
+                            while (tt[tk] == LB) { tk++; int cdim3 = 0; if (const_expr_eval(&cdim3)) gcnt2 *= cdim3; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
+                            if (tt[tk] == KK) tk++; /* ) */
+                            var_static_arr(gname2, 0, 8, gcnt2); /* 指针数组: 8 字节元素 */
+                            vars[vcnt - 1].p_esz = 8;
+                            if (g_static) var_file_static[vcnt - 1] = 1;
+                            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                            if (tt[tk] == SK) tk++;
+                        }
+                        break;
+                    }
                     if (tt[tk] != VR || tt[tk + 1] == OK) { tk = save_tk; break; }
                     char gname[32]; strcpy(gname, tn[tk]); tk++;
                     /* char* -> esz 1 (byte indexing); int* -> 4; char** -> 8 via

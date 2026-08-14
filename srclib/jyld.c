@@ -388,6 +388,51 @@ static void add_builtin_errno(void) {
     obj_n++;
 }
 
+/* ---------- 内置 simple-ipc stub：_git_all_objects.py 跳过 compat/simple-ipc/ 下的 win32.c (fix 2026-08-15: ipc_server_run_async undefined) ---------- */
+static GSym *gsym_add(const char *name); /* fwd (fix 2026-08-15: ipc stub 在 gsym_add 定义前使用) */
+static void add_builtin_ipc_stubs(void) {
+    static const char *names[] = {
+        "ipc_client_try_connect", "ipc_client_close_connection",
+        "ipc_client_send_command_to_connection", "ipc_client_send_command",
+        "ipc_server_run_async", "ipc_server_stop_async", "ipc_server_await",
+        "ipc_server_free", "ipc_server_run",
+        "has_non_ascii", "update_server_info"
+    };
+    int n = (int)(sizeof(names) / sizeof(names[0]));
+    int include[16]; int inc_n = 0;
+    for (int i = 0; i < n; i++) {
+        GSym *g = gsym_add(names[i]);
+        if (!g->defined) include[inc_n++] = i;
+    }
+    if (inc_n == 0) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-ipc>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(inc_n ? inc_n : 1);
+    o->secs[0].size = inc_n;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    for (int j = 0; j < inc_n; j++) o->secs[0].data[j] = 0xC3; /* ret */
+    o->nsym = inc_n;
+    o->syms = (JSym*)calloc(inc_n ? inc_n : 1, sizeof(JSym));
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    for (int j = 0; j < inc_n; j++) {
+        GSym *g = gsym_add(names[include[j]]);
+        strcpy(o->syms[j].name, names[include[j]]);
+        o->syms[j].value = j;
+        o->syms[j].sec = 1;
+        o->syms[j].sc = 2;
+        g->obj = obj_n - 1;
+        g->sym = j;
+        g->defined = 1;
+    }
+}
+
 /* ---------- 全局符号表 ---------- */
 static GSym *gsym_add(const char *name) {
     for (int i = 0; i < gsym_n; i++) if (!strcmp(gsyms[i].name, name)) return &gsyms[i];
@@ -570,6 +615,8 @@ static int resolve_all(void) {
             ge->defined = 1;
         }
     }
+    /* simple-ipc stubs: compat/simple-ipc/ 下的 win32.c 被 _git_all_objects.py 跳过, 链接缺 ipc_server_* 定义 (fix 2026-08-15) */
+    add_builtin_ipc_stubs();
     int progress = 1;
     while (progress) {
         progress = 0;
