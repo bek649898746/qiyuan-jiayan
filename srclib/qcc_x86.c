@@ -2508,8 +2508,16 @@ static int brace_fields(int si, int base) {
             for (int ei = 0; ei < nfield; ei++) {
                 if (tt[tk] == CK || tt[tk] == SK) tk++;
                 if (tt[tk] == UK || tt[tk] == EK) break;
+                int eidx = ei;
+                if (tt[tk] == LB) { /* [idx] = value 指定下标 (fix 2026-08-14: .colors = { [GREP_COLOR_CONTEXT] = "..." } 原 [ 无分支 → expr() 返回 -1 死循环/崩溃) */
+                    tk++;
+                    if (tt[tk] == NK) { eidx = tv[tk]; tk++; }
+                    else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) eidx = evc; tk++; }
+                    if (tt[tk] == RB) tk++;
+                    if (tt[tk] == AK) tk++;
+                }
                 int acc = Nd(14); Nc(acc, mem);
-                int idx = Nd(0); nv[idx] = ei; Nc(acc, idx);
+                int idx = Nd(0); nv[idx] = eidx; Nc(acc, idx);
                 int asgn = Nd(10); Nc(asgn, acc); Nc(asgn, expr()); Nc(blk, asgn);
             }
             if (open_brace && tt[tk] == UK) tk++; /* skip matching } */
@@ -3612,6 +3620,7 @@ static int blk(void) {
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
+                    if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* enum { ... } type; 匿名枚举字段 (fix 2026-08-14: 原 EN 无分支 → 死循环 pretty.c parse_describe_args) */
                     if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr field: int (*cb)(int,int); / int (*cb[3])(int); — 8-byte pointer field (fix 2026-08-03: was unhandled → parse loop stuck on '(') */
                         tk++; tk++; /* skip ( * */
                         if (tt[tk] == VR) {
@@ -4519,7 +4528,28 @@ static int parse(const char *s) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
             while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
-            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; } /* fix 2026-08-14: struct 类型 extern — extern const struct git_hash_algo hash_algos[] 原 struct 没消费 → hash_algos 未注册 → 当函数取地址 */
+            if (tt[tk] == ST) { /* extern struct X {...} var; — 注册结构体类型 + 解析 body 字段 (fix 2026-08-14: 原只跳过, body 字段泄漏为全局重复符号) */
+                tk++; /* struct */
+                if (tt[tk] == VR) {
+                    char tag[32]; strcpy(tag, tn[tk]); tk++;
+                    int si = st_add(tag);
+                    if (tt[tk] == FK) { tk++; /* { */
+                        while (tk < TS && tt[tk] != UK) {
+                            int tk0 = tk; int fsz = 4, frow = 1;
+                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fsz = 1; else if (!strcmp(tn[tk], "double")) fsz = 8; tk++; }
+                            while (tt[tk] == DK) { fsz = 8; tk++; }
+                            if (tt[tk] == ST || tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } }
+                            if (tt[tk] == CL) { tk++; if (tt[tk] == NK || tt[tk] == VR) tk++; } /* 位域 */
+                            if (tt[tk] == VR) { char fn2[32]; strcpy(fn2, tn[tk]); tk++; st_field_sz_r(si, fn2, fsz, frow); while (tt[tk] == LB) { tk++; if (tt[tk] == NK || tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; } }
+                            if (tt[tk] == CK) tk++;
+                            if (tt[tk] == SK) tk++;
+                            if (tk == tk0) tk++;
+                        }
+                        if (tt[tk] == UK) tk++; /* } */
+                        st_finalize(si);
+                    }
+                }
+            }
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
                 if (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
