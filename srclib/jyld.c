@@ -420,7 +420,7 @@ static const char *msvcrt_names[] = {
     "printf","fprintf","sprintf","_snprintf","scanf","fscanf","sscanf","puts","gets",
     "putchar","getchar","malloc","calloc","realloc","free","memcpy","memset",
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
-    "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort",
+    "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "mkdir","_mkdir","open","_open","close","_close","read","_read","write","_write","lseek","_lseek","dup","_dup","dup2","_dup2",

@@ -5,6 +5,7 @@
 extern int errno;
 
 /* Windows 平台标志 — fsmonitor daemon 后端可用 (fix 2026-08-14: fsmonitor-ipc.c 的 #ifndef HAVE_FSMONITOR_DAEMON_BACKEND stub 应被跳过, 否则与 fsm-ipc-win32.c 的 fsmonitor_ipc__get_path 重复) */
+#define __GNUC_MINOR__ 0 /* -D __GNUC__=5 但未给 __GNUC_MINOR__, #if 条件编译引用它 (fix 2026-08-15: __GNUC_MINOR__ undefined) */
 #define HAVE_FSMONITOR_DAEMON_BACKEND 1
 #define NEEDS_MODE_TRANSLATION 1  /* lstat/stat/fstat → git_lstat/git_stat/git_fstat (stat.c 提供) (fix 2026-08-14: 原 lstat 未映射 → undefined symbol) */
 
@@ -111,6 +112,8 @@ typedef void *HANDLE;
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 0; }
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
+static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -1; } /* ws2_32 accept stub (fix 2026-08-15: accept undefined) */
+static int shutdown(int s, int how) { (void)s; (void)how; return -1; } /* ws2_32 shutdown stub (fix 2026-08-15: shutdown undefined) */
 static int readlink(const char *a, char *b, int c) { (void)a; (void)b; (void)c; return -1; }
 static int fchmod(int a, int b) { (void)a; (void)b; return -1; }
 
@@ -161,6 +164,7 @@ typedef int regex_t; /* regex_t 不透明类型近似 — static regex_t *stamp 
 /* POSIX 大小写不敏感比较 — Windows msvcrt 用 _stricmp/_strnicmp (fix 2026-08-14: strncasecmp undefined) */
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
+#define have_unix_sockets mingw_have_unix_sockets /* compat/mingw.h 映射 (fix 2026-08-15: have_unix_sockets undefined) */
 
 /* 标准 C errno (MSVCRT 1..42) */
 #define EPERM 1
@@ -231,6 +235,9 @@ typedef unsigned long long uint64_t;
 typedef long long int64_t;
 typedef unsigned int size_t;
 typedef int ssize_t;
+typedef int sig_atomic_t; /* <signal.h> (fix 2026-08-15: static volatile sig_atomic_t 声明未识别 → progress.c parse break) */
+struct DIR;
+typedef struct DIR DIR; /* <dirent.h> opaque DIR (fix 2026-08-15: DIR undefined symbol) */
 typedef long long off_t;
 typedef long long time_t;
 typedef unsigned long long uintmax_t;
@@ -275,6 +282,9 @@ typedef int bool;
 #define S_IFDIR 0x4000
 #define S_IFREG 0x8000
 #define S_IFLNK 0xA000
+#define S_ISUID 0x0800 /* setuid 位 (fix 2026-08-15: S_ISUID undefined) */
+#define S_ISGID 0x0400
+#define S_ISVTX 0x0200
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
 #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
@@ -347,6 +357,49 @@ typedef int bool;
 #define BUFSIZ 4096
 #define FOPEN_MAX 20
 #define FILENAME_MAX 260
+#define putc(c, stream) fputc(c, stream) /* MSVCRT 只有 fputc, 无独立 putc 导出 (fix 2026-08-15: putc undefined) */
+#define _IOLBF 0x40 /* setvbuf 行缓冲模式 (fix 2026-08-15: _IOLBF undefined) */
+
+/* <unistd.h> 标准文件描述符 (fix 2026-08-15: STDIN_FILENO undefined) */
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#define F_OK 0 /* access() 存在性检查 (fix 2026-08-15: F_OK undefined) */
+#define X_OK 0
+#define W_OK 2
+#define R_OK 4
+
+/* <poll.h> 常量 (compat/poll/poll.h 未展开, fix 2026-08-15: POLLIN undefined) */
+#define POLLIN      0x0001
+#define POLLPRI     0x0002
+#define POLLOUT     0x0004
+#define POLLERR     0x0008
+#define POLLHUP     0x0010
+#define POLLNVAL    0x0020
+#define POLLRDNORM  0x0040
+#define POLLRDBAND  0x0080
+#define POLLWRNORM  0x0100
+#define POLLWRBAND  0x0200
+
+/* <signal.h> 常量 (fix 2026-08-15: SIGHUP undefined) */
+#define SIGHUP 1
+#define SIGINT 2
+#define SIGQUIT 3
+#define SIGTERM 15
+#define SIGPIPE 13
+#define SIGALRM 14
+#define SIGUSR1 10
+#define SIGUSR2 12
+#define SIGCHLD 17
+#define SIG_DFL 0
+#define SIG_IGN 1
+#define SA_RESTART 0 /* sigaction 标志 (fix 2026-08-15: SA_RESTART undefined) */
+#define sigemptyset(x) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigemptyset undefined) */
+
+/* <sys/socket.h> shutdown 常量 (fix 2026-08-15: SHUT_WR undefined) */
+#define SHUT_RD 0
+#define SHUT_WR 1
+#define SHUT_RDWR 2
 
 /* <fcntl.h> 文件打开标志 (MSVC/MinGW 值) */
 #define O_RDONLY 0
