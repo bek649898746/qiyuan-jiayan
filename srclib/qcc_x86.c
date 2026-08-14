@@ -469,7 +469,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     continue;
                 }
                 fn_exp_stack[fn_exp_n++] = fmi; /* 压栈 */
-                char args[16][256]; int an = 0; /* fix 2026-08-07: 8→16×256, 超 15 参数并进末槽 */
+                char args[16][1024]; int an = 0; /* fix 2026-08-14: 256→1024, Git 超长 help_patch_text 宏实参 ~280 字符被 255 截断 → 字符串未闭合死链 */
                 i++;
                 int depth = 1, aj = 0, ain_str = 0;
                 while (seg[i] && depth > 0) {
@@ -481,18 +481,18 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         if (seg[i] == ',' && depth == 1) { /* fix 2026-08-07: 串内逗号不拆参 */
                             args[an][aj] = 0;
                             if (an < 15) { an++; aj = 0; }
-                            else { if (aj < 255) args[an][aj++] = ','; if (aj < 255) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
+                            else { if (aj < 1023) args[an][aj++] = ','; if (aj < 1023) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
                             i++; while (seg[i] == ' ' || seg[i] == '\t') i++; continue; /* fix 2026-08-14: 跳逗号后前导空格 — DECLARE_PROC_ADDR(..., strftime) 的 strftime 前带空格 → ## 拼接 proc_addr_ strftime 有空隙 */
                         }
                     }
-                    if (aj < 255) args[an][aj++] = seg[i];
+                    if (aj < 1023) args[an][aj++] = seg[i];
                     i++;
                 }
                 args[an][aj] = 0; an++;
                 if (seg[i] == ')') i++;
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
-                char exp_args[16][256];
+                char exp_args[16][1024];
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     fn_exp_n = 0; /* 实参展开独立栈 */
@@ -500,7 +500,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     int eo = 0, ecap = 65536;
                     fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
                     eout[eo] = 0;
-                    strncpy(exp_args[ai], eout, 255); exp_args[ai][255] = 0;
+                    strncpy(exp_args[ai], eout, 1023); exp_args[ai][1023] = 0;
                     free(eout); /* 堆顶配对 (bump allocator 最后分配可回收) */
                     fn_exp_n = save_exp_n;
                 }
@@ -2497,13 +2497,16 @@ static int brace_fields(int si, int base) {
             for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) Nc(blk, c); }
         } else if (frow2 > 0 && fsz2 > frow2) { /* array field: per element */
             int nfield = fsz2 / frow2;
+            int open_brace = (tt[tk] == FK); /* explicit array braces { a, b } (fix 2026-08-14: 原不消费 { → expr() 卡 FK 死循环) */
+            if (open_brace) tk++;
             for (int ei = 0; ei < nfield; ei++) {
                 if (tt[tk] == CK || tt[tk] == SK) tk++;
-                if (tt[tk] == UK) break;
+                if (tt[tk] == UK || tt[tk] == EK) break;
                 int acc = Nd(14); Nc(acc, mem);
                 int idx = Nd(0); nv[idx] = ei; Nc(acc, idx);
                 int asgn = Nd(10); Nc(asgn, acc); Nc(asgn, expr()); Nc(blk, asgn);
             }
+            if (open_brace && tt[tk] == UK) tk++; /* skip matching } */
         } else { /* scalar field */
             int asgn = Nd(10); Nc(asgn, mem); Nc(asgn, expr()); Nc(blk, asgn);
         }
@@ -3760,6 +3763,12 @@ static int blk(void) {
             if (tt[tk] == SK) tk++;
             continue;
         }
+        if (tt[tk] == VR && !strcmp(tn[tk], "typedef")) { /* 局部 typedef 声明: 跳过到 ; (fix 2026-08-14: typedef 是 VR 未注册 → 原被当 Nd(1) 标识符 → codegen 报未定义函数 typedef) */
+            tk++;
+            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+            if (tt[tk] == SK) tk++;
+            continue;
+        }
         /* unknown typedef'd type from a skipped #include (size_t/time_t/...): 
            `size_t n = expr;` — treat as an int declaration (fix 2026-08-03:
            was not a declaration → the whole statement was dropped → n never
@@ -4883,9 +4892,11 @@ static int parse(const char *s) {
                     if (ptrd > 1 && g_is_char) pesz = 8; /* char** -> 8-byte elements */
                     int gcnt = 0; /* array element count (0 = not array) */
                     int gfirst = 0; /* first dimension (row count) */
+                    int had_br = 0; /* saw any [..] brackets (empty [] unsized array vs scalar struct var) */
                     int gdims[8]; for (int gdi = 0; gdi < 8; gdi++) gdims[gdi] = 0; int gdim_n = 0; /* per-dim sizes → frows (fix 2026-08-05: global 3D arrays had no frows → nested scale fell back to scalar) */
                     while (tt[tk] == LB) {
                         tk++;
+                        had_br = 1;
                         if (tt[tk] == NK) {
                             if (gcnt == 0) { gfirst = tv[tk]; gcnt = 1; }
                             gcnt *= tv[tk];
@@ -4906,7 +4917,7 @@ static int parse(const char *s) {
                        `char *names[] = {...}` → infer count from the brace init list
                        (was: gcnt=0 → registered as scalar, `= {` fell into expr()
                        which can't eat '{' → parse() aborted → no main → entry crash). */
-                    if (gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
+                    if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                         int save = tk;
                         tk += 2; /* skip '=' '{' */
                         int n = 1, depth = 0;
@@ -6355,11 +6366,13 @@ static void cg(int n) {
                     fn_patches[fnpn].label = func_tbl[ffi].label;
                     fnpn++;
                 } else if (ffi >= 0 && !coff_is_builtin((char*)(nn + n)) && strcmp((char*)(nn + n), "stderr") && strcmp((char*)(nn + n), "stdout") && strcmp((char*)(nn + n), "stdin")) {
-                    /* fix 2026-08-12: extern 未定义函数名作值 — 原走 load_param_val 不发指令 → rax 残留垃圾 (非确定性).
-                       与 coff_static_disp 的 extern 变量一致: 单文件模型无符号可解析 → 编译期诊断.
-                       stderr/stdout/stdin 是内置 FILE* 伪参数 (fprintf builtin 忽略 arg0), 豁免.
-                       2026-08-12 重试: fll 死代码已删 / func_n var_lookup 补丁已修 → 连锁因素清除. */
-                    fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (char*)(nn + n)); exit(1);
+                    /* fix 2026-08-14: coff_mode 下 extern 函数取地址 → sec=0 符号 (jyld 链接解析); 单文件模式才报错 */
+                    if (coff_mode) {
+                        b(0xB8); b4(0); /* mov eax, 0 */
+                        coff_crel(cp - 4, 0x0002, coff_func_name_sym((char*)(nn + n)), 0);
+                    } else {
+                        fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (char*)(nn + n)); exit(1);
+                    }
                 } else {
                     load_param_val((char*)(nn + n)); /* eax = param (reg or [rbp+disp]) */
                 }
