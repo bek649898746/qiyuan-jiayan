@@ -515,6 +515,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 char exp_args[16][1024];
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
+                    int save_exp_stack[64]; for (int _s = 0; _s < 64; _s++) save_exp_stack[_s] = fn_exp_stack[_s]; /* fix 2026-08-14: 实参展开独立栈只重置 fn_exp_n, 展开实参时覆盖 fn_exp_stack[0..] → 恢复后外层栈被污染 → 非递归宏 (__ac_fsize) 被误判 in_stack → 泄漏成 undefined */
                     fn_exp_n = 0; /* 实参展开独立栈 */
                     char *eout = malloc(65536); /* fix 2026-08-14: 改堆缓冲 — 原 g_eout 静态槽 realloc 是 UB (realloc 只能用于堆内存), 且 fn_macro_expand 输出不确定 */
                     int eo = 0, ecap = 65536;
@@ -523,6 +524,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     strncpy(exp_args[ai], eout, 1023); exp_args[ai][1023] = 0;
                     free(eout); /* 堆顶配对 (bump allocator 最后分配可回收) */
                     fn_exp_n = save_exp_n;
+                    for (int _s = 0; _s < 64; _s++) fn_exp_stack[_s] = save_exp_stack[_s];
                 }
                 /* expand body with params → args */
                 char tmp[16384]; int ti2 = 0;
@@ -3246,6 +3248,22 @@ static int prim(void) {
             tk++; /* 函数名 */
             if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } /* 跳过 (args) */
             int n = Nd(0); nv[n] = 0; return n;
+        }
+        if (!strcmp(tn[tk], "offsetof")) { /* offsetof(TYPE, MEMBER) = 成员字节偏移 (fix 2026-08-14: <stddef.h> 跳过 → offsetof 未展开当函数调用 → undefined symbol) */
+            tk++; /* offsetof */
+            if (tt[tk] == OK) {
+                tk++; /* ( */
+                int osi = -1;
+                if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } } /* struct Tag */
+                else if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } /* typedef'd struct 名 */
+                int off = 0;
+                if (tt[tk] == CK) tk++; /* , */
+                if (osi >= 0 && tt[tk] == VR) { off = st_off(stypes[osi].name, tn[tk]); tk++; } /* 字段名 */
+                while (tk < TS && tt[tk] != KK && tt[tk] != EK) tk++; /* 跳过剩余 (嵌套 offsetof/表达式) */
+                if (tt[tk] == KK) tk++; /* ) */
+                int n = Nd(0); nv[n] = off; return n;
+            }
+            tk++; int n2 = Nd(0); nv[n2] = 0; return n2;
         }
         /* enum constant? */
         int ev = e_lookup(tn[tk]);
