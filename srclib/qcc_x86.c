@@ -56,7 +56,9 @@ static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
 static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
-static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */; int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
+static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
+static char var_file_static[4096]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
+int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
 static int root_global, g_lc_save, g_rsp_save, entry_rva_global;
@@ -1523,7 +1525,7 @@ static int coff_slot_sym(int slot) {
             int s = csym_find(vars[i].name);
             if (s < 0) {
                 if (slot < 0) s = csym_add(vars[i].name, 0, 0, 2, 0); /* extern: sec=0 未定义, scl=2 全局 (fix 2026-08-06 多 .o 链接) */
-                else s = csym_add(vars[i].name, 4 * slot, 4, var_static_kw[i] ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 */
+                else s = csym_add(vars[i].name, 4 * slot, 4, (var_static_kw[i] || var_file_static[i]) ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3; fix 2026-08-14: 文件级 static 也 scl=3 */
             }
             return s;
         }
@@ -4776,7 +4778,8 @@ static int parse(const char *s) {
             int save_tk = tk;
             int g_stidx = -1; /* struct type index when the declared type is a struct */
             int g_tdef = -1;  /* typedef index of the declared type (static prefix pushes type name to 2nd token, fix 2026-08-07) */
-            if (tt[tk] == VK && !strcmp(tn[tk], "static")) tk++; /* skip static */
+            int g_static = 0; /* 文件级 static: COFF 符号要标 scl=3 (fix 2026-08-14: khash.h __ac_HASH_UPPER 等 static const 被当全局 → 重复符号) */
+            if (tt[tk] == VK && !strcmp(tn[tk], "static")) { g_static = 1; tk++; } /* skip static */
             int is_type = 0;
             if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } is_type = 1; } /* fix 2026-08-14: 消费 VK 后还要消费 typedef 名 (static inline uint32_t fn) — 原 uint32_t 被当变量名 → static 标记丢失 → default_swab32 全局符号冲突 */
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
@@ -5036,6 +5039,7 @@ static int parse(const char *s) {
                     else if (g_is_ll) { var_static(gname, 4); vars[vcnt - 1].is_ll = 1; } /* global long long: 8-byte .data slot (fix 2026-08-05) */
                     else if (g_is_double) { var_static(gname, 4); vars[vcnt - 1].is_dbl = 1; } /* global double: 8-byte .data slot */
                     else var_static(gname, pesz);
+                    if (g_static) var_file_static[vcnt - 1] = 1; /* 文件级 static → scl=3 局部符号 (fix 2026-08-14) */
                     if (tt[tk] == AK) { /* = init */
                         if (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
                         tk++;
@@ -8591,7 +8595,7 @@ static void write_coff_obj(FILE *f) {
     for (int i = 0; i < vcnt; i++) {
         if (vars[i].is_static && vars[i].rsp_off >= 0) { /* extern (rsp_off<0) 不生成 .bss 定义符号 — 由 coff_slot_sym 生成 sec=0 未定义 (fix 2026-08-06) */
             int s = csym_find(vars[i].name);
-            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, var_static_kw[i] ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 局部 */
+            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, (var_static_kw[i] || var_file_static[i]) ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 局部; fix 2026-08-14: 文件级 static 也 scl=3 */
         }
     }
 
