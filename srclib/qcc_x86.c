@@ -459,7 +459,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     int _e = _b;
                     while (_e > 0 && (isalnum((unsigned char)seg[_e - 1]) || seg[_e - 1] == '_')) _e--;
                     char _pw[32]; int _pl = _b - _e + 1; if (_pl < 31) { memcpy(_pw, seg + _e, _pl); _pw[_pl] = 0; } else _pw[0] = 0;
-                    if (!strcmp(_pw, "int") || !strcmp(_pw, "void") || !strcmp(_pw, "char") || !strcmp(_pw, "double") || !strcmp(_pw, "long") || !strcmp(_pw, "short") || !strcmp(_pw, "unsigned") || !strcmp(_pw, "const") || !strcmp(_pw, "static") || !strcmp(_pw, "extern") || !strcmp(_pw, "FILE")) _is_decl = 1;
+                    if (!strcmp(_pw, "int") || !strcmp(_pw, "void") || !strcmp(_pw, "char") || !strcmp(_pw, "double") || !strcmp(_pw, "long") || !strcmp(_pw, "short") || !strcmp(_pw, "unsigned") || !strcmp(_pw, "const") || !strcmp(_pw, "FILE")) _is_decl = 1; /* fix 2026-08-14: 去掉 static/extern — 它们是存储类不是类型, static GIT_PATH_FUNC(...) 宏生成函数被误判声明不展开 → 参数 STR 卡死 */
                 }
                 if (_is_decl) { if (*o + ni + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } for (int k = 0; k < ni; k++) out[(*o)++] = nm[k]; continue; }
                 int in_stack = 0; for (int s = 0; s < fn_exp_n; s++) if (fn_exp_stack[s] == fmi) { in_stack = 1; break; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 (原 self_fmi 只防直接自递归) */
