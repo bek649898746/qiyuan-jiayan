@@ -55,9 +55,9 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
-static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[4096];
-static char var_static_kw[4096]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
-static char var_file_static[4096]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
+static struct { char name[32]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积) */
+static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
+static char var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
@@ -1699,7 +1699,7 @@ static int var_pdbl(const char *n) {
 /* 8-byte frame slot for a local double */
 static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05) */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_ll = 1; return vars[i].rsp_off; }
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -1712,7 +1712,7 @@ static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05
 }
 static int var_double(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_dbl = 1; return vars[i].rsp_off; }
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -1730,7 +1730,7 @@ static int var_offset(const char *n) {
        search floor is parse_base (this function's var start) so an unrelated function's
        same-named param/local can't be silently reused either. */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) return vars[i].rsp_off;
-    if (vcnt >= 4000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 4; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 4; /* point to start, not aligned end */
@@ -1744,7 +1744,7 @@ static int var_offset_ptr(const char *n, int pesz) {
     /* 8-byte slot so full 64-bit pointer fits */
     int off;
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; return off; }
-    if (vcnt >= 4000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -1759,7 +1759,7 @@ static int var_offset_ptr(const char *n, int pesz) {
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 static int var_static(const char *n, int pesz) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } return vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
-    if (vcnt >= 4000 || stc_n >= 33554432) exit(1);
+    if (vcnt >= 16000 || stc_n >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1774,7 +1774,7 @@ static int var_static(const char *n, int pesz) {
 static int var_extern(const char *n, int is_char, int is_dbl, int pesz, int is_ll) {
     static int extern_n = 2;
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].rsp_off < 0 && var_codegen_visible(i)) return vars[i].rsp_off;
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = -extern_n; extern_n++;
     vars[vcnt].is_param = 0; vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
@@ -1794,7 +1794,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } return vars[i].rsp_off; }
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
-    if (vcnt >= 4000 || stc_n + slots >= 33554432) exit(1); /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
+    if (vcnt >= 16000 || stc_n + slots >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1809,7 +1809,7 @@ static int var_static_struct(const char *n, int si, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; stc_n += sl3; vars[i].arr_sz = count; vars[i].st_idx = si; } return vars[i].rsp_off; }
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
-    if (vcnt >= 4000 || stc_n + total >= 33554432) exit(1);
+    if (vcnt >= 16000 || stc_n + total >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -1854,7 +1854,7 @@ static void mov_r12_cl(void) { asm_emit("    写字节 [r12], cl\n", (char*)(lon
 static void mov_r12_al(void) { asm_emit("    写字符 [r12], al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,4); b(0x24); } /* mov [r12], al */
 static int var_struct(const char *n, int si) {
     /* always allocate �?may shadow parameter with same name */
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
@@ -1868,7 +1868,7 @@ static int var_struct(const char *n, int si) {
 __attribute__((unused))
 static int var_array(const char *n, int count, int esz) {
     /* always allocate */
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = count * esz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
@@ -1886,7 +1886,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
        stidx = struct type index for struct/struct* params (-1 otherwise), so
        arr[i].field and arr->field resolve field offsets. is_dbl: double param → 8-byte
        slot fed from xmm[i] (Win64). */
-    if (vcnt >= 4000) exit(1);
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int psz = (pesz > 0 || stidx >= 0 || is_dbl || is_ll) ? 8 : 4; /* struct/dbl/LL by-value param: 8-byte slot */
     int big_val = (stidx >= 0 && stypes[stidx].sz > 8);
@@ -4362,6 +4362,7 @@ static int parse(const char *s) {
     fvn = 0; /* reset per-function var-range table */
     memset(tt, 0, TS * 4);
     char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
+    if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] include expand done len=%d\n", (int)strlen(exp_src));
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
     obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
     if (fn_macro_n > 0) {
@@ -4373,7 +4374,9 @@ static int parse(const char *s) {
         if (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
     pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
+    if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] macro expand done, lexing...\n");
     lex(exp_src);
+    if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] lex done ti=%d\n", ti);
     free(exp_src);
     if (getenv("QCC_DUMP")) { for (int di = 5215; di < ti && di < 5250; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
     if (getenv("QCC_DUMP")) { for (int di = 1755; di < ti && di < 1800; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
