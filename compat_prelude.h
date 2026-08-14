@@ -21,6 +21,8 @@ extern int errno;
 #define NO_INET_NTOP 1
 #define NO_PREAD 1
 #define NO_GETPAGESIZE 1
+#define NO_LIBGEN_H 1  /* basename/dirname → gitbasename/gitdirname (compat/basename.c) (fix 2026-08-15: basename undefined) */
+#define ETC_GITATTRIBUTES "etc/gitattributes"  /* 系统级 gitattributes 路径 (Makefile -D 生成, qcc 跳过 Makefile; fix 2026-08-15: ETC_GITATTRIBUTES undefined) */
 
 /* zlib 常量 + stub (Windows 无系统 zlib 库, 压缩/解压路径返回错误; fix 2026-08-15: Z_FINISH undefined) */
 typedef int z_stream;
@@ -55,6 +57,19 @@ static int deflateInit(z_stream *s, int l) { (void)s; (void)l; return Z_OK; }
 static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) { (void)s; (void)l; (void)m; (void)w; (void)ml; (void)st; return Z_OK; }
 static int deflateEnd(z_stream *s) { (void)s; return Z_OK; }
 static unsigned long deflateBound(z_stream *s, unsigned long n) { (void)s; return n + 256; }
+static int deflateSetHeader(z_stream *s, void *h) { (void)s; (void)h; return Z_OK; } /* fix 2026-08-15: deflateSetHeader undefined (archive-zip.c ZIP header) */
+static unsigned long crc32(unsigned long crc, const void *buf, unsigned len) { (void)buf; (void)len; return crc; } /* fix 2026-08-15: crc32 undefined */
+static unsigned long adler32(unsigned long adler, const void *buf, unsigned len) { (void)buf; (void)len; return adler; }
+static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
+static int compress2(void *d, unsigned long *dl, const void *s, unsigned long sl, int l) { (void)d; (void)dl; (void)s; (void)sl; (void)l; return Z_STREAM_ERROR; }
+static int uncompress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
+static void *gzopen(const char *p, const char *m) { (void)p; (void)m; return 0; }
+static int gzclose(void *f) { (void)f; return Z_OK; }
+static int gzread(void *f, void *b, unsigned n) { (void)f; (void)b; (void)n; return 0; }
+static int gzwrite(void *f, const void *b, unsigned n) { (void)f; (void)b; (void)n; return 0; }
+static char *gzgets(void *f, char *b, int n) { (void)f; (void)b; (void)n; return 0; }
+static int gzeof(void *f) { (void)f; return 1; }
+static int gzputs(void *f, const char *s) { (void)f; (void)s; return 0; }
 
 /* Win32 类型 typedef (pthread 映射展开后需要; fix 2026-08-15: CRITICAL_SECTION undefined) */
 typedef int CRITICAL_SECTION;
