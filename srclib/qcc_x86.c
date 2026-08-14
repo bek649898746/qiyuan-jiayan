@@ -1485,6 +1485,7 @@ static struct { char name[32]; int label; int defined; int ret_si; } func_tbl[20
 static char fn_static_names[512][32]; static int fn_static_n;
 static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
+static void fn_static_unmark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) { for (int j = i; j < fn_static_n - 1; j++) strcpy(fn_static_names[j], fn_static_names[j + 1]); fn_static_n--; return; } }
 static int func_n = 0;
 static int coff_mode = 0;
 static /* fix 2026-08-10 Gate 9: ������� (bare_metal) + �ڴ�����/�����ַ */
@@ -1540,7 +1541,7 @@ static void coff_dbl_add(const uint8_t *p, int n) {
     memcpy(coff_dbl_data + coff_dbl_len, p, n); coff_dbl_len += n;
 }
 static int coff_slot_sym(int slot) {
-    for (int i = vs_n() - 1; i >= 0; i--) {
+    for (int i = vcnt - 1; i >= 0; i--) { /* fix 2026-08-15: 原 vs_n()=vs_end 限制导致文件级 static slot 找不到 */
         if (vars[i].rsp_off == slot) {
             int s = csym_find(vars[i].name);
             if (s < 0) {
@@ -2540,7 +2541,7 @@ static int brace_fields(int si, int base) {
                 int idx = Nd(0); nv[idx] = eidx; Nc(acc, idx);
                 int asgn = Nd(10); Nc(asgn, acc); Nc(asgn, expr()); Nc(blk, asgn);
             }
-            if (open_brace && tt[tk] == UK) tk++; /* skip matching } */
+            if (open_brace) { while (tt[tk] == CK || tt[tk] == SK) tk++; if (tt[tk] == UK) tk++; } /* skip matching } (trailing comma inside array braces) */
         } else if (tt[tk] == FK) { /* opaque nested brace (union field .u = { ... } 且 fty=-1): 跳过配平 (fix 2026-08-14: expr() 遇 { 崩溃) */
             int d2 = 1; tk++;
             while (tk < TS && d2 > 0) { if (tt[tk] == FK) d2++; else if (tt[tk] == UK) { d2--; if (d2 <= 0) { tk++; break; } } tk++; }
@@ -2574,6 +2575,7 @@ static int kw(const char *s) {
     if (!strcmp(s, "switch")) return SW;
     if (!strcmp(s, "case")) return CA;
     if (!strcmp(s, "default")) return DF;
+    if (!strcmp(s, "signed")) return VK; /* fix 2026-08-15: signed char const cq_lookup[] — signed 未识别为关键字 */
     if (!strcmp(s, "unsigned")) return VK;
     if (!strcmp(s, "int") || !strcmp(s, "double")) return VK;
     if (!strcmp(s, "char")) return VK;
@@ -3638,10 +3640,11 @@ static int blk(void) {
             if (tt[tk] == SK) tk++; /* ; */
             continue;
         }
-        if (tt[tk] == ST || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == ST)) {
-            /* function-local struct var: [static] struct C c; or struct C *p; */
-            int is_static = (tt[tk] == VK);
+        if (tt[tk] == ST || (tt[tk] == VK && (!strcmp(tn[tk], "static") || !strcmp(tn[tk], "const")) && tt[tk + 1] == ST) || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "const") && tt[tk + 2] == ST)) {
+            /* function-local struct var: [static] [const] struct C c; (fix 2026-08-15: static const struct opentry) */
+            int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             if (is_static) tk++; /* static */
+            while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* const */
             tk++; /* struct */
             int si = -1;
             if (tt[tk] == VR) { si = st_find(tn[tk]); tk++; } /* tag name C */
@@ -3805,7 +3808,7 @@ static int blk(void) {
                 continue;
                 }
             } else { int is_ptr = 0;
-            if (tt[tk] == DK) { is_ptr = 1; tk++; } /* * */
+            while (tt[tk] == DK) { is_ptr = 1; tk++; } /* 多级指针 **fragp */
             if (tt[tk] == VR) {
                 char vn[32]; strcpy(vn, tn[tk]); tk++;
                 int d = Nd(7);
@@ -3860,7 +3863,7 @@ static int blk(void) {
                 while (tt[tk] == CK) { /* struct A a, c, d; — comma-separated */
                     tk++;
                     int is_ptr2 = 0;
-                    if (tt[tk] == DK) { is_ptr2 = 1; tk++; }
+                    while (tt[tk] == DK) { is_ptr2 = 1; tk++; } /* 多级指针 **listp */
                     if (tt[tk] == VR) {
                         char vn2[32]; strcpy(vn2, tn[tk]); tk++;
                         int d2 = Nd(7);
@@ -4148,7 +4151,7 @@ static int blk(void) {
             while (tk < TS && tt[tk] != SK && tt[tk] != UK) tk++;
             if (tt[tk] == SK) tk++;
         }
-        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { /* typedef or struct type */
+        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != AR && tt[tk + 1] != DT) { /* typedef or struct type (guard: ->/. = 表达式) */
             int tdi_dbl = 0; int tdi2 = tdef_lookup(tn[tk]); if (tdi2 >= 0 && tdefs[tdi2].is_dbl) tdi_dbl = 1;
             int tdi_fnptr = (tdi2 >= 0 && tdefs[tdi2].is_fnptr); /* typedef'd fnptr: 8-byte element (fix 2026-08-03) */
             tk++; /* skip type name */
@@ -4266,7 +4269,7 @@ static int stmt(void) {
                 if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; }
                 int is_char = 0, is_ptr = 0;
                 while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1; tk++; }
-                if (tt[tk] == DK) { is_ptr = 1; tk++; }
+                while (tt[tk] == DK) { is_ptr = 1; tk++; } /* 多级指针 **argp */
                 int d = Nd(7);
                 if (tt[tk] == VR) {
                     char vn[32]; strcpy(vn, tn[tk]); tk++;
@@ -4277,7 +4280,7 @@ static int stmt(void) {
                 Nc(blk_node, d);
                 while (tt[tk] == CK) { /* for(int i = 0, j = 0; ...) — 逗号声明列表 (fix 2026-08-07: 原只声明第一个, j 变未定义标识符 → && 条件被污染) */
                     tk++;
-                    int is_ptr2 = (tt[tk] == DK); if (is_ptr2) tk++;
+                    int is_ptr2 = 0; while (tt[tk] == DK) { is_ptr2 = 1; tk++; } /* 多级指针 */
                     int d2 = Nd(7);
                     if (tt[tk] == VR) {
                         char vn2[32]; strcpy(vn2, tn[tk]); tk++;
@@ -4438,7 +4441,10 @@ static int parse(const char *s) {
             continue;
         }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
-        if (tt[tk] == ST) {
+        if (tt[tk] == ST || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == ST)) {
+            int st_static = (tt[tk] == VK); /* fix 2026-08-15: static struct X {...} */
+            int st_orig = tk;
+            if (st_static) tk++;
             int st_save = tk;
             int is_union = !strcmp(tn[tk], "union");
             tk++; /* skip struct */
@@ -4577,19 +4583,23 @@ static int parse(const char *s) {
                     }
                     if (tt[tk] == UK) tk++; /* } */
                     st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
-                    /* instance variable(s): struct Item {...} items[4]; */
-                    if (tt[tk] == VR) {
+                    /* instance variable(s): struct Item {...} items[4]; / *ptr */
+                    if (tt[tk] == DK) { tk++; if (tt[tk] == VR) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; if (st_static) var_file_static[vcnt - 1] = 1; tk++; } }
+                    else if (tt[tk] == VR) {
                         int cnt = 1;
                         if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
                         var_static_struct(tn[tk], si, cnt);
+                        if (st_static) var_file_static[vcnt - 1] = 1;
                         tk++;
                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; }
+                        if (tt[tk] == AK && tt[tk + 1] == FK) { int n = 1, d0 = 0; tk += 2; while (tk < TS && !(tt[tk] == UK && d0 == 0)) { if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--; else if (tt[tk] == CK && d0 == 0) n++; tk++; } if (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; if (tt[tk] == UK) tk++; }
                     }
+                    while (tt[tk] == CK) { tk++; int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; } if (tt[tk] == VR) { if (ip2) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; } else var_static_struct(tn[tk], si, 1); if (st_static) var_file_static[vcnt - 1] = 1; tk++; } }
                     if (tt[tk] == SK) tk++; /* ; */
                 } else {
                     /* struct Big make_big(...): tag present but NO body — rewind so the
                        global-decl / fn-def path sees `struct Big` as the return type. */
-                    tk = st_save;
+                    tk = st_static ? st_orig : st_save;
                 }
             } else if (tt[tk] == FK) {
                 /* anonymous struct { ... } var; -- fall through to the global-decl
@@ -4600,7 +4610,7 @@ static int parse(const char *s) {
             } else {
                 tk = st_save; /* struct without body/tag: let the decl branch decide */
             }
-            if (tk == st_save) {
+            if (tk == st_save || (st_static && tk == st_orig)) {
                 /* anonymous/other: the global-decl branch processes it; fall out of
                    this if-block to the code below. */
             } else {
@@ -4926,6 +4936,7 @@ static int parse(const char *s) {
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
             else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } is_type = 1; } /* static enum log_destination {..} log_destination = X: 跳过枚举体 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环) */
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
+            if (!g_static && tt[tk] == DK && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "const")) tk += 2; /* *const (fix 2026-08-15) */
             if (is_type && tt[tk] == VR && tt[tk + 1] == OK) {
                 tk = save_tk; /* function definition �?fall through */
             } else if (is_type && tt[tk] == FK) {
@@ -5149,26 +5160,36 @@ static int parse(const char *s) {
                     while (tt[tk] == LB) {
                         tk++;
                         had_br = 1;
-                        if (tt[tk] == NK) {
-                            if (gcnt == 0) { gfirst = tv[tk]; gcnt = 1; }
-                            gcnt *= tv[tk];
-                            if (gdim_n < 8) { gdims[gdim_n] = tv[tk]; gdim_n++; }
-                            tk++;
-                        } else if (tt[tk] == VR) { /* fix 2026-08-11: enum/宏 常量维度 */
-                            int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]);
-                            if (evc != 0x80000000) {
-                                if (gcnt == 0) { gfirst = evc; gcnt = 1; }
-                                gcnt *= evc;
-                                if (gdim_n < 8) { gdims[gdim_n] = evc; gdim_n++; }
+                        int dim_save = tk; int cval = 0;
+                        if (const_expr_eval(&cval)) { /* 通用常量维度 (fix 2026-08-15: filter_bit['Z'+1]) */
+                            if (gcnt == 0) { gfirst = cval; gcnt = 1; }
+                            gcnt *= cval;
+                            if (gdim_n < 8) { gdims[gdim_n] = cval; gdim_n++; }
+                        } else {
+                            tk = dim_save;
+                            if (tt[tk] == NK) {
+                                if (gcnt == 0) { gfirst = tv[tk]; gcnt = 1; }
+                                gcnt *= tv[tk];
+                                if (gdim_n < 8) { gdims[gdim_n] = tv[tk]; gdim_n++; }
                                 tk++;
-                            } else tk++; /* 真 VLA: 跳过避免死循环 (fix 2026-08-11) */
-                        } else if (tt[tk] == OK) { /* [(const-expr)] 括号常量表达式 (fix 2026-08-14: GIT_HASH_NALGOS=(2+1) — 原只认 NK/VR → `(` 卡住 → 维度=0 → 后续 null_oid 定义被吞 undefined) */
-                            int cval = 0;
-                            if (const_expr_eval(&cval)) {
-                                if (gcnt == 0) { gfirst = cval; gcnt = 1; }
-                                gcnt *= cval;
-                                if (gdim_n < 8) { gdims[gdim_n] = cval; gdim_n++; }
-                            } else tk++; /* 求值失败: 前进防死循环 */
+                            } else if (tt[tk] == VR) {
+                                int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]);
+                                if (evc != 0x80000000) {
+                                    if (gcnt == 0) { gfirst = evc; gcnt = 1; }
+                                    gcnt *= evc;
+                                    if (gdim_n < 8) { gdims[gdim_n] = evc; gdim_n++; }
+                                    tk++;
+                                } else tk++;
+                            } else if (tt[tk] == OK) {
+                                int cval2 = 0;
+                                if (const_expr_eval(&cval2)) {
+                                    if (gcnt == 0) { gfirst = cval2; gcnt = 1; }
+                                    gcnt *= cval2;
+                                    if (gdim_n < 8) { gdims[gdim_n] = cval2; gdim_n++; }
+                                } else tk++;
+                            } else {
+                                tk++;
+                            }
                         }
                         if (tt[tk] == RB) tk++;
                     }
@@ -5307,7 +5328,7 @@ static int parse(const char *s) {
         }
         if (fn_ok) {
             int tfi = func_find((char*)(nn + fdef)); /* register return type BEFORE parsing params */
-            if (fn_is_static) fn_static_mark((char*)(nn + fdef)); /* fix 2026-08-06: static 标记 (scl=3 局部符号) */
+            if (fn_is_static) fn_static_mark((char*)(nn + fdef)); else fn_static_unmark((char*)(nn + fdef)); /* fix 2026-08-15: 非 static 定义覆盖同名 static 标记 */
             func_tbl[tfi].ret_si = fn_ret_si;
             fn_ret_si_map[tfi] = fn_ret_si; /* survives gen_code's func_n=0 reset */
             fn_ret_name_put((char*)(nn + fdef), fn_ret_si); /* name-keyed: survives func_tbl index renumbering */
@@ -5328,7 +5349,7 @@ static int parse(const char *s) {
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
                 else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
-                if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* fix 2026-08-13 Phase3: const 前缀后 typedef 漏处理 (const uint32_t block[16]) */
+                if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } p_stidx = st_find(tn[tk]); tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -6985,11 +7006,7 @@ static void cg(int n) {
                 call_rel(0);
                 patch_label(cp - 4, func_tbl[fi].label, 0);
                 add_rsp_imm(argbase + total_h); /* fix 2026-08-07: argbase 已含 shadow_pad */
-            } else if (is_user) {
-                call_rel(0);
-                patch_label(cp - 4, func_tbl[fi].label, 0);
-                add_rsp_imm(argbase + total_h); /* fix 2026-08-07: argbase 已含 shadow_pad */
-            } else if (fnptr) {
+            } else if (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
                 int fp_extra = nargs > 4 ? nargs - 4 : 0;
                 if (fp_extra > 0) sub_rsp_imm(32 + 8 * fp_extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad); /* shadow (fix 2026-08-07: +pad 对齐) */
@@ -7003,6 +7020,10 @@ static void cg(int n) {
                 mov_rr64(10, 0); /* r10 = fp */
                 asm_emit("    调 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); /* call r10 (REX.W + REX.B) */
                 add_rsp_imm(32 + 8 * fp_extra + shadow_pad + total_h); /* fix 2026-08-07: +pad */
+            } else if (is_user && fi >= 0) {
+                call_rel(0);
+                patch_label(cp - 4, func_tbl[fi].label, 0);
+                add_rsp_imm(argbase + total_h); /* fix 2026-08-07: argbase 已含 shadow_pad */
             } else if (!strcmp(fname, "memset")) {
                 /* dst=rcx, val=rdx, n=r8d */
                 mov_rr(10, 8); /* r10d = n */

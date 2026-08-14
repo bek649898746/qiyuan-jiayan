@@ -87,7 +87,9 @@ static const char *k32_names[] = {
     "MapViewOfFile","MultiByteToWideChar","OutputDebugStringA","OutputDebugStringW",
     "QueryPerformanceCounter","SetEndOfFile","Sleep","SystemTimeToFileTime",
     "UnlockFile","UnlockFileEx","UnmapViewOfFile","WaitForSingleObject",
-    "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI"
+    "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI",
+    "InitializeCriticalSection","DeleteCriticalSection","EnterCriticalSection","LeaveCriticalSection",
+    "InitializeConditionVariable","SleepConditionVariableCS","WakeConditionVariable","WakeAllConditionVariable"
 };
 #define K32_MAX 128
 static int k32_used[K32_MAX]; /* 槽 → 名字索引 */
@@ -420,7 +422,13 @@ static const char *msvcrt_names[] = {
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
     "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
-    "fgets","fputs","vprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
+    "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
+    "mkdir","_mkdir","open","_open","close","_close","read","_read","write","_write","lseek","_lseek","dup","_dup","dup2","_dup2",
+    "getpid","_getpid","getppid","_getppid","isatty","_isatty","fileno","_fileno",
+    "unlink","_unlink","rmdir","_rmdir","chmod","_chmod","access","_access",
+    "fdopen","_fdopen","pipe","_pipe","popen","_popen","pclose","_pclose",
+    "strerror","_strerror","strdup","_strdup",
+    "umask","_umask","getcwd","_getcwd","chdir","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
     "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
     "_stricmp","_strnicmp",
