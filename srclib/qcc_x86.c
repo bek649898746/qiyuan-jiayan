@@ -4779,7 +4779,7 @@ static int parse(const char *s) {
             int is_type = 0;
             if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } is_type = 1; } /* fix 2026-08-14: 消费 VK 后还要消费 typedef 名 (static inline uint32_t fn) — 原 uint32_t 被当变量名 → static 标记丢失 → default_swab32 全局符号冲突 */
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
-            else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; is_type = 1; }
+            else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } is_type = 1; } /* static enum log_destination {..} log_destination = X: 跳过枚举体 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环) */
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
             if (is_type && tt[tk] == VR && tt[tk + 1] == OK) {
                 tk = save_tk; /* function definition �?fall through */
