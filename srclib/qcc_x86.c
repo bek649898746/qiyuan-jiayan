@@ -4519,7 +4519,7 @@ static int parse(const char *s) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
             while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
-            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; } /* fix 2026-08-14: struct 类型 extern — extern const struct git_hash_algo hash_algos[] 原 struct 没消费 → hash_algos 未注册 → 当函数取地址 */
+            if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* fix 2026-08-14: struct 类型 extern — extern struct notes_tree {...} 的 body 配平跳过; 原 while(!=SK) 停在 body 内第一个 ; → 剩余字段 struct non_note *first_non_note 被当顶层全局 → 重复符号 */
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
                 if (e_dbl) fn_dbl_set_ret(tn[tk], 1); /* extern double-returning function: call sites need this */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
