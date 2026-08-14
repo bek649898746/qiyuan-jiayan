@@ -122,7 +122,7 @@ static struct { char name[32]; int val; } macros[4096]; static int macro_n; /* P
 static void macro_add(const char *n, int v) { if (macro_n < 1024) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
-static struct { char name[32]; char val[4096]; } obj_macros[2048]; static int obj_macro_n; /* fix 2026-08-15: val 512→4096 — REBASE_OPTIONS_INIT 长宏体 ~600 字符被 510 截断 → .update_refs/.strategy_opts 丢失 → brace_fields 跑过头 fidx 溢出崩溃 */
+static struct { char name[64]; char val[4096]; } obj_macros[2048]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
 static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } }
 static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
 static int obj_exp_depth; /* fix 2026-08-13 Phase3: 递归展开宏值防无限自引用 (深度≤32) */
@@ -151,8 +151,8 @@ static char *obj_macro_expand(const char *s) {
             while (isalnum((unsigned char)s[j]) || s[j] == '_' || ((unsigned char)s[j] >= 0x80)) j++;
             int prev_ok = (i > 0) && (isalnum((unsigned char)s[i - 1]) || s[i - 1] == '_' || ((unsigned char)s[i - 1] >= 0x80));
             int next_ok = (isalnum((unsigned char)s[j]) || s[j] == '_' || ((unsigned char)s[j] >= 0x80));
-            char nm[32]; int nl = j - i;
-            if (nl < 31) { memcpy(nm, s + i, nl); nm[nl] = 0; } else nl = 0;
+            char nm[64]; int nl = j - i;
+            if (nl < 63) { memcpy(nm, s + i, nl); nm[nl] = 0; } else nl = 0; /* fix 2026-08-15: 32→64, FIND_BISECTION_FIRST_PARENT_ONLY (32 字符) 原 nl>=31 被丢弃不展开 → undefined */
             if (!prev_ok && !next_ok && nl > 0) {
                 const char *val = obj_find(nm);
                 int dep = 0;
@@ -293,8 +293,8 @@ static void obj_macro_collect(const char *s) {
                 { char gnm[32]; int gv = 0; pp_def_parse(s + i, gnm, &gv); if (gnm[0]) pp_guard_add(gnm, gv); } /* 顺序定义表: #ifdef 判断用 */
                 int p = dj + 6;
                 while (s[p] == ' ' || s[p] == '\t') p++;
-                char nm[32]; int ni = 0;
-                while (isalnum((unsigned char)s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 31) nm[ni++] = s[p]; p++; }
+                char nm[64]; int ni = 0;
+                while (isalnum((unsigned char)s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 63) nm[ni++] = s[p]; p++; }
                 nm[ni] = 0;
                 if (nm[0] && s[p] != '(') { /* 非函数宏 → 对象宏候选; fix 2026-08-13 Phase3: ( 必须紧贴名字才算函数宏 */
                     while (s[p] == ' ' || s[p] == '\t') p++;
@@ -458,8 +458,8 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             continue;
         }
         if (isalnum((unsigned char)seg[i]) || seg[i] == '_') {
-            char nm[32]; int ni = 0;
-            while (isalnum((unsigned char)seg[i]) || seg[i] == '_') { if (ni < 31) nm[ni++] = seg[i]; i++; }
+            char nm[64]; int ni = 0;
+            while (isalnum((unsigned char)seg[i]) || seg[i] == '_') { if (ni < 63) nm[ni++] = seg[i]; i++; }
             nm[ni] = 0;
             int fmi = -1;
             for (int k = 0; k < fn_macro_n; k++) if (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; break; } /* 自引用宏不重入 (fix 2026-08-07: #define A(x) A(x) 防死递归) */
@@ -3141,6 +3141,7 @@ static int prim(void) {
             if (tt[tk] == KK) tk++;
             int n = Nd(0); nv[n] = tsz; return n;
         }
+        if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == KK) tk++; int n = Nd(0); nv[n] = 4; return n; } /* sizeof(enum Tag) → int 4 字节 (fix 2026-08-15: commit-slab elem_size=sizeof(enum contains_result) → contains_result 泄漏 undefined) */
         if (tt[tk] == ST) { tk++; /* skip struct */
             if (tt[tk] == VR) {
                 int sz = st_sz(tn[tk]); tk++; /* struct name */
@@ -3251,18 +3252,25 @@ static int prim(void) {
             if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } /* 跳过 (args) */
             int n = Nd(0); nv[n] = 0; return n;
         }
-        if (!strcmp(tn[tk], "offsetof")) { /* offsetof(TYPE, MEMBER) = 成员字节偏移 (fix 2026-08-14: <stddef.h> 跳过 → offsetof 未展开当函数调用 → undefined symbol) */
+        if (!strcmp(tn[tk], "offsetof")) { /* offsetof(TYPE, MEMBER) = 成员字节偏移 (fix 2026-08-14: <stddef.h> 跳过 → offsetof 未展开当函数调用 → undefined symbol; fix 2026-08-15: __typeof__(*e) 嵌套括号 + const 前缀 → ent 泄漏 undefined) */
             tk++; /* offsetof */
             if (tt[tk] == OK) {
                 tk++; /* ( */
                 int osi = -1;
+                while (tt[tk] == VK) tk++; /* const/volatile 前缀 */
                 if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } } /* struct Tag */
-                else if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } /* typedef'd struct 名 */
+                else if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } /* typedef 名 / __typeof__ 等 */
+                { int d = 0; while (tk < TS && tt[tk] != EK) { /* 跳过剩余类型 token 到顶层逗号 (__typeof__(*e) 嵌套括号) */
+                    if (tt[tk] == CK && d == 0) break;
+                    if (tt[tk] == KK && d == 0) break;
+                    if (tt[tk] == OK || tt[tk] == LB) d++;
+                    else if (tt[tk] == KK || tt[tk] == RB) d--;
+                    tk++;
+                } }
                 int off = 0;
                 if (tt[tk] == CK) tk++; /* , */
                 if (osi >= 0 && tt[tk] == VR) { off = st_off(stypes[osi].name, tn[tk]); tk++; } /* 字段名 */
-                while (tk < TS && tt[tk] != KK && tt[tk] != EK) tk++; /* 跳过剩余 (嵌套 offsetof/表达式) */
-                if (tt[tk] == KK) tk++; /* ) */
+                { int d = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { if (d <= 0) { tk++; break; } d--; } tk++; } } /* 跳到匹配 ) */
                 int n = Nd(0); nv[n] = off; return n;
             }
             tk++; int n2 = Nd(0); nv[n2] = 0; return n2;
