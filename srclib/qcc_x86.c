@@ -3068,6 +3068,12 @@ static int prim(void) {
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
         if (tt[tk] == OK) tk++; /* skip ( */
+        if (tt[tk] == DK) { /* sizeof(*expr): deref → 指针元素 8 字节 (char **mod.add → *mod.add 是 char* = 8) (fix 2026-08-14: 原 * 未消费 → 递归/')' 崩溃) */
+            tk++; /* * */
+            int v = prim(); (void)v; /* 消费 expr (mod.add) */
+            if (tt[tk] == KK) tk++; /* ) */
+            int n = Nd(0); nv[n] = 8; return n;
+        }
         if (tt[tk] == STR) { int n = Nd(0); nv[n] = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; return n; } /* sizeof "string" (fix 2026-08-14: regcomp.c REG_NOMATCH_IDX = ... + sizeof "Success" — 原 STR 未消费泄漏 → 死循环) */
         if (tt[tk] == VK) { /* sizeof(int/char/double/...) + pointers (fix 2026-08-05: was hardcoded 4 for every type) */
             int tsz = 4;
