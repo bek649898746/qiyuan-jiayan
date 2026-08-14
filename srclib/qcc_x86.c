@@ -4356,6 +4356,7 @@ static int parse(const char *s) {
     pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
     lex(exp_src);
     free(exp_src);
+    if (getenv("QCC_DUMP")) { for (int di = 1755; di < ti && di < 1800; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
     int p = Nd(3); if (p < 0) return -1;
     
@@ -5144,7 +5145,7 @@ static int parse(const char *s) {
         /* function definition */
         int fn_ret_dbl = 0;
         int fn_is_static = 0; /* fix 2026-08-06: static 函数 → 局部符号 (scl=3), 多 .o 头库不冲突 */
-        if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((noreturn)) 前置 (fix 2026-08-14: NORETURN void die(...) 声明 — 属性在返回类型前, 原被当函数名 → 解析 break 掉后续) */
+        if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((noreturn)) 前置 (fix 2026-08-14: NORETURN void die(...) — 空宏后 tt=SK 非 VR, 按 tn 匹配) */
         while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; tk++; } /* skip type keywords, catch double return */
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
@@ -5153,7 +5154,7 @@ static int parse(const char *s) {
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
         while (tt[tk] == DK) tk++; /* skip pointer(s) * */
-        if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 跳过 (fix 2026-08-14: void __attribute__((noreturn)) die() 原把 __attribute__ 当函数名 → die 未注册 undefined) */
+        if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 后置跳过 — 注意 #define __attribute__(x) 空宏后 tt=SK 非 VR, 只能按 tn 匹配 (fix 2026-08-14) */
         int fdef = Nd(4);
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
         if (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */
@@ -5273,7 +5274,7 @@ static int parse(const char *s) {
             }
             if (tt[tk] == SK) { parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
-            if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* 声明尾 __attribute__((format(...))) 跳过 (fix 2026-08-14: NORETURN void die(...) __attribute__((format...)) 原尾属性被当函数体 → die 定义丢失 undefined) */
+            if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* 声明尾真实 __attribute__((format(...))) 跳过 (空宏后 __attribute__ 是 tt=SK 的「分号」, 不能跳 — 否则原型判定丢失) */
             if (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 if (tt[tk] == KK) tk++;
                 if (tt[tk] == OK) {
