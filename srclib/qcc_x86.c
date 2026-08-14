@@ -4354,6 +4354,33 @@ static int stmt(void) {
     int e = expr(); tk++; return e;
 }
 
+/* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
+   左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
+   (fix 2026-08-14: hash_algos[GIT_HASH_NALGOS] 展开成 [(2 + 1)] — 原数组维度只认单 NK/VR token, `(` 卡住 → 维度=0 → 后续 null_oid 定义被吞 undefined) */
+static int const_expr_eval(int *val); /* fwd */
+static int const_expr_prim(int *val) {
+    if (tt[tk] == NK) { *val = tv[tk]; tk++; return 1; }
+    if (tt[tk] == VR) { int ev = e_lookup(tn[tk]); if (ev == 0x80000000) ev = macro_find(tn[tk]); if (ev != 0x80000000 && ev != -1) { *val = ev; tk++; return 1; } return 0; }
+    if (tt[tk] == OK) { tk++; if (!const_expr_eval(val)) return 0; if (tt[tk] == KK) tk++; return 1; }
+    if (tt[tk] == MK) { tk++; if (!const_expr_prim(val)) return 0; *val = -*val; return 1; }
+    if (tt[tk] == PK) { tk++; return const_expr_prim(val); }
+    if (tt[tk] == BN) { tk++; if (!const_expr_prim(val)) return 0; *val = ~*val; return 1; }
+    return 0;
+}
+static int const_expr_eval(int *val) {
+    if (!const_expr_prim(val)) return 0;
+    for (;;) {
+        int op = tt[tk];
+        if (op == PK || op == MK || op == DK || op == DV || op == MD || op == SH || op == SR || op == PT || op == OR || op == XR) {
+            tk++; int r; if (!const_expr_prim(&r)) return 0;
+            switch (op) { case PK: *val += r; break; case MK: *val -= r; break; case DK: *val *= r; break;
+                case DV: if (r) *val /= r; break; case MD: if (r) *val %= r; break; case SH: *val <<= r; break;
+                case SR: *val >>= r; break; case PT: *val &= r; break; case OR: *val |= r; break; case XR: *val ^= r; break; }
+        } else break;
+    }
+    return 1;
+}
+
 static int parse(const char *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
     fdef_n = 0; /* fix 2026-08-06: 每次 parse 重置顶层函数列表 */
@@ -5102,6 +5129,13 @@ static int parse(const char *s) {
                                 if (gdim_n < 8) { gdims[gdim_n] = evc; gdim_n++; }
                                 tk++;
                             } else tk++; /* 真 VLA: 跳过避免死循环 (fix 2026-08-11) */
+                        } else if (tt[tk] == OK) { /* [(const-expr)] 括号常量表达式 (fix 2026-08-14: GIT_HASH_NALGOS=(2+1) — 原只认 NK/VR → `(` 卡住 → 维度=0 → 后续 null_oid 定义被吞 undefined) */
+                            int cval = 0;
+                            if (const_expr_eval(&cval)) {
+                                if (gcnt == 0) { gfirst = cval; gcnt = 1; }
+                                gcnt *= cval;
+                                if (gdim_n < 8) { gdims[gdim_n] = cval; gdim_n++; }
+                            } else tk++; /* 求值失败: 前进防死循环 */
                         }
                         if (tt[tk] == RB) tk++;
                     }
