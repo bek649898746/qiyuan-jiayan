@@ -4527,7 +4527,22 @@ static int parse(const char *s) {
                             if (tt[tk] == SK) tk++;
                             continue;
                         }
-                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
+                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { /* 匿名 enum { A, B = 5 } field; — 注册常量 (fix 2026-08-14: SINGLETON undefined — 原只跳过 body 不注册常量) */
+                            tk++; /* { */
+                            int ev = 0;
+                            while (tk < TS && tt[tk] != UK && tt[tk] != EK) {
+                                int tk0 = tk;
+                                if (tt[tk] == VR) {
+                                    char enm[32]; memcpy(enm, tn[tk], 32); tk++;
+                                    if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } }
+                                    e_reg(enm, ev);
+                                    ev++;
+                                }
+                                if (tt[tk] == CK) tk++;
+                                if (tk == tk0) tk++;
+                            }
+                            if (tt[tk] == UK) tk++;
+                        } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
                         else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
