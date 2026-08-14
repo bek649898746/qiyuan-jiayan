@@ -8,6 +8,20 @@ extern int errno;
 #define HAVE_FSMONITOR_DAEMON_BACKEND 1
 #define NEEDS_MODE_TRANSLATION 1  /* lstat/stat/fstat → git_lstat/git_stat/git_fstat (stat.c 提供) (fix 2026-08-14: 原 lstat 未映射 → undefined symbol) */
 
+/* Windows MSVCRT 缺 POSIX 函数 — 映射到 compat/*.c 的 git* 实现 (fix 2026-08-14: strlcpy 等 undefined symbol, git-compat-util.h 的 #ifdef NO_* 守卫) */
+#define NO_STRLCPY 1
+#define NO_STRCASESTR 1
+#define NO_MEMMEM 1
+#define NO_SETENV 1
+#define NO_UNSETENV 1
+#define NO_MKDTEMP 1
+#define NO_STRTOUMAX 1
+#define NO_HSTRERROR 1
+#define NO_INET_PTON 1
+#define NO_INET_NTOP 1
+#define NO_PREAD 1
+#define NO_GETPAGESIZE 1
+
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 0; }
@@ -26,6 +40,10 @@ typedef char *va_list;
 #define regexec git_regexec
 #define regfree git_regfree
 #define regcomp git_regcomp
+
+/* POSIX 大小写不敏感比较 — Windows msvcrt 用 _stricmp/_strnicmp (fix 2026-08-14: strncasecmp undefined) */
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 
 /* 标准 C errno (MSVCRT 1..42) */
 #define EPERM 1

@@ -423,6 +423,7 @@ static const char *msvcrt_names[] = {
     "fgets","fputs","vprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
     "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
+    "_stricmp","_strnicmp",
     "toupper","tolower","isalpha","isdigit","isalnum","isspace","isupper","islower",
     "isxdigit","isprint","ispunct","iscntrl","isgraph",
     "floor","ceil","sqrt","pow","fabs","fmod","sin","cos","tan","asin","acos","atan",
