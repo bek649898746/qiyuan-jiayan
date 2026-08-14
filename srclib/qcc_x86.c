@@ -4769,6 +4769,7 @@ static int parse(const char *s) {
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
+                    if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* enum field: `enum advice_level level;` / 匿名 `enum { A } x;` → int (fix 2026-08-14: 匿名结构体 body 缺 EN 处理 → 死循环) */
                     if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                         tk++; int ubw = 0;
                         if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -4809,7 +4810,8 @@ static int parse(const char *s) {
                     char tmp[32]; sprintf(tmp, "__anon_%d", si);
                     strcpy(stypes[si].name, tmp);
                     int cnt = 1;
-                    if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
+                    int anon_unsized = 0;
+                    if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { if (tt[tix + 1] == RB) anon_unsized = 1; tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
                     if (anon_ptr) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; }
                     else var_static_struct(tn[tk], si, cnt);
                     char vn_anon[32]; strcpy(vn_anon, tn[tk]);
@@ -4820,7 +4822,23 @@ static int parse(const char *s) {
                         if (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
                             tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn_anon, 32);
-                            int blkinit = brace_fields(si, idn);
+                            int blkinit;
+                            if (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环) */
+                                int save_i = tk; int n = 1, d0 = 0;
+                                while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
+                                    if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
+                                    else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                                    else if (tt[tk] == CK && d0 == 0) n++;
+                                    tk++;
+                                }
+                                tk = save_i;
+                                if (n > 1) vars[vcnt - 1].arr_sz = n; /* 修正已注册的 arr_sz=0 → 实际元素数 */
+                                int adimv[1]; adimv[0] = n;
+                                blkinit = Nd(5);
+                                brace_arr_init(blkinit, idn, adimv, 1, 0, stypes[si].sz);
+                            } else {
+                                blkinit = brace_fields(si, idn);
+                            }
                             if (tt[tk] == UK) tk++;
                             if (ginit_n < 4096) ginit[ginit_n++] = blkinit;
                         } else {
