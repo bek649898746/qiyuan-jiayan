@@ -5144,6 +5144,7 @@ static int parse(const char *s) {
         /* function definition */
         int fn_ret_dbl = 0;
         int fn_is_static = 0; /* fix 2026-08-06: static 函数 → 局部符号 (scl=3), 多 .o 头库不冲突 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((noreturn)) 前置 (fix 2026-08-14: NORETURN void die(...) 声明 — 属性在返回类型前, 原被当函数名 → 解析 break 掉后续) */
         while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; tk++; } /* skip type keywords, catch double return */
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
@@ -5272,6 +5273,7 @@ static int parse(const char *s) {
             }
             if (tt[tk] == SK) { parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
+            if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* 声明尾 __attribute__((format(...))) 跳过 (fix 2026-08-14: NORETURN void die(...) __attribute__((format...)) 原尾属性被当函数体 → die 定义丢失 undefined) */
             if (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 if (tt[tk] == KK) tk++;
                 if (tt[tk] == OK) {
