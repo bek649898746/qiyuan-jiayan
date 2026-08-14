@@ -418,7 +418,7 @@ static const char *msvcrt_names[] = {
     "printf","fprintf","sprintf","_snprintf","scanf","fscanf","sscanf","puts","gets",
     "putchar","getchar","malloc","calloc","realloc","free","memcpy","memset",
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
-    "strrchr","strstr","strtol","strtod","atoi","atof","atol","exit","abort",
+    "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
