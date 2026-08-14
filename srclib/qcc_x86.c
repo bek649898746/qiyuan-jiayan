@@ -2490,11 +2490,15 @@ static int brace_fields(int si, int base) {
         /* fix 2026-08-07: 指针字段 (ftype=指向的 struct, 但 fsz=8 ≠ struct size) 不递归 —
            自引用结构体 struct LNode { int v; struct LNode *next; } 的 next 若递归 → 无限递归死循环 */
         int fty_is_ptr = (fty >= 0 && stypes[fty].sz != fsz2);
-        if (fty >= 0 && !fty_is_ptr) { /* nested struct field: recurse into its fields */
-            if (tt[tk] == FK) tk++; /* explicit nested braces { ... } */
-            int sub = brace_fields(fty, mem);
-            if (tt[tk] == UK) tk++; /* skip closing } */
-            for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) Nc(blk, c); }
+        if (fty >= 0 && !fty_is_ptr) { /* nested struct field */
+            if (tt[tk] == FK) { /* explicit nested braces { ... }: recurse into fields */
+                tk++;
+                int sub = brace_fields(fty, mem);
+                if (tt[tk] == UK) tk++; /* skip closing } */
+                for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) Nc(blk, c); }
+            } else { /* struct VALUE expr (e.g. .needle = *want): copy whole struct (fix 2026-08-14: 原递归 brace_fields 误把 *want 当字段 → 死循环/崩溃) */
+                int asgn = Nd(10); Nc(asgn, mem); Nc(asgn, expr()); Nc(blk, asgn);
+            }
         } else if (frow2 > 0 && fsz2 > frow2) { /* array field: per element */
             int nfield = fsz2 / frow2;
             int open_brace = (tt[tk] == FK); /* explicit array braces { a, b } (fix 2026-08-14: 原不消费 { → expr() 卡 FK 死循环) */
@@ -3704,12 +3708,24 @@ static int blk(void) {
                 char vn[32]; strcpy(vn, tn[tk]); tk++;
                 int d = Nd(7);
                 int scnt = 1;
-                if (tt[tk] == LB) { /* struct array: struct P arr[3]; */
+                int unsized = 0;
+                if (tt[tk] == LB) { /* struct array: struct P arr[3]; / struct P arr[] unsized */
                     scnt = 1;
                     while (tt[tk] == LB) {
-                        tk++; if (tt[tk] == NK) { scnt *= tv[tk]; tk++; }
+                        tk++; if (tt[tk] == NK) { scnt *= tv[tk]; tk++; } else if (tt[tk] == RB) unsized = 1;
                         if (tt[tk] == RB) tk++;
                     }
+                }
+                if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct P a[] = { {.x=..}, ... } 未定长: 推断元素数 (fix 2026-08-14: 原 scnt=1 → 标量 struct → brace_fields 遇内层 { 崩溃) */
+                    int save_u = tk; int n = 1, d0 = 0; tk += 2; /* skip = { */
+                    while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
+                        if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
+                        else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                        else if (tt[tk] == CK && d0 == 0) n++;
+                        tk++;
+                    }
+                    tk = save_u;
+                    scnt = n;
                 }
                 if (is_static) {
                     if (is_ptr) { var_static(vn, 4); vars[vcnt - 1].st_idx = si; }
@@ -3723,9 +3739,10 @@ static int blk(void) {
                 if (tt[tk] == AK) {
                     tk++;
                     if (tt[tk] == FK && si >= 0 && !is_ptr) { /* struct P p = { a, b, c }; — brace init */
-                        tk++;
                         int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
-                        int bi = brace_fields(si, idn);
+                        int bi;
+                        if (unsized) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); } /* 数组: brace_arr_init 自管 { */
+                        else { tk++; bi = brace_fields(si, idn); } /* 标量 struct: brace_fields 从 { 后开始 */
                         Nc(b, d); b_cnt++; /* declare first */
                         int bt = Nd(5); Nc(bt, bi);
                         Nc(b, bt); b_cnt++;
