@@ -3748,7 +3748,7 @@ static int blk(void) {
                         if (tt[tk] == FK && si >= 0 && !is_ptr) { /* struct P p = { a, b, c }; — brace init */
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
                             int bi;
-                            if (unsized) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); }
+                            if (unsized || scnt > 1) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); }
                             else { tk++; bi = brace_fields(si, idn); }
                             Nc(b, d); b_cnt++; /* declare first */
                             int bt = Nd(5); Nc(bt, bi);
@@ -3825,7 +3825,7 @@ static int blk(void) {
                     if (tt[tk] == FK && si >= 0 && !is_ptr) { /* struct P p = { a, b, c }; — brace init */
                         int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
                         int bi;
-                        if (unsized) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); } /* 数组: brace_arr_init 自管 { */
+                        if (unsized || scnt > 1) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); } /* 数组: brace_arr_init 自管 { */
                         else { tk++; bi = brace_fields(si, idn); } /* 标量 struct: brace_fields 从 { 后开始 */
                         Nc(b, d); b_cnt++; /* declare first */
                         int bt = Nd(5); Nc(bt, bi);
@@ -4887,7 +4887,36 @@ static int parse(const char *s) {
                             continue;
                         }
                         if (tt[tk] == VR) {
-                            int inner_si = st_find(tn[tk]); tk++;
+                            char iname[32]; strcpy(iname, tn[tk]); tk++; /* Inner */
+                            int inner_si = st_find(iname);
+                            if (tt[tk] == FK) { /* inline definition body: struct B { int y; } — parse + register (fix 2026-08-14: name-rev.c tip_table_entry 内联定义卡死) */
+                                int ni = inner_si < 0 ? st_add(iname) : inner_si;
+                                tk++; /* { */
+                                int ifuns = 0;
+                                while (tk < TS && tt[tk] != UK) {
+                                    int ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
+                                    while (tt[tk] == DK) tk++;
+                                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; while (tt[tk] == DK) tk++; }
+                                    else if (tt[tk] == ST) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } else if (tt[tk] == VR) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } if (tt[tk] == DK) tk++; }
+                                    else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } }
+                                    if (tt[tk] == CL) { tk++; int ubw = 0; if (tt[tk] == NK) { ubw = tv[tk]; tk++; } st_field_bit_anon(ni, ubw); ifuns = 0; }
+                                    if (tt[tk] == VR) {
+                                        char fn[32]; strcpy(fn, tn[tk]); tk++;
+                                        int ibw = 0;
+                                        if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { ibw = tv[tk]; tk++; } }
+                                        if (ibw > 0) { st_field_bit(ni, fn, ifsz, ifsz, ibw, ifuns); ifuns = 0; }
+                                        else {
+                                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000) { if (ifdims == 0) ifirst = evc; ifdims++; ifsz *= evc; } tk++; } if (tt[tk] == PK || tt[tk] == MK) { int op = tt[tk]; tk++; if (tt[tk] == NK) { if (op == PK) ifsz += tv[tk]; else ifsz -= tv[tk]; tk++; } } if (tt[tk] == RB) tk++; }
+                                            if (ifdims >= 1) ifrow = ifsz / ifirst; else ifrow = ifsz;
+                                            st_field_sz_r(ni, fn, ifsz, ifrow);
+                                        }
+                                    }
+                                    if (tt[tk] == CK) tk++;
+                                    if (tt[tk] == SK) tk++;
+                                }
+                                if (tt[tk] == UK) tk++; /* } */
+                                inner_si = ni;
+                            }
                             int fptr = 0;
                             if (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                             if (inner_si >= 0 && tt[tk] == VR) {
