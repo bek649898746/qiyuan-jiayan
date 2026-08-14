@@ -2511,6 +2511,9 @@ static int brace_fields(int si, int base) {
                 int asgn = Nd(10); Nc(asgn, acc); Nc(asgn, expr()); Nc(blk, asgn);
             }
             if (open_brace && tt[tk] == UK) tk++; /* skip matching } */
+        } else if (tt[tk] == FK) { /* opaque nested brace (union field .u = { ... } 且 fty=-1): 跳过配平 (fix 2026-08-14: expr() 遇 { 崩溃) */
+            int d2 = 1; tk++;
+            while (tk < TS && d2 > 0) { if (tt[tk] == FK) d2++; else if (tt[tk] == UK) { d2--; if (d2 <= 0) { tk++; break; } } tk++; }
         } else { /* scalar field */
             int asgn = Nd(10); Nc(asgn, mem); Nc(asgn, expr()); Nc(blk, asgn);
         }
