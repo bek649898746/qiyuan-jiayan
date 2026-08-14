@@ -3223,6 +3223,11 @@ static int prim(void) {
            <stddef.h>'s #define NULL never reaches the parser — it fell through to
            an undefined identifier and compiled to a stale-register store) */
         if (!strcmp(tn[tk], "NULL")) { tk++; int n = Nd(0); nv[n] = 0; return n; }
+        if (!strcmp(tn[tk], "__builtin_constant_p")) { /* GCC builtin: 编译期常量判断 → 返回 0 走运行时分支 (fix 2026-08-14: bswap.h 用, 原当函数调用 → undefined symbol) */
+            tk++; /* 函数名 */
+            if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } /* 跳过 (args) */
+            int n = Nd(0); nv[n] = 0; return n;
+        }
         /* enum constant? */
         int ev = e_lookup(tn[tk]);
         if (ev != 0x80000000) { tk++; int n = Nd(0); nv[n] = ev; return n; } /* fix 2026-08-09: != 哨兵而非 >= 0 (负值常量 RED=-2) */
@@ -3588,6 +3593,13 @@ static int blk(void) {
             Nc(b, nb);
             b = nb;
             b_cnt = 0;
+        }
+        if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 内联汇编: 跳过 (fix 2026-08-14: malloc.c.h/sha1.c 的 __asm__ 内存屏障 → undefined symbol) */
+            tk++; /* __asm__ */
+            if (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++; /* __volatile__ */
+            if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } /* 跳过 (asm body) */
+            if (tt[tk] == SK) tk++; /* ; */
+            continue;
         }
         if (tt[tk] == ST || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == ST)) {
             /* function-local struct var: [static] struct C c; or struct C *p; */
@@ -4175,6 +4187,13 @@ static int blk(void) {
 }
 
 static int stmt(void) {
+    if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 内联汇编语句 (bswap.h git_bswap32 的 else 分支): 跳过 (fix 2026-08-14: stmt() 无 __asm__ 处理 → 当函数调用 → undefined symbol) */
+        tk++;
+        if (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++;
+        if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } }
+        if (tt[tk] == SK) tk++;
+        int n = Nd(0); nv[n] = 0; return n;
+    }
     if (tt[tk] == GT) { /* goto label; */
         tk++;
         int n = Nd(25);
@@ -4341,6 +4360,13 @@ static int parse(const char *s) {
     int p = Nd(3); if (p < 0) return -1;
     
     while (tk < TS && tt[tk] != EK) {
+        if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 顶层内联汇编 (__attribute__ 误解析致函数体落到顶层): 跳过 */
+            tk++;
+            if (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++;
+            if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } }
+            if (tt[tk] == SK) tk++;
+            continue;
+        }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
         if (tt[tk] == ST) {
             int st_save = tk;
@@ -5126,6 +5152,7 @@ static int parse(const char *s) {
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
         while (tt[tk] == DK) tk++; /* skip pointer(s) * */
+        if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 跳过 (fix 2026-08-14: void __attribute__((noreturn)) die() 原把 __attribute__ 当函数名 → die 未注册 undefined) */
         int fdef = Nd(4);
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
         if (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */

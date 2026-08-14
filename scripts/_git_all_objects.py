@@ -12,8 +12,8 @@ CORE_DIRS = ['', 'builtin', 'reftable', 'xdiff', 'ewah', 'refs', 'negotiator',
              'trace2', 'sha1dc', 'sha256', 'block-sha1']
 COMPAT_SKIP = {
     'compat\\regex\\regex_internal.c', 'compat\\regex\\regcomp.c', 'compat\\regex\\regexec.c',
-    'compat\\mingw.c',
     'compat\\win32\\headless.c',
+    'compat\\msvc.c',  # msvc.c 只 #include "mingw.c", 与 mingw.c 重复 (gettimeofday 等)
     'compat\\simple-ipc\\ipc-win32.c',
     'compat\\simple-ipc\\ipc-shared.c', 'compat\\simple-ipc\\ipc-unix-socket.c',
 }

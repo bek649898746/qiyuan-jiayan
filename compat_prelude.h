@@ -4,6 +4,21 @@
  */
 extern int errno;
 
+/* Windows 平台标志 — fsmonitor daemon 后端可用 (fix 2026-08-14: fsmonitor-ipc.c 的 #ifndef HAVE_FSMONITOR_DAEMON_BACKEND stub 应被跳过, 否则与 fsm-ipc-win32.c 的 fsmonitor_ipc__get_path 重复) */
+#define HAVE_FSMONITOR_DAEMON_BACKEND 1
+#define NEEDS_MODE_TRANSLATION 1  /* lstat/stat/fstat → git_lstat/git_stat/git_fstat (stat.c 提供) (fix 2026-08-14: 原 lstat 未映射 → undefined symbol) */
+
+/* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
+static int geteuid(void) { return 0; }
+static int getuid(void) { return 0; }
+
+/* stdarg 变参宏 stub (qcc 跳 stdarg.h) — die() 等变参函数体用 va_list/va_start/va_end (fix 2026-08-14: die 定义因 va_list 未知丢失 → undefined) */
+typedef char *va_list;
+#define va_start(ap, last) ((void)0)
+#define va_end(ap) ((void)0)
+#define va_arg(ap, type) (*(type*)0)
+#define va_copy(dst, src) ((dst) = (src))
+
 /* 标准 C errno (MSVCRT 1..42) */
 #define EPERM 1
 #define ENOENT 2
