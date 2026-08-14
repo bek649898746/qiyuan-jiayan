@@ -3077,6 +3077,26 @@ static int prim(void) {
             if (tt[tk] == KK) tk++; /* ) */
             int n = Nd(0); nv[n] = 8; return n;
         }
+        if (tt[tk] == OK) { /* sizeof((expr)[0]): ARRAY_SIZE 宏 → 元素大小 (fix 2026-08-14: 原嵌套 ( 未消费 → ')[' 崩溃) */
+            tk++; /* ( */
+            int esz = 4;
+            if (tt[tk] == VR) {
+                char nm[32]; strcpy(nm, tn[tk]);
+                for (int vi = vs_n() - 1; vi >= 0; vi--)
+                    if (!strcmp(vars[vi].name, nm) && var_codegen_visible(vi)) {
+                        if (vars[vi].arr_sz > 0) esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
+                        else if (vars[vi].p_esz != 0) esz = vars[vi].p_esz;
+                        else if (vars[vi].is_char) esz = 1;
+                        else esz = 4;
+                        break;
+                    }
+                tk++; /* varname */
+            }
+            if (tt[tk] == KK) tk++; /* ) */
+            if (tt[tk] == LB) { tk++; if (tt[tk] == NK || tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; } /* [0] */
+            if (tt[tk] == KK) tk++; /* sizeof 的 ) */
+            int n = Nd(0); nv[n] = esz; return n;
+        }
         if (tt[tk] == STR) { int n = Nd(0); nv[n] = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; return n; } /* sizeof "string" (fix 2026-08-14: regcomp.c REG_NOMATCH_IDX = ... + sizeof "Success" — 原 STR 未消费泄漏 → 死循环) */
         if (tt[tk] == VK) { /* sizeof(int/char/double/...) + pointers (fix 2026-08-05: was hardcoded 4 for every type) */
             int tsz = 4;
@@ -3653,12 +3673,24 @@ static int blk(void) {
                     char vn[32]; strcpy(vn, tn[tk]); tk++;
                     int d = Nd(7);
                     int scnt = 1;
-                    if (tt[tk] == LB) { /* struct array: struct P arr[3]; */
+                    int unsized = 0;
+                    if (tt[tk] == LB) { /* struct array: struct P arr[3]; / arr[] unsized */
                         scnt = 1;
                         while (tt[tk] == LB) {
-                            tk++; if (tt[tk] == NK) { scnt *= tv[tk]; tk++; }
+                            tk++; if (tt[tk] == NK) { scnt *= tv[tk]; tk++; } else if (tt[tk] == RB) unsized = 1;
                             if (tt[tk] == RB) tk++;
                         }
+                    }
+                    if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct {..} a[] = { {..}, .. } 未定长: 推断元素数 (fix 2026-08-14) */
+                        int save_u = tk; int n = 1, d0 = 0; tk += 2;
+                        while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
+                            if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
+                            else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                            else if (tt[tk] == CK && d0 == 0) n++;
+                            tk++;
+                        }
+                        tk = save_u;
+                        scnt = n;
                     }
                     if (is_static) {
                         if (is_ptr) { var_static(vn, 4); vars[vcnt - 1].st_idx = si; }
@@ -3672,9 +3704,10 @@ static int blk(void) {
                     if (tt[tk] == AK) {
                         tk++;
                         if (tt[tk] == FK && si >= 0 && !is_ptr) { /* struct P p = { a, b, c }; — brace init */
-                            tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
-                            int bi = brace_fields(si, idn);
+                            int bi;
+                            if (unsized) { int adimv[1]; adimv[0] = scnt; bi = Nd(5); brace_arr_init(bi, idn, adimv, 1, 0, stypes[si].sz); }
+                            else { tk++; bi = brace_fields(si, idn); }
                             Nc(b, d); b_cnt++; /* declare first */
                             int bt = Nd(5); Nc(bt, bi);
                             Nc(b, bt); b_cnt++;
