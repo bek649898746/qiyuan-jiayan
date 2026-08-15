@@ -3172,15 +3172,30 @@ static int prim(void) {
             int esz = 4;
             if (tt[tk] == VR) {
                 char nm[64]; strcpy(nm, tn[tk]);
+                int base_si = -1;
                 for (int vi = vs_n() - 1; vi >= 0; vi--)
                     if (!strcmp(vars[vi].name, nm) && var_codegen_visible(vi)) {
                         if (vars[vi].arr_sz > 0) esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         else if (vars[vi].p_esz != 0) esz = vars[vi].p_esz;
                         else if (vars[vi].is_char) esz = 1;
                         else esz = 4;
+                        base_si = vars[vi].st_idx;
                         break;
                     }
                 tk++; /* varname */
+                /* (expr)[0] 内的嵌套成员链也要完整消费: opts->internal.unpack_rejects
+                   的 ARRAY_SIZE 会展开为 sizeof((opts->internal.unpack_rejects)[0]),
+                   原只消费 opts → 后续 ->internal.unpack_rejects 泄漏为 undefined 符号 (fix 2026-08-15) */
+                while (tt[tk] == DT || tt[tk] == AR) {
+                    tk++; /* . 或 -> */
+                    if (tt[tk] == VR) {
+                        if (base_si >= 0) {
+                            int el = st_field_el(base_si, tn[tk]); if (el > 0) esz = el;
+                            int fty = st_field_ty_idx(stypes[base_si].name, tn[tk]); if (fty >= 0) base_si = fty; else base_si = -1;
+                        }
+                        tk++; /* 字段名 */
+                    } else break;
+                }
             }
             if (tt[tk] == KK) tk++; /* ) */
             if (tt[tk] == LB) { tk++; if (tt[tk] == NK || tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; } /* [0] */
