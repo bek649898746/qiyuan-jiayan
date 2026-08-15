@@ -4762,7 +4762,7 @@ static int parse(const char *s) {
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     while (tk < TS && tt[tk] != UK) {
                         int tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
-                        int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; /* fll: long long 字段 (fix 2026-08-06) */
+                        int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int fll = 0; int ffnptr = 0; /* fll: long long 字段 (fix 2026-08-06); ffnptr: typedef'd fnptr 字段 (fix 2026-08-16) */
                         if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
                             if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
                         while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
@@ -4854,7 +4854,7 @@ static int parse(const char *s) {
                             }
                             if (tt[tk] == UK) tk++;
                         } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16) */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -4878,6 +4878,7 @@ static int parse(const char *s) {
                             if (unsized) { fsz = 0; frow = 4; } /* 柔性数组: 不占 struct 空间, 元素大小保留 */
                             if (is_union) st_union_field(si, fn, fsz);
                             else { st_field_sz_r(si, fn, fsz, frow); stypes[si].fels[stypes[si].fn - 1] = fel; } /* fix 2026-08-07 */
+                            if (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记: 64 位指针访问 (fix 2026-08-16) */
                             if (fdbl) st_field_dbl(si, fn);
                             if (fll) st_field_ty(si, fn, -3); /* long long 字段标记: 64 位访问 (fix 2026-08-06) */
                             }
@@ -5059,7 +5060,9 @@ static int parse(const char *s) {
                     int si = st_add(aname); /* placeholder name */
                     int fdflt = 4; /* default field element size (int); VK sets char=1/double=8 (fix 2026-08-03) */
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
+                    int ffnptr = 0; /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                     while (tk < TS && tt[tk] != UK) {
+                        ffnptr = 0; /* per-field reset (fix 2026-08-16) */
                         if (tt[tk] == VK) { fdflt = 4; if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field */
@@ -5097,7 +5100,7 @@ static int parse(const char *s) {
                             if (tt[tk] == CK) { tk++; } if (tt[tk] == SK) tk++;
                             continue;
                         }
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++;
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fdflt = 8; ffnptr = 1; } tk++; }
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5115,6 +5118,7 @@ static int parse(const char *s) {
                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } else { dims++; int bd = 1; while (tk < TS && bd > 0) { if (tt[tk] == LB) bd++; else if (tt[tk] == RB) { bd--; if (bd == 0) { tk++; break; } } tk++; } } if (tt[tk] == PK || tt[tk] == MK) { int op = tt[tk]; tk++; if (tt[tk] == NK) { if (op == PK) fsz += tv[tk]; else fsz -= tv[tk]; tk++; } } if (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
                             st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz); /* frow = ELEMENT size (fix 2026-08-03: was fsz, so char name[128] scaled indices by 128) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
+                            if (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                             }
                         }
                         if (tt[tk] == CK) { tk++; } if (tt[tk] == SK) tk++;
@@ -5136,7 +5140,7 @@ static int parse(const char *s) {
                         tk++; /* { */
                         int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                         while (tk < TS && tt[tk] != UK) {
-                            int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
+                            int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0;
                             if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                             if (tt[tk] == ST) { /* nested struct field */
@@ -5175,7 +5179,7 @@ static int parse(const char *s) {
                                 if (tt[tk] == SK) tk++;
                                 continue;
                             }
-                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) tk++; /* typedef type */
+                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16) */
                             if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                 tk++; int ubw = 0;
                                 if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5194,6 +5198,7 @@ static int parse(const char *s) {
                                 else frow = fsz;
                                 st_field_sz_r(tsi, fn, fsz, frow);
                                 stypes[tsi].fels[stypes[tsi].fn - 1] = fel; /* fix 2026-08-07 */
+                                if (ffnptr) st_field_ty(tsi, fn, -2); /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                                 if (fdbl) st_field_dbl(tsi, fn);
                                 }
                             }
@@ -7286,7 +7291,7 @@ static void cg(int n) {
                 if (bn >= 0 && nt[bn] == 1 && var_pdbl((char*)(nn + bn))) ndbl[n] = 1;
             }
             (void)0; /* arr_base_node inline guard: nt access must stay within the node table */
-            int argbase = is_sret ? 32 + 8 * sret_extra : (is_user ? 32 + 8 * extra : 0);
+            int argbase = is_sret ? 32 + 8 * sret_extra : ((is_user && !fnptr) ? 32 + 8 * extra : 0);
             /* push each arg; >8B struct args are copied to the stack and passed BY ADDRESS
                (their slot holds a pointer to the copy — Win64 >16B convention). Record
                each arg's slot height (from the top) so the loader can find it. */
@@ -7347,10 +7352,10 @@ static void cg(int n) {
             if (is_sret) shadow_pad = 8 * (((total_h / 8) + sret_extra) & 1);
             else if (is_user) shadow_pad = 8 * (((total_h / 8) + extra) & 1);
             else if (fnptr) shadow_pad = 8 * (((total_h / 8) + (nargs > 4 ? nargs - 4 : 0)) & 1);
-            if (is_sret || is_user) argbase += shadow_pad;
+            if (is_sret || (is_user && !fnptr)) argbase += shadow_pad;
             if (is_sret) {
                 if (sret_extra > 0) sub_rsp_imm(32 + 8 * sret_extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad);
-            } else if (is_user) {
+            } else if (is_user && !fnptr) {
                 if (extra > 0) sub_rsp_imm(32 + 8 * extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad);
             }
             /* load registers + stack args from the pushed slots (offset = total_h - slot_h[k] - 8 from rsp) */
@@ -7398,7 +7403,7 @@ static void cg(int n) {
             /* real ABI: arg5 at [rsp+32]. USER CALLS ONLY: builtins/fnptr read the pushed
                slots directly (emit_print via r13), and [rsp+32..] overlaps the pushed
                arg1/arg2/arg3 slots �?relocating would destroy e.g. a 5+-arg fprintf's fmt. */
-            if (is_user) for (int k = 4; k < nargs; k++) {
+            if (is_user && !fnptr) for (int k = 4; k < nargs; k++) {
                 if (fi >= 0 && fn_dbl_get(fname, k)) {
                     movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[k] - 8);
                     movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0);
