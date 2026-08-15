@@ -3702,7 +3702,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) 
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
         if (tt[tk] == FK) { /* struct element initializer { ... }: parse into elem fields (fix 2026-08-15: commands[] global array of structs was skipped -> get_builtin found nothing) */
-            int si = (parse_base == 0) ? var_stidx((char*)(nn + d)) : -1; /* only global aggregate init uses this path; local struct arrays keep the old skip behavior (fix 2026-08-15: color.c local attrs[] parse break) */
+            int si = var_stidx((char*)(nn + d)); /* local struct arrays now take this path too (fix 2026-08-16: help.c cmd_version local options[] was skipped -> opts->argh garbage -> strcspn(NULL-ish) crash) */
             if (si >= 0) {
                 int idn2 = Nd(1); memcpy((char*)(nn + idn2), (char*)(nn + d), 32);
                 int node2 = idn2;
@@ -5600,6 +5600,14 @@ static int parse(const char *s) {
                         gcnt = n; gfirst = n;
                         tk = save; /* rewind to '=' */
                     }
+                    if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
+                        /* char arr[] = "literal": infer array size from the string length + NUL
+                           (fix 2026-08-16: version.c git_version_string[] was registered as a
+                           scalar pointer, so %s printed empty) */
+                        int slen = (int)strlen(str_tbl[tv[tk + 1]]) + 1;
+                        gcnt = slen; gfirst = slen; gdim_n = 1; gdims[0] = slen;
+                        g_is_char = 1;
+                    }
                     if (gcnt > 0) {
                         if (g_is_fnptr) {
                             /* typedef'd fnptr array: 8-byte pointer elements (matches int (*g[3])(int)) */
@@ -5656,6 +5664,22 @@ static int parse(const char *s) {
                             str_row = 0; /* string-init row counter (fix 2026-08-05) */
                             brace_arr_init(blk, idn, gdims, gdim_n > 0 ? gdim_n : 1, 0, g_is_fnptr ? 8 : (g_stidx >= 0 ? stypes[g_stidx].sz : (ptrd > 0 ? 8 : (g_is_char ? 1 : (g_is_double ? 8 : (g_is_ll ? 8 : 4)))))); /* 自管 { } 配平; fix 2026-08-13: 传 esz → char *names[] STR 存地址 */
                             if (ginit_n < 4096) ginit[ginit_n++] = blk;
+                        } else if (tt[tk] == STR && gcnt > 0 && g_is_char && ginit_n < 4096) {
+                            /* char arr[] = "literal": copy the string BYTES into .data
+                               (array decays to its own address; %s must read the bytes) */
+                            int slen = (int)strlen(str_tbl[tv[tk]]) + 1;
+                            int blk = Nd(5);
+                            int idn = Nd(1); memcpy((char*)(nn + idn), gname, 32);
+                            for (int i = 0; i < slen && i < gcnt; i++) {
+                                int acc = Nd(14); Nc(acc, idn);
+                                int idx = Nd(0); nv[idx] = i; Nc(acc, idx);
+                                int asgn = Nd(10); Nc(asgn, acc);
+                                int cn = Nd(0); nv[cn] = (unsigned char)str_tbl[tv[tk]][i];
+                                Nc(asgn, cn);
+                                Nc(blk, asgn);
+                            }
+                            ginit[ginit_n++] = blk;
+                            tk++; /* consume the string literal */
                         } else if (ginit_n < 4096) {
                             int decl = Nd(7); memcpy((char*)(nn + decl), gname, 32);
                             Nc(decl, expr());
@@ -8279,6 +8303,8 @@ static void cg(int n) {
                     if (!is_arr) { int si = var_stidx(vname); if (si >= 0) off -= stypes[si].sz; } /* struct: off is END */
                     lea_r_mbrp(0, off - cur_frame_sz);
                 }
+            } else if (coff_mode && off < -1 && var_isstatic(vname)) {
+                lea_rax_rip(coff_static_disp(off, 1) - 1); /* extern global: &var -> lea rip + REL32 (jyld resolves) */
             }}
         } break;
         case 12: { /* *ptr — byte load (char*), dword (int*), 64-bit (fnptr / char** / int**) */
