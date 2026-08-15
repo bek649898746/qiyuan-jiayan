@@ -4135,7 +4135,7 @@ static int blk(void) {
                     int tk0 = tk;
                     if (tt[tk] == VR) {
                         char enm[64]; memcpy(enm, tn[tk], 64); tk++;
-                        if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } }
+                        if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; }
                         e_reg(enm, ev);
                         ev++;
                     }
@@ -4787,7 +4787,7 @@ static int parse(const char *s) {
                                         while (tt[tk] == DK) tk++; /* 指针字段续行: struct entry *next, *previous; 的 *previous (fix 2026-08-14: 原 DK 无分支消费 → 死循环) */
                                         if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) ifuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) ifsz = 1; else if (!strcmp(tn[tk], "double")) ifsz = 8; tk++; while (tt[tk] == DK) tk++; } /* fix 2026-08-13: 指针字段 * 未消费 → 死循环 (object_array_entry char *name) */
                                         else if (tt[tk] == ST) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } else if (tt[tk] == VR) { tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } if (tt[tk] == DK) tk++; } /* fix 2026-08-13: 三层嵌套 struct X { ... } *field; 定义 body 未消费 → 死循环 (pathspec_item.attr_match) */
-                                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char enm[64]; memcpy(enm, tn[tk], 64); tk++; if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } e_reg(enm, ev); ev++; } if (tt[tk] == CK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-13: 匿名 enum 字段 (内层嵌套 struct body); fix 2026-08-15: 注册常量 REV_CMD_PARENTS_ONLY undefined */
+                                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char enm[64]; memcpy(enm, tn[tk], 64); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(enm, ev); ev++; } if (tt[tk] == CK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-13: 匿名 enum 字段 (内层嵌套 struct body); fix 2026-08-15: 注册常量 REV_CMD_PARENTS_ONLY undefined */
                                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                             tk++; int ubw = 0;
                                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -4845,7 +4845,7 @@ static int parse(const char *s) {
                                 int tk0 = tk;
                                 if (tt[tk] == VR) {
                                     char enm[64]; memcpy(enm, tn[tk], 64); tk++;
-                                    if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } }
+                                    if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; }
                                     e_reg(enm, ev);
                                     ev++;
                                 }
@@ -4936,7 +4936,7 @@ static int parse(const char *s) {
                     if (tt[tk] == VR) {
                         char ename[64]; strcpy(ename, tn[tk]);
                         tk++; /* skip name */
-                        if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 负号消费 (原只认 NK → MK 卡死死循环) */
+                        if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } /* fix 2026-08-09: = -2 负号消费 (原只认 NK → MK 卡死死循环) */
                         e_reg(ename, ev);
                         ev++;
                     }
@@ -5224,7 +5224,7 @@ static int parse(const char *s) {
                         if (tt[tk] == VR) {
                             char ename[64]; strcpy(ename, tn[tk]);
                             tk++; /* skip name */
-                            if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } /* fix 2026-08-09: = -2 负号消费 + tk0 守卫 (原 → MK 卡死死循环) */
+                            if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } /* fix 2026-08-09: = -2 负号消费 + tk0 守卫 (原 → MK 卡死死循环) */
                             e_reg(ename, ev);
                             ev++;
                         }
@@ -5275,9 +5275,9 @@ static int parse(const char *s) {
             int g_static = 0; /* 文件级 static: COFF 符号要标 scl=3 (fix 2026-08-14: khash.h __ac_HASH_UPPER 等 static const 被当全局 → 重复符号) */
             if (tt[tk] == VK && !strcmp(tn[tk], "static")) { g_static = 1; tk++; } /* skip static */
             int is_type = 0;
-            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } } else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } is_type = 1; } /* fix 2026-08-14: const struct X / const enum X — VK 后跟 ST/EN 也要消费 (原只消费 typedef 名 → const struct git_hash_algo hash_algos[] 定义被误判 → undefined); fix 2026-08-15: 匿名 enum 常量注册 (JUNK_LEAVE_NONE undefined 根因) */
+            if (tt[tk] == VK) { while (tt[tk] == VK) tk++; if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); tk++; } else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } } else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } is_type = 1; } /* fix 2026-08-14: const struct X / const enum X — VK 后跟 ST/EN 也要消费 (原只消费 typedef 名 → const struct git_hash_algo hash_algos[] 定义被误判 → undefined); fix 2026-08-15: 匿名 enum 常量注册 (JUNK_LEAVE_NONE undefined 根因) */
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
-            else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } is_type = 1; } /* static enum log_destination {..} log_destination = X: 解析并注册枚举常量 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环; fix 2026-08-15: JUNK_LEAVE_NONE undefined) */
+            else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } is_type = 1; } /* static enum log_destination {..} log_destination = X: 解析并注册枚举常量 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环; fix 2026-08-15: JUNK_LEAVE_NONE undefined) */
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
             if (tt[tk] == DK && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "const")) tk += 2; /* *const (fix 2026-08-15: static char const * const archive_usage[] / builtin_rebase_usage[]) */
             while (tt[tk] == DK) { tk++; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* 返回类型指针在 fnptr 变量/函数定义前: void *(*fp)(...) / static void *fn(...) — 原不消费 * → 落函数定义 break (fix 2026-08-15: reftable_malloc_ptr undefined) */
@@ -5692,7 +5692,7 @@ static int parse(const char *s) {
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         int fn_ret_ptr = 0; /* struct return type is a POINTER (not sret) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
-        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-15: 匿名/带体 enum 返回类型 static enum { ... } fn(...) — 原只跳 enum 名, 见 { 落 fn 检测 break → ls_refs_advertise 被吞 */
+        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-15: 匿名/带体 enum 返回类型 static enum { ... } fn(...) — 原只跳 enum 名, 见 { 落 fn 检测 break → ls_refs_advertise 被吞 */
         else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
@@ -9219,6 +9219,127 @@ static char __stack[0x100000];
 static void w2f(FILE *f, int v) { fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f); }
 static void w4f(FILE *f, int v) { fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f); fputc((v >> 16) & 0xFF, f); fputc((v >> 24) & 0xFF, f); }
 
+/* 全局 brace 初始化器静态落盘：把 brace_arr_init/brace_fields 生成的
+   常量赋值（sane_ctype[256]、commands[] 等）直接写进 .data，多文件链接时
+   ginit 不会执行，不能依赖运行时代码。左值必须是文件级/函数级 static。 */
+static char *coff_lval_root_name(int n) {
+    while (n >= 0 && (nt[n] == 14 || nt[n] == 15 || nt[n] == 13)) n = n0[n];
+    if (n >= 0 && nt[n] == 1) return (char*)(nn + n);
+    return NULL;
+}
+static int coff_static_var_index(const char *n) {
+    for (int i = vcnt - 1; i >= 0; i--)
+        if (!strcmp(vars[i].name, n) && vars[i].is_static && vars[i].rsp_off >= 0)
+            return i;
+    return -1;
+}
+/* 计算 static 左值表达式在 .data 内的字节偏移（相对其基变量槽）。
+   *esz_out = 该位置要写入的字节数；*si_out = 结构体类型（成员链续接用，-1 表示非结构体）。 */
+static int coff_lval_byte(int n, int *base_slot_out, int *esz_out, int *si_out) {
+    if (n < 0) return -1;
+    if (nt[n] == 1) {
+        int idx = coff_static_var_index((char*)(nn + n));
+        if (idx < 0) return -1;
+        *base_slot_out = vars[idx].rsp_off;
+        int si = vars[idx].st_idx;
+        int esz = 4;
+        if (vars[idx].arr_esz > 0) esz = vars[idx].arr_esz;
+        else if (vars[idx].p_esz > 0) esz = 8;
+        else if (vars[idx].is_ll || vars[idx].is_dbl) esz = 8;
+        else if (si >= 0) esz = stypes[si].sz;
+        *esz_out = esz;
+        *si_out = si;
+        return 0;
+    }
+    if (nt[n] == 14) {
+        int idx = (nt[n1[n]] == 0) ? nv[n1[n]] : -1;
+        if (idx < 0) return -1;
+        int bs = 0, esz = 0, si = -1;
+        int bb = coff_lval_byte(n0[n], &bs, &esz, &si);
+        if (bb < 0 || esz <= 0) return -1;
+        int out_esz = esz;
+        int out_si = si;
+        if (si < 0) { /* 数组元素：下一层的字节大小取数组基变量的标量元素大小 */
+            char *root = coff_lval_root_name(n);
+            int ridx = root ? coff_static_var_index(root) : -1;
+            if (ridx >= 0) {
+                out_esz = vars[ridx].p_esz > 0 ? vars[ridx].p_esz :
+                          (vars[ridx].arr_esz > 0 ? vars[ridx].arr_esz : 4);
+            }
+        }
+        *base_slot_out = bs;
+        *esz_out = out_esz;
+        *si_out = out_si;
+        return bb + idx * esz;
+    }
+    if (nt[n] == 15 || nt[n] == 13) {
+        if (nv[n] != 0) return -1; /* 指针箭头成员（->）不在全局静态初始化器中出现 */
+        char *fn = (char*)(nn + n);
+        int bs = 0, esz = 0, si = -1;
+        int bb = coff_lval_byte(n0[n], &bs, &esz, &si);
+        if (bb < 0 || si < 0) return -1;
+        int fo = st_off(stypes[si].name, fn);
+        if (fo < 0) return -1;
+        int fsz = st_field_size(stypes[si].name, fn);
+        int fty = st_field_ty_idx(stypes[si].name, fn);
+        if (fty >= 0 && stypes[fty].sz != fsz) fty = -1; /* struct 指针字段：不是值嵌入 */
+        *base_slot_out = bs;
+        *esz_out = fsz;
+        *si_out = fty;
+        return bb + fo;
+    }
+    return -1;
+}
+static void coff_write_lval_value(uint8_t *ddata, int data_off, int esz, int rhs) {
+    if (rhs < 0) return;
+    if (nt[rhs] == 0) {
+        int v = nv[rhs];
+        if (esz == 1) { ddata[data_off] = (unsigned char)v; }
+        else if (esz == 2) { ddata[data_off] = (unsigned char)(v & 0xff); ddata[data_off + 1] = (unsigned char)((v >> 8) & 0xff); }
+        else if (esz == 4) { memcpy(ddata + data_off, &v, 4); }
+        else if (esz == 8) {
+            long long lv = (long long)(unsigned int)v;
+            if (nll[rhs]) lv |= ((long long)(unsigned int)nll_hi[rhs]) << 32;
+            memcpy(ddata + data_off, &lv, 8);
+        }
+        return;
+    }
+    if (nt[rhs] == STR) {
+        int si = nv[rhs];
+        if (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
+        int addend = (si >= 0 && si < 2048 && str_offs[si] >= 0) ? str_offs[si] : 0;
+        coff_data_crel(data_off, 0x0002, coff_str_sym, addend);
+        return;
+    }
+    if (nt[rhs] == 1) {
+        char *tn = (char*)(nn + rhs);
+        int s = csym_find(tn);
+        if (s < 0) s = csym_add(tn, 0, 0, 2, 0x20);
+        coff_data_crel(data_off, 0x0002, s, 0);
+        return;
+    }
+}
+static void coff_emit_ginit(int gn, uint8_t *ddata) {
+    if (gn < 0) return;
+    if (nt[gn] == 5) {
+        for (int k = 0; k < 256; k++) {
+            int c = child_i(gn, k);
+            if (c > 0) coff_emit_ginit(c, ddata);
+        }
+        return;
+    }
+    if (nt[gn] == 10) {
+        int lv = n0[gn], rhs = n1[gn];
+        if (lv < 0 || rhs < 0) return;
+        int bs = 0, esz = 0, si = -1;
+        int boff = coff_lval_byte(lv, &bs, &esz, &si);
+        if (boff < 0 || bs < 0) return;
+        int data_off = 4 * bs + boff;
+        if (data_off < 0 || esz <= 0 || data_off + (esz > 4 ? 8 : esz) > stc_n * 4) return;
+        coff_write_lval_value(ddata, data_off, esz, rhs);
+    }
+}
+
 static void write_coff_obj(FILE *f) {
     /* 节内容 */
     struct { char name[16]; int size; uint8_t *data; int chars; } secs[4];
@@ -9297,6 +9418,14 @@ static void write_coff_obj(FILE *f) {
         int s = csym_find(tn);
         if (s < 0) continue;
         coff_data_crel(4 * off, 0x0002, s, 0);
+    }
+
+    /* 全局 brace 数组/结构体初始化：把静态可确定的元素/字段值写入 .data。
+       覆盖 sane_ctype[256]、commands[] 等（fix 2026-08-16: 多文件链接 ginit 不执行，
+       原 .data 全零 → isspace/isalnum 宏全假、命令分发表空）。 */
+    for (int gi = 0; gi < ginit_n; gi++) {
+        int gn = ginit[gi];
+        if (gn >= 0 && nt[gn] == 5) coff_emit_ginit(gn, ddata);
     }
 
     /* 每节重定位 */
