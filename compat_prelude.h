@@ -599,6 +599,7 @@ static int proc_type_GetCurrentConsoleFontEx;  /* qcc ## 长标识符合成截�
 #define mmfile_t void*
 static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
+static int getppid(void) { return 1; } /* POSIX 父进程 ID, Windows msvcrt 无 _getppid (fix 2026-08-15: getppid undefined) */
 static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -1; } /* ws2_32 accept stub (fix 2026-08-15: accept undefined) */
 static int shutdown(int s, int how) { (void)s; (void)how; return -1; } /* ws2_32 shutdown stub (fix 2026-08-15: shutdown undefined) */
 static int readlink(const char *a, char *b, int c) { (void)a; (void)b; (void)c; return -1; }
