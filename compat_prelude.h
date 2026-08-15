@@ -11,6 +11,338 @@ extern int errno;
 #define _LITTLE_ENDIAN 1234  /* bswap.h 字节序判定 (fix 2026-08-15: defined(A)||defined(B) 修复后 Cannot determine endianness) */
 #define __x86_64__ 1  /* bswap.h 选择 __GNUC__ x86_64 分支 → git_bswap32/64, 定义 ntohl/htonl/ntohll/htonll (fix 2026-08-15: ntohl undefined) */
 #define SUPPORTS_SIMPLE_IPC 1  /* simple-ipc.h 的 SIMPLE_IPC_QUIT 等 API 在 Windows 构建可用 (fix 2026-08-15: 未定义 → #ifdef 跳过 → SIMPLE_IPC_QUIT undefined symbol) */
+#define GIT_HOST_CPU "x86_64"  /* help.c 显示 CPU 架构 (fix 2026-08-15: GIT_HOST_CPU undefined) */
+#define PAGER_ENV "less"  /* pager.c 默认分页器 (fix 2026-08-15: PAGER_ENV undefined) */
+/* command-list.h 占位头缺生成的枚举; help.c 依赖这些分类位 (fix 2026-08-15: CAT_init undefined) */
+#define CAT_init 1
+#define CAT_worktree 2
+#define CAT_info 4
+#define CAT_history 8
+#define CAT_remote 16
+#define CAT_mainporcelain 32
+#define CAT_ancillarymanipulators 64
+#define CAT_ancillaryinterrogators 128
+#define CAT_foreignscminterface 256
+#define CAT_plumbingmanipulators 512
+#define CAT_plumbinginterrogators 1024
+#define CAT_synchingrepositories 2048
+#define CAT_purehelpers 4096
+#define CAT_userinterfaces 8192
+#define CAT_developerinterfaces 16384
+#define CAT_guide 32768
+/* pathspec.h 匿名嵌套 enum 常量 qcc 结构体解析未注册 (fix 2026-08-15: MATCH_UNSPECIFIED undefined) */
+#define MATCH_SET 0
+#define MATCH_UNSET 1
+#define MATCH_VALUE 2
+#define MATCH_UNSPECIFIED 3
+/* ref-filter.c 匿名嵌套 enum 常量 (fix 2026-08-15: RR_REF undefined) */
+#define RR_REF 0
+#define RR_TRACK 1
+#define RR_TRACKSHORT 2
+#define RR_REMOTE_NAME 3
+#define RR_REMOTE_REF 4
+#define C_BARE 0
+#define C_BODY 1
+#define C_BODY_DEP 2
+#define C_LENGTH 3
+#define C_LINES 4
+#define C_SIG 5
+#define C_SUB 6
+#define C_SUB_SANITIZE 7
+#define C_TRAILERS 8
+#define RAW_BARE 0
+#define RAW_LENGTH 1
+#define O_SIZE 0
+#define O_SIZE_DISK 1
+#define O_FULL 0
+#define O_LENGTH 1
+#define O_SHORT 2
+#define S_BARE 0
+#define S_GRADE 1
+#define S_SIGNER 2
+#define S_KEY 3
+#define S_FINGERPRINT 4
+#define S_PRI_KEY_FP 5
+#define S_TRUST_LEVEL 6
+#define N_RAW 0
+#define N_MAILMAP 1
+#define EO_RAW 0
+#define EO_TRIM 1
+#define EO_LOCALPART 2
+#define EO_MAILMAP 4
+/* ref-filter.c typedef enum cmp_type 未注册 (fix 2026-08-15: cmp_type undefined) */
+typedef int cmp_type;
+#define FIELD_STR 0
+#define FIELD_ULONG 1
+#define FIELD_TIME 2
+/* add-patch.c 匿名 enum 常量 (fix 2026-08-15: ALLOW_GOTO_PREVIOUS_UNDECIDED_HUNK undefined) */
+#define ALLOW_GOTO_PREVIOUS_HUNK 1
+#define ALLOW_GOTO_PREVIOUS_UNDECIDED_HUNK 2
+#define ALLOW_GOTO_NEXT_HUNK 4
+#define ALLOW_GOTO_NEXT_UNDECIDED_HUNK 8
+#define ALLOW_SEARCH_AND_GOTO 16
+#define ALLOW_SPLIT 32
+#define ALLOW_EDIT 64
+/* dir.h 匿名 enum 常量 (fix 2026-08-15: DIR_SHOW_IGNORED_TOO_MODE_MATCHING undefined) */
+#define DIR_SHOW_IGNORED 1
+#define DIR_SHOW_OTHER_DIRECTORIES 2
+#define DIR_HIDE_EMPTY_DIRECTORIES 4
+#define DIR_NO_GITLINKS 8
+#define DIR_COLLECT_IGNORED 16
+#define DIR_SHOW_IGNORED_TOO 32
+#define DIR_COLLECT_KILLED_ONLY 64
+#define DIR_KEEP_UNTRACKED_CONTENTS 128
+#define DIR_SHOW_IGNORED_TOO_MODE_MATCHING 256
+#define DIR_SKIP_NESTED_GIT 512
+/* builtin/submodule--helper.c 嵌套 enum 常量 (fix 2026-08-15: SUBMODULE_ALTERNATE_ERROR_IGNORE undefined) */
+#define SUBMODULE_ALTERNATE_ERROR_DIE 0
+#define SUBMODULE_ALTERNATE_ERROR_INFO 1
+#define SUBMODULE_ALTERNATE_ERROR_IGNORE 2
+
+/* libcurl 常量与 API stub (Git HTTP 传输在 qcc 自举构建中走失败路径即可; fix 2026-08-15: CURLE_FILE_COULDNT_READ_FILE undefined) */
+#define CURLE_OK 0
+#define CURLE_UNSUPPORTED_PROTOCOL 1
+#define CURLE_FAILED_INIT 2
+#define CURLE_URL_MALFORMAT 3
+#define CURLE_COULDNT_RESOLVE_PROXY 5
+#define CURLE_COULDNT_RESOLVE_HOST 6
+#define CURLE_COULDNT_CONNECT 7
+#define CURLE_FTP_WEIRD_SERVER_REPLY 8
+#define CURLE_REMOTE_ACCESS_DENIED 9
+#define CURLE_FTP_ACCEPT_FAILED 10
+#define CURLE_FTP_WEIRD_PASS_REPLY 11
+#define CURLE_FTP_ACCEPT_TIMEOUT 12
+#define CURLE_FTP_WEIRD_PASV_REPLY 13
+#define CURLE_FTP_WEIRD_227_FORMAT 14
+#define CURLE_FTP_CANT_GET_HOST 15
+#define CURLE_HTTP2 16
+#define CURLE_FTP_COULDNT_SET_TYPE 17
+#define CURLE_PARTIAL_FILE 18
+#define CURLE_FTP_COULDNT_RETR_FILE 19
+#define CURLE_OBSOLETE20 20
+#define CURLE_QUOTE_ERROR 21
+#define CURLE_HTTP_RETURNED_ERROR 22
+#define CURLE_WRITE_ERROR 23
+#define CURLE_UPLOAD_FAILED 25
+#define CURLE_READ_ERROR 26
+#define CURLE_OUT_OF_MEMORY 27
+#define CURLE_OPERATION_TIMEDOUT 28
+#define CURLE_FTP_PORT_FAILED 30
+#define CURLE_FTP_COULDNT_USE_REST 31
+#define CURLE_RANGE_ERROR 33
+#define CURLE_HTTP_POST_ERROR 34
+#define CURLE_SSL_CONNECT_ERROR 35
+#define CURLE_BAD_DOWNLOAD_RESUME 36
+#define CURLE_FILE_COULDNT_READ_FILE 37
+#define CURLE_LDAP_CANNOT_BIND 38
+#define CURLE_LDAP_SEARCH_FAILED 39
+#define CURLE_FUNCTION_NOT_FOUND 41
+#define CURLE_ABORTED_BY_CALLBACK 42
+#define CURLE_BAD_FUNCTION_ARGUMENT 43
+#define CURLE_INTERFACE_FAILED 45
+#define CURLE_TOO_MANY_REDIRECTS 47
+#define CURLE_UNKNOWN_OPTION 48
+#define CURLE_SETOPT_OPTION_SYNTAX 49
+#define CURLE_GOT_NOTHING 52
+#define CURLE_SSL_ENGINE_NOTFOUND 53
+#define CURLE_SSL_ENGINE_SETFAILED 54
+#define CURLE_SEND_ERROR 55
+#define CURLE_RECV_ERROR 56
+#define CURLE_SSL_CERTPROBLEM 58
+#define CURLE_SSL_CIPHER 59
+#define CURLE_PEER_FAILED_VERIFICATION 60
+#define CURLE_BAD_CONTENT_ENCODING 61
+#define CURLE_FILESIZE_EXCEEDED 63
+#define CURLE_USE_SSL_FAILED 64
+#define CURLE_SEND_FAIL_REWIND 65
+#define CURLE_SSL_ENGINE_INITFAILED 66
+#define CURLE_LOGIN_DENIED 67
+#define CURLE_TFTP_NOTFOUND 68
+#define CURLE_TFTP_PERM 69
+#define CURLE_REMOTE_DISK_FULL 70
+#define CURLE_TFTP_ILLEGAL 71
+#define CURLE_TFTP_UNKNOWNID 72
+#define CURLE_REMOTE_FILE_EXISTS 73
+#define CURLE_TFTP_NOSUCHUSER 74
+#define CURLE_SSL_CACERT_BADFILE 77
+#define CURLE_REMOTE_FILE_NOT_FOUND 78
+#define CURLE_SSH 79
+#define CURLE_SSL_SHUTDOWN_FAILED 80
+#define CURLE_AGAIN 81
+#define CURLE_SSL_CRL_BADFILE 82
+#define CURLE_SSL_ISSUER_ERROR 83
+#define CURLE_FTP_PRET_FAILED 84
+#define CURLE_RTSP_CSEQ_ERROR 85
+#define CURLE_RTSP_SESSION_ERROR 86
+#define CURLE_FTP_BAD_FILE_LIST 87
+#define CURLE_CHUNK_FAILED 88
+#define CURLE_NO_CONNECTION_AVAILABLE 89
+#define CURLE_SSL_PINNEDPUBKEYNOTMATCH 90
+#define CURLE_SSL_INVALIDCERTSTATUS 91
+#define CURLE_HTTP2_STREAM 92
+#define CURLE_RECURSIVE_API_CALL 93
+#define CURLE_AUTH_ERROR 94
+#define CURLE_HTTP3 95
+#define CURLE_QUIC_CONNECT_ERROR 96
+/* libcurl 类型 stub — qcc 跳过 <curl/curl.h>, 必须注册否则 http.c 顶层声明解析断掉 (fix 2026-08-15: new_http_object_request undefined) */
+typedef void CURL;
+typedef void CURLM;
+typedef int CURLcode;
+typedef int CURLMcode;
+typedef int CURLoption;
+typedef int CURLINFO;
+typedef void CURLMsg;
+typedef int CURLSH;
+typedef int CURLU;
+typedef long long curl_off_t;
+typedef int curl_socket_t;
+typedef int curlsocktype;
+/* libcurl 常量 stub — 数值仅保证互异; 实际 curl API 调用均被 stub 为失败/0, 因此不会影响链接 */
+#define CURLAUTH_ANY 1
+#define CURLAUTH_BASIC 2
+#define CURLAUTH_DIGEST 3
+#define CURLAUTH_DIGEST_IE 4
+#define CURLAUTH_GSSNEGOTIATE 5
+#define CURLAUTH_NTLM 6
+#define CURLGSSAPI_DELEGATION_FLAG 7
+#define CURLGSSAPI_DELEGATION_NONE 8
+#define CURLGSSAPI_DELEGATION_POLICY_FLAG 9
+#define CURLINFO_CONTENT_TYPE 10
+#define CURLINFO_DATA_IN 11
+#define CURLINFO_DATA_OUT 12
+#define CURLINFO_EFFECTIVE_URL 13
+#define CURLINFO_HEADER_IN 14
+#define CURLINFO_HEADER_OUT 15
+#define CURLINFO_HTTPAUTH_AVAIL 16
+#define CURLINFO_HTTP_CODE 17
+#define CURLINFO_HTTP_CONNECTCODE 18
+#define CURLINFO_SSL_DATA_IN 19
+#define CURLINFO_SSL_DATA_OUT 20
+#define CURLINFO_TEXT 21
+#define CURLMSG_DONE 22
+#define CURLM_CALL_MULTI_PERFORM 23
+#define CURLM_OK 24
+#define CURLOPT_CAINFO 25
+#define CURLOPT_CAPATH 26
+#define CURLOPT_COOKIEFILE 27
+#define CURLOPT_COOKIEJAR 28
+#define CURLOPT_CUSTOMREQUEST 29
+#define CURLOPT_DEBUGDATA 30
+#define CURLOPT_DEBUGFUNCTION 31
+#define CURLOPT_ENCODING 32
+#define CURLOPT_ERRORBUFFER 33
+#define CURLOPT_FAILONERROR 34
+#define CURLOPT_FOLLOWLOCATION 35
+#define CURLOPT_FTP_USE_EPSV 36
+#define CURLOPT_GSSAPI_DELEGATION 37
+#define CURLOPT_HEADERFUNCTION 38
+#define CURLOPT_HTTPAUTH 39
+#define CURLOPT_HTTPGET 40
+#define CURLOPT_HTTPHEADER 41
+#define CURLOPT_HTTP_VERSION 42
+#define CURLOPT_IPRESOLVE 43
+#define CURLOPT_KEYPASSWD 44
+#define CURLOPT_LOW_SPEED_LIMIT 45
+#define CURLOPT_LOW_SPEED_TIME 46
+#define CURLOPT_MAXREDIRS 47
+#define CURLOPT_NETRC 48
+#define CURLOPT_NOBODY 49
+#define CURLOPT_NOPROXY 50
+#define CURLOPT_PASSWORD 51
+#define CURLOPT_PINNEDPUBLICKEY 52
+#define CURLOPT_POSTFIELDS 53
+#define CURLOPT_POSTFIELDSIZE 54
+#define CURLOPT_POSTREDIR 55
+#define CURLOPT_PROTOCOLS 56
+#define CURLOPT_PROTOCOLS_STR 57
+#define CURLOPT_PROXY 58
+#define CURLOPT_PROXYAUTH 59
+#define CURLOPT_PROXYPASSWORD 60
+#define CURLOPT_PROXYTYPE 61
+#define CURLOPT_PROXYUSERNAME 62
+#define CURLOPT_PROXY_CAINFO 63
+#define CURLOPT_PROXY_KEYPASSWD 64
+#define CURLOPT_PROXY_SSLCERT 65
+#define CURLOPT_PROXY_SSLKEY 66
+#define CURLOPT_RANGE 67
+#define CURLOPT_READFUNCTION 68
+#define CURLOPT_REDIR_PROTOCOLS 69
+#define CURLOPT_REDIR_PROTOCOLS_STR 70
+#define CURLOPT_RESOLVE 71
+#define CURLOPT_SOCKOPTFUNCTION 72
+#define CURLOPT_SSLCERT 73
+#define CURLOPT_SSLCERTTYPE 74
+#define CURLOPT_SSLKEY 75
+#define CURLOPT_SSLKEYTYPE 76
+#define CURLOPT_SSLVERSION 77
+#define CURLOPT_SSL_CIPHER_LIST 78
+#define CURLOPT_SSL_OPTIONS 79
+#define CURLOPT_SSL_VERIFYHOST 80
+#define CURLOPT_SSL_VERIFYPEER 81
+#define CURLOPT_TCP_KEEPALIVE 82
+#define CURLOPT_UPLOAD 83
+#define CURLOPT_URL 84
+#define CURLOPT_USERAGENT 85
+#define CURLOPT_USERNAME 86
+#define CURLOPT_USERPWD 87
+#define CURLOPT_USE_SSL 88
+#define CURLOPT_VERBOSE 89
+#define CURLOPT_WRITEDATA 90
+#define CURLOPT_WRITEFUNCTION 91
+#define CURLPROTO_FTP 92
+#define CURLPROTO_FTPS 93
+#define CURLPROTO_HTTP 94
+#define CURLPROTO_HTTPS 95
+#define CURLPROXY_HTTPS 96
+#define CURLPROXY_SOCKS4 97
+#define CURLPROXY_SOCKS4A 98
+#define CURLPROXY_SOCKS5 99
+#define CURLPROXY_SOCKS5_HOSTNAME 100
+#define CURLSOCKTYPE_IPCXN 101
+#define CURLSSLOPT_NO_REVOKE 102
+#define CURLSSLSET_NO_BACKENDS 103
+#define CURLSSLSET_OK 104
+#define CURLSSLSET_TOO_LATE 105
+#define CURLSSLSET_UNKNOWN_BACKEND 106
+#define CURLUSESSL_TRY 107
+#define CURL_ERROR_SIZE 108
+#define CURL_GLOBAL_ALL 109
+#define CURL_HTTP_VERSION_1_1 110
+#define CURL_HTTP_VERSION_2 111
+#define CURL_IPRESOLVE_WHATEVER 112
+#define CURL_NETRC_OPTIONAL 113
+#define CURL_REDIR_POST_ALL 114
+#define CURL_SEEKFUNC_FAIL 115
+#define CURL_SEEKFUNC_OK 116
+#define CURL_SOCKOPT_OK 117
+#define CURL_SSLVERSION_SSLv2 118
+#define CURL_SSLVERSION_SSLv3 119
+#define CURL_SSLVERSION_TLSv1 120
+#define CURL_SSLVERSION_TLSv1_0 121
+#define CURL_SSLVERSION_TLSv1_1 122
+#define CURL_SSLVERSION_TLSv1_2 123
+#define CURL_SSLVERSION_TLSv1_3 124
+/* libcurl API stub — 全部走失败/空路径, 避免 qcc 自举链接依赖真实 libcurl */
+#define curl_easy_init() ((void*)0)
+#define curl_easy_setopt(a,b,c) 0
+#define curl_easy_getinfo(a,b,c) 0
+#define curl_easy_cleanup(a) ((void)0)
+#define curl_easy_duphandle(a) ((void*)0)
+#define curl_easy_strerror(a) ""
+#define curl_global_init(a) 0
+#define curl_global_cleanup() ((void)0)
+#define curl_global_sslset(a,b,c) 0
+#define curl_multi_init() ((void*)0)
+#define curl_multi_add_handle(a,b) 0
+#define curl_multi_remove_handle(a,b) 0
+#define curl_multi_perform(a,b) 0
+#define curl_multi_info_read(a,b) ((void*)0)
+#define curl_multi_cleanup(a) ((void)0)
+#define curl_multi_fdset(a,b,c,d,e) 0
+#define curl_multi_timeout(a,b) 0
+#define curl_multi_strerror(a) ""
+#define curl_slist_append(a,b) ((void*)0)
+#define curl_slist_free_all(a) ((void)0)
 #define kill mingw_kill  /* mingw.h 的 kill 映射 (fix 2026-08-15: __MINGW32__ 未定义 → kill undefined; compat/mingw.c 提供 mingw_kill) */
 #define utime mingw_utime  /* mingw.h 的 utime 映射 (fix 2026-08-15: __MINGW32__ 未定义 → utime undefined; compat/mingw.c 提供 mingw_utime) */
 #define INT32_MAX 2147483647  /* stdint.h 被跳过 (fix 2026-08-15: builtin/gc.c TWO_GIGABYTES → INT32_MAX undefined) */
@@ -136,9 +468,13 @@ typedef unsigned long DWORD;
 #define LPDWORD DWORD*  /* Windows 指针类型宏 (fix 2026-08-15: LPDWORD undefined) */
 #define LPSTR char*  /* Windows ANSI 字符串指针 (fix 2026-08-15: LPSTR undefined) */
 #define LPCSTR const char*  /* Windows ANSI 常量字符串指针 */
+#define LPTSTR wchar_t*  /* Windows 通用字符串指针 (UNICODE 构建按 wchar_t; fix 2026-08-15: ipc-win32.c) */
 #define LPWSTR wchar_t*  /* Windows 宽字符串指针 */
 #define LPCWSTR const wchar_t*  /* Windows 宽常量字符串指针 */
 #define PSID void*  /* Windows SID 指针 (fix 2026-08-15: PSID undefined) */
+#define PACL void*  /* Windows ACL 指针 */
+#define PSECURITY_DESCRIPTOR void*  /* Windows 安全描述符指针 */
+#define LPSECURITY_ATTRIBUTES void*  /* Windows 安全属性指针 (ipc-win32.c) */
 #define SC_HANDLE HANDLE  /* Windows 服务句柄类型 (fix 2026-08-15: SC_HANDLE undefined) */
 #define SC_MANAGER_CONNECT 0x0001  /* Windows 服务管理权限 (fix 2026-08-15: SC_MANAGER_CONNECT undefined) */
 #define SERVICE_QUERY_STATUS 0x0004  /* Windows 服务状态查询权限 (fix 2026-08-15: SERVICE_QUERY_STATUS undefined) */
@@ -226,6 +562,31 @@ typedef struct { DWORD dwLowDateTime; DWORD dwHighDateTime; } FILETIME;
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 0; }
+#define tcgetpgrp(a) (-1)  /* POSIX 终端前台进程组 stub (fix 2026-08-15: progress.c tcgetpgrp undefined) */
+#define getpgid(a) 0  /* POSIX 进程组 stub (fix 2026-08-15: progress.c getpgid undefined) */
+#define execvp(a,b) (-1)  /* POSIX exec stub (fix 2026-08-15: run-command.c execvp undefined) */
+#define _exit(a) exit(a)  /* POSIX 立即退出 — 复用 msvcrt exit (fix 2026-08-15: run-command.c _exit undefined) */
+static inline int git_has_dir_sep(const char *path) { return !!strchr(path, '/'); }  /* git-compat-util.h 静态 inline 兜底 (fix 2026-08-15: run-command.c git_has_dir_sep undefined) */
+static inline char *git_find_last_dir_sep(const char *path) { return strrchr(path, '/'); }  /* 同上 */
+#define sigfillset(a) 0  /* POSIX 信号集 stub */
+#define sigemptyset(a) 0
+#define sigaction(a,b,c) 0
+#define F_GETFD 1
+#define F_SETFD 2
+#define FD_CLOEXEC 1
+static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* POSIX fcntl stub */
+#define WIFSIGNALED(s) 0
+#define WTERMSIG(s) 0
+#define WEXITSTATUS(s) 0
+#define WIFEXITED(s) 1
+#define fork() (-1)  /* POSIX fork stub */
+#define NSIG 65  /* POSIX 信号数量 stub */
+#define execve(a,b,c) (-1)  /* POSIX execve stub */
+#define setsid() (-1)  /* POSIX setsid stub */
+#define DEFAULT_GIT_TEMPLATE_DIR "/usr/share/git-core/templates"  /* setup.c 模板目录 (fix 2026-08-15: DEFAULT_GIT_TEMPLATE_DIR undefined) */
+struct passwd { char *pw_name; char *pw_gecos; char *pw_dir; };  /* POSIX pwd 字段子集 (fix 2026-08-15: getpwnam/path.c) */
+#define getpwnam(a) ((struct passwd*)0)  /* POSIX getpwnam stub */
+#define getpwuid(a) ((struct passwd*)0)  /* POSIX getpwuid stub */
 static int execlp(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execlp undefined) */
 static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 1)) { n++; x >>= 1; } return n; } /* GCC builtin (fix 2026-08-15: __builtin_ctzll undefined) */
 #define __builtin_expect(exp, c) (exp)  /* GCC 分支预测内置 (fix 2026-08-15: __builtin_expect undefined) */
@@ -341,6 +702,8 @@ typedef int regex_t; /* regex_t 不透明类型近似 — static regex_t *stamp 
 
 /* 标准 C <limits.h> 宏 (qcc 跳过系统头后补全, 值取 MSVCRT/MinGW) */
 #define CHAR_BIT 8
+#define UCHAR_MAX 255
+#define RAND_MAX 32767  /* <stdlib.h> 被跳过 (fix 2026-08-15: reftable/stack.c RAND_MAX undefined) */
 #define UINT_MAX 4294967295
 #define INT_MAX 2147483647
 #define INT_MIN (-2147483647-1)
@@ -382,6 +745,8 @@ typedef struct text_stat {
 } text_stat;  /* convert.c 局部 struct (fix 2026-08-15: nonprintable undefined) */
 static int nonprintable;  /* convert.c 字段误编译兜底 (fix 2026-08-15: nonprintable undefined) */
 typedef long long off_t;
+typedef long long ptrdiff_t;  /* <stddef.h> 被跳过, obstack.h 宏展开需要 (fix 2026-08-15: ptrdiff_t undefined) */
+#define ftello(a) 0  /* POSIX 大文件 ftell stub (fix 2026-08-15: http.c ftello undefined) */
 typedef long long time_t;
 typedef unsigned long long uintmax_t;
 typedef long long intmax_t;
@@ -566,12 +931,47 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define ERROR_SHARING_VIOLATION 32
 #define ERROR_LOCK_VIOLATION 33
 #define ERROR_BROKEN_PIPE 109
+#define EPROTOTYPE 109  /* POSIX errno 值 (fix 2026-08-15: trace2 EPROTOTYPE undefined) */
 #define ERROR_INVALID_NAME 123
 #define ERROR_BUFFER_OVERFLOW 111
 #define ERROR_OPERATION_ABORTED 995
 #define ERROR_NO_SYSTEM_RESOURCES 1450
 #define PROC_THREAD_ATTRIBUTE_HANDLE_LIST 0x00020002
 #define INVALID_HANDLE_VALUE (-1)
+#define NMPWAIT_USE_DEFAULT_WAIT 0  /* WaitNamedPipeW 默认超时 (fix 2026-08-15: ipc-win32.c) */
+#define NMPWAIT_WAIT_FOREVER 0xffffffff
+#define ERROR_SEM_TIMEOUT 121  /* WaitNamedPipeW 超时 (fix 2026-08-15: ipc-win32.c) */
+#define ERROR_PIPE_BUSY 231
+#define ERROR_IO_PENDING 997
+#define ERROR_PIPE_CONNECTED 535
+#define PIPE_ACCESS_INBOUND 0x00000001
+#define PIPE_ACCESS_OUTBOUND 0x00000002
+#define PIPE_ACCESS_DUPLEX 0x00000003
+#define PIPE_TYPE_BYTE 0x00000000
+#define PIPE_TYPE_MESSAGE 0x00000004
+#define PIPE_READMODE_BYTE 0x00000000
+#define PIPE_WAIT 0x00000000
+#define PIPE_REJECT_REMOTE_CLIENTS 0x00000008
+#define PIPE_UNLIMITED_INSTANCES 255
+#define FILE_FLAG_FIRST_PIPE_INSTANCE 0x00080000
+#define WaitNamedPipeW(a,b) 0  /* Windows 命名管道等待 stub (fix 2026-08-15: ipc-win32.c) */
+#define SetNamedPipeHandleState(a,b,c,d) 0  /* Windows 命名管道状态 stub */
+#define ConnectNamedPipe(a,b) 0  /* Windows 命名管道连接 stub */
+#define AllocateAndInitializeSid(a,b,c,d,e,f,g,h,i,j,k,l) 0  /* Windows SID 创建 stub */
+#define FreeSid(a) 0  /* Windows SID 释放 stub */
+#define SetEntriesInAcl(a,b,c,d) 0  /* Windows ACL 条目 stub */
+#define InitializeSecurityDescriptor(a,b) 0  /* Windows 安全描述符 stub */
+#define SetSecurityDescriptorDacl(a,b,c,d) 0  /* Windows DACL stub */
+#define SECURITY_DESCRIPTOR_REVISION 1
+#define SECURITY_DESCRIPTOR_MIN_LENGTH 20
+#define SECURITY_WORLD_SID_AUTHORITY {0,0,0,0,0,1}
+#define SECURITY_WORLD_RID 0
+#define SET_ACCESS 2
+#define NO_INHERITANCE 0
+#define NO_MULTIPLE_TRUSTEE 0
+#define TRUSTEE_IS_SID 0
+#define TRUSTEE_IS_WELL_KNOWN_GROUP 5
+#define LPTR 0x0040
 #define MAX_PATH 260
 #define MOVEFILE_REPLACE_EXISTING 1
 #define MOVEFILE_COPY_ALLOWED 2
@@ -645,6 +1045,8 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define SIGCHLD 17
 #define SIG_DFL 0
 #define SIG_IGN 1
+#define SIG_ERR ((void*)-1)
+#define signal(a,b) 0  /* POSIX signal stub */
 #define SA_RESTART 0 /* sigaction 标志 (fix 2026-08-15: SA_RESTART undefined) */
 #define sigemptyset(x) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigemptyset undefined) */
 #define sigaddset(set, signum) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigaddset undefined) */
@@ -657,6 +1059,17 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define LC_TIME 5
 #define LC_MESSAGES 6
 #define setlocale(category, locale) ((char*)0)  /* C runtime 缺 setlocale, Git 仅探测 locale (fix 2026-08-15: setlocale undefined) */
+#define CODESET 0  /* <langinfo.h> 字符集常量 stub (fix 2026-08-15: gettext.c) */
+#define nl_langinfo(item) ""  /* <langinfo.h> stub (fix 2026-08-15: gettext.c) */
+#define bind_textdomain_codeset(a,b) ((char*)0)  /* gettext stub */
+#define textdomain(a) ((char*)0)  /* gettext stub */
+#define bindtextdomain(a,b) ((char*)0)  /* gettext stub */
+/* 仅 obstack.c 等直接调用 <gettext.h> 的 _()/Q_() 且不会再包含 Git gettext.h 的文件,
+   由 -D QCC_OBSTACK_GETTEXT_STUB=1 打开; 全局定义会触发 gettext.h 的 #error 命名冲突 (fix 2026-08-15) */
+#ifdef QCC_OBSTACK_GETTEXT_STUB
+#define _(s) (s)
+#define Q_(s,p,n) ((n) == 1 ? (s) : (p))
+#endif
 #define gmtime_s(a, b) 0  /* C runtime secure gmtime stub: 成功 (fix 2026-08-15: gmtime_s undefined) */
 #define localtime_s(a, b) 0  /* C runtime secure localtime stub: 成功 (fix 2026-08-15: localtime_s undefined) */
 #define xutftowcs_path(wcs, utf) 0  /* compat/mingw.h UTF-8→wchar_t 路径转换 stub (fix 2026-08-15: xutftowcs_path undefined) */
@@ -700,11 +1113,18 @@ static int _wopen(const wchar_t *filename, int oflags, int pmode) { (void)filena
 #define IPV6_V6ONLY 27
 #define AF_INET 2
 #define AF_INET6 23
+#define AF_UNSPEC 0
+#define AI_CANONNAME 0x00000002
+#define AI_PASSIVE 0x00000001
+#define htons(x) (((x) >> 8) | ((x) << 8))  /* Winsock 网络字节序 stub (fix 2026-08-15: htons undefined) */
+#define ntohs(x) htons(x)
 #define PF_INET 2
 #define SOCK_STREAM 1
 #define AF_UNIX 1
 #define socket(a,b,c) ((int)-1)  /* Winsock socket stub (fix 2026-08-15: socket undefined) */
 #define SOCK_DGRAM 2
+struct sockaddr_un { short sun_family; char sun_path[108]; };  /* Unix 域套接字地址类型 stub (fix 2026-08-15: unix-socket.c sockaddr_un undefined) */
+static int sun_path;  /* qcc sizeof(((sockaddr_un*)0)->sun_path) 兜底 (fix 2026-08-15: trace2 sun_path undefined) */
 typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undefined) */
 #define FD_SETSIZE 64  /* select 最大 fd 数 (fix 2026-08-15: FD_SETSIZE undefined) */
 #define FD_ZERO(s) ((void)0)  /* select fd_set 清零 stub (fix 2026-08-15: FD_ZERO undefined) */
@@ -793,6 +1213,7 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define IsWellKnownSid(a,b) 0  /* Windows SID 检查 stub (fix 2026-08-15: IsWellKnownSid undefined) */
 #define CheckTokenMembership(a,b,c) 0  /* Windows 令牌成员检查 stub (fix 2026-08-15: CheckTokenMembership undefined) */
 #define ConvertSidToStringSidA(a,b) 0  /* Windows SID 转字符串 stub (fix 2026-08-15: ConvertSidToStringSidA undefined) */
+#define LocalAlloc(a,b) ((void*)0)  /* Windows 本地堆分配 stub (fix 2026-08-15: ipc-win32.c) */
 #define LocalFree(a) 0  /* Windows 内存释放 stub (fix 2026-08-15: LocalFree undefined) */
 #define GetVolumeInformationW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetVolumeInformationW undefined) */
 #define FILE_PERSISTENT_ACLS 0x00000008  /* Windows 卷信息标志 (fix 2026-08-15: FILE_PERSISTENT_ACLS undefined) */
