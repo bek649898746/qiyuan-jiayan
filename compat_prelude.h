@@ -2,7 +2,8 @@
  * 值取 MinGW / MSVCRT 标准 errno (与 git Windows 构建一致)
  * fix 2026-08-14: errno 改 extern 声明 (多 .o 链接时由 jyld 提供唯一定义, 原 int errno; 每 .o 各一份 → duplicate symbol)
  */
-extern int errno;
+int *_errno(void);
+#define errno (*_errno())  /* qcc 不生成 extern 全局赋值/读取; errno 走 msvcrt _errno() 指针, 读写都是真 errno (fix 2026-08-15) */
 
 /* Windows 平台标志 — fsmonitor daemon 后端可用 (fix 2026-08-14: fsmonitor-ipc.c 的 #ifndef HAVE_FSMONITOR_DAEMON_BACKEND stub 应被跳过, 否则与 fsm-ipc-win32.c 的 fsmonitor_ipc__get_path 重复) */
 #define __GNUC_MINOR__ 0 /* -D __GNUC__=5 但未给 __GNUC_MINOR__, #if 条件编译引用它 (fix 2026-08-15: __GNUC_MINOR__ undefined) */
@@ -400,15 +401,15 @@ int lstat(const char *path, void *buf);
 #define NO_SETITIMER 1  /* git-compat-util.h 提供 git_setitimer stub (fix 2026-08-15: setitimer undefined) */
 #define ITIMER_REAL 0   /* mingw.h 值 (fix 2026-08-15: ITIMER_REAL undefined) */
 #define NO_LIBGEN_H 1  /* basename/dirname → gitbasename/gitdirname (compat/basename.c) (fix 2026-08-15: basename undefined) */
-#define ETC_GITATTRIBUTES "etc/gitattributes"  /* 系统级 gitattributes 路径 (Makefile -D 生成, qcc 跳过 Makefile; fix 2026-08-15: ETC_GITATTRIBUTES undefined) */
-#define ETC_GITCONFIG "etc/gitconfig"  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: ETC_GITCONFIG undefined) */
+#define ETC_GITATTRIBUTES "/git/etc/gitattributes"  /* 系统级 gitattributes 路径 (Makefile -D 生成, qcc 跳过 Makefile; fix 2026-08-15: ETC_GITATTRIBUTES undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define ETC_GITCONFIG "/git/etc/gitconfig"  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: ETC_GITCONFIG undefined; POSIX 绝对路径避开 system_path %s/%s) */
 #define SHA1_MAX_BLOCK_SIZE (1024L*1024L*1024L)  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: SHA1_MAX_BLOCK_SIZE undefined) */
-#define GIT_EXEC_PATH "C:/git"  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_EXEC_PATH undefined) */
-#define FALLBACK_RUNTIME_PREFIX "C:/git"  /* Makefile -D 生成 (fix 2026-08-15: FALLBACK_RUNTIME_PREFIX undefined) */
-#define GIT_MAN_PATH "man"       /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_MAN_PATH undefined) */
-#define GIT_INFO_PATH "info"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_INFO_PATH undefined) */
-#define GIT_HTML_PATH "html"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_HTML_PATH undefined) */
-#define GIT_LOCALE_PATH "locale" /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_LOCALE_PATH undefined) */
+#define GIT_EXEC_PATH "/git"  /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_EXEC_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define FALLBACK_RUNTIME_PREFIX "/git"  /* Makefile -D 生成 (fix 2026-08-15: FALLBACK_RUNTIME_PREFIX undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define GIT_MAN_PATH "/git/man"       /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_MAN_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define GIT_INFO_PATH "/git/info"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_INFO_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define GIT_HTML_PATH "/git/html"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_HTML_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
+#define GIT_LOCALE_PATH "/git/locale" /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_LOCALE_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
 
 /* zlib 常量 + stub (Windows 无系统 zlib 库, 压缩/解压路径返回错误; fix 2026-08-15: Z_FINISH undefined) */
 typedef int z_stream;
@@ -566,8 +567,10 @@ typedef struct { DWORD dwLowDateTime; DWORD dwHighDateTime; } FILETIME;
 #define pthread_setcancelstate(a,b) 0
 
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
-static int geteuid(void) { return 0; }
-static int getuid(void) { return 0; }
+static int geteuid(void) { return 1; }
+static int getuid(void) { return 1; }
+int _access(const char *path, int mode);
+static int access(const char *path, int mode) { int rc = _access(path, mode); if (rc != 0) errno = 2; return rc; } /* qcc 的 extern errno 与 msvcrt _errno() 不同步; _access 失败时补 errno=ENOENT(2), 否则 access_or_die 报 "No error" (fix 2026-08-15) */
 #define tcgetpgrp(a) (-1)  /* POSIX 终端前台进程组 stub (fix 2026-08-15: progress.c tcgetpgrp undefined) */
 #define getpgid(a) 0  /* POSIX 进程组 stub (fix 2026-08-15: progress.c getpgid undefined) */
 #define execvp(a,b) (-1)  /* POSIX exec stub (fix 2026-08-15: run-command.c execvp undefined) */

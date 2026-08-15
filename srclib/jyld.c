@@ -576,6 +576,7 @@ static const char *msvcrt_names[] = {
     "_unlink","_rmdir","_chmod","_access",
     "_fdopen","_pipe","_popen","_pclose",
     "_stat","_fstat",
+    "_errno",
     "strerror","_strerror","_strdup",
     "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
