@@ -381,8 +381,8 @@ int lstat(const char *path, void *buf);
 #define NO_MKDTEMP 1
 #define mktemp(a) (a)  /* POSIX mktemp stub: 返回模板本身 (fix 2026-08-15: mktemp undefined) */
 #define NO_STRTOUMAX 1
-#define strtoll(a,b,c) 0  /* MSVCRT 无 strtoll, compat/strtoimax.c 需要 (fix 2026-08-15: strtoll undefined) */
-#define strtoull(a,b,c) 0  /* MSVCRT 无 strtoull, compat/strtoumax.c 需要 (fix 2026-08-15: strtoull undefined) */
+#define strtoll(a,b,c) _strtoi64(a,b,c)  /* msvcrt 只导出下划线版, compat/strtoimax.c 需要真实写回 endptr (fix 2026-08-16: 0 stub 不写 endptr → git --version get_unit_factor 崩) */
+#define strtoull(a,b,c) _strtoui64(a,b,c)  /* msvcrt 只导出下划线版, compat/strtoumax.c 需要真实写回 endptr (fix 2026-08-16: 0 stub 不写 endptr) */
 #define iconv_t void*  /* POSIX iconv 句柄类型 (fix 2026-08-15: iconv_t undefined) */
 #define iconv_open(a,b) ((void*)0)  /* POSIX iconv_open stub (fix 2026-08-15: iconv_open undefined) */
 #define iconv(cd,a,b,c,d) 0  /* POSIX iconv stub (fix 2026-08-15: iconv undefined) */

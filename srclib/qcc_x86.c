@@ -7965,7 +7965,6 @@ static void cg(int n) {
                     }
                 } else {
                 char *vname = (char*)(nn + n0[mc]); /* struct var name */
-                cg(n1[n]); /* rhs ??eax */
                 int off = var_lookup(vname);
                 int si = var_stidx(vname);
                 if (off >= 0 && si >= 0) {
@@ -8089,9 +8088,10 @@ static void cg(int n) {
                     cg_mem_frow = 0; /* set by cg(n0[ac]) if it reads a static-struct array member */
                     mov_rr(11, 0); /* r11d = outer index */
                     push_r(11); /* cg may clobber r11 */
-                    cg_no_deref = 1; /* case 14 must yield the ADDRESS, not the value */
-                    cg(n0[ac]); /* base address �?rax */
-                    cg_no_deref = 0;
+                    int base_is_ptrfield = 0;
+                    if (nt[n0[ac]] == 15) { int mc2 = n0[ac]; char *bvn = (char*)(nn + n0[mc2]); char *bfn = (char*)(nn + mc2); int bsi = var_stidx(bvn); if (bsi >= 0) { int bfty = st_field_ty_idx(stypes[bsi].name, bfn); if (bfty == -1 && st_field_el(bsi, bfn) == 8) base_is_ptrfield = 1; } }
+                    if (base_is_ptrfield) cg(n0[ac]); /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0) */
+                    else { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
                     pop_r(11);
                     if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     if (cg_mem_frow > 1) {
@@ -8188,11 +8188,13 @@ static void cg(int n) {
             } /* end struct-array-element else (fix 2026-08-06) */
             } else if (nt[n0[n]] == 12) { /* *ptr = expr — store by pointer element width (char*→1B, int*→4B, fnptr→8B, double*→movsd) */
                 int pnode = n0[n0[n]];
+                int pbase = pnode;
+                if (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 int pe = 4;
-                if (nt[pnode] == 1) pe = var_esz((char*)(nn + pnode));
-                if (pesz[pnode]) pe = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
-                int is_dp = (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)));
-                cg(pnode); /* ptr → eax */
+                if (nt[pbase] == 1) pe = var_esz((char*)(nn + pbase));
+                if (pesz[pbase]) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
+                int is_dp = (nt[pbase] == 1 && var_pdbl((char*)(nn + pbase)));
+                cg(pnode); /* ptr → eax (ORIGINAL node: *p++ must run the postfix inc) */
                 push_r(0); /* save ptr on stack */
                 if (is_dp) cg_f(n1[n]); /* double rhs → xmm0 */
                 else cg(n1[n]); /* rhs → eax */
@@ -8282,11 +8284,13 @@ static void cg(int n) {
         case 12: { /* *ptr — byte load (char*), dword (int*), 64-bit (fnptr / char** / int**) */
             cg(n0[n]); /* ptr → eax */
             if (cg_no_deref) break; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原 case-12 忽略 cg_no_deref 永远加载值 → (*p)++ 把值当地址 */
+            int pnode = n0[n];
+            if (nt[pnode] == 23 || nt[pnode] == 26) pnode = n0[pnode]; /* *p++ / *++p: resolve through inc/dec to the pointer operand (fix 2026-08-16) */
             int el = 0;
-            if (nt[n0[n]] == 1) el = var_esz((char*)(nn + n0[n])); /* named var: element size */
-            else if (nt[n0[n]] == 14) { char *av = (char*)(nn + n0[n0[n]]); el = var_esz(av); } /* *arr[i] */
-            if (pesz[n0[n]]) el = pesz[n0[n]]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
-            if (ndbl[n] || (nt[n0[n]] == 1 && var_pdbl((char*)(nn + n0[n])))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
+            if (nt[pnode] == 1) el = var_esz((char*)(nn + pnode)); /* named var: element size */
+            else if (nt[pnode] == 14) { char *av = (char*)(nn + n0[pnode]); el = var_esz(av); } /* *arr[i] */
+            if (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
+            if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
             if (el == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break; } /* word load (short*) fix 2026-08-08 */
