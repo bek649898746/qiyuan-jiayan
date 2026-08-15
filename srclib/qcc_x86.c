@@ -3940,7 +3940,8 @@ static int blk(void) {
                         if (is_ptr) { var_static(vn, 4); vars[vcnt - 1].st_idx = si; }
                         else var_static_struct(vn, si, scnt);
                     } else {
-                        if (is_ptr) { var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; }
+                        if (is_ptr && scnt > 1) { var_array(vn, scnt, 8); vars[vcnt - 1].st_idx = si; } /* struct *rb[4]: 指针数组 8 字节元素 (fix 2026-08-16: 原走 var_offset_ptr 标量指针 → rb[i] 按 4 字节缩放, write_coff_obj 12 字节 struct 赋值写坏指针) */
+                        else if (is_ptr) { var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; }
                         else if (scnt > 1) { var_array(vn, scnt, stypes[si].sz); vars[vcnt - 1].st_idx = si; } /* struct array: 8B elements */
                         else var_struct(vn, si);
                     }
@@ -3992,7 +3993,7 @@ static int blk(void) {
             int struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
             while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* struct Tag const *name / struct Tag volatile *name — const 在指针前 (fix 2026-08-15: cwexec trie undefined) */
             while (tt[tk] == DK) { is_ptr = 1; tk++; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* 多级指针 **fragp / *const *p (fix 2026-08-15: show-branch/worktree/bundle-uri b 未注册) */
-            if (tt[tk] == VR) {
+            if (si >= 0 && tt[tk] == VR) {
                 char vn[64]; strcpy(vn, tn[tk]); tk++;
                 int d = Nd(7);
                 int scnt = 1;
@@ -4019,7 +4020,8 @@ static int blk(void) {
                     if (is_ptr) { var_static(vn, 4); vars[vcnt - 1].st_idx = si; }
                     else var_static_struct(vn, si, scnt);
                 } else {
-                    if (is_ptr) { var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; }
+                    if (is_ptr && scnt > 1) { var_array(vn, scnt, 8); vars[vcnt - 1].st_idx = si; } /* struct *rb[4]: 指针数组 8 字节元素 (fix 2026-08-16: 原走 var_offset_ptr 标量指针 → rb[i] 按 4 字节缩放, write_coff_obj 12 字节 struct 赋值写坏指针) */
+                    else if (is_ptr) { var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; }
                     else if (scnt > 1) { var_array(vn, scnt, stypes[si].sz); vars[vcnt - 1].st_idx = si; } /* struct array: 8B elements */
                     else var_struct(vn, si);
                 }
@@ -8438,7 +8440,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
         } break;
         case 14: { /* array access — local array / local pointer var / pointer param */
             if (nt[n0[n]] == STR) { /* 字符串字面量下标 "abc"[i]: 字符串地址 + i, movzx byte (fix 2026-08-06: 原走指针参数分支 load_param_val("A") 取垃圾地址 → 值错) */
-                cg(n1[n]); /* index → eax */
+                { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index → eax */
                 mov_rr(11, 0); /* r11d = index */
                 push_r(11);
                 cg(n0[n]); /* 字符串地址 → eax (case STR: mov eax,imm32 占位 + 后 patch) */
@@ -8450,7 +8452,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 break;
             }
             if (nt[n0[n]] == 4) { /* 函数调用返回指针 f()[i] (fix 2026-08-06: 原未处理 → 走指针参数分支取垃圾地址; 按 char* 元素 1 字节 — jystd strchr/strstr 场景) */
-                cg(n1[n]); /* index → eax */
+                { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index → eax */
                 mov_rr(11, 0); /* r11d = index */
                 push_r(11);
                 cg(n0[n]); /* 调用 → 指针 rax */
@@ -8470,7 +8472,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                    same-named var (e.g. a runtime `int c`) and hijack the access. */
                 cg_mem_frow = 0; /* set by cg(n0[n]) if it reads a static-struct array member */
                 cg_mem_dbl = 0; /* set by cg(n0[n]) if the base is a double array */
-                cg(n1[n]); /* outer idx �?eax */
+                { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* outer idx �?eax */
                 mov_rr(11, 0);
                 push_r(11); /* cg may clobber r11 */
                 int sv_noderef = cg_no_deref; /* preserve caller's value (fix 2026-08-05) */
@@ -8499,7 +8501,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                 }
             } else if (off >= 0 || (off < 0 && var_isstatic(vname))) {
-                cg(n1[n]); /* index �?eax */
+                { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index �?eax */
                 int did = 0;
                 for (int vi = vs_n() - 1; vi >= 0; vi--)
                     if (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && var_codegen_visible(vi)) {
@@ -8597,7 +8599,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     push_r(0);
                 }
                 else peszp = var_esz(vname);
-                cg(n1[n]); /* index → eax */
+                { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index → eax */
                 mov_rr(11, 0); /* r11d = index */
                 if (peszp == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
                 else if (peszp == 2) { asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
@@ -9471,9 +9473,13 @@ static void write_coff_obj(FILE *f) {
         }
         nrel[rsec]++;
     }
-    struct { int va; int sym; int type; } *rb[4];
+    int *rva[4], *rsym[4], *rtyp[4];
     int ridx[4] = {0,0,0,0};
-    for (int i = 0; i < 4; i++) rb[i] = calloc(nrel[i] ? nrel[i] : 1, sizeof(rb[0][0]));
+    for (int i = 0; i < 4; i++) {
+        rva[i] = calloc(nrel[i] ? nrel[i] : 1, 4);
+        rsym[i] = calloc(nrel[i] ? nrel[i] : 1, 4);
+        rtyp[i] = calloc(nrel[i] ? nrel[i] : 1, 4);
+    }
     for (int i = 0; i < crel_n; i++) {
         int site = crel[i].site;
         int rsec = 0;
@@ -9483,9 +9489,9 @@ static void write_coff_obj(FILE *f) {
             else rsec = 2;
         }
         int b2 = ridx[rsec]++;
-        rb[rsec][b2].va = (rsec == 3) ? (crel[i].site - COFF_DATA_SITE_BASE) : crel[i].site;
-        rb[rsec][b2].sym = crel[i].sym;
-        rb[rsec][b2].type = crel[i].type;
+        rva[rsec][b2] = (rsec == 3) ? (crel[i].site - COFF_DATA_SITE_BASE) : crel[i].site;
+        rsym[rsec][b2] = crel[i].sym;
+        rtyp[rsec][b2] = crel[i].type;
     }
 
     /* COFF header */
@@ -9519,9 +9525,9 @@ static void write_coff_obj(FILE *f) {
     for (int i = 0; i < 4; i++) {
         rel_offs[i] = nrel[i] ? rel_base : 0;
         for (int j = 0; j < nrel[i]; j++) {
-            w4f(f, rb[i][j].va);
-            w4f(f, rb[i][j].sym);
-            w2f(f, rb[i][j].type);
+            w4f(f, rva[i][j]);
+            w4f(f, rsym[i][j]);
+            w2f(f, rtyp[i][j]);
         }
         rel_base += nrel[i] * 10;
     }
