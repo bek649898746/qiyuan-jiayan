@@ -617,10 +617,10 @@ static int IPATTERN(const char *a, const char *b, const char *c) { (void)a; (voi
 static int PATTERNS(const char *a, const char *b, const char *c) { (void)a; (void)b; (void)c; return 0; }  /* 同上 */
 
 /* stdarg 变参宏 stub (qcc 跳 stdarg.h) — die() 等变参函数体用 va_list/va_start/va_end (fix 2026-08-14: die 定义因 va_list 未知丢失 → undefined) */
-typedef char *va_list;
-#define va_start(ap, last) ((void)0)
+#define va_list char *
+#define va_start(ap, last) ((ap) = (char*)__qcc_va_start())
 #define va_end(ap) ((void)0)
-#define va_arg(ap, type) (*(type*)0)
+#define va_arg(ap, type) (*(type*)((ap += 8) - 8))
 #define va_copy(dst, src) ((dst) = (src))
 
 /* assert 宏 (qcc 跳 assert.h) — no-op (fix 2026-08-14: assert undefined symbol) */
@@ -737,7 +737,7 @@ typedef unsigned int uint32_t;
 typedef int int32_t;
 typedef unsigned long long uint64_t;
 typedef long long int64_t;
-typedef unsigned int size_t;
+#define size_t unsigned int
 typedef int ssize_t;
 typedef int sig_atomic_t; /* <signal.h> (fix 2026-08-15: static volatile sig_atomic_t 声明未识别 → progress.c parse break) */
 struct DIR;
@@ -764,8 +764,8 @@ typedef long long off_t;
 typedef long long ptrdiff_t;  /* <stddef.h> 被跳过, obstack.h 宏展开需要 (fix 2026-08-15: ptrdiff_t undefined) */
 #define ftello(a) 0  /* POSIX 大文件 ftell stub (fix 2026-08-15: http.c ftello undefined) */
 typedef long long time_t;
-typedef unsigned long long uintmax_t;
-typedef long long intmax_t;
+#define uintmax_t unsigned long long
+#define intmax_t long long
 typedef unsigned long long uintptr_t;
 typedef long long intptr_t;
 typedef int pid_t;  /* POSIX pid_t (fix 2026-08-15: pid_t undefined) */
