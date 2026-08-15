@@ -1546,6 +1546,21 @@ static void coff_crel(int site, int type, int sym, int addend) {
     crel[crel_n].is_label = 0; crel[crel_n].label = -1;
     crel_n++;
 }
+static int coff_counter_sym = -1;
+static int coff_counter_sym_get(void) {
+    if (coff_counter_sym < 0) coff_counter_sym = csym_add("__qcc_heap_counter", 0, 0, 2, 0);
+    return coff_counter_sym;
+}
+static void coff_mov_eax_counter(void) {
+    asm_emit("    读堆计数器 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+    b(0x8B); b(0x05); b4(0); /* mov eax, [rip+0] */
+    coff_crel(cp - 4, 0x0004, coff_counter_sym_get(), 0);
+}
+static void coff_mov_counter_eax(void) {
+    asm_emit("    写堆计数器 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+    b(0x89); b(0x05); b4(0); /* mov [rip+0], eax */
+    coff_crel(cp - 4, 0x0004, coff_counter_sym_get(), 0);
+}
 static void coff_str_add(const uint8_t *p, int n) {
     if (coff_str_len + n > coff_str_cap) {
         int nc = coff_str_cap ? coff_str_cap * 2 : 4096;
@@ -2061,20 +2076,26 @@ static void load_param_val(const char *name) {
 /* ?????? ?????(??? CALL ???) ?????? */
 
 static int fn_ret_si_map[1024]; /* return-struct index per func index; survives gen_code's func_n=0 reset (fix 2026-08-07: 512→1024 对齐 func_tbl) */
+static int fn_ret_ptr_map[1024]; /* 函数返回 struct 指针（不是 sret）标记 */
 /* return-struct type per FUNCTION NAME — func_tbl indexes are REASSIGNED by
    gen_code's func_n=0 reset, so index-based fn_ret_si_map misaligns whenever a
    program adds/removes functions (e.g. printf) between parse and codegen. */
-static struct { char name[64]; int ret_si; } fn_ret_name_map[512]; static int fn_ret_name_n;
+static struct { char name[64]; int ret_si; int ret_ptr; } fn_ret_name_map[512]; static int fn_ret_name_n;
 static int fn_ret_name_get(const char *name) {
     for (int i = 0; i < fn_ret_name_n; i++) if (!strcmp(fn_ret_name_map[i].name, name)) return fn_ret_name_map[i].ret_si;
     return -1;
 }
-static void fn_ret_name_put(const char *name, int ret_si) {
+static int fn_ret_name_get_ptr(const char *name) {
+    for (int i = 0; i < fn_ret_name_n; i++) if (!strcmp(fn_ret_name_map[i].name, name)) return fn_ret_name_map[i].ret_ptr;
+    return 0;
+}
+static void fn_ret_name_put(const char *name, int ret_si, int ret_ptr) {
     for (int i = 0; i < fn_ret_name_n; i++)
-        if (!strcmp(fn_ret_name_map[i].name, name)) { fn_ret_name_map[i].ret_si = ret_si; return; }
+        if (!strcmp(fn_ret_name_map[i].name, name)) { fn_ret_name_map[i].ret_si = ret_si; fn_ret_name_map[i].ret_ptr = ret_ptr; return; }
     if (fn_ret_name_n >= 512) return;
     strcpy(fn_ret_name_map[fn_ret_name_n].name, name);
     fn_ret_name_map[fn_ret_name_n].ret_si = ret_si;
+    fn_ret_name_map[fn_ret_name_n].ret_ptr = ret_ptr;
     fn_ret_name_n++;
 }
 /* per-function double-arg signature, keyed by NAME (gen_code's func_n=0 reset re-assigns
@@ -5434,13 +5455,15 @@ static int parse(const char *s) {
                     if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                         int save = tk;
                         tk += 2; /* skip '=' '{' */
-                        int n = 1, depth = 0;
+                        int n = 1, depth = 0, last_comma = 0;
                         while (tk < TS && !(tt[tk] == UK && depth == 0)) {
                             if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) depth++;
                             else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) depth--;
-                            else if (tt[tk] == CK && depth == 0) n++;
+                            else if (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
+                            else if (depth == 0) last_comma = 0;
                             tk++;
                         }
+                        if (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
                         gcnt = n; gfirst = n;
                         tk = save; /* rewind to '=' */
                     }
@@ -5524,11 +5547,13 @@ static int parse(const char *s) {
         if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((noreturn)) 前置 (fix 2026-08-14: NORETURN void die(...) — 空宏后 tt=SK 非 VR, 按 tn 匹配) */
         while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; tk++; } /* skip type keywords, catch double return */
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
+        int fn_ret_ptr = 0; /* struct return type is a POINTER (not sret) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
         else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
+        if (tt[tk] == DK) fn_ret_ptr = 1;
         while (tt[tk] == DK) tk++; /* skip pointer(s) * */
         if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 后置跳过 — 注意 #define __attribute__(x) 空宏后 tt=SK 非 VR, 只能按 tn 匹配 (fix 2026-08-14) */
         int fdef = Nd(4);
@@ -5565,9 +5590,10 @@ static int parse(const char *s) {
             if (fn_is_static) fn_static_mark((char*)(nn + fdef)); else fn_static_unmark((char*)(nn + fdef)); /* fix 2026-08-15: 非 static 定义覆盖同名 static 标记 */
             func_tbl[tfi].ret_si = fn_ret_si;
             fn_ret_si_map[tfi] = fn_ret_si; /* survives gen_code's func_n=0 reset */
-            fn_ret_name_put((char*)(nn + fdef), fn_ret_si); /* name-keyed: survives func_tbl index renumbering */
+            fn_ret_ptr_map[tfi] = fn_ret_ptr;
+            fn_ret_name_put((char*)(nn + fdef), fn_ret_si, fn_ret_ptr); /* name-keyed: survives func_tbl index renumbering */
             fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); /* double-return routing (xmm0) */
-            cur_fn_sret = (fn_ret_si >= 0 && stypes[fn_ret_si].sz > 8); /* Win64: hidden sret ptr in rcx */
+            cur_fn_sret = (fn_ret_si >= 0 && stypes[fn_ret_si].sz > 8 && !fn_ret_ptr); /* Win64: hidden sret ptr in rcx (struct by value only) */
             fvb[fvn] = vcnt; /* record var-range start (before params) */
             fr_start[fvn] = rsp_used; /* record frame-bound start: rsp_used is the pure frame footprint (globals/statics live in .data, never touch rsp_used) */
             parse_base = fvb[fvn]; /* scope body-local decl lookups to THIS function */
@@ -7101,7 +7127,8 @@ static void cg(int n) {
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
                cg_sret_off; the callee writes the result straight into it (Win64 hidden ptr). */
             int sret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
-            int is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off != 0);
+            int sret_ptr = fn_ret_name_get_ptr(fname);
+            int is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off != 0 && !sret_ptr);
             int sret_extra = nargs > 3 ? nargs - 3 : 0;
             /* function pointer variable or expression callee (indirect call). NOTE: no
                `||` short-circuit dependency — the self-host compiler evaluates BOTH
@@ -7315,49 +7342,77 @@ static void cg(int n) {
                 mov_r_imm(0, 0); /* equal �?return 0 */
                 set_label(lds);
             } else if (!strcmp(fname, "calloc")) {
-                /* RIP-relative: load counter from .data section (RVA data_rva_base).
-                   Mnemonic emitters for complete -S output (fix 2026-08-03). */
-                int rel_load = data_rva_base - 0x1000 - cp - 6;
-                mov_eax_rip(rel_load);        /* mov eax, [rip+rel] */
-                mov_rr(8, 0); /* r8d = old counter (return value) */
-                /* compute n*size: n=rcx, size=rdx */
-                mov_rr(10, 1); /* r10d = n */
-                /* IMUL r10d, edx */
-                asm_emit("    乘 r10, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x0F); b(0xAF); modrm(3,2,2); /* IMUL r10d, edx */
-                /* add r10d to counter */
-                /* reload counter with fresh RIP-relative */
-                int rel_load2 = data_rva_base - 0x1000 - cp - 6;
-                mov_eax_rip(rel_load2);       /* mov eax, [rip+rel] */
-                asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                /* store back */
-                int rel_store = data_rva_base - 0x1000 - cp - 6;
-                mov_rip_eax(rel_store);       /* mov [rip+rel], eax */
-                /* return old counter */
-                mov_rr(0, 8);
+                if (coff_mode) {
+                    coff_mov_eax_counter();        /* mov eax, [rip+counter] */
+                    mov_rr(8, 0); /* r8d = old counter (return value) */
+                    mov_rr(10, 1); /* r10d = n */
+                    asm_emit("    乘 r10, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x0F); b(0xAF); modrm(3,2,2); /* IMUL r10d, edx */
+                    coff_mov_eax_counter();       /* reload counter */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    coff_mov_counter_eax();       /* store back */
+                    mov_rr(0, 8);
+                } else {
+                    /* RIP-relative: load counter from .data section (RVA data_rva_base).
+                       Mnemonic emitters for complete -S output (fix 2026-08-03). */
+                    int rel_load = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_load);        /* mov eax, [rip+rel] */
+                    mov_rr(8, 0); /* r8d = old counter (return value) */
+                    /* compute n*size: n=rcx, size=rdx */
+                    mov_rr(10, 1); /* r10d = n */
+                    /* IMUL r10d, edx */
+                    asm_emit("    乘 r10, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x0F); b(0xAF); modrm(3,2,2); /* IMUL r10d, edx */
+                    /* add r10d to counter */
+                    /* reload counter with fresh RIP-relative */
+                    int rel_load2 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_load2);       /* mov eax, [rip+rel] */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    /* store back */
+                    int rel_store = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_store);       /* mov [rip+rel], eax */
+                    /* return old counter */
+                    mov_rr(0, 8);
+                }
             } else if (!strcmp(fname, "malloc")) {
-                /* bump allocator (same .data counter as calloc), n in rcx.
-                   Rewritten with mnemonic emitters so -S output is complete
-                   (fix 2026-08-03: bare-byte RIP loads had no ASM text,
-                   breaking H1==H2 on the 3-stage path). */
-                int rel_m1 = data_rva_base - 0x1000 - cp - 6;
-                mov_eax_rip(rel_m1);          /* mov eax, [rip+counter] */
-                mov_rr(8, 0);                 /* r8d = old counter (return value) */
-                mov_rr(10, 1);                /* r10d = n (rcx) */
-                int rel_m2 = data_rva_base - 0x1000 - cp - 6;
-                mov_eax_rip(rel_m2);          /* reload counter */
-                asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                int rel_m3 = data_rva_base - 0x1000 - cp - 6;
-                mov_rip_eax(rel_m3);          /* store back */
-                mov_rr(0, 8);                 /* return old counter */
+                if (coff_mode) {
+                    coff_mov_eax_counter();          /* mov eax, [rip+counter] */
+                    mov_rr(8, 0);                 /* r8d = old counter (return value) */
+                    mov_rr(10, 1);                /* r10d = n (rcx) */
+                    coff_mov_eax_counter();          /* reload counter */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    coff_mov_counter_eax();          /* store back */
+                    mov_rr(0, 8);                 /* return old counter */
+                } else {
+                    /* bump allocator (same .data counter as calloc), n in rcx.
+                       Rewritten with mnemonic emitters so -S output is complete
+                       (fix 2026-08-03: bare-byte RIP loads had no ASM text,
+                       breaking H1==H2 on the 3-stage path). */
+                    int rel_m1 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_m1);          /* mov eax, [rip+counter] */
+                    mov_rr(8, 0);                 /* r8d = old counter (return value) */
+                    mov_rr(10, 1);                /* r10d = n (rcx) */
+                    int rel_m2 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_m2);          /* reload counter */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    int rel_m3 = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_m3);          /* store back */
+                    mov_rr(0, 8);                 /* return old counter */
+                }
             } else if (!strcmp(fname, "_bump_top")) {
-                /* 读堆 counter (32 位地址, .data RVA 0) — 供 qcc_rt.c realloc/free 原地扩展/回退 (fix 2026-08-13 Phase3 根治) */
-                int rel_b = data_rva_base - 0x1000 - cp - 6;
-                mov_eax_rip(rel_b);          /* mov eax, [rip+counter] */
+                if (coff_mode) {
+                    coff_mov_eax_counter();          /* mov eax, [rip+counter] */
+                } else {
+                    int rel_b = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_b);          /* mov eax, [rip+counter] */
+                }
             } else if (!strcmp(fname, "_bump_set")) {
                 /* 写堆 counter — 参数在 rcx */
                 mov_rr(0, 1);                 /* eax = ecx (new counter) */
-                int rel_b = data_rva_base - 0x1000 - cp - 6;
-                mov_rip_eax(rel_b);          /* [rip+counter] = eax */
+                if (coff_mode) {
+                    coff_mov_counter_eax();          /* [rip+counter] = eax */
+                } else {
+                    int rel_b = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_b);          /* [rip+counter] = eax */
+                }
             } else if (!strcmp(fname, "realloc")) {
                 mov_rr(0, 1); /* return same ptr */
             } else if (!strcmp(fname, "free") || !strcmp(fname, "fclose") || !strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
@@ -7462,7 +7517,7 @@ static void cg(int n) {
         } break;
         case 5: for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); } break;
         case 6: { /* return �?epilogue */
-            if (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8) {
+            if (cur_fn_sret) {
                 /* sret: copy the returned struct to [rcx] (hidden pointer), return rcx.
                    The return expression must be a struct var/param (or chain) — use its base. */
                 char *rvn = (char*)(nn + n0[n]);
@@ -8704,7 +8759,8 @@ void gen_code(void) {
         asm_emit("\n; === %s ===\n%s:\n", fname, fname, (char*)(long long)0);
         func_tbl[fi].defined = 1;
         cur_ret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
-        cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8); /* sret fn: params shift (rcx = hidden ptr); double param k in xmm[k] */
+        { int cur_ret_ptr = fn_ret_name_get_ptr(fname);
+          cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8 && !cur_ret_ptr); } /* sret fn: params shift (rcx = hidden ptr); struct pointer return is NOT sret */
 
         /* local frame — single source of truth: `off` is the GLOBAL parse-time rsp_off,
            fr_start[gfn] this function's baseline. disp = off - cur_frame_sz
@@ -9147,6 +9203,7 @@ int main(int argc, char **argv) {
     int asm_mode = 0;
     char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
     char *all_src = NULL; int all_len = 0;
+    int is_compat_stat_c = 0;
 
     /* fix 2026-08-10 Gate 9: ������ "__bare__" ��Ǳ������������ */
     for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
@@ -9185,6 +9242,8 @@ int main(int argc, char **argv) {
         char *fb = read_file(argv[argi]);
         if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
         dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录, 供子目录 #include 相对搜索 */
+        { const char *pp2 = argv[argi];
+          if (strstr(pp2, "compat/stat.c") || strstr(pp2, "compat\\stat.c")) is_compat_stat_c = 1; }
         int fl = (int)strlen(fb);
         all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1; +5=(needed+3)&~3: +4 under-allocates 1 byte when (all_len+fl)%4==3 -> all_src[all_len]=0 OOB */
         memcpy(all_src + all_len, fb, fl); all_len += fl;
@@ -9192,6 +9251,7 @@ int main(int argc, char **argv) {
         free(fb);
         argi++;
     }
+    if (is_compat_stat_c) macro_add("QCC_COMPAT_STAT_C", 1); /* compat/stat.c 禁用 prelude 的 stat/lstat/fstat 自映射 */
     if (all_len > 0) {
         int total = hdr_len + all_len + 2;
         char *combined = malloc((total + 3) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 */

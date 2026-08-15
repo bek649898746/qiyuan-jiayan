@@ -359,9 +359,15 @@ typedef int curlsocktype;
 #define S_IXOTH 0000001
 #define S_IRWXO 0000007
 #define NEEDS_MODE_TRANSLATION 1  /* lstat/stat/fstat → git_lstat/git_stat/git_fstat (stat.c 提供) (fix 2026-08-14: 原 lstat 未映射 → undefined symbol) */
+#ifndef QCC_COMPAT_STAT_C
 #define stat(path,buf) git_stat(path,buf)  /* git-compat-util.h 映射未展开 (fix 2026-08-15: stat undefined) */
 #define lstat(path,buf) git_lstat(path,buf)
 #define fstat(fd,buf) git_fstat(fd,buf)
+#else
+int stat(const char *path, void *buf);
+int fstat(int fd, void *buf);
+int lstat(const char *path, void *buf);
+#endif
 
 /* Windows MSVCRT 缺 POSIX 函数 — 映射到 compat/*.c 的 git* 实现 (fix 2026-08-14: strlcpy 等 undefined symbol, git-compat-util.h 的 #ifdef NO_* 守卫) */
 #define NO_STRLCPY 1
