@@ -468,12 +468,12 @@ static const char *msvcrt_names[] = {
     "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
-    "mkdir","_mkdir","open","_open","close","_close","read","_read","write","_write","lseek","_lseek","dup","_dup","dup2","_dup2",
-    "getpid","_getpid","getppid","_getppid","isatty","_isatty","fileno","_fileno",
-    "unlink","_unlink","rmdir","_rmdir","chmod","_chmod","access","_access",
-    "fdopen","_fdopen","pipe","_pipe","popen","_popen","pclose","_pclose",
-    "strerror","_strerror","strdup","_strdup",
-    "umask","_umask","getcwd","_getcwd","chdir","_chdir",
+    "_mkdir","_open","_close","_read","_write","_lseek","_dup","_dup2",
+    "_getpid","_isatty","_fileno",
+    "_unlink","_rmdir","_chmod","_access",
+    "_fdopen","_pipe","_popen","_pclose",
+    "strerror","_strerror","_strdup",
+    "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
     "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
     "_stricmp","_strnicmp",
@@ -546,10 +546,33 @@ static int resolve_one(GSym *g) {
         for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)
             if (!strcmp(msvcrt_names[k], mn)) { mi = k; break; }
         if (mi < 0) {
-            /* alias: C99 name -> msvcrt export (msvcrt.dll has no snprintf/vsnprintf) */
+            /* alias: C99/POSIX name -> msvcrt export (msvcrt.dll 只导出下划线版) */
             const char *alias = NULL;
             if (!strcmp(mn, "snprintf")) alias = "_snprintf";
             else if (!strcmp(mn, "vsnprintf")) alias = "_vsnprintf";
+            else if (!strcmp(mn, "mkdir")) alias = "_mkdir";
+            else if (!strcmp(mn, "open")) alias = "_open";
+            else if (!strcmp(mn, "close")) alias = "_close";
+            else if (!strcmp(mn, "read")) alias = "_read";
+            else if (!strcmp(mn, "write")) alias = "_write";
+            else if (!strcmp(mn, "lseek")) alias = "_lseek";
+            else if (!strcmp(mn, "dup")) alias = "_dup";
+            else if (!strcmp(mn, "dup2")) alias = "_dup2";
+            else if (!strcmp(mn, "getpid")) alias = "_getpid";
+            else if (!strcmp(mn, "isatty")) alias = "_isatty";
+            else if (!strcmp(mn, "fileno")) alias = "_fileno";
+            else if (!strcmp(mn, "unlink")) alias = "_unlink";
+            else if (!strcmp(mn, "rmdir")) alias = "_rmdir";
+            else if (!strcmp(mn, "chmod")) alias = "_chmod";
+            else if (!strcmp(mn, "access")) alias = "_access";
+            else if (!strcmp(mn, "fdopen")) alias = "_fdopen";
+            else if (!strcmp(mn, "pipe")) alias = "_pipe";
+            else if (!strcmp(mn, "popen")) alias = "_popen";
+            else if (!strcmp(mn, "pclose")) alias = "_pclose";
+            else if (!strcmp(mn, "strdup")) alias = "_strdup";
+            else if (!strcmp(mn, "umask")) alias = "_umask";
+            else if (!strcmp(mn, "getcwd")) alias = "_getcwd";
+            else if (!strcmp(mn, "chdir")) alias = "_chdir";
             if (alias) {
                 for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)
                     if (!strcmp(msvcrt_names[k], alias)) { mi = k; break; }
