@@ -747,7 +747,7 @@ static char *pp_read_file_inc(const char *fname);
 static char *pp_read_file(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
-    fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    fseek(f, 0, 2); long sz = ftell(f); fseek(f, 0, 0); /* SEEK 宏定义在本函数之后，自宿主不处理真实 <stdio.h>；用字面量 0/1/2 避开先使用后定义 (fix 2026-08-16 自举回归) */
     if (sz < 0) { fclose(f); return 0; }
     if (sz > 4 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 4MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
     char *buf = malloc((size_t)sz + 1);
@@ -1493,8 +1493,8 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 #define MAX_LABELS 32768
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
-static struct { int patch_at; int target_label; int is_jmp; } patches[65536]; int patch_n; /* fix 2026-08-06: 16384→65536 — qcc_work.jy 编译 patch_n=16380 贴上限, 加 STR 下标后缀链后超 4 个溢出; 自举大文件余量 */
-static struct { int patch_at; int str_idx; } str_patches[2048]; int strpn;
+static struct { int patch_at; int target_label; int is_jmp; } patches[131072]; int patch_n; /* fix 2026-08-06: 16384→65536; 2026-08-16 自举回归: 65536→131072 — 同步镜像后 patch_n 贴上限 */
+static struct { int patch_at; int str_idx; } str_patches[8192]; int strpn; /* fix 2026-08-16 自举回归: 2048→8192 — 同步镜像后字符串引用超 2048 */
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
 static int ginit[4096]; static int ginit_n; /* global variable initializer nodes (emitted at main entry); fix 2026-08-06: 128→4096 + 溢出报错（原 >128 静默丢初始值） */
@@ -1657,7 +1657,7 @@ static void patch_label(int at, int l, int is_jmp) {
         }
         return;
     }
-    if (patch_n >= 65536) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d (at label %d)\n", patch_n, l); abort(); }
+    if (patch_n >= 131072) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d (at label %d)\n", patch_n, l); abort(); }
     /* Emit the jump mnemonic into the asm text using the REAL label id (l),
        not the placeholder rel value. Fix 2026-08-03: -S output previously
        used jz_rel's rel (always 1 for forward refs), so asm_zh could never
@@ -1808,7 +1808,7 @@ static int var_offset_ptr(const char *n, int pesz) {
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 static int var_static(const char *n, int pesz) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } return vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
-    if (vcnt >= 16000 || stc_n >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 16000 || stc_n >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -1843,7 +1843,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } return vars[i].rsp_off; }
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
-    if (vcnt >= 16000 || stc_n + slots >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
+    if (vcnt >= 16000 || stc_n + slots >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -1858,7 +1858,7 @@ static int var_static_struct(const char *n, int si, int count) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; stc_n += sl3; vars[i].arr_sz = count; vars[i].st_idx = si; } return vars[i].rsp_off; }
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
-    if (vcnt >= 16000 || stc_n + total >= 33554432) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 16000 || stc_n + total >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -6499,7 +6499,7 @@ static int emit_fmt_loop(int bound_disp) {
     /* H2 fix 2026-08-06: %s 缓冲上限检查 — 仅 printf/putstr 链（bound_disp != 0，= rbp-272 状态区起点）：
        r9 预载 [rbp+bound_disp]，r12 达界即停（缓冲 4096B [rbp-4368..rbp-273]，不碰状态区/&written）。
        sprintf 链 bound_disp=0 → 不设界（用户缓冲，标准 C 语义）。 */
-    if (bound_disp) lea_r_mbrp(9, bound_disp); /* lea r9, [rbp+bound_disp] */
+    if (bound_disp) { lea_r_mbrp(9, bound_disp); } /* lea r9, [rbp+bound_disp] */
     set_label(lcp);
     if (bound_disp) {
         asm_emit("    比较64 r12, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 1); b(0x39); modrm(3, 1, 4); /* cmp r12, r9 */
@@ -7052,7 +7052,7 @@ static void cg(int n) {
             } else {
                 mov_r_imm(0, 0);
             }
-            if (strpn >= 2048) { fprintf(stderr, "[STRPATCH-OVERFLOW] strpn=%d\n", strpn); abort(); }
+            if (strpn >= 8192) { fprintf(stderr, "[STRPATCH-OVERFLOW] strpn=%d\n", strpn); abort(); }
             str_patches[strpn].patch_at = cp - 4; /* position of imm32 */
             str_patches[strpn].str_idx = si;
             strpn++;
@@ -8131,7 +8131,7 @@ static void cg(int n) {
                 } else if(off>=0){
                     int did=0;
                     if (!arr_dbl) pop_r(3); /* ebx = rhs (plain array/pointer branches never touch r3 in the address calc) */
-                    for(int vi=0;vi<vs_n();vi++)if(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
+                    for(int vi=vs_n()-1;vi>=0;vi--)if(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     int esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
                     if(esz==4){asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}else if(esz==2){asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}else if(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);} /* IMUL r11d, r9d */
@@ -8501,7 +8501,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
             } else if (off >= 0 || (off < 0 && var_isstatic(vname))) {
                 cg(n1[n]); /* index �?eax */
                 int did = 0;
-                for (int vi = 0; vi < vs_n(); vi++)
+                for (int vi = vs_n() - 1; vi >= 0; vi--)
                     if (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && var_codegen_visible(vi)) {
                         int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         int elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
