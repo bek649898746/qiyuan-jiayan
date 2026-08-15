@@ -584,6 +584,9 @@ static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* P
 #define execve(a,b,c) (-1)  /* POSIX execve stub */
 #define setsid() (-1)  /* POSIX setsid stub */
 #define DEFAULT_GIT_TEMPLATE_DIR "/usr/share/git-core/templates"  /* setup.c 模板目录 (fix 2026-08-15: DEFAULT_GIT_TEMPLATE_DIR undefined) */
+#define GIT_USER_AGENT "git/2.45.2"  /* version.c git_user_agent() 用户代理字符串 (fix 2026-08-15: GIT_USER_AGENT undefined) */
+#define GIT_VERSION "2.45.2"  /* version.c git_version_string[] (fix 2026-08-15: GIT_VERSION undefined) */
+#define GIT_BUILT_FROM_COMMIT ""  /* version.c git_built_from_commit_string[] (fix 2026-08-15: GIT_BUILT_FROM_COMMIT undefined) */
 struct passwd { char *pw_name; char *pw_gecos; char *pw_dir; };  /* POSIX pwd 字段子集 (fix 2026-08-15: getpwnam/path.c) */
 #define getpwnam(a) ((struct passwd*)0)  /* POSIX getpwnam stub */
 #define getpwuid(a) ((struct passwd*)0)  /* POSIX getpwuid stub */
@@ -600,6 +603,11 @@ static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -
 static int shutdown(int s, int how) { (void)s; (void)how; return -1; } /* ws2_32 shutdown stub (fix 2026-08-15: shutdown undefined) */
 static int readlink(const char *a, char *b, int c) { (void)a; (void)b; (void)c; return -1; }
 static int fchmod(int a, int b) { (void)a; (void)b; return -1; }
+static unsigned int alarm(unsigned int seconds) { (void)seconds; return 0; }  /* POSIX alarm stub (fix 2026-08-15: upload-pack.c alarm undefined) */
+static int fsync(int fd) { (void)fd; return 0; }  /* POSIX fsync stub (fix 2026-08-15: bulk-checkin.c fsync undefined) */
+static void sync(void) {}  /* POSIX sync stub (fix 2026-08-15) */
+static int IPATTERN(const char *a, const char *b, const char *c) { (void)a; (void)b; (void)c; return 0; }  /* userdiff.c 多行初始化宏 qcc 未展开, 兜底满足链接 (fix 2026-08-15) */
+static int PATTERNS(const char *a, const char *b, const char *c) { (void)a; (void)b; (void)c; return 0; }  /* 同上 */
 
 /* stdarg 变参宏 stub (qcc 跳 stdarg.h) — die() 等变参函数体用 va_list/va_start/va_end (fix 2026-08-14: die 定义因 va_list 未知丢失 → undefined) */
 typedef char *va_list;
@@ -662,6 +670,7 @@ typedef int regex_t; /* regex_t 不透明类型近似 — static regex_t *stamp 
 #define EBADF 9
 #define ECHILD 10
 #define EAGAIN 11
+#define EWOULDBLOCK EAGAIN  /* wrapper.c socket 重试判定 (fix 2026-08-15: EWOULDBLOCK undefined) */
 #define ENOMEM 12
 #define EACCES 13
 #define EFAULT 14
