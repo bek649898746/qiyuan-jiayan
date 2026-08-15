@@ -82,6 +82,7 @@ static int cg_fdepth_max = 0; /* innermost array's dimension count (deref only a
 static int cg_frows[4];     /* per-dim row sizes, set by the innermost array var */
 static int cg_ginit_ctx = 0; /* 1 while emitting ginit initializers at main entry (case-7 must NOT skip them) */
 static int cur_fn_sret = 0;  /* parse/codegen: current function returns a >8B struct by value (Win64 sret) */
+static int cur_va_home = -1; /* variadic fn: rbp-relative address of the first vararg slot; -1 = non-variadic */
 static int cur_ret_si = -1;  /* codegen: current function's return struct type index (-1 = not struct) */
 static int cg_sret_off = 0;  /* case-4: rbp-relative sret target (lea rcx) for a struct-returning call; 0 = none */
 static int sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
@@ -119,7 +120,9 @@ static void asm_emit_dbl(const char *fmt, double v) {
 static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �?a #define would register as a lexer macro and substitute 0! */
 /* simple #define NAME VALUE macros (constant numbers) */
 static struct { char name[64]; int val; } macros[4096]; static int macro_n; /* Phase1-L3: 64->1024 */
-static void macro_add(const char *n, int v) { if (macro_n < 4096) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_n++; } } /* fix 2026-08-15: 上限 1024→4096 对齐数组容量 — fsmonitor--daemon.c 头链数值宏超 1024, SIMPLE_IPC_QUIT 被丢 → undefined */
+static char macro_uns[4096]; static char macro_ll[4096]; static int macro_ll_hi[4096]; /* 数值宏 ULL/U 后缀标志 — #define UINTMAX_MAX ...ULL 展开必须保留 unsigned long long (fix 2026-08-15) */
+static void macro_add_full(const char *n, int v, int uns, int ll, int ll_hi) { if (macro_n < 4096) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_uns[macro_n] = (char)uns; macro_ll[macro_n] = (char)ll; macro_ll_hi[macro_n] = ll_hi; macro_n++; } } /* fix 2026-08-15: 上限 1024→4096 对齐数组容量 — fsmonitor--daemon.c 头链数值宏超 1024, SIMPLE_IPC_QUIT 被丢 → undefined */
+static void macro_add(const char *n, int v) { macro_add_full(n, v, 0, 0, 0); }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
 static struct { char name[64]; char val[4096]; } obj_macros[2048]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
@@ -1519,6 +1522,7 @@ int bare_metal = 0; /* Gate 9: ��������������� (ma
 int bin_mode = 0; /* -bin: 裸二进制输出 (内核: 无 PE 头/无 CRT/无 .data), fix 2026-08-08 */
 static int coff_ginit_done = 0; /* -c: ginit emitted once per object */
 #define MAX_CREL 131072
+#define COFF_DATA_SITE_BASE 0x30000000 /* .data 重定位 site 哨兵：write_coff_obj 按 rsec=3 分组 */
 static struct { int site; int type; int sym; int addend; int is_label; int label; } crel[MAX_CREL];
 static int crel_n;
 #define MAX_CSYM 16384
@@ -1545,6 +1549,10 @@ static void coff_crel(int site, int type, int sym, int addend) {
     crel[crel_n].sym = sym; crel[crel_n].addend = addend;
     crel[crel_n].is_label = 0; crel[crel_n].label = -1;
     crel_n++;
+}
+/* .data 槽重定位：site 以 COFF_DATA_SITE_BASE 为基（write_coff_obj 识别为 secs[3]） */
+static void coff_data_crel(int data_off, int type, int sym, int addend) {
+    coff_crel(COFF_DATA_SITE_BASE + data_off, type, sym, addend);
 }
 static int coff_counter_sym = -1;
 static int coff_counter_sym_get(void) {
@@ -1614,7 +1622,7 @@ static int coff_func_name_sym(const char *name) {
 static int coff_is_builtin(const char *n) {
     static const char *bn[] = { "printf", "fprintf", "sprintf", "snprintf", "putstr", "scanf",
         "fopen", "fread", "fwrite", "fputc", "fputs", "fclose", "fseek", "ftell", "rewind",
-        "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc",
+        "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
         "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
     for (int i = 0; i < (int)(sizeof(bn)/sizeof(bn[0])); i++) if (!strcmp(bn[i], n)) return 1;
@@ -2097,6 +2105,22 @@ static void fn_ret_name_put(const char *name, int ret_si, int ret_ptr) {
     fn_ret_name_map[fn_ret_name_n].ret_si = ret_si;
     fn_ret_name_map[fn_ret_name_n].ret_ptr = ret_ptr;
     fn_ret_name_n++;
+}
+/* variadic functions: rbp-relative address of the first vararg slot, keyed by NAME.
+   func_tbl indexes are re-assigned by gen_code's func_n=0 reset, so the same
+   name-keyed pattern as fn_ret_name_map is required here. */
+static struct { char name[64]; int va_home; } fn_va_home_map[512]; static int fn_va_home_n;
+static int fn_va_get(const char *name) {
+    for (int i = 0; i < fn_va_home_n; i++) if (!strcmp(fn_va_home_map[i].name, name)) return fn_va_home_map[i].va_home;
+    return -1;
+}
+static void fn_va_put(const char *name, int va_home) {
+    for (int i = 0; i < fn_va_home_n; i++)
+        if (!strcmp(fn_va_home_map[i].name, name)) { fn_va_home_map[i].va_home = va_home; return; }
+    if (fn_va_home_n >= 512) return;
+    strcpy(fn_va_home_map[fn_va_home_n].name, name);
+    fn_va_home_map[fn_va_home_n].va_home = va_home;
+    fn_va_home_n++;
 }
 /* per-function double-arg signature, keyed by NAME (gen_code's func_n=0 reset re-assigns
    func_tbl indexes, so parse-time index-based data would misalign). */
@@ -2765,7 +2789,10 @@ static void lex(const char *s) {
                 if (s[i] == '-') { msign = -1; i++; } /* fix 2026-08-06: #define NEG -5 负号被丢弃 → NEG 注册为 0 (#if NEG < 0 假) */
                 if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) { i += 2; while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') mval = mval * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') mval = mval * 16 + (c - 'a' + 10); else mval = mval * 16 + (c - 'A' + 10); i++; } }
                 else { while (isdigit(s[i])) { mval = mval * 10 + (s[i++] - '0'); } }
-                macro_add(mname, msign * mval);
+                { int muns = 0, mll = 0;
+                  if (s[i] == 'u' || s[i] == 'U') { muns = 1; i++; while (s[i] == 'l' || s[i] == 'L') { mll = 1; i++; } }
+                  else if (s[i] == 'l' || s[i] == 'L') { while (s[i] == 'l' || s[i] == 'L') { mll = 1; i++; } if (s[i] == 'u' || s[i] == 'U') { muns = 1; i++; } }
+                  macro_add_full(mname, msign * (int)mval, muns, mll, (int)(mval >> 32)); }
             }
             while (s[i] && s[i] != '\n') { if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; } if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; } if (s[i] == '\\' && s[i + 1] == '\n') { i += 2; continue; } else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') { i += 3; continue; } i++; } /* skip directive line incl. backslash continuations and multi-line block comments (fix 2026-08-15) */
             continue;
@@ -2883,7 +2910,7 @@ static void lex(const char *s) {
                 continue; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
         if (s[i] == '"') { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 8190) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 8190 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 8190 字符上限 (fix 2026-08-13 全量链接: Git 超长拼接 help 文本)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
@@ -5430,10 +5457,19 @@ static int parse(const char *s) {
                                 else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } }
                                 tk++;
                             }
-                            if (tt[tk] == AK) { tk++; while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++; } /* = init (fix 2026-08-14: static int (*fp)(void) = f; 原 = 没消费 → 后续函数被吞 → usagef/usage/die 全消失 undefined) */
-                            if (tt[tk] == SK) tk++;
                             var_static(vn, 4); /* 8-byte .data slot (fnptr = pointer) */
                             vars[vcnt - 1].arr_esz = 8; /* fnptr: *gfp loads 8 bytes */
+                            if (tt[tk] == AK) { /* = init: static int (*fp)(void) = f; 记录 ginit → -c 时落 .data 重定位 (fix 2026-08-15) */
+                                tk++;
+                                int rhs = expr();
+                                if (rhs >= 0 && ginit_n < 4096) {
+                                    int decl = Nd(7); memcpy((char*)(nn + decl), vn, 32);
+                                    Nc(decl, rhs);
+                                    ginit[ginit_n++] = decl;
+                                }
+                            }
+                            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                            if (tt[tk] == SK) tk++;
                             continue;
                         }
                         if (tt[tk] == LB) { /* pointer-to-array: char (*tn)[64]; */
@@ -5690,6 +5726,7 @@ static int parse(const char *s) {
             fr_start[fvn] = rsp_used; /* record frame-bound start: rsp_used is the pure frame footprint (globals/statics live in .data, never touch rsp_used) */
             parse_base = fvb[fvn]; /* scope body-local decl lookups to THIS function */
             int pr = 0;
+            int fn_is_va = 0; /* variadic ... parsed (qcc lexes '...' as DT DT DT) */
             while (tt[tk] != KK && tt[tk] != SK && tt[tk] != UK && tt[tk] != EK && pr < 256) {
                 int pis_char = 0, pis_ptr = 0, ptr_depth = 0, p_stidx = -1, pis_dbl = 0;
                 int p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr param: 8-byte pointer slot (fix 2026-08-03) */
@@ -5764,7 +5801,13 @@ static int parse(const char *s) {
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                 }
                 if (tt[tk] == CK) tk++;
-                if (tt[tk] == DT) { while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
+                if (tt[tk] == DT) { fn_is_va = 1; while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
+            }
+            if (fn_is_va) {
+                int va_home;
+                if (cur_fn_sret) va_home = (pr < 3) ? 32 + 8 * pr : 56 + 8 * (pr - 3);
+                else va_home = (pr < 4) ? 24 + 8 * pr : 56 + 8 * (pr - 4);
+                fn_va_put((char*)(nn + fdef), va_home);
             }
             if (tt[tk] == SK) { parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
@@ -7514,7 +7557,7 @@ static void cg(int n) {
             } else if (!strcmp(fname, "ftell")) {
                 mov_r_imm(0, 0); /* size 0 */
             } else if (!strcmp(fname, "exit")) {
-                asm_emit("    移动 r0, 0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xB8); b4(0); /* mov eax, 0 */
+                emit_exit_proc(); /* ExitProcess(rcx) — C exit() must not return */
             } else if (!strcmp(fname, "strcpy") || !strcmp(fname, "strncpy")) {
                 mov_rr(10, 8); mov_rr(9, 2); mov_rr(8, 1);
                 int lss3=new_label(), lds3=new_label();
@@ -7581,6 +7624,8 @@ static void cg(int n) {
                 emit_getpos();
             } else if (!strcmp(fname, "_exit_proc")) {
                 emit_exit_proc();
+            } else if (!strcmp(fname, "__qcc_va_start")) {
+                lea_r_mbrp(0, cur_va_home); /* rax = &first vararg slot (home area) */
             } else {
                 int mslot = fn_math_iat(fname);
                 if (mslot >= 0) { /* 外部数学函数：Win64 ABI 传参（double→xmm，签名固定全 double）+ IAT 调用（fix 2026-08-06 BUG-1） */
@@ -8855,6 +8900,7 @@ void gen_code(void) {
         cur_ret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
         { int cur_ret_ptr = fn_ret_name_get_ptr(fname);
           cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8 && !cur_ret_ptr); } /* sret fn: params shift (rcx = hidden ptr); struct pointer return is NOT sret */
+        cur_va_home = fn_va_get(fname);
 
         /* local frame — single source of truth: `off` is the GLOBAL parse-time rsp_off,
            fr_start[gfn] this function's baseline. disp = off - cur_frame_sz
@@ -8909,6 +8955,18 @@ void gen_code(void) {
                 } else if (vars[vi].p_esz > 0 || (vars[vi].st_idx >= 0 && vars[vi].st_sz > 0 && vars[vi].st_sz <= 8) || vars[vi].is_ll) mov_mbrp_reg64(vars[vi].rsp_off - cur_frame_sz, vars[vi].preg);
                 else mov_mbrp_reg(vars[vi].rsp_off - cur_frame_sz, vars[vi].preg);
             }
+        }
+
+        /* variadic functions: spill the four integer-argument registers into the
+           Win64 home area so va_start/va_arg (and msvcrt _vsnprintf) can walk a
+           contiguous vararg list. Home base = rbp+24 (see var_param pdisp math).
+           Fixed named params are still copied above; the spill only adds the
+           home-area view needed by va_list. */
+        if (cur_va_home >= 0 && !bin_no_params) {
+            mov_mbrp_reg64(24, 1); /* rcx -> home[0] */
+            mov_mbrp_reg64(32, 2); /* rdx -> home[1] */
+            mov_mbrp_reg64(40, 8); /* r8  -> home[2] */
+            mov_mbrp_reg64(48, 9); /* r9  -> home[3] */
         }
 
         /* epilogue label: return jumps here */
@@ -9199,13 +9257,32 @@ static void write_coff_obj(FILE *f) {
         }
     }
 
+    /* -c 多 .o 链接: 把「函数/全局变量地址」类静态初始化器直接落成 .data ADDR32 重定位。
+       否则它们只存在于 ginit 运行时代码，而 ginit 只挂在对象最后一个函数入口，
+       多文件链接后不会执行 → 静态函数指针槽保持 0（usage_routine/die_routine 崩）。 */
+    for (int gi = 0; gi < ginit_n; gi++) {
+        int gn = ginit[gi];
+        if (gn < 0 || nt[gn] != 7 || n0[gn] < 0) continue;
+        if (nt[n0[gn]] != 1) continue; /* 仅处理函数/全局变量地址初始化 */
+        char *vn = (char*)(nn + gn);
+        int off = -1;
+        for (int vi = vcnt - 1; vi >= 0; vi--)
+            if (!strcmp(vars[vi].name, vn) && vars[vi].is_static && vars[vi].rsp_off >= 0) { off = vars[vi].rsp_off; break; }
+        if (off < 0) continue;
+        char *tn = (char*)(nn + n0[gn]);
+        int s = csym_find(tn);
+        if (s < 0) continue;
+        coff_data_crel(4 * off, 0x0002, s, 0);
+    }
+
     /* 每节重定位 */
     int nrel[4] = {0,0,0,0};
     for (int i = 0; i < crel_n; i++) {
         /* 重定位按 site 所在节分组（不是目标符号的节） */
         int site = crel[i].site;
         int rsec = 0;
-        if (site >= cp) {
+        if (site >= COFF_DATA_SITE_BASE) rsec = 3;
+        else if (site >= cp) {
             if (site < cp + coff_str_len) rsec = 1;
             else rsec = 2;
         }
@@ -9217,12 +9294,13 @@ static void write_coff_obj(FILE *f) {
     for (int i = 0; i < crel_n; i++) {
         int site = crel[i].site;
         int rsec = 0;
-        if (site >= cp) {
+        if (site >= COFF_DATA_SITE_BASE) rsec = 3;
+        else if (site >= cp) {
             if (site < cp + coff_str_len) rsec = 1;
             else rsec = 2;
         }
         int b2 = ridx[rsec]++;
-        rb[rsec][b2].va = crel[i].site;
+        rb[rsec][b2].va = (rsec == 3) ? (crel[i].site - COFF_DATA_SITE_BASE) : crel[i].site;
         rb[rsec][b2].sym = crel[i].sym;
         rb[rsec][b2].type = crel[i].type;
     }
