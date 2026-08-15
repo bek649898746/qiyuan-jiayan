@@ -929,6 +929,7 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
 }
 static int st_fidx(int si, const char *fn) { for (int i = 0; i < stypes[si].fn; i++) if (!strcmp(stypes[si].fnames[i], fn)) return i; return -1; }
 static int st_field_el(int si, const char *fn) { int idx = st_fidx(si, fn); return (idx >= 0 && stypes[si].fels[idx] > 0) ? stypes[si].fels[idx] : (idx >= 0 ? stypes[si].frows[idx] : 1); } /* 数组字段元素大小; 未设置→frow (标量) */
+static int st_field_is_array_idx(int si, const char *fn) { int idx = st_fidx(si, fn); return idx >= 0 && stypes[si].fels[idx] > 0 && stypes[si].fels[idx] != stypes[si].fsizes[idx]; } /* 数组字段: fels>0 且 fels(元素大小) != fsizes(总大小); fnptr 字段 fels==0, 标量 fels==fsize (fix 2026-08-16) */
 static int st_field_row(const char *sn, const char *fn); /* fwd */
 static int st_field_is_dbl(const char *sn, const char *fn); /* fwd */
 static void st_field_2d_setup(int si, const char *fn) { /* fix 2026-08-07: struct 数组字段 → 布好 2D 深度状态 (第一维行大小, 第二维元素大小) */
@@ -8335,8 +8336,8 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (o < 0 && nt[n0[n]] == 1) { load_param_val(vn); } /* param in register or stack */
                     else if (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 / 函数调用结果 — 求值得指针 (fix 2026-08-06: 原 load_param_val 对非参数加载垃圾, offsetof 惯用法 ((T*)0)->m 错) */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += offset */
-                    if (!cg_no_deref) { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
-                    else st_field_2d_setup(si, fn); /* array-base of a pointer field needs its element size (fix 2026-08-15: ((T*)0)->arr[i]) */
+                    if (cg_no_deref || st_field_is_array_idx(si, fn)) { st_field_2d_setup(si, fn); } /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16: FLEX_ALLOC_MEM ret->orig dereferenced as int) */
+                    else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 }
             } else if(o>=0&&s>=0){int fo=st_off(stypes[s].name,fn);if(fo>=0){
                 if(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
@@ -8344,7 +8345,7 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     if(off>=0){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     int afsz = st_field_size(stypes[s].name, fn);
-                    if (cg_no_deref) { st_field_2d_setup(s, fn); /* array base of a pointer field needs its element size (fix 2026-08-15: strvec_clear array->v[i] byte load) */ }
+                    if (cg_no_deref || st_field_is_array_idx(s, fn)) { st_field_2d_setup(s, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16) */ }
                     else if (afsz > 4) { int afy = st_field_ty_idx(stypes[s].name, fn); if (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_el(s, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref, commands[].cmd 传成结构体地址) */ }
                     else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
 else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
