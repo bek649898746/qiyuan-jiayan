@@ -954,7 +954,7 @@ static void layout(void) {
       out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
     bss_rva_base = out_base[OUT_BSS];
     if (g_heap_counter_off >= 0 && out_data[OUT_DATA]) {
-        long long heap_va = 0x400000LL + bss_rva_base + out_len[OUT_BSS];
+        long long heap_va = 0x400000LL + bss_rva_base + out_len[OUT_BSS] + 2560; /* fix 2026-08-15: 漏加 argv/token 区 2560 → malloc 堆起点落在 argv[0] → git_setup_gettext 的 calloc 清空 argv → cmd_main 读 argv[1]=NULL 崩溃 */
         heap_va = (heap_va + 7) & ~7LL;
         w8_at(out_data[OUT_DATA] + g_heap_counter_off, heap_va);
     }

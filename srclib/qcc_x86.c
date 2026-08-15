@@ -4652,6 +4652,21 @@ static int const_expr_eval(int *val) {
     return 1;
 }
 
+static int skip_global_init(int tk) {
+    /* 跳过全局/文件级声明中的初始化器: = expr / = { ... } / = ( ... )
+       到顶层逗号或分号停止 (不消费逗号/分号)。 (fix 2026-08-15: *local_packs = NULL, *altodb_packs = NULL) */
+    if (tt[tk] != AK) return tk;
+    tk++;
+    int d = 0;
+    while (tk < TS && tt[tk] != EK) {
+        if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d++;
+        else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d--; if (d < 0) d = 0; }
+        else if (d == 0 && (tt[tk] == CK || tt[tk] == SK)) break;
+        tk++;
+    }
+    return tk;
+}
+
 static int parse(const char *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
     fdef_n = 0; /* fix 2026-08-06: 每次 parse 重置顶层函数列表 */
@@ -4838,7 +4853,7 @@ static int parse(const char *s) {
                     if (tt[tk] == UK) tk++; /* } */
                     st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
                     /* instance variable(s): struct Item {...} items[4]; / *ptr */
-                    if (tt[tk] == DK) { tk++; if (tt[tk] == VR) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; if (st_static) var_file_static[vcnt - 1] = 1; tk++; } }
+                    if (tt[tk] == DK) { while (tt[tk] == DK) tk++; if (tt[tk] == VR) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; if (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } } /* fix 2026-08-15: **entries — 多级指针实例只吃一个 * → cmd_mktree 被吞; = NULL 初始化器 */
                     else if (tt[tk] == VR) {
                         int cnt = 1;
                         if (tt[tk + 1] == LB) { int tix = tk + 1; while (tt[tix] == LB) { tix++; if (tt[tix] == NK) cnt *= tv[tix]; if (tt[tix] == RB) tix++; } }
@@ -4847,8 +4862,9 @@ static int parse(const char *s) {
                         tk++;
                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; }
                         if (tt[tk] == AK && tt[tk + 1] == FK) { int n = 1, d0 = 0; tk += 2; while (tk < TS && !(tt[tk] == UK && d0 == 0)) { if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--; else if (tt[tk] == CK && d0 == 0) n++; tk++; } if (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; if (tt[tk] == UK) tk++; }
+                        else tk = skip_global_init(tk); /* = expr 初始化器 (fix 2026-08-15) */
                     }
-                    while (tt[tk] == CK) { tk++; int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; } if (tt[tk] == VR) { if (ip2) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; } else var_static_struct(tn[tk], si, 1); if (st_static) var_file_static[vcnt - 1] = 1; tk++; } }
+                    while (tt[tk] == CK) { tk++; int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; } if (tt[tk] == VR) { if (ip2) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; } else var_static_struct(tn[tk], si, 1); if (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
                     if (tt[tk] == SK) tk++; /* ; */
                 } else {
                     /* struct Big make_big(...): tag present but NO body — rewind so the
@@ -4942,7 +4958,9 @@ static int parse(const char *s) {
                         if (e_pesz > 0) e_esz = 8;
                         else if (e_stidx >= 0) e_esz = st_sz(stypes[e_stidx].name);
                         int e_cnt = 1;
+                        int saw_lb = 0; /* fix 2026-08-15: extern char strbuf_slopbuf[] 未定长数组 — 原 e_cnt==1 不置 arr_sz → cg 按标量读 .data 前 4 字节而非取地址 → STRBUF_INIT 初始化成 0x3a → setenv("PATH", 0x3a) 崩 */
                         while (tt[tk] == LB) {
+                            saw_lb = 1;
                             tk++; int cdim = 0;
                             if (const_expr_eval(&cdim)) e_cnt *= cdim;
                             else if (tt[tk] == NK) { e_cnt *= tv[tk]; tk++; }
@@ -4950,6 +4968,7 @@ static int parse(const char *s) {
                             if (tt[tk] == RB) tk++;
                         }
                         if (e_cnt > 1) { vars[vi].arr_sz = e_cnt; vars[vi].arr_esz = e_esz; }
+                        else if (saw_lb) { vars[vi].arr_sz = -1; vars[vi].arr_esz = e_esz; }
                     }
                     break;
                 }
@@ -5207,7 +5226,7 @@ static int parse(const char *s) {
         /* global variable declarations: [static] type name [= init] ; */
         int unknown_ty_decl = 0;
         { int _uty = tk; if (tt[_uty] == VK && !strcmp(tn[_uty], "static")) _uty++; /* fix 2026-08-14: static 前缀后 unknown typedef (static sig_handler_t timer_fn = SIG_DFL) */
-          if (tt[_uty] == VR && !td_is(tn[_uty]) && st_find(tn[_uty]) < 0 && tt[_uty + 1] == VR && (tt[_uty + 2] == AK || tt[_uty + 2] == SK || tt[_uty + 2] == LB || tt[_uty + 2] == DK)) { unknown_ty_decl = 1; td_reg(tn[_uty]); } } /* fix 2026-08-14: 未定义 typedef 作全局声明类型 (Windows CRITICAL_SECTION pinfo_cs;) — 原 break 提前结束 */
+          if (tt[_uty] == VR && !td_is(tn[_uty]) && st_find(tn[_uty]) < 0 && ((tt[_uty + 1] == VR && (tt[_uty + 2] == AK || tt[_uty + 2] == SK || tt[_uty + 2] == LB || tt[_uty + 2] == DK || tt[_uty + 2] == CK)) || (tt[_uty + 1] == DK && tt[_uty + 2] == VR && (tt[_uty + 3] == AK || tt[_uty + 3] == SK || tt[_uty + 3] == LB || tt[_uty + 3] == DK || tt[_uty + 3] == CK)))) { unknown_ty_decl = 1; td_reg(tn[_uty]); } } /* fix 2026-08-14: 未定义 typedef 作全局声明类型 (Windows CRITICAL_SECTION pinfo_cs;) — 原 break 提前结束; fix 2026-08-15: pthread_t *threads (unknown typedef + 指针) */
         if (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk])) || tt[tk] == EN || tt[tk] == ST || unknown_ty_decl) {
             int save_tk = tk;
             int g_stidx = -1; /* struct type index when the declared type is a struct */
@@ -5623,7 +5642,7 @@ static int parse(const char *s) {
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         int fn_ret_ptr = 0; /* struct return type is a POINTER (not sret) */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
-        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
+        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int neg = 0; if (tt[tk] == MK) { neg = 1; tk++; } if (tt[tk] == NK) { ev = neg ? -tv[tk] : tv[tk]; tk++; } } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-15: 匿名/带体 enum 返回类型 static enum { ... } fn(...) — 原只跳 enum 名, 见 { 落 fn 检测 break → ls_refs_advertise 被吞 */
         else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
@@ -6998,7 +7017,7 @@ static void cg(int n) {
             } else {
                 char *vn = (char*)(nn + n);
                 if (var_isstatic(vn)) { /* static: .data via RIP-relative */
-                    if (var_arrsz(vn) > 0) lea_rax_rip(coff_static_disp(off, 1) - 1); /* static ARRAY name: its address (lea is 7B, stc_disp assumes 6) */
+                    if (var_arrsz(vn) != 0) lea_rax_rip(coff_static_disp(off, 1) - 1); /* static ARRAY name: its address (lea is 7B, stc_disp assumes 6); -1 = extern 未定长数组 (fix 2026-08-15) */
                     else if (var_pesz(vn) > 0) mov_rax_rip64(coff_static_disp(off, 1) - 1);
                     else if (var_small_struct(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); /* struct value: full 8 bytes */
                     else if (var_is_ll(vn)) { mov_rax_rip64(coff_static_disp(off, 1) - 1); nll[n] = 1; } /* long long: full 64-bit static load (fix 2026-08-05) */
@@ -7011,7 +7030,7 @@ static void cg(int n) {
                     int is_arr = 0; int base = off;
                     for (int vi = vs_n() - 1; vi >= 0; vi--)
                         if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) {
-                            if (vars[vi].arr_sz > 0) { is_arr = 1; int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4; base = off - vars[vi].arr_sz * esz; }
+                            if (vars[vi].arr_sz != 0) { is_arr = 1; int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4; base = off - vars[vi].arr_sz * esz; }
                             break;
                         }
                     if (is_arr) { lea_r_mbrp(0, base - cur_frame_sz); }
@@ -9152,17 +9171,31 @@ static void write_coff_obj(FILE *f) {
     if (!coff_bss_sym) coff_bss_sym = csym_add(".data", 0, 4, 3, 0); /* fix 2026-08-06: .bss→.data (全局初始值入 .data) */
     for (int i = 0; i < func_n; i++) {
         if (func_tbl[i].defined) {
+            int fsc = (fn_static_is(func_tbl[i].name) || coff_is_builtin(func_tbl[i].name)) ? 3 : 2; /* static/内建 → 局部符号 scl=3 (fix 2026-08-06: 多 .o 头库不冲突) */
             int s = csym_find(func_tbl[i].name);
             if (s < 0) {
-                int fsc = (fn_static_is(func_tbl[i].name) || coff_is_builtin(func_tbl[i].name)) ? 3 : 2; /* static/内建 → 局部符号 scl=3 (fix 2026-08-06: 多 .o 头库不冲突) */
                 s = csym_add(func_tbl[i].name, label_pos[func_tbl[i].label], 1, fsc, 0x20);
+            } else {
+                /* fix 2026-08-15: 同名未定义符号先入表（函数体之前被引用）→ 定义被跳过，符号值停在 0 → strbuf_add 跳到对象首函数 */
+                csym[s].value = label_pos[func_tbl[i].label];
+                csym[s].sec = 1;
+                csym[s].sc = fsc;
+                csym[s].type = 0x20;
             }
         }
     }
     for (int i = 0; i < vcnt; i++) {
         if (vars[i].is_static && vars[i].rsp_off >= 0) { /* extern (rsp_off<0) 不生成 .bss 定义符号 — 由 coff_slot_sym 生成 sec=0 未定义 (fix 2026-08-06) */
+            int vsc = (var_static_kw[i] || var_file_static[i]) ? 3 : 2;
             int s = csym_find(vars[i].name);
-            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, (var_static_kw[i] || var_file_static[i]) ? 3 : 2, 0); /* fix 2026-08-06: 函数内 static → scl=3 局部; fix 2026-08-14: 文件级 static 也 scl=3 */
+            if (s < 0) s = csym_add(vars[i].name, 4 * vars[i].rsp_off, 4, vsc, 0); /* fix 2026-08-06: 函数内 static → scl=3 局部; fix 2026-08-14: 文件级 static 也 scl=3 */
+            else {
+                /* fix 2026-08-15: 同名符号先以未定义/错误值入表 → 更新为真实 .data 槽 */
+                csym[s].value = 4 * vars[i].rsp_off;
+                csym[s].sec = 4;
+                csym[s].sc = vsc;
+                csym[s].type = 0;
+            }
         }
     }
 
