@@ -5038,6 +5038,7 @@ static int parse(const char *s) {
                 tk += 3; /* skip ( name ) */
                 if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
             }
+            while (tt[tk] == DK) tk++; /* typedef struct Tag *Alias; 的指针 * (fix 2026-08-15: kwset.h typedef struct kwset_t* kwset_t → 别名未注册 → diffcore-pickaxe 整个文件 break) */
             if (tt[tk] == VR) {
                 td_reg(tn[tk]); /* register alias as type name */
                 if (td_isst && td_stname[0]) tdef_add(tn[tk], 1, td_stname, 0); /* typedef struct X → Y */
