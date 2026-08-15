@@ -1626,7 +1626,7 @@ __attribute__((unused))
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
         "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
-    遍 (整 i = 0; i < (整)(大小(bn)/大小(bn[0])); i++) 若 (!strcmp(bn[i], n)) 返 1;
+    遍 (整 i = 0; i < (整)(大小(bn)/大小((bn)[0])); i++) 若 (!strcmp(bn[i], n)) 返 1;
     返 0;
 }
 静 整 coff_static_disp(整 idx, 整 k) {
@@ -6934,7 +6934,7 @@ __attribute__((unused))
         {"r8",8},{"r9",9},{"r10",10},{"r11",11},{"r12",12},{"r13",13},{"r14",14},{"r15",15},
         {"r8d",8},{"r9d",9},{"r10d",10},{"r11d",11},{"r12d",12},{"r13d",13},{"r14d",14},{"r15d",15},
     };
-    遍 (整 i = 0; i < (整)(大小(regs)/大小(regs[0])); i++) 若 (!strcmp(s, regs[i].n)) 返 regs[i].id;
+    遍 (整 i = 0; i < (整)(大小(regs)/大小((regs)[0])); i++) 若 (!strcmp(s, regs[i].n)) 返 regs[i].id;
     返 -1;
 }
 静 空 asm_enc_string(常 字 *asmtext) {
