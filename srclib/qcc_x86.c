@@ -2534,6 +2534,22 @@ static int expr(void);
 static int brace_fields(int si, int base) {
     int blk = Nd(5);
     int fidx = 0;
+    /* C99 aggregate init zeroes every member not explicitly initialized. qcc only
+       emitted the listed fields, so `struct strvec blank = STRVEC_INIT` left nr/alloc
+       as stack garbage and strvec_clear looped over a garbage count. Zero all scalar
+       fields first; the explicit initializer below then overwrites the listed ones.
+       (fix 2026-08-15 git_jiayan --version crash in strvec_clear) */
+    for (int z = 0; z < stypes[si].fn; z++) {
+        int fty = stypes[si].ftypes[z];
+        int fsz = stypes[si].fsizes[z];
+        int frow = stypes[si].frows[z];
+        if ((fty >= 0 && stypes[fty].sz == fsz) || (frow > 0 && fsz > frow)) continue; /* nested struct/array: not scalar */
+        char fname[64]; strcpy(fname, stypes[si].fnames[z]);
+        int mem = Nd(15); memcpy((char*)(nn + mem), fname, 32); nv[mem] = 0;
+        Nc(mem, base);
+        int zero = Nd(0); nv[zero] = 0;
+        int asgn = Nd(10); Nc(asgn, mem); Nc(asgn, zero); Nc(blk, asgn);
+    }
     while (tt[tk] != UK && tt[tk] != EK) { /* until } — fidx may exceed fn for out-of-order designators (fix 2026-08-05) */
         if (tt[tk] == CK || tt[tk] == SK) { tk++; continue; } /* skip comma between values */
         if (tt[tk] == UK) break;
@@ -3166,11 +3182,13 @@ static int prim(void) {
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
         if (tt[tk] == OK) tk++; /* skip ( */
-        if (tt[tk] == DK) { /* sizeof(*expr): deref → 指针元素 8 字节 (char **mod.add → *mod.add 是 char* = 8) (fix 2026-08-14: 原 * 未消费 → 递归/')' 崩溃) */
+        if (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
             tk++; /* * */
+            int sz = 8;
+            if (tt[tk] == VR) { char vn[64]; strcpy(vn, tn[tk]); int si = var_stidx(vn); if (si >= 0) sz = st_sz(stypes[si].name); else if (var_pesz(vn) > 0) sz = var_pesz(vn); }
             int v = prim(); (void)v; /* 消费 expr (mod.add) */
             if (tt[tk] == KK) tk++; /* ) */
-            int n = Nd(0); nv[n] = 8; return n;
+            int n = Nd(0); nv[n] = sz; return n;
         }
         if (tt[tk] == OK) { /* sizeof((expr)[0]): ARRAY_SIZE 宏 → 元素大小 (fix 2026-08-14: 原嵌套 ( 未消费 → ')[' 崩溃) */
             if (tt[tk] == OK && tt[tk + 1] == DK && tt[tk + 2] == VR && tt[tk + 3] == KK && (tt[tk + 4] == AR || tt[tk + 4] == DT) && tt[tk + 5] == VR && tt[tk + 6] == KK) { /* sizeof((*ptr)->field) — commit-graph.c (*list)->date (fix 2026-08-15: 原 ARRAY_SIZE 分支盲吃 (* 漏 date → undefined) */
@@ -3647,7 +3665,24 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) 
             continue;
         }
         /* leaf: a[gi_idx[0]][gi_idx[1]]...[gi_idx[nd-1]] = expr */
-        if (tt[tk] == FK) { /* struct 嵌套初始化 { ... }: 跳过配平大括号 (fix 2026-08-14: struct 数组 dv_info_t sha1_dvs[] 元素嵌套 { 泄漏到 expr() → 死循环) */
+        if (tt[tk] == FK) { /* struct element initializer { ... }: parse into elem fields (fix 2026-08-15: commands[] global array of structs was skipped -> get_builtin found nothing) */
+            int si = (parse_base == 0) ? var_stidx((char*)(nn + d)) : -1; /* only global aggregate init uses this path; local struct arrays keep the old skip behavior (fix 2026-08-15: color.c local attrs[] parse break) */
+            if (si >= 0) {
+                int idn2 = Nd(1); memcpy((char*)(nn + idn2), (char*)(nn + d), 32);
+                int node2 = idn2;
+                for (int i = 0; i < nd; i++) {
+                    int acc2 = Nd(14); Nc(acc2, node2);
+                    int idx2 = Nd(0); nv[idx2] = gi_idx[i];
+                    Nc(acc2, idx2);
+                    node2 = acc2;
+                }
+                tk++; /* skip { */
+                int sub = brace_fields(si, node2);
+                if (sub >= 0) { for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) arr_chain_add(c); } }
+                if (tt[tk] == UK) tk++; /* closing } */
+                if (depth == 0 && !has_nested) { for (int i = nd - 1; i >= 0; i--) { gi_idx[i]++; if (gi_idx[i] < dims[i]) break; gi_idx[i] = 0; } } else { gi_idx[depth]++; }
+                continue;
+            }
             int d2 = 1; tk++;
             while (tk < TS && d2 > 0) { if (tt[tk] == FK) d2++; else if (tt[tk] == UK) { d2--; if (d2 <= 0) { tk++; break; } } tk++; }
             if (depth == 0 && !has_nested) { for (int i = nd - 1; i >= 0; i--) { gi_idx[i]++; if (gi_idx[i] < dims[i]) break; gi_idx[i] = 0; } } else { gi_idx[depth]++; }
@@ -4178,7 +4213,7 @@ static int blk(void) {
                     tk = save; /* rewind to '=' — normal init path below */
                 }
                 acnt = cnt; adims = dims; /* expose to ={...} init */
-                if (ltd_si >= 0) { esz = stypes[ltd_si].sz; } /* struct element size */
+                if (ltd_si >= 0 && !is_ptr) { esz = stypes[ltd_si].sz; } /* struct element size; pointer-to-struct array elements are 8-byte pointers (fix 2026-08-15: tr2_tgt_builtins[] miscompiled as struct array → for_each_builtin never derefs NULL terminator) */
                 if (is_static) {
                     var_static_arr(vn, 0, esz, cnt); /* esz = ELEMENT byte size (slots = cnt*esz/4) */
                     vars[vcnt - 1].p_esz = esz; /* element byte size for 2D outer scale (cg_mem_frow) */
@@ -4496,6 +4531,7 @@ static int stmt(void) {
                 }
             } else {
                 Nc(blk_node, expr()); /* init */
+                while (tt[tk] == CK) { tk++; Nc(blk_node, expr()); } /* comma-separated for-init (fix 2026-08-15: j=0, tgt_j=arr[j] misparsed the cond as the assignment) */
             }
         } /* init */
         tk++; /* skip ; */
@@ -4503,7 +4539,7 @@ static int stmt(void) {
         if (tt[tk] != SK) { Nc(wh, expr()); } else { int t = Nd(0); nv[t]=1; Nc(wh, t); } /* cond */
         tk++; /* skip ; */
         int step = -1;
-        if (tt[tk] != KK) { step = expr(); } /* step */
+        if (tt[tk] != KK) { step = expr(); if (tt[tk] == CK) { int sb = Nd(5); Nc(sb, step); while (tt[tk] == CK) { tk++; Nc(sb, expr()); } step = sb; } } /* step (comma list as block, fix 2026-08-15) */
         tk++; /* skip ) */
         int body = stmt();
         if (step >= 0) { /* append step: wrap body in block; set continue target = step start */
@@ -4865,13 +4901,13 @@ static int parse(const char *s) {
            原静默跳过 → 单独 -c 编译时引用被当局部变量; 现在注册 extern 负槽, coff_mode 生成未定义符号) */
         if (tt[tk] == VK && !strcmp(tn[tk], "extern")) {
             tk++; /* skip extern */
-            int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0;
+            int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0, e_stidx = -1;
             while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
             if (tt[tk] == ST) { /* extern struct X {...} var; — 注册结构体类型 + 解析 body 字段 (fix 2026-08-14: 原只跳过, body 字段泄漏为全局重复符号) */
                 tk++; /* struct */
                 if (tt[tk] == VR) {
                     char tag[64]; strcpy(tag, tn[tk]); tk++;
-                    int si = st_add(tag);
+                    int si = st_add(tag); e_stidx = si;
                     if (tt[tk] == FK) { tk++; /* { */
                         while (tk < TS && tt[tk] != UK) {
                             int tk0 = tk; int fsz = 4, frow = 1;
@@ -4896,7 +4932,28 @@ static int parse(const char *s) {
                 continue;
             }
             while (tt[tk] == DK) { e_pesz = e_pesz ? e_pesz : 4; tk++; } /* 指针 */
-            if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; var_extern(ename, e_char, e_dbl, e_pesz, e_ll); }
+            if (tt[tk] == VR) {
+                char ename[64]; strcpy(ename, tn[tk]); tk++;
+                int ev = var_extern(ename, e_char, e_dbl, e_pesz, e_ll);
+                for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, ename) && vars[vi].rsp_off == ev) {
+                    if (e_stidx >= 0) vars[vi].st_idx = e_stidx;
+                    if (tt[tk] == LB) { /* extern array: sane_ctype[256] etc. — was registered as scalar extern char, case-14 fell into param load and crashed */
+                        int e_esz = e_char ? 1 : (e_dbl || e_ll ? 8 : 4);
+                        if (e_pesz > 0) e_esz = 8;
+                        else if (e_stidx >= 0) e_esz = st_sz(stypes[e_stidx].name);
+                        int e_cnt = 1;
+                        while (tt[tk] == LB) {
+                            tk++; int cdim = 0;
+                            if (const_expr_eval(&cdim)) e_cnt *= cdim;
+                            else if (tt[tk] == NK) { e_cnt *= tv[tk]; tk++; }
+                            else if (tt[tk] == VR) { int ec = e_lookup(tn[tk]); if (ec != 0x80000000 && ec != -1) e_cnt *= ec; tk++; }
+                            if (tt[tk] == RB) tk++;
+                        }
+                        if (e_cnt > 1) { vars[vi].arr_sz = e_cnt; vars[vi].arr_esz = e_esz; }
+                    }
+                    break;
+                }
+            }
             while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
             if (tk < TS && tt[tk] == SK) tk++;
             continue;
@@ -5382,9 +5439,16 @@ static int parse(const char *s) {
                 for (int ti2 = save_tk; ti2 + 1 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1;
                 int g_is_fnptr = 0, g_fptr_dbl = 0; /* typedef'd fnptr global: 8-byte .data slot (fix 2026-08-03) */
                 { int tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } } /* fix 2026-08-07: g_tdef 覆盖 static 前缀 (static ops_t f 之前落 var_static(0)=4B) */
+                int first_var = 1;
                 while (1) {
                     int lead_ptr = 0;
-                    while (tt[tk] == DK) { lead_ptr = 4; tk++; } /* leading * �?pointer */
+                    /* The type prefix parser above already consumes leading * for the FIRST
+                       declarator (so function-def detection sees the name). Recover that
+                       pointer depth here, otherwise `struct T *arr[]`/`char *names[]` are
+                       registered as arrays-of-struct/chars instead of arrays-of-pointers.
+                       (fix 2026-08-15: tr2_tgt_builtins[] for_each_builtin hang) */
+                    if (first_var) for (int p = save_tk; p < tk; p++) if (tt[p] == DK) lead_ptr++;
+                    while (tt[tk] == DK) { lead_ptr++; tk++; }
                     if (tt[tk] == OK) { /* struct T * (name[N]); — 括号数组声明 (fix 2026-08-15: pack-objects.c pbase_tree_cache[256] 解析断 → oe_get_size_slow undefined) */
                         tk++; /* ( */
                         if (tt[tk] == VR) {
@@ -5405,7 +5469,7 @@ static int parse(const char *s) {
                     /* char* -> esz 1 (byte indexing); int* -> 4; char** -> 8 via
                        the ptr-depth in the loop below (keep the LAST depth's char flag) */
                     int pesz = lead_ptr ? (g_is_char ? 1 : 4) : 0;
-                    int ptrd = lead_ptr ? 1 : 0;
+                    int ptrd = lead_ptr;
                     while (tt[tk] == DK) { if (g_is_char) pesz = 1; else pesz = 4; ptrd++; tk++; }
                     if (ptrd > 1 && g_is_char) pesz = 8; /* char** -> 8-byte elements */
                     int gcnt = 0; /* array element count (0 = not array) */
@@ -5473,6 +5537,15 @@ static int parse(const char *s) {
                             var_static_arr(gname, 0, 8, gcnt);
                             vars[vcnt - 1].p_esz = 8;
                             if (g_fptr_dbl) vars[vcnt - 1].p_dbl = 1;
+                        } else if (g_stidx >= 0 && ptrd > 0) {
+                            /* struct T *arr[]: 8-byte pointer elements, NOT an array of
+                               structs. Registering as var_static_struct made arr_esz=sizeof(T)
+                               and case-14 left &arr[i] as the value, so for_each_builtin's
+                               NULL terminator was never loaded → infinite loop.
+                               (fix 2026-08-15 tr2_tgt_want_builtins hang) */
+                            var_static_arr(gname, 8, 8, gcnt);
+                            vars[vcnt - 1].p_esz = 8;
+                            vars[vcnt - 1].st_idx = g_stidx;
                         } else if (g_stidx >= 0) {
                             /* struct-typed array var: struct B globals[N]; */
                             var_static_struct(gname, g_stidx, gcnt);
@@ -5522,6 +5595,7 @@ static int parse(const char *s) {
                             while (tk < TS && tt[tk] != SK && tt[tk] != CK && tt[tk] != EK) tk++;
                         }
                     }
+                    first_var = 0;
                     if (tt[tk] == CK) { tk++; continue; } /* comma �?next var */
                     break;
                 }
@@ -5553,8 +5627,7 @@ static int parse(const char *s) {
         else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
-        if (tt[tk] == DK) fn_ret_ptr = 1;
-        while (tt[tk] == DK) tk++; /* skip pointer(s) * */
+        while (tt[tk] == DK || (tt[tk] == VK && !strcmp(tn[tk], "const"))) { if (tt[tk] == DK) fn_ret_ptr = 1; tk++; } /* skip pointer(s) and interspersed const (fix 2026-08-15: `static const char * const *fn(...)` broke parse -> revert.c/cmd_cherry_pick missing) */
         if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 后置跳过 — 注意 #define __attribute__(x) 空宏后 tt=SK 非 VR, 只能按 tn 匹配 (fix 2026-08-14) */
         int fdef = Nd(4);
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
@@ -6901,6 +6974,7 @@ static void cg(int n) {
         case 1: { /* variable ????????????? */
             int off = var_lookup((char*)(nn + n));
             if (off == -1) { /* fix 2026-08-06: off<-1 是 extern 负槽, 走 static 读生成外部符号; 只有 -1 (未定义) 才走函数/参数 */
+                if (!strcmp((char*)(nn + n), "stderr") || !strcmp((char*)(nn + n), "stdout") || !strcmp((char*)(nn + n), "stdin")) { mov_r_imm(0, 0); break; } /* msvcrt FILE* globals are unavailable as imports; NULL lets fflush(NULL) flush all streams (fix 2026-08-15 vreportf fflush(stderr) garbage arg) */
                 int ffi = func_find((char*)(nn + n));
                 if (ffi >= 0 && func_tbl[ffi].defined) {
                     /* function name as value �?absolute VA (patched in PE output) */
@@ -8180,6 +8254,7 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 / 函数调用结果 — 求值得指针 (fix 2026-08-06: 原 load_param_val 对非参数加载垃圾, offsetof 惯用法 ((T*)0)->m 错) */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += offset */
                     if (!cg_no_deref) { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
+                    else st_field_2d_setup(si, fn); /* array-base of a pointer field needs its element size (fix 2026-08-15: ((T*)0)->arr[i]) */
                 }
             } else if(o>=0&&s>=0){int fo=st_off(stypes[s].name,fn);if(fo>=0){
                 if(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
@@ -8187,7 +8262,7 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     if(off>=0){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
                     if(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     int afsz = st_field_size(stypes[s].name, fn);
-                    if (cg_no_deref) { /* address only (fix 2026-08-05) */ }
+                    if (cg_no_deref) { st_field_2d_setup(s, fn); /* array base of a pointer field needs its element size (fix 2026-08-15: strvec_clear array->v[i] byte load) */ }
                     else if (afsz > 4) { int afy = st_field_ty_idx(stypes[s].name, fn); if (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址) */ }
                     else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
 else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
@@ -8305,7 +8380,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (cg_mem_frow == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                 }
-            } else if (off >= 0) {
+            } else if (off >= 0 || (off < 0 && var_isstatic(vname))) {
                 cg(n1[n]); /* index �?eax */
                 int did = 0;
                 for (int vi = 0; vi < vs_n(); vi++)
