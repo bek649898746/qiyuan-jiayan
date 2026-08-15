@@ -230,14 +230,9 @@ static int execlp(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return
 static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 1)) { n++; x >>= 1; } return n; } /* GCC builtin (fix 2026-08-15: __builtin_ctzll undefined) */
 #define __builtin_expect(exp, c) (exp)  /* GCC 分支预测内置 (fix 2026-08-15: __builtin_expect undefined) */
 static int proc_type_GetCurrentConsoleFontEx;  /* qcc ## 长标识符合成截断, 补符号满足链接 (fix 2026-08-15: proc_type_GetCurrentConsoleFont undefined) */
-#define kwset_t void*  /* kwset.h typedef 指针别名不被 qcc 注册 (fix 2026-08-15: kwsexec undefined) */
 #define regex_t void*  /* regex.h typedef 指针/结构别名 */
 #define regmatch_t int
 #define mmfile_t void*
-#define diffcore_pickaxe(o) ((void)0)  /* diffcore-pickaxe.c 函数定义未注册兜底 (fix 2026-08-15: diffcore_pickaxe undefined) */
-#define ipc_get_active_state(a) 0  /* simple-ipc 函数定义未注册兜底 (fix 2026-08-15: ipc_get_active_state undefined) */
-#define get_version_info(a,b) ((void)0)  /* help.c 函数定义未注册兜底 (fix 2026-08-15: get_version_info undefined) */
-#define load_command_list(a,b,c) ((void)0)  /* help.c 函数定义未注册兜底 (fix 2026-08-15: load_command_list undefined) */
 static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
 static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -1; } /* ws2_32 accept stub (fix 2026-08-15: accept undefined) */
