@@ -1626,7 +1626,7 @@ static int coff_is_builtin(const char *n) {
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
         "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
-    for (int i = 0; i < (int)(sizeof(bn)/sizeof(bn[0])); i++) if (!strcmp(bn[i], n)) return 1;
+    for (int i = 0; i < (int)(sizeof(bn)/sizeof((bn)[0])); i++) if (!strcmp(bn[i], n)) return 1;
     return 0;
 }
 static int coff_static_disp(int idx, int k) {
@@ -6934,7 +6934,7 @@ static int asm_reg_id(const char *s) {
         {"r8",8},{"r9",9},{"r10",10},{"r11",11},{"r12",12},{"r13",13},{"r14",14},{"r15",15},
         {"r8d",8},{"r9d",9},{"r10d",10},{"r11d",11},{"r12d",12},{"r13d",13},{"r14d",14},{"r15d",15},
     };
-    for (int i = 0; i < (int)(sizeof(regs)/sizeof(regs[0])); i++) if (!strcmp(s, regs[i].n)) return regs[i].id;
+    for (int i = 0; i < (int)(sizeof(regs)/sizeof((regs)[0])); i++) if (!strcmp(s, regs[i].n)) return regs[i].id;
     return -1;
 }
 static void asm_enc_string(const char *asmtext) {
