@@ -101,6 +101,8 @@ static int kdesc_off = 0;    /* kernel32 导入描述符 .data 偏移 */
 static int mdesc_off = 0;    /* msvcrt 导入描述符 .data 偏移 */
 static int g_pdata_rva = 0;  /* .pdata 异常表 RVA (Exception Directory) */
 static int g_pdata_len = 0;   /* .pdata 总大小 */
+static int g_heap_obj = -1;   /* __qcc_heap_counter 内置对象索引 */
+static int g_heap_counter_off = -1; /* 该对象 .data 节在 OUT_DATA 缓冲区中的偏移 */
 
 /* ---------- 读取文件 ---------- */
 static uint8_t *read_all(const char *path, int *len) {
@@ -388,14 +390,115 @@ static void add_builtin_errno(void) {
     obj_n++;
 }
 
-/* ---------- 内置 simple-ipc stub：_git_all_objects.py 跳过 compat/simple-ipc/ 下的 win32.c (fix 2026-08-15: ipc_server_run_async undefined) ---------- */
+/* ---------- 内置 __qcc_heap_counter: qcc -c 内建 malloc/calloc 的共享堆计数器 ---------- */
+static void add_builtin_heap_counter(void) {
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-heap>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)calloc(8, 1); /* 64 位计数器，初始 0 */
+    o->secs[0].size = 8;
+    o->secs[0].align = 8;
+    memcpy(o->secs[0].name, ".data", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "__qcc_heap_counter");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2; /* 定义 */
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    obj_n++;
+    g_heap_obj = obj_n - 1;
+}
+
+/* ---------- 内置 regex stub：compat/regex/regex.c 在 qcc -c 下超时，提供 0 返回值 stub 满足链接 ---------- */
 static GSym *gsym_add(const char *name); /* fwd (fix 2026-08-15: ipc stub 在 gsym_add 定义前使用) */
+static void add_builtin_regex_stubs(void) {
+    static const char *names[] = { "git_regexec", "git_regcomp", "git_regfree", "git_regerror" };
+    int n = (int)(sizeof(names) / sizeof(names[0]));
+    int include[8]; int inc_n = 0;
+    for (int i = 0; i < n; i++) {
+        GSym *g = gsym_add(names[i]);
+        if (!g->defined) include[inc_n++] = i;
+    }
+    if (inc_n == 0) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-regex>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(inc_n * 6);
+    o->secs[0].size = inc_n * 6;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    for (int j = 0; j < inc_n; j++) {
+        o->secs[0].data[j * 6 + 0] = 0xB8; /* mov eax, 0 */
+        o->secs[0].data[j * 6 + 1] = 0;
+        o->secs[0].data[j * 6 + 2] = 0;
+        o->secs[0].data[j * 6 + 3] = 0;
+        o->secs[0].data[j * 6 + 4] = 0;
+        o->secs[0].data[j * 6 + 5] = 0xC3; /* ret */
+    }
+    o->nsym = inc_n;
+    o->syms = (JSym*)calloc(inc_n ? inc_n : 1, sizeof(JSym));
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    for (int j = 0; j < inc_n; j++) {
+        GSym *g = gsym_add(names[include[j]]);
+        strcpy(o->syms[j].name, names[include[j]]);
+        o->syms[j].value = j * 6;
+        o->syms[j].sec = 1;
+        o->syms[j].sc = 2;
+        g->obj = obj_n - 1;
+        g->sym = j;
+        g->defined = 1;
+    }
+}
+
+/* ---------- 内置 gettext `_` stub: 恒等返回 msgid ---------- */
+static void add_builtin_gettext_stub(void) {
+    GSym *g = gsym_add("_");
+    if (g->defined) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-gettext>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(3);
+    o->secs[0].data[0] = 0x48; /* mov rax, rcx */
+    o->secs[0].data[1] = 0x89;
+    o->secs[0].data[2] = 0xC8;
+    o->secs[0].size = 3;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "_");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2;
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    g->obj = obj_n - 1;
+    g->sym = 0;
+    g->defined = 1;
+}
+
+/* ---------- 内置 simple-ipc stub：_git_all_objects.py 跳过 compat/simple-ipc/ 下的 win32.c (fix 2026-08-15: ipc_server_run_async undefined) ---------- */
 static void add_builtin_ipc_stubs(void) {
     static const char *names[] = {
         "ipc_client_try_connect", "ipc_client_close_connection",
         "ipc_client_send_command_to_connection", "ipc_client_send_command",
         "ipc_server_run_async", "ipc_server_stop_async", "ipc_server_await",
         "ipc_server_free", "ipc_server_run",
+        "ipc_get_active_state",
         "has_non_ascii", "update_server_info"
     };
     int n = (int)(sizeof(names) / sizeof(names[0]));
@@ -472,6 +575,7 @@ static const char *msvcrt_names[] = {
     "_getpid","_isatty","_fileno",
     "_unlink","_rmdir","_chmod","_access",
     "_fdopen","_pipe","_popen","_pclose",
+    "_stat","_fstat",
     "strerror","_strerror","_strdup",
     "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
@@ -573,6 +677,9 @@ static int resolve_one(GSym *g) {
             else if (!strcmp(mn, "umask")) alias = "_umask";
             else if (!strcmp(mn, "getcwd")) alias = "_getcwd";
             else if (!strcmp(mn, "chdir")) alias = "_chdir";
+            else if (!strcmp(mn, "stat")) alias = "_stat";
+            else if (!strcmp(mn, "fstat")) alias = "_fstat";
+            else if (!strcmp(mn, "lstat")) alias = "_stat";
             if (alias) {
                 for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)
                     if (!strcmp(msvcrt_names[k], alias)) { mi = k; break; }
@@ -638,8 +745,20 @@ static int resolve_all(void) {
             ge->defined = 1;
         }
     }
+    /* qcc -c 内建 malloc/calloc 共享堆计数器: 多 .o 下提供唯一定义 */
+    {
+        GSym *gh = gsym_add("__qcc_heap_counter");
+        if (!gh->defined) {
+            add_builtin_heap_counter();
+            gh->obj = obj_n - 1;
+            gh->sym = 0;
+            gh->defined = 1;
+        }
+    }
     /* simple-ipc stubs: compat/simple-ipc/ 下的 win32.c 被 _git_all_objects.py 跳过, 链接缺 ipc_server_* 定义 (fix 2026-08-15) */
     add_builtin_ipc_stubs();
+    add_builtin_regex_stubs();
+    add_builtin_gettext_stub();
     int progress = 1;
     while (progress) {
         progress = 0;
@@ -748,6 +867,7 @@ static void layout(void) {
             int off = (glob_off[which] + need - 1) & ~(need - 1);
             if (off > glob_off[which] && which != OUT_BSS) out_pad(which, off - glob_off[which]);
             o->secs[si].out_off = off;
+            if (oi == g_heap_obj && which == OUT_DATA) g_heap_counter_off = off;
             glob_off[which] = off + o->secs[si].size;
             if (which == OUT_BSS) {
                 total_stc_n += (o->secs[si].size + 3) / 4;
@@ -833,6 +953,11 @@ static void layout(void) {
     { int abss = max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]; /* fix 2026-08-07: .bss 128 对齐（COFF 位 0x8） */
       out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
     bss_rva_base = out_base[OUT_BSS];
+    if (g_heap_counter_off >= 0 && out_data[OUT_DATA]) {
+        long long heap_va = 0x400000LL + bss_rva_base + out_len[OUT_BSS];
+        heap_va = (heap_va + 7) & ~7LL;
+        w8_at(out_data[OUT_DATA] + g_heap_counter_off, heap_va);
+    }
     /* .pdata 异常表 RVA (fix 2026-08-07) */
     g_pdata_rva = 0; g_pdata_len = 0;
     for (int oi2 = 0; oi2 < obj_n; oi2++) {
