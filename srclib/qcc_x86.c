@@ -3888,6 +3888,65 @@ static int blk(void) {
             tk++; /* struct */
             int si = -1;
             if (tt[tk] == VR) { si = st_find(tn[tk]); tk++; } /* tag name C */
+            /* fix 2026-08-17: 无 body 的局部 struct 变量声明 — 指针/指针数组/struct 数组/逗号.
+               blk() 原仅「有 body」注册变量 (struct P {...} p), 无 body 漏 → 变量未注册 →
+               外部符号 UND (cat-file.c cmd, add-patch.c colored, show-branch.c rev/commit,
+               upload-pack.c pfd). */
+            if (tt[tk] != FK && (tt[tk] == DK || (tt[tk] == VR && (tt[tk + 1] == LB || tt[tk + 1] == CK || tt[tk + 1] == AK)))) {
+                int is_ptr = (tt[tk] == DK);
+                if (is_ptr) tk++; /* * */
+                if (tt[tk] == VR) {
+                    char vn[64]; strcpy(vn, tn[tk]); tk++;
+                    int d = Nd(7); memcpy((char*)(nn + d), vn, 32);
+                    if (tt[tk] == LB) { /* struct Tag *arr[N] / struct Tag arr[N] */
+                        int cnt = 1;
+                        while (tt[tk] == LB) {
+                            tk++; int cdim = 0;
+                            if (const_expr_eval(&cdim)) { cnt *= cdim > 0 ? cdim : 1; }
+                            else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                            if (tt[tk] == RB) tk++;
+                        }
+                        var_array(vn, cnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
+                        vars[vcnt - 1].st_idx = si;
+                    } else if (is_ptr) {
+                        var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                    } else if (si >= 0) { var_struct(vn, si); }
+                    else var_offset(vn);
+                    if (tt[tk] == AK) { /* = expr / = { ... } 初始化器 */
+                        tk++;
+                        if (tt[tk] == FK && si >= 0 && !is_ptr) { int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32); tk++; int bi = brace_fields(si, idn); if (tt[tk] == UK) tk++; int bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++; }
+                        else Nc(d, expr());
+                    }
+                    Nc(b, d); b_cnt++;
+                    while (tt[tk] == CK) { /* 逗号指针 `struct Tag *a, *b;` */
+                        tk++;
+                        int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; }
+                        if (tt[tk] == VR) {
+                            char vn2[64]; strcpy(vn2, tn[tk]); tk++;
+                            int d2 = Nd(7); memcpy((char*)(nn + d2), vn2, 32);
+                            if (tt[tk] == LB) {
+                                int cnt2 = 1;
+                                while (tt[tk] == LB) {
+                                    tk++; int cdim = 0;
+                                    if (const_expr_eval(&cdim)) { cnt2 *= cdim > 0 ? cdim : 1; }
+                                    else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                    if (tt[tk] == RB) tk++;
+                                }
+                                var_array(vn2, cnt2, ip2 ? 8 : (si >= 0 ? stypes[si].sz : 4));
+                                vars[vcnt - 1].st_idx = si;
+                            } else if (ip2) {
+                                var_offset_ptr(vn2, 4); vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                            } else if (si >= 0) { var_struct(vn2, si); }
+                            else var_offset(vn2);
+                            if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                            Nc(b, d2); b_cnt++;
+                        }
+                    }
+                    while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                    if (tt[tk] == SK) tk++;
+                    continue;
+                }
+            }
             if (tt[tk] == FK) { /* struct Inner { fields }; — local TYPE definition */
                 char tname[64]; strcpy(tname, tn[tk - 1]);
                 int nsi = st_add(tname);
@@ -3912,7 +3971,20 @@ static int blk(void) {
                         if (tt[tk] == SK) tk++;
                         continue;
                     }
-                    if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* enum { ... } type; 匿名枚举字段 (fix 2026-08-14: 原 EN 无分支 → 死循环 pretty.c parse_describe_args) */
+                    if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { /* enum { ... } type; 匿名枚举字段 — 注册常量 (fix 2026-08-17: 原只跳过 body 不注册 → pretty.c DESCRIBE_ARG_BOOL UND) */
+                        int ev = 0; tk++; /* { */
+                        while (tk < TS && tt[tk] != UK && tt[tk] != EK) {
+                            int tk0 = tk;
+                            if (tt[tk] == VR) {
+                                char enm[64]; memcpy(enm, tn[tk], 64); tk++;
+                                if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; }
+                                e_reg(enm, ev); ev++;
+                            }
+                            if (tt[tk] == CK) tk++;
+                            if (tk == tk0) tk++;
+                        }
+                        if (tt[tk] == UK) tk++;
+                    } } /* enum { ... } type; 匿名枚举字段 (fix 2026-08-14: 原 EN 无分支 → 死循环 pretty.c parse_describe_args) */
                     if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr field: int (*cb)(int,int); / int (*cb[3])(int); — 8-byte pointer field (fix 2026-08-03: was unhandled → parse loop stuck on '(') */
                         tk++; tk++; /* skip ( * */
                         if (tt[tk] == VR) {
@@ -4985,6 +5057,54 @@ static int parse(const char *s) {
                 } else {
                     /* struct Big make_big(...): tag present but NO body — rewind so the
                        global-decl / fn-def path sees `struct Big` as the return type. */
+                    /* fix 2026-08-17: 全局 struct Tag *var / struct Tag a, b / 变量名==tag 同名 —
+                       无 body 变量声明. decl 分支不认 ST → 变量未注册 → 外部 UND
+                       (repository.c the_repository, add-patch.c colored, alloc.c `struct commit commit;`).
+                       不同名的普通 `struct S8 g8;` 走 global-decl (原正确处理). */
+                    if (!st_static && (tt[tk] == DK || (tt[tk] == VR && tt[tk + 1] != OK && tt[tk + 1] != LB && (tt[tk + 1] == CK || (tt[tk + 1] == SK && !strcmp(tn[tk], tn[tk - 2])))))) {
+                        char gtag[64]; strcpy(gtag, tn[tk - 2]); /* tag name (逗号声明复用) */
+                        int np = 0; while (tt[tk] == DK) { np++; tk++; }
+                        if (tt[tk] == VR && tt[tk + 1] != OK) {
+                            char vn[64]; strcpy(vn, tn[tk]); tk++;
+                            if (np > 0) {
+                                if (tt[tk] == LB) { int cnt = 1;
+                                    while (tt[tk] == LB) {
+                                        tk++; int cdim = 0;
+                                        if (const_expr_eval(&cdim)) { cnt *= cdim > 0 ? cdim : 1; }
+                                        else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                        if (tt[tk] == RB) tk++;
+                                    }
+                                    var_static_arr(vn, 0, 8, cnt); vars[vcnt - 1].st_idx = st_find(gtag);
+                                } else {
+                                    var_static(vn, 4); /* 全局 struct 指针: .data 槽 */
+                                    { int si2 = st_find(gtag); if (si2 >= 0) vars[vcnt - 1].st_idx = si2; }
+                                    vars[vcnt - 1].arr_esz = 8;
+                                }
+                            } else { int si2 = st_find(gtag); if (si2 >= 0) var_static_struct(vn, si2, 1); else var_static(vn, 0); }
+                            while (tt[tk] == CK) { /* 逗号声明 struct Tag a, b; */
+                                tk++;
+                                int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; }
+                                if (tt[tk] == VR) {
+                                    char vn2[64]; strcpy(vn2, tn[tk]); tk++;
+                                    if (ip2) {
+                                        if (tt[tk] == LB) { int cnt2 = 1;
+                                            while (tt[tk] == LB) {
+                                                tk++; int cdim = 0;
+                                                if (const_expr_eval(&cdim)) { cnt2 *= cdim > 0 ? cdim : 1; }
+                                                else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                                if (tt[tk] == RB) tk++;
+                                            }
+                                            var_static_arr(vn2, 0, 8, cnt2); vars[vcnt - 1].st_idx = st_find(gtag);
+                                        } else { var_static(vn2, 4); { int si2 = st_find(gtag); if (si2 >= 0) vars[vcnt - 1].st_idx = si2; } vars[vcnt - 1].arr_esz = 8; }
+                                    }
+                                    else { int si2 = st_find(gtag); if (si2 >= 0) var_static_struct(vn2, si2, 1); else var_static(vn2, 0); }
+                                }
+                            }
+                            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                            if (tt[tk] == SK) tk++;
+                            continue;
+                        }
+                    }
                     tk = st_static ? st_orig : st_save;
                 }
             } else if (tt[tk] == FK) {

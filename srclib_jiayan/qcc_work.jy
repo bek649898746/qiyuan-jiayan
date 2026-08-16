@@ -547,7 +547,7 @@ __attribute__((unused))
                     整 eo = 0, ecap = 大小(eout);
                     fn_macro_expand_to(args[ai], &eoutp, &eo, &ecap, -1);
                     eout[eo] = 0;
-                    strncpy(exp_args[ai], eout, 1023); exp_args[ai][1023] = 0;
+                    { 整 cl = eo < 1023 ? eo : 1023; memcpy(exp_args[ai], eout, cl); exp_args[ai][cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告) */
                     fn_exp_n = save_exp_n;
                     遍 (整 _s = 0; _s < 64; _s++) fn_exp_stack[_s] = save_exp_stack[_s];
                 }
@@ -3888,6 +3888,65 @@ __attribute__((unused))
             tk++; /* struct */
             整 si = -1;
             若 (tt[tk] == VR) { si = st_find(tn[tk]); tk++; } /* tag name C */
+            /* fix 2026-08-17: 无 body 的局部 struct 变量声明 — 指针/指针数组/struct 数组/逗号.
+               blk() 原仅「有 body」注册变量 (struct P {...} p), 无 body 漏 → 变量未注册 →
+               外部符号 UND (cat-file.c cmd, add-patch.c colored, show-branch.c rev/commit,
+               upload-pack.c pfd). */
+            若 (tt[tk] != FK && (tt[tk] == DK || (tt[tk] == VR && (tt[tk + 1] == LB || tt[tk + 1] == CK || tt[tk + 1] == AK)))) {
+                整 is_ptr = (tt[tk] == DK);
+                若 (is_ptr) tk++; /* * */
+                若 (tt[tk] == VR) {
+                    字 vn[64]; strcpy(vn, tn[tk]); tk++;
+                    整 d = Nd(7); memcpy((字*)(nn + d), vn, 32);
+                    若 (tt[tk] == LB) { /* struct Tag *arr[N] / struct Tag arr[N] */
+                        整 cnt = 1;
+                        循环 (tt[tk] == LB) {
+                            tk++; 整 cdim = 0;
+                            若 (const_expr_eval(&cdim)) { cnt *= cdim > 0 ? cdim : 1; }
+                            否 { 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                            若 (tt[tk] == RB) tk++;
+                        }
+                        var_array(vn, cnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
+                        vars[vcnt - 1].st_idx = si;
+                    } 否 若 (is_ptr) {
+                        var_offset_ptr(vn, 4); vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                    } 否 若 (si >= 0) { var_struct(vn, si); }
+                    否 var_offset(vn);
+                    若 (tt[tk] == AK) { /* = expr / = { ... } 初始化器 */
+                        tk++;
+                        若 (tt[tk] == FK && si >= 0 && !is_ptr) { 整 idn = Nd(1); memcpy((字*)(nn + idn), vn, 32); tk++; 整 bi = brace_fields(si, idn); 若 (tt[tk] == UK) tk++; 整 bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++; }
+                        否 Nc(d, expr());
+                    }
+                    Nc(b, d); b_cnt++;
+                    循环 (tt[tk] == CK) { /* 逗号指针 `struct Tag *a, *b;` */
+                        tk++;
+                        整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; }
+                        若 (tt[tk] == VR) {
+                            字 vn2[64]; strcpy(vn2, tn[tk]); tk++;
+                            整 d2 = Nd(7); memcpy((字*)(nn + d2), vn2, 32);
+                            若 (tt[tk] == LB) {
+                                整 cnt2 = 1;
+                                循环 (tt[tk] == LB) {
+                                    tk++; 整 cdim = 0;
+                                    若 (const_expr_eval(&cdim)) { cnt2 *= cdim > 0 ? cdim : 1; }
+                                    否 { 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                    若 (tt[tk] == RB) tk++;
+                                }
+                                var_array(vn2, cnt2, ip2 ? 8 : (si >= 0 ? stypes[si].sz : 4));
+                                vars[vcnt - 1].st_idx = si;
+                            } 否 若 (ip2) {
+                                var_offset_ptr(vn2, 4); vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                            } 否 若 (si >= 0) { var_struct(vn2, si); }
+                            否 var_offset(vn2);
+                            若 (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                            Nc(b, d2); b_cnt++;
+                        }
+                    }
+                    循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                    若 (tt[tk] == SK) tk++;
+                    续;
+                }
+            }
             若 (tt[tk] == FK) { /* struct Inner { fields }; — local TYPE definition */
                 字 tname[64]; strcpy(tname, tn[tk - 1]);
                 整 nsi = st_add(tname);
@@ -3912,7 +3971,20 @@ __attribute__((unused))
                         若 (tt[tk] == SK) tk++;
                         续;
                     }
-                    若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } } /* enum { ... } type; 匿名枚举字段 (fix 2026-08-14: 原 EN 无分支 → 死循环 pretty.c parse_describe_args) */
+                    若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { /* enum { ... } type; 匿名枚举字段 — 注册常量 (fix 2026-08-17: 原只跳过 body 不注册 → pretty.c DESCRIBE_ARG_BOOL UND) */
+                        整 ev = 0; tk++; /* { */
+                        循环 (tk < TS && tt[tk] != UK && tt[tk] != EK) {
+                            整 tk0 = tk;
+                            若 (tt[tk] == VR) {
+                                字 enm[64]; memcpy(enm, tn[tk], 64); tk++;
+                                若 (tt[tk] == AK) { tk++; 整 evv = 0; 若 (const_expr_eval(&evv)) ev = evv; }
+                                e_reg(enm, ev); ev++;
+                            }
+                            若 (tt[tk] == CK) tk++;
+                            若 (tk == tk0) tk++;
+                        }
+                        若 (tt[tk] == UK) tk++;
+                    } } /* enum { ... } type; 匿名枚举字段 (fix 2026-08-14: 原 EN 无分支 → 死循环 pretty.c parse_describe_args) */
                     若 (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr field: int (*cb)(int,int); / int (*cb[3])(int); — 8-byte pointer field (fix 2026-08-03: was unhandled → parse loop stuck on '(') */
                         tk++; tk++; /* skip ( * */
                         若 (tt[tk] == VR) {
@@ -4985,6 +5057,54 @@ __attribute__((unused))
                 } 否 {
                     /* struct Big make_big(...): tag present but NO body — rewind so the
                        global-decl / fn-def path sees `struct Big` as the return type. */
+                    /* fix 2026-08-17: 全局 struct Tag *var / struct Tag a, b / 变量名==tag 同名 —
+                       无 body 变量声明. decl 分支不认 ST → 变量未注册 → 外部 UND
+                       (repository.c the_repository, add-patch.c colored, alloc.c `struct commit commit;`).
+                       不同名的普通 `struct S8 g8;` 走 global-decl (原正确处理). */
+                    若 (!st_static && (tt[tk] == DK || (tt[tk] == VR && tt[tk + 1] != OK && tt[tk + 1] != LB && (tt[tk + 1] == CK || (tt[tk + 1] == SK && !strcmp(tn[tk], tn[tk - 2])))))) {
+                        字 gtag[64]; strcpy(gtag, tn[tk - 2]); /* tag name (逗号声明复用) */
+                        整 np = 0; 循环 (tt[tk] == DK) { np++; tk++; }
+                        若 (tt[tk] == VR && tt[tk + 1] != OK) {
+                            字 vn[64]; strcpy(vn, tn[tk]); tk++;
+                            若 (np > 0) {
+                                若 (tt[tk] == LB) { 整 cnt = 1;
+                                    循环 (tt[tk] == LB) {
+                                        tk++; 整 cdim = 0;
+                                        若 (const_expr_eval(&cdim)) { cnt *= cdim > 0 ? cdim : 1; }
+                                        否 { 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                        若 (tt[tk] == RB) tk++;
+                                    }
+                                    var_static_arr(vn, 0, 8, cnt); vars[vcnt - 1].st_idx = st_find(gtag);
+                                } 否 {
+                                    var_static(vn, 4); /* 全局 struct 指针: .data 槽 */
+                                    { 整 si2 = st_find(gtag); 若 (si2 >= 0) vars[vcnt - 1].st_idx = si2; }
+                                    vars[vcnt - 1].arr_esz = 8;
+                                }
+                            } 否 { 整 si2 = st_find(gtag); 若 (si2 >= 0) var_static_struct(vn, si2, 1); 否 var_static(vn, 0); }
+                            循环 (tt[tk] == CK) { /* 逗号声明 struct Tag a, b; */
+                                tk++;
+                                整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; }
+                                若 (tt[tk] == VR) {
+                                    字 vn2[64]; strcpy(vn2, tn[tk]); tk++;
+                                    若 (ip2) {
+                                        若 (tt[tk] == LB) { 整 cnt2 = 1;
+                                            循环 (tt[tk] == LB) {
+                                                tk++; 整 cdim = 0;
+                                                若 (const_expr_eval(&cdim)) { cnt2 *= cdim > 0 ? cdim : 1; }
+                                                否 { 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                                若 (tt[tk] == RB) tk++;
+                                            }
+                                            var_static_arr(vn2, 0, 8, cnt2); vars[vcnt - 1].st_idx = st_find(gtag);
+                                        } 否 { var_static(vn2, 4); { 整 si2 = st_find(gtag); 若 (si2 >= 0) vars[vcnt - 1].st_idx = si2; } vars[vcnt - 1].arr_esz = 8; }
+                                    }
+                                    否 { 整 si2 = st_find(gtag); 若 (si2 >= 0) var_static_struct(vn2, si2, 1); 否 var_static(vn2, 0); }
+                                }
+                            }
+                            循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                            若 (tt[tk] == SK) tk++;
+                            续;
+                        }
+                    }
                     tk = st_static ? st_orig : st_save;
                 }
             } 否 若 (tt[tk] == FK) {
