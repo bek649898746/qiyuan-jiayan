@@ -8685,7 +8685,11 @@ __attribute__((unused))
    与 cp*84 取大者 — 小程序的 8MB 地板不变. */
 静 整 data_extent(空) {
     整 e = cp * 84 > 0x800000 ? cp * 84 : 0x800000;
-    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x4800000;
+    /* fix 2026-08-16 alias.c: bump heap needed 0x490626D (> 0x4800000) while
+       expanding fn-macro args, so the counter walked past the image end and the
+       very next byte store faulted (0xC0000005). Give the shared heap+stack
+       region 128MiB instead of 72MiB. */
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x8000000;
     返 e > heap_top ? e : heap_top;
 }
 
