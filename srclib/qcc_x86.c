@@ -77,6 +77,8 @@ static int parse_base = 0; /* var-search floor during parse: fvb[fvn] inside a f
 static int cg_no_deref = 0; /* case 14: skip the final deref (nested-store base address) */
 static int cg_mem_frow = 0; /* case 15: row size of the last static-struct array member read (2D field: fnames[idx]) */
 static int cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
+static int cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
+static int cg_blk_end = 0;  /* codegen: upper var-index bound of the CURRENT block (0 before first function). Later sibling-block locals are excluded so `char nm[9]` in an early loop body isn't shadowed by a later `const char *nm` (fix 2026-08-16 write_coff_obj memset dest=8) */
 static int cg_fdepth = 0;   /* multi-D nested-array chain depth (fix 2026-08-05) */
 static int cg_fdepth_max = 0; /* innermost array's dimension count (deref only at outermost) */
 static int cg_frows[4];     /* per-dim row sizes, set by the innermost array var */
@@ -1490,7 +1492,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 
 /* ?????? ??????: ???????????????????? */
 #define ASZ 262144
-#define MAX_LABELS 32768
+#define MAX_LABELS 65536
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
 static struct { int patch_at; int target_label; int is_jmp; } patches[131072]; int patch_n; /* fix 2026-08-06: 16384→65536; 2026-08-16 自举回归: 65536→131072 — 同步镜像后 patch_n 贴上限 */
@@ -1721,7 +1723,7 @@ static int var_codegen_visible(int i) {
     if (!vs_end) return (i >= parse_base); /* parse phase: ONLY current function body (parse_base floor).
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
                                               var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
-    return (i >= fvb[gfn]);            /* codegen: only THIS function's locals/params */
+    return (i >= fvb[gfn] && i < cg_blk_end); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16) */
 }
 static int var_is_dbl(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
@@ -4363,8 +4365,8 @@ static int blk(void) {
                     if (tt[tk] == LB) { /* array in comma list: int a, b[3]; (fix 2026-08-05: was var_offset → adimv[8] registered as int, &adimv[0] NULL) */
                         int cnt2 = 1;
                         while (tt[tk] == LB) { tk++; int cdim2 = 0; if (const_expr_eval(&cdim2)) cnt2 *= cdim2; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
-                        int esz2 = is_char ? 1 : (is_double ? 8 : (is_ptr ? 8 : (is_ll ? 8 : 4))); /* fix 2026-08-06: 逗号声明 ll 数组 8 字节元素 */
-                        if (is_ptr2) var_offset_ptr(vn2, 4); else var_array(vn2, cnt2, esz2);
+                        int esz2 = tdi_fnptr_v ? 8 : ((is_ptr2 || is_ptr) ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))); /* fix 2026-08-16: 逗号声明 int *rsym[4] 是 8 字节指针数组 (原 is_ptr2 走 var_offset_ptr → arr_sz=0 → rsym[rsec][b2] 存到坏地址崩) */
+                        var_array(vn2, cnt2, esz2);
                         vars[vcnt - 1].p_esz = esz2;
                         if (is_double) vars[vcnt - 1].is_dbl = 1;
                         if (is_ll) vars[vcnt - 1].is_ll = 1; /* fix 2026-08-06 */
@@ -4497,6 +4499,7 @@ static int blk(void) {
         else { Nc(b, stmt()); b_cnt++; }
     }
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
+    nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
     return b_root;
 }
@@ -7703,7 +7706,12 @@ static void cg(int n) {
             }
             if (!is_user && !fnptr && !math_done) add_rsp_imm(8 * nargs); /* clean up pushed args (builtins: no shadow sub) */
         } break;
-        case 5: for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); } break;
+        case 5: {
+            int saved_blk_end = cg_blk_end;
+            if (nv[n] > 0) cg_blk_end = nv[n] - 1; /* compound-statement block: nv[] = blk end var bound set by blk() (fix 2026-08-16) */
+            for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); }
+            cg_blk_end = saved_blk_end;
+        } break;
         case 6: { /* return �?epilogue */
             if (cur_fn_sret) {
                 /* sret: copy the returned struct to [rcx] (hidden pointer), return rcx.
@@ -8112,6 +8120,7 @@ static void cg(int n) {
                     /* NESTED base store: u.c[0]=v / arr[i].field[k]=v — base is a member/array
                        chain (vname is a FIELD name, must NOT be resolved as a variable). */
                     cg_mem_frow = 0; /* set by cg(n0[ac]) if it reads a static-struct array member */
+                    cg_mem_ptr = 0; /* set by cg(n0[ac]) if it is a pointer-array element (int *rva[4]) needing one deref before the second subscript (fix 2026-08-16) */
                     mov_rr(11, 0); /* r11d = outer index */
                     push_r(11); /* cg may clobber r11 */
                     int base_is_ptrfield = 0;
@@ -8119,6 +8128,7 @@ static void cg(int n) {
                     if (base_is_ptrfield) cg(n0[ac]); /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0) */
                     else { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
                     pop_r(11);
+                    if (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* int *rva[4]: the inner [i] returned the slot address — load the 8-byte pointer before the second subscript (fix 2026-08-16) */
                     if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     if (cg_mem_frow > 1) {
                         mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
@@ -8472,6 +8482,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                    same-named var (e.g. a runtime `int c`) and hijack the access. */
                 cg_mem_frow = 0; /* set by cg(n0[n]) if it reads a static-struct array member */
                 cg_mem_dbl = 0; /* set by cg(n0[n]) if the base is a double array */
+                cg_mem_ptr = 0; /* set by cg(n0[n]) if it is a pointer-array element (int *rva[4]) whose slot address must be dereferenced once (fix 2026-08-16) */
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* outer idx �?eax */
                 mov_rr(11, 0);
                 push_r(11); /* cg may clobber r11 */
@@ -8480,6 +8491,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 cg(n0[n]); /* base address �?rax */
                 cg_no_deref = sv_noderef;
                 pop_r(11);
+                if (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* inner was a pointer-array slot address: load the 8-byte pointer before the second subscript (fix 2026-08-16) */
                 /* scale idx by cg_mem_frow (element/row byte size, set by cg(n0[n])).
                    frow==1 (char) or 0 (unset) -> no scale. frow==4/8 -> scalar deref.
                    frow>8 -> row is an array -> yield the ADDRESS (C decay, no deref).
@@ -8504,13 +8516,14 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index �?eax */
                 int did = 0;
                 for (int vi = vs_n() - 1; vi >= 0; vi--)
-                    if (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && var_codegen_visible(vi)) {
+                    if (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) {
                         int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         int elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
                         cg_mem_frow = vars[vi].p_esz ? vars[vi].p_esz : 4; /* scalar element size (2D outer scale) */
                         cg_fdepth = 1; for (int fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows (fix 2026-08-05) */
                         cg_fdepth_max = 1; for (int fk = 0; fk < 4; fk++) if (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
+                        if (cg_no_deref && esz == 8 && vars[vi].p_esz == 0 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) cg_mem_ptr = 1; /* int *rva[4]: element is an 8-byte POINTER; the address we return must be dereferenced once by the outer [j] (fix 2026-08-16) */
                         mov_rr(11, 0); /* r11d = index (r9 may be arg3) */
                         if (esz == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
                         else if (esz == 2) { asm_emit("    左移 r11, 1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
@@ -8527,7 +8540,10 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         }
                         did = 1; break;
                     }
-                if (!did && peszl > 0 && var_arrsz(vname) == 0) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
+                int is_ptrvar = 0;
+                for (int vi = vs_n() - 1; vi >= 0; vi--)
+                    if (!strcmp(vars[vi].name, vname) && vars[vi].rsp_off == off && vars[vi].arr_sz == 0 && vars[vi].p_esz > 0 && var_codegen_visible(vi)) { is_ptrvar = 1; break; }
+                if (!did && peszl > 0 && is_ptrvar) { /* pointer var (NOT an array — static pointer arrays take the static branch): static �?.data slot holds the ptr; else frame slot */
                     int esz = var_esz(vname);
                     mov_rr(11, 0); /* r11d = index */
                     if (esz == 4) { asm_emit("    左移 r11, 2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
@@ -8546,10 +8562,11 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     did = 1;
                 }
                 if (!did && var_isstatic(vname)) { /* static array: base = .data + idx*esz */
-                    int esz = 4, is_struct_elem = 0;
+                    int esz = 4, is_struct_elem = 0, is_row = 0;
                     for (int vi = 0; vi < vs_n(); vi++)
                         if (!strcmp(vars[vi].name, vname) && vars[vi].is_static && vars[vi].arr_esz > 0) {
                             esz = vars[vi].arr_esz;
+                            is_row = (vars[vi].p_esz > 0 && vars[vi].arr_esz > vars[vi].p_esz); /* 2D+ array: a[i] is a ROW (array), decays to ADDRESS (fix 2026-08-16: secnames[i] 源被当 8 字节值 load → memcpy 源 0) */
                             cg_mem_frow = vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8); /* ELEMENT byte size for outer [j] scale */
                             /* ADDRESS for: struct arrays, 2D rows (esz>8), and 2D rows where
                                arr_esz > element size (char buf[4][8]: esz=8, elem=1).
@@ -8568,6 +8585,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     asm_emit("    加64 r0, r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
                     if (!cg_no_deref) {
                         if (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays) */
+                        else if (is_row) { /* 2D+ row: leave ADDRESS (C decay) — don't deref the row bytes (fix 2026-08-16) */ }
                         else if (is_struct_elem) { /* address mode for member access */
                             if (esz <= 8) { if (esz == 8) { mov_reg_mreg64(0, 0); } else { mov_reg_mreg(0, 0); } } /* fix 2026-08-06: ≤8 字节 struct 元素作值 → 解引用 (原留地址 → x = arr[1] 存地址 4207368) */
                         } else if (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); }
@@ -8997,6 +9015,7 @@ void gen_code(void) {
            vars[], copying every param into every prologue would clobber live slots. */
         int fv0 = fvb[gfn], fv1 = fve[gfn];
         vs_end = fv1; /* scope var lookups to this function during codegen */
+        cg_blk_end = fv1; /* default block bound = whole function; nested case-5 blocks tighten it (fix 2026-08-16) */
         int bin_no_params = (bin_mode && i == 0) || is_isr; /* -bin 入口函数或 ISR: 跳过参数复制 */
         for (int vi = fv0; vi < fv1; vi++) {
             if (vars[vi].is_param && !bin_no_params) {
