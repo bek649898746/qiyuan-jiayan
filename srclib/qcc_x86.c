@@ -3522,6 +3522,7 @@ static int prim(void) {
             else while (tt[tk] == VK) tk++;
             if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { strcpy(cast_sname, tn[tk]); cast_is_struct = 1; tk++; } } /* struct Tag — 保存 tag 名 (compound literal 用) */
             else if (tt[tk] == VR && td_is(tn[tk])) tk++;
+            while (tt[tk] == VK) tk++; /* fix 2026-08-16 根因H: (struct Tag const *) / (TYPEDEF volatile *) — const/volatile 限定符在类型名与 * 之间漏消费 → cast 类型解析停在限定符 → ) 和 * 未消费 → 表达式失败 → 赋值缺源 → codegen nt[n1=-1] 越界崩 (diffcore-order.c compare_objs_order) */
             if (tt[tk] == OK && tt[tk + 1] == DK) { /* fix 2026-08-10: 函数指针类型 cast (int (*)(int))expr — 跳过 (*) (args) 到类型结束 ) */
                 int fp_d = 1; tk++; /* (* 的 ( 已含在深度内 */
                 while (tk < TS) {
@@ -8142,7 +8143,7 @@ static void cg(int n) {
                     int csz = stypes[asi_el].sz;
                     cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0; /* rax = &arr[i] (目标) */
                     push_r(0);
-                    if (nt[n1[n]] == 1) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) */
+                    if (nt[n1[n]] == 1 && n1[n] >= 0) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) (fix 2026-08-16: n1[n]>=0 守卫 — parse 失败时缺源 n1=-1, 原直接读 nt[-1] 越界) */
                         char *srn = (char*)(nn + n1[n]);
                         int sro = var_lookup(srn);
                         if (var_isstatic(srn)) lea_rax_rip(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz); /* fix 2026-08-06: 静态源要 ADDRESS (lea) */
@@ -8273,11 +8274,13 @@ static void cg(int n) {
             } else if (nt[n0[n]] == 12) { /* *ptr = expr — store by pointer element width (char*→1B, int*→4B, fnptr→8B, double*→movsd) */
                 int pnode = n0[n0[n]];
                 int pbase = pnode;
-                if (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 int pe = 4;
+                if (pbase >= 0) { /* fix 2026-08-16 根因I: pbase>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c */
+                if (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 if (nt[pbase] == 1) pe = var_esz((char*)(nn + pbase));
                 if (pesz[pbase]) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
-                int is_dp = (nt[pbase] == 1 && var_pdbl((char*)(nn + pbase)));
+                }
+                int is_dp = (pbase >= 0 && nt[pbase] == 1 && var_pdbl((char*)(nn + pbase)));
                 cg(pnode); /* ptr → eax (ORIGINAL node: *p++ must run the postfix inc) */
                 push_r(0); /* save ptr on stack */
                 if (is_dp) cg_f(n1[n]); /* double rhs → xmm0 */
@@ -8292,7 +8295,7 @@ static void cg(int n) {
                 char *vname = (char*)(nn + n0[n]);
                 int off = var_lookup(vname);
                 int sti = var_stidx(vname);
-                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars (mirror struct-ptr global crash root) */
+                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && n1[n] >= 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars (mirror struct-ptr global crash root) */
                 if (sret_tgt) { /* big-struct assign: sret call writes straight into the target */
                     cg_sret_off = sret_tgt;
                     cg(n1[n]);
@@ -8300,7 +8303,7 @@ static void cg(int n) {
                 } else if (var_is_dbl(vname)) {
                     if (var_isstatic(vname)) { cg_f(n1[n]); movsd_rip_xmm0(coff_static_disp(off, 2) - 2); } /* static double assign */
                     else { cg_f(n1[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
-                } else if (sti >= 0 && stypes[sti].sz > 8 && off >= 0 && nt[n1[n]] == 1) {
+                } else if (sti >= 0 && stypes[sti].sz > 8 && off >= 0 && n1[n] >= 0 && nt[n1[n]] == 1) {
                     /* struct 值赋值 b = a (big struct): 逐 8/4 字节拷贝 (fix 2026-08-06: 原只拷首 4 字节 → 姓名拷了分数没拷/崩溃) */
                     int csz = stypes[sti].sz;
                     char *srcn = (char*)(nn + n1[n]);
@@ -8371,12 +8374,14 @@ static void cg(int n) {
             cg(n0[n]); /* ptr → eax */
             if (cg_no_deref) break; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原 case-12 忽略 cg_no_deref 永远加载值 → (*p)++ 把值当地址 */
             int pnode = n0[n];
-            if (nt[pnode] == 23 || nt[pnode] == 26) pnode = n0[pnode]; /* *p++ / *++p: resolve through inc/dec to the pointer operand (fix 2026-08-16) */
+            if (pnode >= 0 && (nt[pnode] == 23 || nt[pnode] == 26)) pnode = n0[pnode]; /* *p++ / *++p: resolve through inc/dec to the pointer operand (fix 2026-08-16; fix 2026-08-16 根因I: pnode>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c) */
             int el = 0;
+            if (pnode >= 0) {
             if (nt[pnode] == 1) el = var_esz((char*)(nn + pnode)); /* named var: element size */
             else if (nt[pnode] == 14) { char *av = (char*)(nn + n0[pnode]); el = var_esz(av); } /* *arr[i] */
             if (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
             if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
+            }
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
             if (el == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break; } /* word load (short*) fix 2026-08-08 */
