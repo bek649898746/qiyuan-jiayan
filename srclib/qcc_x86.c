@@ -538,12 +538,16 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     int save_exp_n = fn_exp_n;
                     int save_exp_stack[64]; for (int _s = 0; _s < 64; _s++) save_exp_stack[_s] = fn_exp_stack[_s]; /* fix 2026-08-14: 实参展开独立栈只重置 fn_exp_n, 展开实参时覆盖 fn_exp_stack[0..] → 恢复后外层栈被污染 → 非递归宏 (__ac_fsize) 被误判 in_stack → 泄漏成 undefined */
                     fn_exp_n = 0; /* 实参展开独立栈 */
-                    char *eout = malloc(65536); /* fix 2026-08-14: 改堆缓冲 — 原 g_eout 静态槽 realloc 是 UB (realloc 只能用于堆内存), 且 fn_macro_expand 输出不确定 */
-                    int eo = 0, ecap = 65536;
-                    fn_macro_expand_to(args[ai], &eout, &eo, &ecap, -1);
+                    char eout[4096]; /* fix 2026-08-17: 实参展开用栈缓冲 — 原 malloc(64KB) 每实参
+                        分配, bump allocator 下 eout 展开期间 expand_to 递归 realloc out 时
+                        out 非堆顶 → fresh-copy 泄漏旧 out (sha1dc 18.5万次实参展开 × 每out 4MB
+                        ≈ 数十GB → 堆越界). 实测实参展开 <100B, 栈缓冲 4KB 足够, 零堆分配零泄漏,
+                        且不改任何堆分配模式 (不触发布局敏感). */
+                    char *eoutp = eout;
+                    int eo = 0, ecap = sizeof(eout);
+                    fn_macro_expand_to(args[ai], &eoutp, &eo, &ecap, -1);
                     eout[eo] = 0;
-                    strncpy(exp_args[ai], eout, 1023); exp_args[ai][1023] = 0;
-                    free(eout); /* 堆顶配对 (bump allocator 最后分配可回收) */
+                    { int cl = eo < 1023 ? eo : 1023; memcpy(exp_args[ai], eout, cl); exp_args[ai][cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告) */
                     fn_exp_n = save_exp_n;
                     for (int _s = 0; _s < 64; _s++) fn_exp_stack[_s] = save_exp_stack[_s];
                 }
