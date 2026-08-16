@@ -1526,7 +1526,7 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 
 /* ==================== COFF 对象输出（-c 模式） ==================== */
 static int stc_disp(int idx);
-static struct { char name[64]; int label; int defined; int ret_si; } func_tbl[2048]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void) */
+static struct { char name[64]; int label; int defined; int ret_si; } func_tbl[8192]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
 static char fn_static_names[512][64]; static int fn_static_n;
 static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
@@ -2104,12 +2104,12 @@ static void load_param_val(const char *name) {
 
 /* ?????? ?????(??? CALL ???) ?????? */
 
-static int fn_ret_si_map[1024]; /* return-struct index per func index; survives gen_code's func_n=0 reset (fix 2026-08-07: 512→1024 对齐 func_tbl) */
-static int fn_ret_ptr_map[1024]; /* 函数返回 struct 指针（不是 sret）标记 */
+static int fn_ret_si_map[8192]; /* return-struct index per func index; survives gen_code's func_n=0 reset (fix 2026-08-07: 512→1024 对齐 func_tbl; fix 2026-08-16 根因E3: 1024→8192 对齐 func_tbl 新容量) */
+static int fn_ret_ptr_map[8192]; /* 函数返回 struct 指针（不是 sret）标记 */
 /* return-struct type per FUNCTION NAME — func_tbl indexes are REASSIGNED by
    gen_code's func_n=0 reset, so index-based fn_ret_si_map misaligns whenever a
    program adds/removes functions (e.g. printf) between parse and codegen. */
-static struct { char name[64]; int ret_si; int ret_ptr; } fn_ret_name_map[512]; static int fn_ret_name_n;
+static struct { char name[64]; int ret_si; int ret_ptr; } fn_ret_name_map[2048]; static int fn_ret_name_n; /* fix 2026-08-16 根因E3: 512→2048 大文件顶层函数声明超 512 (原静默丢 → sret 误判) */
 static int fn_ret_name_get(const char *name) {
     for (int i = 0; i < fn_ret_name_n; i++) if (!strcmp(fn_ret_name_map[i].name, name)) return fn_ret_name_map[i].ret_si;
     return -1;
@@ -2121,7 +2121,7 @@ static int fn_ret_name_get_ptr(const char *name) {
 static void fn_ret_name_put(const char *name, int ret_si, int ret_ptr) {
     for (int i = 0; i < fn_ret_name_n; i++)
         if (!strcmp(fn_ret_name_map[i].name, name)) { fn_ret_name_map[i].ret_si = ret_si; fn_ret_name_map[i].ret_ptr = ret_ptr; return; }
-    if (fn_ret_name_n >= 512) return;
+    if (fn_ret_name_n >= 2048) return;
     strcpy(fn_ret_name_map[fn_ret_name_n].name, name);
     fn_ret_name_map[fn_ret_name_n].ret_si = ret_si;
     fn_ret_name_map[fn_ret_name_n].ret_ptr = ret_ptr;
@@ -2181,7 +2181,7 @@ static int fn_dbl_get_ret(const char *name) {
 static int func_find(const char *name) {
     for (int i = 0; i < func_n; i++)
         if (!strcmp(func_tbl[i].name, name)) return i;
-    if (func_n >= 1024) return -1; /* fix 2026-08-06 */
+    if (func_n >= 8192) { fprintf(stderr, "[ERR] func_tbl 满 %d (%s)\n", func_n, name); exit(1); } /* fix 2026-08-16 根因E3: 原 1024 守卫与 2048 容量错配 → 返 -1 → 调用点 func_tbl[-1] 越界写崩 (attr.c); 改满则硬退, 绝不返 -1 */
     strcpy(func_tbl[func_n].name, name);
     func_tbl[func_n].label = new_label();
     func_tbl[func_n].defined = 0;
@@ -2604,11 +2604,21 @@ static int brace_fields(int si, int base) {
             if (tt[tk] == AK) tk++; /* = */
             int tgt = -1;
             for (int j = 0; j < stypes[si].fn; j++) if (!strcmp(stypes[si].fnames[j], fld)) { tgt = j; break; }
-            if (tgt < 0) { while (tt[tk] != CK && tt[tk] != UK && tt[tk] != EK) tk++; continue; }
+            if (tgt < 0) { int _bd = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == FK) _bd++; else if (tt[tk] == UK) { if (_bd == 0) break; _bd--; if (_bd == 0) { tk++; break; } } else if (tt[tk] == CK && _bd == 0) break; tk++; } continue; } /* fix 2026-08-16 根因G: 未知字段跳过需花括号配平且 _bd=0 的 } 是外层闭合(不消费) — 原遇任意 UK 就停(嵌套 {2} 截断) → 元素边界错乱 → 数组层 leaf 死循环 */
             fidx = tgt; /* jump to the designated field (may go BACK) */
+            /* fix 2026-08-16 根因G: 成员设计器链 .value.update = {...} — 当前字段是匿名 union/struct 8字节近似 (无类型链接无法下钻), 后续 .member 段整体 opaque 消费 (原下一轮 loop-top 设计器分支把 .update 当本层字段查 → tgt<0 → 边界错乱 → 数组层 leaf 死循环 AST 溢出 merged_test.c) */
+            if (tt[tk] == DT && stypes[si].ftypes[fidx] < 0 && stypes[si].fsizes[fidx] == 8 && stypes[si].frows[fidx] == 8) {
+                int _bd = 0;
+                while (tk < TS && tt[tk] != EK) {
+                    if (tt[tk] == FK) _bd++;
+                    else if (tt[tk] == UK) { if (_bd == 0) break; _bd--; if (_bd == 0) { tk++; break; } } /* _bd=0 的 } 是外层闭合(元素结束, 不消费); 值自身的 } 使 _bd 1→0 消费后停 (fix 2026-08-16: 原把元素闭合也消费 → 边界错乱) */
+                    else if (tt[tk] == CK && _bd == 0) break;
+                    tk++;
+                }
+            }
             continue;
         }
-        if (fidx >= stypes[si].fn) { expr(); fidx++; continue; } /* all fields consumed: drop extra values */
+        if (fidx >= stypes[si].fn) { int _tk0 = tk; expr(); if (tk == _tk0) { while (tk < TS && tt[tk] != CK && tt[tk] != SK && tt[tk] != UK && tt[tk] != EK) tk++; } /* expr 未推进 → 手动跳分隔符 (fix 2026-08-16: color.c attrs[] sizeof("..")-1 漏 ) 卡 KK → fidx 空转 2^31 溢出 INT_MIN 越界崩) */ fidx++; continue; } /* all fields consumed: drop extra values */
         char fname[64]; strcpy(fname, stypes[si].fnames[fidx]);
         int fty = stypes[si].ftypes[fidx];
         int fsz2 = stypes[si].fsizes[fidx];
@@ -2621,6 +2631,10 @@ static int brace_fields(int si, int base) {
         if (fty >= 0 && !fty_is_ptr) { /* nested struct field */
             if (tt[tk] == FK) { /* explicit nested braces { ... }: recurse into fields */
                 tk++;
+                int sub = brace_fields(fty, mem);
+                if (tt[tk] == UK) tk++; /* skip closing } */
+                for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) Nc(blk, c); }
+            } else if (tt[tk] == DT) { /* 成员设计器链 .value.update = {...}: 递归进嵌套 struct 处理 (fix 2026-08-16 根因G: merged_test.c .value.update = { .old_hash = { 2 }, .name = "..." } — 原 expr() 卡 DT 不推进 → 元素边界错乱 → 数组层 leaf 死循环 AST 溢出) */
                 int sub = brace_fields(fty, mem);
                 if (tt[tk] == UK) tk++; /* skip closing } */
                 for (int k = 0; k < 256; k++) { int c = child_i(sub, k); if (c > 0) Nc(blk, c); }
@@ -2650,6 +2664,14 @@ static int brace_fields(int si, int base) {
         } else if (tt[tk] == FK) { /* opaque nested brace (union field .u = { ... } 且 fty=-1): 跳过配平 (fix 2026-08-14: expr() 遇 { 崩溃) */
             int d2 = 1; tk++;
             while (tk < TS && d2 > 0) { if (tt[tk] == FK) d2++; else if (tt[tk] == UK) { d2--; if (d2 <= 0) { tk++; break; } } tk++; }
+        } else if (fty < 0 && fsz2 == 8 && frow2 == 8 && tt[tk] == DT) { /* 匿名 union/struct 8字节近似的成员设计器链 (防御: 正常路径由设计器分支 blob-consumer 处理) */
+            int _bd = 0;
+            while (tk < TS && tt[tk] != EK) {
+                if (tt[tk] == FK) _bd++;
+                else if (tt[tk] == UK) { if (_bd == 0) break; _bd--; if (_bd == 0) { tk++; break; } }
+                else if (tt[tk] == CK && _bd == 0) break;
+                tk++;
+            }
         } else { /* scalar field */
             int asgn = Nd(10); Nc(asgn, mem); Nc(asgn, expr()); Nc(blk, asgn);
         }
@@ -3228,6 +3250,7 @@ static int prim(void) {
     }
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
+        int sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
         if (tt[tk] == OK) tk++; /* skip ( */
         if (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
             tk++; /* * */
@@ -3288,7 +3311,7 @@ static int prim(void) {
             if (tt[tk] == KK) tk++; /* sizeof 的 ) */
             int n = Nd(0); nv[n] = esz; return n;
         }
-        if (tt[tk] == STR) { int n = Nd(0); nv[n] = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; return n; } /* sizeof "string" (fix 2026-08-14: regcomp.c REG_NOMATCH_IDX = ... + sizeof "Success" — 原 STR 未消费泄漏 → 死循环) */
+        if (tt[tk] == STR) { int n = Nd(0); nv[n] = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; if (sizeof_had_paren && tt[tk] == KK) tk++; /* fix 2026-08-16 根因F: sizeof("str") 漏消费 ')' → 后续 -1 残留 → 调用点 token 卡死 (color.c ATTR 宏 sizeof(x)-1) */ return n; } /* sizeof "string" (fix 2026-08-14: regcomp.c REG_NOMATCH_IDX = ... + sizeof "Success" — 原 STR 未消费泄漏 → 死循环) */
         if (tt[tk] == VK) { /* sizeof(int/char/double/...) + pointers (fix 2026-08-05: was hardcoded 4 for every type) */
             int tsz = 4;
             int long_cnt = 0, is_dbl = 0, is_char = 0, is_short = 0;
@@ -7324,7 +7347,7 @@ static void cg(int n) {
             int is_user = (fi >= 0 && (func_tbl[fi].defined || (coff_mode && !coff_is_builtin(fname)))) || (fi < 0 && coff_mode && !coff_is_builtin(fname)); /* extern call in -c mode also user call */
             /* sret call: target is a >8B struct variable whose address case-7/10 set in
                cg_sret_off; the callee writes the result straight into it (Win64 hidden ptr). */
-            int sret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
+            int sret_si = (fi >= 0 && fi < 8192 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname);
             int sret_ptr = fn_ret_name_get_ptr(fname);
             int is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off != 0 && !sret_ptr);
             int sret_extra = nargs > 3 ? nargs - 3 : 0;
@@ -9004,7 +9027,7 @@ void gen_code(void) {
         set_label(func_tbl[fi].label);
         asm_emit("\n; === %s ===\n%s:\n", fname, fname, (char*)(long long)0);
         func_tbl[fi].defined = 1;
-        cur_ret_si = (fi >= 0 && fi < 1024 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
+        cur_ret_si = (fi >= 0 && fi < 8192 && fn_ret_si_map[fi] >= 0) ? fn_ret_si_map[fi] : fn_ret_name_get(fname); /* sret return handling in case-6 (name-keyed: func_tbl indexes renumber in pass 2) */
         { int cur_ret_ptr = fn_ret_name_get_ptr(fname);
           cur_fn_sret = (cur_ret_si >= 0 && stypes[cur_ret_si].sz > 8 && !cur_ret_ptr); } /* sret fn: params shift (rcx = hidden ptr); struct pointer return is NOT sret */
         cur_va_home = fn_va_get(fname);
