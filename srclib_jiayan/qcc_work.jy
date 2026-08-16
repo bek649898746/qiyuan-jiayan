@@ -772,6 +772,24 @@ __attribute__((unused))
         strcat(full, fname);
         字 *fc = pp_read_file(full);
         若 (fc) 返 fc;
+        /* fix 2026-08-16 根治: #include 只搜当前源文件目录 — Git 头文件在根目录 (git-compat-util.h/builtin.h),
+           子目录源文件 include 不到 → 224 文件全部 [ERR] 找不到。向上回溯父目录链。 */
+        字 par[1024];
+        strcpy(par, inc_dir_stack[inc_dir_n - 1]);
+        遍 (;;) {
+            字 *sl = strrchr(par, '/');
+            字 *bs = strrchr(par, '\\');
+            若 (bs > sl) sl = bs; /* Windows 路径反斜杠分隔 (fix 2026-08-16: 原只找 '/' 回溯永不触发) */
+            若 (!sl) 断;
+            *sl = 0;
+            若 (!par[0]) 断;
+            字 full2[1024];
+            strcpy(full2, par);
+            strcat(full2, "/");
+            strcat(full2, fname);
+            字 *fc2 = pp_read_file(full2);
+            若 (fc2) 返 fc2;
+        }
     }
     返 pp_read_file(fname);
 }
@@ -2551,7 +2569,7 @@ __attribute__((unused))
     返 0;
 }
 
-静 整 Nd(整 t);
+静 整 Nd(整 t) { 若 (nc >= ASZ) { fprintf(stderr, "[ERR] AST overflow\n"); 返 -1; } 整 i = nc++; nt[i] = t; nv[i] = 0; n0[i] = n1[i] = n2[i] = n3[i] = n4[i] = n5[i] = n6[i] = n7[i] = n8[i] = n9[i] = n10[i] = n11[i] = n12[i] = n13[i] = n14[i] = n15[i] = n16[i] = n17[i] = n18[i] = n19[i] = n20[i] = n21[i] = n22[i] = n23[i] = n24[i] = n25[i] = n26[i] = n27[i] = n28[i] = n29[i] = n30[i] = n31[i] = n32[i] = n33[i] = n34[i] = n35[i] = n36[i] = n37[i] = n38[i] = n39[i] = n40[i] = n41[i] = n42[i] = n43[i] = n44[i] = n45[i] = n46[i] = n47[i] = n48[i] = n49[i] = n50[i] = n51[i] = n52[i] = n53[i] = n54[i] = n55[i] = n56[i] = n57[i] = n58[i] = n59[i] = n60[i] = n61[i] = n62[i] = n63[i] = n64[i] = n65[i] = n66[i] = n67[i] = n68[i] = n69[i] = n70[i] = n71[i] = n72[i] = n73[i] = n74[i] = n75[i] = n76[i] = n77[i] = n78[i] = n79[i] = n80[i] = n81[i] = n82[i] = n83[i] = n84[i] = n85[i] = n86[i] = n87[i] = n88[i] = n89[i] = n90[i] = n91[i] = n92[i] = n93[i] = n94[i] = n95[i] = n96[i] = n97[i] = n98[i] = n99[i] = n100[i] = n101[i] = n102[i] = n103[i] = n104[i] = n105[i] = n106[i] = n107[i] = n108[i] = n109[i] = n110[i] = n111[i] = n112[i] = n113[i] = n114[i] = n115[i] = n116[i] = n117[i] = n118[i] = n119[i] = n120[i] = n121[i] = n122[i] = n123[i] = n124[i] = n125[i] = n126[i] = n127[i] = n128[i] = n129[i] = n130[i] = n131[i] = n132[i] = n133[i] = n134[i] = n135[i] = n136[i] = n137[i] = n138[i] = n139[i] = n140[i] = n141[i] = n142[i] = n143[i] = n144[i] = n145[i] = n146[i] = n147[i] = n148[i] = n149[i] = n150[i] = n151[i] = n152[i] = n153[i] = n154[i] = n155[i] = n156[i] = n157[i] = n158[i] = n159[i] = n160[i] = n161[i] = n162[i] = n163[i] = n164[i] = n165[i] = n166[i] = n167[i] = n168[i] = n169[i] = n170[i] = n171[i] = n172[i] = n173[i] = n174[i] = n175[i] = n176[i] = n177[i] = n178[i] = n179[i] = n180[i] = n181[i] = n182[i] = n183[i] = n184[i] = n185[i] = n186[i] = n187[i] = n188[i] = n189[i] = n190[i] = n191[i] = n192[i] = n193[i] = n194[i] = n195[i] = n196[i] = n197[i] = n198[i] = n199[i] = n200[i] = n201[i] = n202[i] = n203[i] = n204[i] = n205[i] = n206[i] = n207[i] = n208[i] = n209[i] = n210[i] = n211[i] = n212[i] = n213[i] = n214[i] = n215[i] = n216[i] = n217[i] = n218[i] = n219[i] = n220[i] = n221[i] = n222[i] = n223[i] = n224[i] = n225[i] = n226[i] = n227[i] = n228[i] = n229[i] = n230[i] = n231[i] = n232[i] = n233[i] = n234[i] = n235[i] = n236[i] = n237[i] = n238[i] = n239[i] = n240[i] = n241[i] = n242[i] = n243[i] = n244[i] = n245[i] = n246[i] = n247[i] = n248[i] = n249[i] = n250[i] = n251[i] = n252[i] = n253[i] = n254[i] = n255[i] = -1; pesz[i] = 0; 返 i; }
 静 空 Nc(整 p, 整 c);
 静 整 expr(空);
 /* Brace initializer: walk struct si's fields, consuming values from the token
@@ -2936,7 +2954,6 @@ __attribute__((unused))
     若 (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
 
-静 整 Nd(整 t) { 若 (nc >= ASZ) { fprintf(stderr, "[ERR] AST overflow\n"); 返 -1; } 整 i = nc++; nt[i] = t; nv[i] = 0; n0[i] = n1[i] = n2[i] = n3[i] = n4[i] = n5[i] = n6[i] = n7[i] = n8[i] = n9[i] = n10[i] = n11[i] = n12[i] = n13[i] = n14[i] = n15[i] = n16[i] = n17[i] = n18[i] = n19[i] = n20[i] = n21[i] = n22[i] = n23[i] = n24[i] = n25[i] = n26[i] = n27[i] = n28[i] = n29[i] = n30[i] = n31[i] = n32[i] = n33[i] = n34[i] = n35[i] = n36[i] = n37[i] = n38[i] = n39[i] = n40[i] = n41[i] = n42[i] = n43[i] = n44[i] = n45[i] = n46[i] = n47[i] = n48[i] = n49[i] = n50[i] = n51[i] = n52[i] = n53[i] = n54[i] = n55[i] = n56[i] = n57[i] = n58[i] = n59[i] = n60[i] = n61[i] = n62[i] = n63[i] = n64[i] = n65[i] = n66[i] = n67[i] = n68[i] = n69[i] = n70[i] = n71[i] = n72[i] = n73[i] = n74[i] = n75[i] = n76[i] = n77[i] = n78[i] = n79[i] = n80[i] = n81[i] = n82[i] = n83[i] = n84[i] = n85[i] = n86[i] = n87[i] = n88[i] = n89[i] = n90[i] = n91[i] = n92[i] = n93[i] = n94[i] = n95[i] = n96[i] = n97[i] = n98[i] = n99[i] = n100[i] = n101[i] = n102[i] = n103[i] = n104[i] = n105[i] = n106[i] = n107[i] = n108[i] = n109[i] = n110[i] = n111[i] = n112[i] = n113[i] = n114[i] = n115[i] = n116[i] = n117[i] = n118[i] = n119[i] = n120[i] = n121[i] = n122[i] = n123[i] = n124[i] = n125[i] = n126[i] = n127[i] = n128[i] = n129[i] = n130[i] = n131[i] = n132[i] = n133[i] = n134[i] = n135[i] = n136[i] = n137[i] = n138[i] = n139[i] = n140[i] = n141[i] = n142[i] = n143[i] = n144[i] = n145[i] = n146[i] = n147[i] = n148[i] = n149[i] = n150[i] = n151[i] = n152[i] = n153[i] = n154[i] = n155[i] = n156[i] = n157[i] = n158[i] = n159[i] = n160[i] = n161[i] = n162[i] = n163[i] = n164[i] = n165[i] = n166[i] = n167[i] = n168[i] = n169[i] = n170[i] = n171[i] = n172[i] = n173[i] = n174[i] = n175[i] = n176[i] = n177[i] = n178[i] = n179[i] = n180[i] = n181[i] = n182[i] = n183[i] = n184[i] = n185[i] = n186[i] = n187[i] = n188[i] = n189[i] = n190[i] = n191[i] = n192[i] = n193[i] = n194[i] = n195[i] = n196[i] = n197[i] = n198[i] = n199[i] = n200[i] = n201[i] = n202[i] = n203[i] = n204[i] = n205[i] = n206[i] = n207[i] = n208[i] = n209[i] = n210[i] = n211[i] = n212[i] = n213[i] = n214[i] = n215[i] = n216[i] = n217[i] = n218[i] = n219[i] = n220[i] = n221[i] = n222[i] = n223[i] = n224[i] = n225[i] = n226[i] = n227[i] = n228[i] = n229[i] = n230[i] = n231[i] = n232[i] = n233[i] = n234[i] = n235[i] = n236[i] = n237[i] = n238[i] = n239[i] = n240[i] = n241[i] = n242[i] = n243[i] = n244[i] = n245[i] = n246[i] = n247[i] = n248[i] = n249[i] = n250[i] = n251[i] = n252[i] = n253[i] = n254[i] = n255[i] = -1; pesz[i] = 0; 返 i; }
 静 空 Nc(整 p, 整 c) { 若 (c < 0) 返;
     若 (n0[p] < 0) { n0[p] = c; 返; }
     若 (n1[p] < 0) { n1[p] = c; 返; }
@@ -3518,7 +3535,7 @@ __attribute__((unused))
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si).
                expr_is_double covers double-returning CALLS whose ndbl is set only at
                codegen (root-cause 2026-08-03: ndbl[ce] alone missed them → no-op cast). */
-            若 (cast_ty && !strcmp(cast_ty, "int") && (ndbl[ce] || expr_is_double(ce))) { 整 m = Nd(19); Nc(m, ce); ndbl[m] = 0; 返 m; }
+            若 (cast_ty && !strcmp(cast_ty, "int") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { 整 m = Nd(19); Nc(m, ce); ndbl[m] = 0; 返 m; } /* fix 2026-08-16: ndbl[ce] 原未守卫 ce=-1 (prim 解析失败) → ndbl[-1] 越界 */
             若 (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             循环 (1) {
@@ -3544,7 +3561,7 @@ __attribute__((unused))
                 否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
                 否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
                 否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
-                若 (cpe) pesz[ce] = cpe; /* struct/typedef/void ptr: cpe=0 -> keep old behavior */
+                若 (cpe && ce >= 0) pesz[ce] = cpe; /* struct/typedef/void ptr: cpe=0 -> keep old behavior (fix 2026-08-16: ce=-1 时 pesz[-1] 越界写) */
             }
             返 ce; /* cast is no-op: value unchanged */
         }
@@ -3600,8 +3617,8 @@ __attribute__((unused))
     返 -1;
 }
 
-静 整 mul(空) { 整 n = prim(); 循环 (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = prim(); Nc(a, n); Nc(a, r); 若 ((o == DK || o == DV) && (ndbl[n] || ndbl[r])) ndbl[a] = 1; n = a; } 返 n; }
-静 整 add(空) { 整 n = mul(); 循环 (tt[tk] == PK || tt[tk] == MK || tt[tk] == PT || tt[tk] == OR || tt[tk] == XR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = mul(); Nc(a, n); Nc(a, r); 若 ((o == PK || o == MK) && (ndbl[n] || ndbl[r])) ndbl[a] = 1; n = a; } 返 n; }
+静 整 mul(空) { 整 n = prim(); 循环 (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = prim(); Nc(a, n); Nc(a, r); 若 ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } 返 n; }
+静 整 add(空) { 整 n = mul(); 循环 (tt[tk] == PK || tt[tk] == MK || tt[tk] == PT || tt[tk] == OR || tt[tk] == XR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = mul(); Nc(a, n); Nc(a, r); 若 ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } 返 n; }
 静 整 cmp(空) { 整 n = add(); 循环 (tt[tk] == LK || tt[tk] == GK || tt[tk] == QK || tt[tk] == XK || tt[tk] == HK || tt[tk] == YK) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; Nc(a, n); Nc(a, add()); n = a; } 返 n; }
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
@@ -3910,6 +3927,8 @@ __attribute__((unused))
                     若 (tt[tk] == SK) tk++;
                 }
                 若 (tt[tk] == UK) tk++;
+                st_finalize(nsi); /* fix 2026-08-16 根因D2: 局部 struct 类型定义路径缺 st_finalize → sizeof 未按最大对齐收尾 (write_coff_obj `struct{...} secs[4]` 36→40) → secs[i] 步长错 → -c .o 段表写坏 */
+                若 (!strcmp(tname, "struct") || !strcmp(tname, "union")) { 字 tmp2[64]; sprintf(tmp2, "__anon_%d", nsi); strcpy(stypes[nsi].name, tmp2); } /* fix 2026-08-16 根因D3: 局部匿名 struct 的 tname=tn[tk-1] 落成关键字 "struct"/"union" → 多个匿名 struct 同名 → st_off/st_find 按名查错 struct → secs[i].field 查不到字段 → 空代码 (write_coff_obj -c .o 段表全空/写文件句柄)。仿全局路径改名 __anon_N */
                 si = nsi; /* struct P {…} p; — the variable(s) after the } use the just-defined type */
                 若 (tt[tk] == SK) { tk++; 续; } /* type-only declaration: struct P {...}; */
                 /* variable declaration after the local type: struct P {…} p; / *p / p[3]; */
@@ -4119,7 +4138,8 @@ __attribute__((unused))
             unknown_ty_decl = 1;
             td_reg(tn[tk]); /* fix 2026-08-13 Phase3: 注册 unknown typedef (uint32_t) → 后续 (uint32_t*) cast 可 td_is (不用 var_lookup 防 2-cycle); fix 2026-08-15: 未知 typedef 指针声明 TOKEN_USER *info 漏注册 */
         }
-        若 (tt[tk] == VK || tt[tk] == EN || (tt[tk] == VR && td_is(tn[tk])) || unknown_ty_decl) { /* int/char/enum/typedef type */
+        若 ((tt[tk] == VK || tt[tk] == EN || (tt[tk] == VR && td_is(tn[tk])) || unknown_ty_decl) && !(tt[tk] == VR && tt[tk + 1] == AK)) { /* int/char/enum/typedef type
+               fix 2026-08-16 根治: VR 后跟 = 必是赋值 (变量名与类型同名: `file_diff = s->file_diff + ...` 若 file_diff 恰被当类型, 原进声明分支 → 空名 decl + init → 变量永不赋值 + token 流错位 → 后续 ++ 节点操作数丢失 n0=-1 → case26 nt[-1] 越界崩 add-patch.c) */
             整 was_enum = (tt[tk] == EN);
             整 ltd_si = -1; /* typedef'd struct type index (fix 2026-08-03: typedef local decls were unhandled → EngineStat s was registered as int, field offsets 0) */
             若 (tt[tk] == VR && td_is(tn[tk])) { ltd_si = td_st_index(tn[tk]); } /* no tk++ here — the shared tk++ below skips the type name */
@@ -4654,7 +4674,6 @@ __attribute__((unused))
     若 (tt[tk] == CN) { tk++; 整 r = Nd(21); tk++; 返 r; } /* continue; */
     整 e = expr(); tk++; 返 e;
 }
-
 /* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
    左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
    (fix 2026-08-14: hash_algos[GIT_HASH_NALGOS] 展开成 [(2 + 1)] — 原数组维度只认单 NK/VR token, `(` 卡住 → 维度=0 → 后续 null_oid 定义被吞 undefined) */
@@ -4765,12 +4784,13 @@ __attribute__((unused))
                 若 (tt[tk] == FK) { /* { */
                     tk++;
                     整 funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
+                    整 fsz = 4; 整 frow = 1; 整 fdbl = 0; 整 fll = 0; 整 ffnptr = 0; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 的后续字段必须继承类型 (原每次迭代重置 fsz=4 → char 字段算成 int → vars 结构 136 算成 152 → 变量表步长错位 → Git 大文件崩) */
                     循环 (tk < TS && tt[tk] != UK) {
                         整 tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
-                        整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0; 整 fll = 0; 整 ffnptr = 0; /* fll: long long 字段 (fix 2026-08-06); ffnptr: typedef'd fnptr 字段 (fix 2026-08-16) */
-                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
+                        整 dims = 0; 整 first = 1; /* dims/first 数组维度每次迭代独立 */
+                        若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++;
                             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 消费 long long 的第二个 long (fix 2026-08-06) */ }
-                        循环 (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
+                        循环 (tt[tk] == DK) { fsz = 8; frow = 8; tk++; } /* pointer field (fix 2026-08-16: frow=8 — 逗号后指针字段继承) */
                         若 (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             tk++; /* struct */
                             若 (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 跳过 body 但注册字段名(8字节近似) (fix 2026-08-13 Phase3: regex re_token_t union opr) */
@@ -4888,8 +4908,8 @@ __attribute__((unused))
                             若 (fll) st_field_ty(si, fn, -3); /* long long 字段标记: 64 位访问 (fix 2026-08-06) */
                             }
                         }
-                        若 (tt[tk] == CK) tk++; /* comma between fields */
-                        若 (tt[tk] == SK) tk++;
+                        若 (tt[tk] == CK) { tk++; fsz = frow; } /* comma between fields: 逗号后字段继承类型 (元素大小 frow; fix 2026-08-16 根因E — 原类型状态被下次迭代重置) */
+                        若 (tt[tk] == SK) { tk++; fsz = 4; frow = 1; fdbl = 0; fll = 0; ffnptr = 0; } /* ; 结束本字段类型: 重置为默认 int (下字段等新 VK; fix 2026-08-16 根因E) */
                         若 (tk == tk0) tk++; /* 安全前进守卫 */
                     }
                     若 (tt[tk] == UK) tk++; /* } */
@@ -5293,8 +5313,9 @@ __attribute__((unused))
                 tk++; /* { */
                 字 aname[64]; aname[0] = 0; 整 si = st_add(aname);
                 整 funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
+                整 fsz = 4; 整 frow = 1; 整 fdbl = 0; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 匿名 struct (static struct {...} vars[16384]) 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 后续字段必须继承 char (原每次迭代重置 fsz=4 → char 算 int → vars 136 算 152 → 变量表步长错位 → Git 大文件崩) */
                 循环 (tk < TS && tt[tk] != UK) {
-                    整 fsz = 4; 整 frow = 1; 整 dims = 0; 整 first = 1; 整 fdbl = 0;
+                    整 dims = 0; 整 first = 1;
                     若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
                     循环 (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                     若 (tt[tk] == ST) { /* nested struct field */
@@ -5390,10 +5411,11 @@ __attribute__((unused))
                             若 (fdbl) st_field_dbl(si, fn);
                         }
                     }
-                    若 (tt[tk] == CK) tk++;
-                    若 (tt[tk] == SK) tk++;
+                    若 (tt[tk] == CK) { tk++; fsz = frow; } /* fix 2026-08-16 根因E: 逗号后字段继承类型 (frow=元素大小) */
+                    若 (tt[tk] == SK) { tk++; fsz = 4; frow = 1; fdbl = 0; } /* ; 重置类型 (下字段等新 VK; fix 2026-08-16 根因E) */
                 }
                 若 (tt[tk] == UK) tk++;
+                st_finalize(si); /* fix 2026-08-16 根因D2: 全局匿名 struct+变量声明路径同样缺 st_finalize (与局部路径同病) */
                 若 (tt[tk] == VR || tt[tk] == DK) {
                     整 anon_ptr = 0;
                     若 (tt[tk] == DK) { anon_ptr = 1; tk++; } /* fix 2026-08-10: struct {...} *p -- ptr global was skipped, refs became undefined id -> addr 0 crash (latent bug) */
@@ -5521,7 +5543,7 @@ __attribute__((unused))
                        pointer depth here, otherwise `struct T *arr[]`/`char *names[]` are
                        registered as arrays-of-struct/chars instead of arrays-of-pointers.
                        (fix 2026-08-15: tr2_tgt_builtins[] for_each_builtin hang) */
-                    若 (first_var) 遍 (整 p = save_tk; p < tk; p++) 若 (tt[p] == DK) lead_ptr++;
+                    若 (first_var) 遍 (整 pk = save_tk; pk < tk; pk++) 若 (tt[pk] == DK) lead_ptr++; /* fix 2026-08-16 根因D: 循环变量 p 遮蔽 parse 根节点 p (L4760 int p=Nd(3)), qcc 按名复用槽 → 循环写坏根 p → fdef 全挂错节点 → 解析树成环 → oidmap 无限递归。改名 pk 隔离作用域。 */
                     循环 (tt[tk] == DK) { lead_ptr++; tk++; }
                     若 (tt[tk] == OK) { /* struct T * (name[N]); — 括号数组声明 (fix 2026-08-15: pack-objects.c pbase_tree_cache[256] 解析断 → oe_get_size_slow undefined) */
                         tk++; /* ( */
@@ -7131,7 +7153,7 @@ __attribute__((unused))
         例 2: { /* binary op */
             整 o = nv[n];
             若 (o == CK) { cg(n0[n]); cg(n1[n]); 断; } /* comma: evaluate left (side effects), result = right */
-            若 (ndbl[n0[n]] || ndbl[n1[n]]) {
+            若 ((n0[n] >= 0 && ndbl[n0[n]]) || (n1[n] >= 0 && ndbl[n1[n]])) {
                 /* floating-point arithmetic / comparison (result in xmm0) */
                 若 (o == PK || o == MK || o == DK || o == DV) {
                     cg_f(n0[n]); push_xmm0();
@@ -7157,7 +7179,7 @@ __attribute__((unused))
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            若 (nll[n0[n]] || nll[n1[n]]) {
+            若 ((n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
                 /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
                 若 (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     cg(n0[n]); ll_ext32(n0[n]); push_r64(0); /* save lhs; int RHS 符号扩展 (fix 2026-08-06) */
@@ -7748,7 +7770,7 @@ __attribute__((unused))
                     cg(n0[n]); /* fallback (chain/array targets): best-effort 32-bit */
                 }
             } 否 若 (fn_dbl_get_ret(cur_fn_name)) {
-                若 (nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double fnptr/int call: leave xmm0 as-is (no cvtsi2sd) */
+                若 (n0[n] >= 0 && nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double fnptr/int call: leave xmm0 as-is (fix 2026-08-16: n0[n]=-1 守卫) */
                 cg_f(n0[n]); /* double return: result goes in xmm0 */
             } 否 {
                 cg(n0[n]);
@@ -7777,7 +7799,7 @@ __attribute__((unused))
                     cg_sret_off = 0;
                 } 否 {
                 若 (var_is_dbl(vname)) {
-                    若 (nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double target: force call result to stay in xmm0 */
+                    若 (n0[n] >= 0 && nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double target: force call result to stay in xmm0 (fix 2026-08-16: n0[n]=-1 守卫) */
                     若 (var_isstatic(vname)) { cg_f(n0[n]); movsd_rip_xmm0(coff_static_disp(off, 2) - 2); } /* static double store */
                     否 { cg_f(n0[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
                 }
@@ -7819,7 +7841,7 @@ __attribute__((unused))
                     pop_r(3); /* rbx = 目标, rax = 源 */
                     cg_struct_copy(csz);
                 } 否 {
-                若 (ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } 否 cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS */
+                若 (n0[n] >= 0 && ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } 否 cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS (fix 2026-08-16: n0[n]=-1 守卫) */
                 若 (var_is_ll(vname)) ll_ext32(n0[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06: long long v=-7 → 4294967289) */
                 若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); 否 mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
                 否 若 (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
@@ -7829,7 +7851,6 @@ __attribute__((unused))
                 } /* close D: STR branch */
                 } /* close C: else of is_dbl */
                 } /* close A: else of sret */
-                否 fprintf(stderr, "[EMPTYVNAME] n=%d vn0=%d\n", n, vname[0]);
                 } /* close Y: vname[0]!=0 */
         } 断;
         例 8: { /* if */
@@ -7880,9 +7901,11 @@ __attribute__((unused))
         } 断;
         例 23: { /* postfix ++/-- : return old value, then mutate (simple var) */
             整 is_dec = nv[n];
-            字 *vn = (字*)(nn + n0[n]);
+            整 op0 = n0[n];
+            若 (op0 < 0) 断; /* fix 2026-08-16 根治: 操作数缺失的非法 ++/-- 节点 (解析 bug 连带产物) — 原 nt[n0[n]] 读 nt[-1] 越界崩 (host 靠布局侥幸, v1 VirtualAlloc 页边界必崩 add-patch.c) */
+            字 *vn = (字*)(nn + op0);
             整 off = var_lookup(vn);
-            若 (nt[n0[n]] == 1 && off >= 0) {
+            若 (nt[op0] == 1 && off >= 0) {
                 整 step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; }
                 若 (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
@@ -7922,9 +7945,11 @@ __attribute__((unused))
         } 断;
         例 26: { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05) */
             整 is_dec = nv[n];
-            字 *vn = (字*)(nn + n0[n]);
+            整 op0 = n0[n];
+            若 (op0 < 0) 断; /* fix 2026-08-16 根治: 操作数缺失的非法 ++/-- 节点 — 原 nt[n0[n]] 读 nt[-1] 越界崩 (add-patch.c, host 靠布局侥幸) */
+            字 *vn = (字*)(nn + op0);
             整 off = var_lookup(vn);
-            若 (nt[n0[n]] == 1 && off >= 0) {
+            若 (nt[op0] == 1 && off >= 0) {
                 整 step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; }
                 mov_r_imm(1, is_dec ? -step : step); /* ecx = ±step */
@@ -8266,7 +8291,7 @@ __attribute__((unused))
                         /* csz 是 algn(4/8) 的倍数, 8+4 覆盖; 1 字节尾部不出现 */
                     }
                 } 否 {
-                若 (ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS */
+                若 (n1[n] >= 0 && ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS (fix 2026-08-16: n1[n]=-1 守卫) */
                 否 cg(n1[n]);
                 若 (var_is_ll(vname)) ll_ext32(n1[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06) */
                 若 (off >= 0) {
@@ -8351,7 +8376,8 @@ __attribute__((unused))
                     整 fsz = st_field_size(stypes[s2].name, fn);
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
                     若 (fsz > 4) {
-                        若 (fsz == 8 && st_field_ty_idx(stypes[s2].name, fn) == -2) { mov_reg_mreg64(0, 0); } /* fnptr field (fty==-2 marker): load 64-bit VALUE (fix 2026-08-03: must not treat 8-byte ARRAY fields as fnptr) */
+                        整 fty2 = st_field_ty_idx(stypes[s2].name, fn);
+                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_el(s2, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址 */
                         /* else: struct/array field -> address (no deref) */
                     } 否 若 (!cg_no_deref) {
                         若 (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
@@ -8689,7 +8715,10 @@ __attribute__((unused))
        expanding fn-macro args, so the counter walked past the image end and the
        very next byte store faulted (0xC0000005). Give the shared heap+stack
        region 128MiB instead of 72MiB. */
-    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x8000000;
+    /* fix 2026-08-16 根因E attr.c: fn-macro 展开实测把 bump 堆推到 165MiB+136MiB≈300MiB,
+       超 128MiB 预算 → counter 越过 heap 终点+image 末尾 (0x11E98000) → malloc 指针越界写崩。
+       预算 128→192MiB 留余量 (attr.c 需 ~136MiB)。image 相应增大 (v1 ~+64MB)。 */
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0xC000000;
     返 e > heap_top ? e : heap_top;
 }
 
@@ -9307,7 +9336,8 @@ __attribute__((unused))
         返 0;
     }
     若 (nt[n] == 14) {
-        整 idx = (nt[n1[n]] == 0) ? nv[n1[n]] : -1;
+        整 c = n1[n]; /* fix 2026-08-16 根治: 数组访问节点索引子节点可能为 -1 (非法/解析产物), nt[-1]/nv[-1] 越界读 — qcc 三元急切求值两分支都算, host(gcc 分支式) 靠布局侥幸不崩, v1 必崩 (add-patch.c 0xC0000005) */
+        整 idx = (c >= 0 && nt[c] == 0) ? nv[c] : -1;
         若 (idx < 0) 返 -1;
         整 bs = 0, esz = 0, si = -1;
         整 bb = coff_lval_byte(n0[n], &bs, &esz, &si);
