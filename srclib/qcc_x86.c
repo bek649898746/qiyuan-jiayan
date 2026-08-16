@@ -7762,6 +7762,7 @@ static void cg(int n) {
             if (cur_fn_sret) {
                 /* sret: copy the returned struct to [rcx] (hidden pointer), return rcx.
                    The return expression must be a struct var/param (or chain) — use its base. */
+                if (n0[n] >= 0) { /* fix 2026-08-16 根因J: 裸 `return;` (n0=-1) 在 sret 函数 → nt[n0[n]]=nt[-1] 越界崩 (repository.c 等 14+ 文件) */
                 char *rvn = (char*)(nn + n0[n]);
                 int ro = var_lookup(rvn);
                 int rsz = stypes[cur_ret_si].sz;
@@ -7793,6 +7794,7 @@ static void cg(int n) {
                 } else {
                     cg(n0[n]); /* fallback (chain/array targets): best-effort 32-bit */
                 }
+                } /* fix 2026-08-16 根因J: 裸 return; 无操作数守卫 */
             } else if (fn_dbl_get_ret(cur_fn_name)) {
                 if (n0[n] >= 0 && nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double fnptr/int call: leave xmm0 as-is (fix 2026-08-16: n0[n]=-1 守卫) */
                 cg_f(n0[n]); /* double return: result goes in xmm0 */
@@ -8139,11 +8141,11 @@ static void cg(int n) {
                    守卫: 仅当 LHS 是直接 arr[i] (n0[n] 的基是名字节点 nt==1)。
                    tbl[0].name[0] = 'X' 的基是 case-15 字段链 → 不能当整结构体拷贝 (fix 2026-08-06: probe_sg 崩)。
                    sz>=8: 8 字节 struct 元素拷贝同样要整块 (原 >8 走标量路径 → 存的是元素地址, fix 2026-08-06) */
-                if (asi_el >= 0 && stypes[asi_el].sz >= 8 && nt[n0[n0[n]]] == 1) { /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06) */
+                if (asi_el >= 0 && stypes[asi_el].sz >= 8 && n0[n] >= 0 && n0[n0[n]] >= 0 && nt[n0[n0[n]]] == 1) { /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06; fix 2026-08-16 根因J: n0[n]>=0 && n0[n0[n]]>=0 守卫 — 缺操作数节点 → nt[-1] 越界) */
                     int csz = stypes[asi_el].sz;
                     cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0; /* rax = &arr[i] (目标) */
                     push_r(0);
-                    if (nt[n1[n]] == 1 && n1[n] >= 0) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) (fix 2026-08-16: n1[n]>=0 守卫 — parse 失败时缺源 n1=-1, 原直接读 nt[-1] 越界) */
+                    if (n1[n] >= 0 && nt[n1[n]] == 1) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) (fix 2026-08-16: n1[n]>=0 守卫 — parse 失败时缺源 n1=-1, 原直接读 nt[-1] 越界) */
                         char *srn = (char*)(nn + n1[n]);
                         int sro = var_lookup(srn);
                         if (var_isstatic(srn)) lea_rax_rip(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz); /* fix 2026-08-06: 静态源要 ADDRESS (lea) */
