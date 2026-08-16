@@ -3532,6 +3532,18 @@ static int prim(void) {
                 }
             }
             int cast_nstar = 0; while (tt[tk] == DK) { cast_nstar++; tk++; } /* pointer * */
+            /* fix 2026-08-17: (void *(*)(long)) cast — 函数指针类型前有前导 * (void * 的 *),
+               3526 的 OK+DK 检查漏了它 → tk 停在 (*)(long) 的 ( → 后面 ) 未消费 → 表达式错乱 →
+               st_fidx 查空字段名 → 数组[-1] 越界崩 (kwset.c obstack_init 0xC0000005).
+               消费完 * 后若遇 ( * ) ( args ) 同样跳过函数指针尾. */
+            if (tt[tk] == OK && tt[tk + 1] == DK) {
+                int fp_d = 1; tk++;
+                while (tk < TS) {
+                    if (tt[tk] == OK) fp_d++;
+                    else if (tt[tk] == KK) { if (fp_d == 0) { tk++; break; } fp_d--; }
+                    tk++;
+                }
+            }
             int cast_arrn = 0; int cast_arresz = 0; /* compound literal 数组 dims: (int[N]){...} */
             if (tt[tk] == LB) { /* (T[N]) 数组类型后缀 (compound literal 用, fix 2026-08-11) */
                 tk++; if (tt[tk] == NK) { cast_arrn = tv[tk]; tk++; } else if (tt[tk] == VR) { cast_arrn = 0; tk++; }
@@ -4707,11 +4719,25 @@ static int const_expr_prim(int *val) {
     if (tt[tk] == BK) { /* sizeof 常量维度: char tmp[sizeof "..."] (fix 2026-08-15: inet_ntop.c tp 未注册 undefined) */
         tk++; if (tt[tk] == OK) tk++; /* sizeof( */
         int sz = 4;
+        /* fix 2026-08-17: sizeof((arr)[idx]) — 括号数组元素 (ARRAY_SIZE(paths) 展开成
+           sizeof(paths)/sizeof((paths)[0])): (paths) 括号后跟 [0] 下标, 原代码既不进
+           VR 分支也不被 OK 分支消费 → sz 错 + token 残留 → 数组维度求值错 →
+           brace_arr_init 越界崩 (diff-no-index.c to_free 0xC0000005). */
+        if (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == KK && tt[tk + 3] == LB) {
+            int pe = var_esz(tn[tk + 1]); if (pe > 0) sz = pe;
+            tk += 4; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; if (tt[tk] == RB) tk++;
+            if (tt[tk] == KK) tk++; /* 末尾 ) */
+            *val = sz; return 1;
+        }
         if (tt[tk] == STR) { sz = (int)strlen(str_tbl[tv[tk]]) + 1; tk++; }
         else if (tt[tk] == VK) { if (!strcmp(tn[tk],"char")||!strcmp(tn[tk],"_Bool")) sz=1; else if (!strcmp(tn[tk],"double")) sz=8; else if (!strcmp(tn[tk],"short")) sz=2; tk++; while (tt[tk] == DK) { sz = 8; tk++; } }
         else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int si = st_find(tn[tk]); if (si >= 0) sz = stypes[si].sz; tk++; } }
         else if (tt[tk] == DK) { sz = 8; tk++; if (tt[tk] == VR) tk++; }
-        else if (tt[tk] == VR) { int si = var_stidx(tn[tk]); tk++; if ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { if (si >= 0) { int fs = st_field_size(stypes[si].name, tn[tk + 1]); if (fs > 0) sz = fs; } tk += 2; } }
+        else if (tt[tk] == VR) { int si = var_stidx(tn[tk]); tk++; if ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { if (si >= 0) { int fs = st_field_size(stypes[si].name, tn[tk + 1]); if (fs > 0) sz = fs; } tk += 2; }
+            /* fix 2026-08-17: sizeof(裸数组名) 返回数组总字节数 (arr_sz * esz) — 原默认 4 →
+               ARRAY_SIZE(arr) 展开 sizeof(arr) 除错 → 数组维度求值错 (diff-no-index.c to_free).
+               仅当是数组变量 (arr_sz>0) 才覆盖, 普通变量保持默认 4. */
+            else { int an = var_arrsz(tn[tk - 1]); if (an > 0) sz = an * var_esz(tn[tk - 1]); } }
         if (tt[tk] == KK) tk++;
         *val = sz; return 1;
     }
@@ -8748,7 +8774,13 @@ static int data_extent(void) {
     /* fix 2026-08-16 根因E attr.c: fn-macro 展开实测把 bump 堆推到 165MiB+136MiB≈300MiB,
        超 128MiB 预算 → counter 越过 heap 终点+image 末尾 (0x11E98000) → malloc 指针越界写崩。
        预算 128→192MiB 留余量 (attr.c 需 ~136MiB)。image 相应增大 (v1 ~+64MB)。 */
-    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0xC000000;
+    /* fix 2026-08-16 根因E attr.c: fn-macro 展开实测把 bump 堆推到 165MiB+136MiB≈300MiB,
+       超 128MiB 预算 → counter 越过 heap 终点+image 末尾 (0x11E98000) → malloc 指针越界写崩。
+       预算 128→192MiB 留余量 (attr.c 需 ~136MiB)。image 相应增大 (v1 ~+64MB)。 */
+    /* fix 2026-08-17 block-sha1/sha1.c: 80 轮宏展开 (SHA_ROUND×80) 全量展开需 >192MiB
+       (踩坑库: sha1.c 编译需 214MB 堆) → counter 走穿镜像尾 → out 指针越界写崩。
+       预算 192→256MiB (0xC000000→0x10000000)。 */
+    int heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10000000;
     return e > heap_top ? e : heap_top;
 }
 

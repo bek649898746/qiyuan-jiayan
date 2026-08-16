@@ -3532,6 +3532,18 @@ __attribute__((unused))
                 }
             }
             整 cast_nstar = 0; 循环 (tt[tk] == DK) { cast_nstar++; tk++; } /* pointer * */
+            /* fix 2026-08-17: (void *(*)(long)) cast — 函数指针类型前有前导 * (void * 的 *),
+               3526 的 OK+DK 检查漏了它 → tk 停在 (*)(long) 的 ( → 后面 ) 未消费 → 表达式错乱 →
+               st_fidx 查空字段名 → 数组[-1] 越界崩 (kwset.c obstack_init 0xC0000005).
+               消费完 * 后若遇 ( * ) ( args ) 同样跳过函数指针尾. */
+            若 (tt[tk] == OK && tt[tk + 1] == DK) {
+                整 fp_d = 1; tk++;
+                循环 (tk < TS) {
+                    若 (tt[tk] == OK) fp_d++;
+                    否 若 (tt[tk] == KK) { 若 (fp_d == 0) { tk++; 断; } fp_d--; }
+                    tk++;
+                }
+            }
             整 cast_arrn = 0; 整 cast_arresz = 0; /* compound literal 数组 dims: (int[N]){...} */
             若 (tt[tk] == LB) { /* (T[N]) 数组类型后缀 (compound literal 用, fix 2026-08-11) */
                 tk++; 若 (tt[tk] == NK) { cast_arrn = tv[tk]; tk++; } 否 若 (tt[tk] == VR) { cast_arrn = 0; tk++; }
@@ -4707,11 +4719,25 @@ __attribute__((unused))
     若 (tt[tk] == BK) { /* sizeof 常量维度: char tmp[sizeof "..."] (fix 2026-08-15: inet_ntop.c tp 未注册 undefined) */
         tk++; 若 (tt[tk] == OK) tk++; /* sizeof( */
         整 sz = 4;
+        /* fix 2026-08-17: sizeof((arr)[idx]) — 括号数组元素 (ARRAY_SIZE(paths) 展开成
+           sizeof(paths)/sizeof((paths)[0])): (paths) 括号后跟 [0] 下标, 原代码既不进
+           VR 分支也不被 OK 分支消费 → sz 错 + token 残留 → 数组维度求值错 →
+           brace_arr_init 越界崩 (diff-no-index.c to_free 0xC0000005). */
+        若 (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == KK && tt[tk + 3] == LB) {
+            整 pe = var_esz(tn[tk + 1]); 若 (pe > 0) sz = pe;
+            tk += 4; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; 若 (tt[tk] == RB) tk++;
+            若 (tt[tk] == KK) tk++; /* 末尾 ) */
+            *val = sz; 返 1;
+        }
         若 (tt[tk] == STR) { sz = (整)strlen(str_tbl[tv[tk]]) + 1; tk++; }
         否 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk],"char")||!strcmp(tn[tk],"_Bool")) sz=1; 否 若 (!strcmp(tn[tk],"double")) sz=8; 否 若 (!strcmp(tn[tk],"short")) sz=2; tk++; 循环 (tt[tk] == DK) { sz = 8; tk++; } }
         否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { 整 si = st_find(tn[tk]); 若 (si >= 0) sz = stypes[si].sz; tk++; } }
         否 若 (tt[tk] == DK) { sz = 8; tk++; 若 (tt[tk] == VR) tk++; }
-        否 若 (tt[tk] == VR) { 整 si = var_stidx(tn[tk]); tk++; 若 ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { 若 (si >= 0) { 整 fs = st_field_size(stypes[si].name, tn[tk + 1]); 若 (fs > 0) sz = fs; } tk += 2; } }
+        否 若 (tt[tk] == VR) { 整 si = var_stidx(tn[tk]); tk++; 若 ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { 若 (si >= 0) { 整 fs = st_field_size(stypes[si].name, tn[tk + 1]); 若 (fs > 0) sz = fs; } tk += 2; }
+            /* fix 2026-08-17: sizeof(裸数组名) 返回数组总字节数 (arr_sz * esz) — 原默认 4 →
+               ARRAY_SIZE(arr) 展开 sizeof(arr) 除错 → 数组维度求值错 (diff-no-index.c to_free).
+               仅当是数组变量 (arr_sz>0) 才覆盖, 普通变量保持默认 4. */
+            否 { 整 an = var_arrsz(tn[tk - 1]); 若 (an > 0) sz = an * var_esz(tn[tk - 1]); } }
         若 (tt[tk] == KK) tk++;
         *val = sz; 返 1;
     }
@@ -8748,7 +8774,13 @@ __attribute__((unused))
     /* fix 2026-08-16 根因E attr.c: fn-macro 展开实测把 bump 堆推到 165MiB+136MiB≈300MiB,
        超 128MiB 预算 → counter 越过 heap 终点+image 末尾 (0x11E98000) → malloc 指针越界写崩。
        预算 128→192MiB 留余量 (attr.c 需 ~136MiB)。image 相应增大 (v1 ~+64MB)。 */
-    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0xC000000;
+    /* fix 2026-08-16 根因E attr.c: fn-macro 展开实测把 bump 堆推到 165MiB+136MiB≈300MiB,
+       超 128MiB 预算 → counter 越过 heap 终点+image 末尾 (0x11E98000) → malloc 指针越界写崩。
+       预算 128→192MiB 留余量 (attr.c 需 ~136MiB)。image 相应增大 (v1 ~+64MB)。 */
+    /* fix 2026-08-17 block-sha1/sha1.c: 80 轮宏展开 (SHA_ROUND×80) 全量展开需 >192MiB
+       (踩坑库: sha1.c 编译需 214MB 堆) → counter 走穿镜像尾 → out 指针越界写崩。
+       预算 192→256MiB (0xC000000→0x10000000)。 */
+    整 heap_top = DATA_RVA_OFF + 4 * stc_n + 2560 + 0x10000000;
     返 e > heap_top ? e : heap_top;
 }
 
