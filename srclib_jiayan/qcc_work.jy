@@ -9623,7 +9623,8 @@ __attribute__((unused))
     /* Task 5.1 (fix 2026-08-06): 全局初始值入 .data — 原 .bss 无内容, 常量初始值 (ginit) 在 -c 多 .o 链接时
        挂在第一个函数入口不执行 → counter=100 丢成 0。改 .data 段含初始值; 未初始化全局写 0 (语义等价 .bss 清零) */
     strcpy(secs[3].name, ".data"); secs[3].size = stc_n * 4; secs[3].chars = 0xC0300080;
-    uint8_t *ddata = (uint8_t*)calloc(stc_n ? stc_n : 1, 4);
+    uint8_t *ddata = (uint8_t*)malloc((stc_n ? stc_n : 1) * 4);
+    memset(ddata, 0, (stc_n ? stc_n : 1) * 4); /* fix 2026-08-17: bump calloc does NOT zero; write_coff_obj .data needs clean buffer */
 
     secs[3].data = ddata;
     遍 (整 gi = 0; gi < ginit_n; gi++) { /* 常量全局初始值 (g = 立即数) 直接写 .data — case 7 decl+init (值在 n0), case 10 assign (值在 n1) */
