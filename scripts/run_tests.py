@@ -171,6 +171,26 @@ def _run_diag():
         print('[DIAG] system mitigations:\n%s' % (r.stdout or '')[:1500])
     except Exception as e:
         print('[DIAG] mitigation EXC %r' % e)
+    # gdb 崩溃现场: 直接看退出路径崩在哪 (CI 的 Git 自带 MinGW gdb)
+    gdb_paths = [r'C:\Program Files\Git\mingw64\bin\gdb.exe', r'C:\Program Files\Git\usr\bin\gdb.exe']
+    gdb = next((p for p in gdb_paths if os.path.exists(p)), None)
+    if not gdb:
+        import shutil
+        gdb = shutil.which('gdb')
+    if gdb:
+        print('[DIAG] gdb at %s' % gdb)
+        for exe in ['ret_a', 'iatdump']:
+            exep = os.path.join('scratch_test', exe + '_diag.exe')
+            if not os.path.exists(exep): continue
+            try:
+                r = subprocess.run([gdb, '-batch', '-ex', 'run', '-ex', 'bt', '--args', exep],
+                                   capture_output=True, text=True, errors='replace', timeout=40)
+                out = (r.stdout or '') + (r.stderr or '')
+                print('[DIAG][gdb-%s] rc=%s\n%s' % (exe, r.returncode, out[:1500]))
+            except Exception as e:
+                print('[DIAG][gdb-%s] EXC %r' % (exe, e))
+    else:
+        print('[DIAG] gdb NOT FOUND')
 _run_diag()
 # ===== [DIAG-0817] 诊断段结束 =====
 
