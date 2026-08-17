@@ -17,6 +17,20 @@ os.makedirs('scratch_test', exist_ok=True)
 
 # ===== [DIAG-0817] 诊断段: Server 2025 0xC0000005 根因探测 (PR 专用, 不会合入 main) =====
 import struct
+def _crash_events(tag):
+    """读 Windows 事件日志中的崩溃记录 (Application Error 1000)"""
+    try:
+        ps = ('powershell', '-NoProfile', '-Command',
+              'Get-WinEvent -FilterHashtable @{LogName="Application"; Id=1000} -MaxEvents 3 '
+              '-ErrorAction SilentlyContinue | Select-Object -First 3 TimeCreated, '
+              '@{n="Msg";e={$_.Message.Substring(0, [Math]::Min(500, $_.Message.Length))}} | '
+              'Format-List | Out-String')
+        r = subprocess.run(ps, capture_output=True, text=True, errors='replace', timeout=20)
+        txt = (r.stdout or '').strip()
+        print('[DIAG][%s] crash events:\n%s' % (tag, txt[:1200] if txt else '(none)'))
+    except Exception as e:
+        print('[DIAG][%s] event-read EXC %r' % (tag, e))
+
 def _pe_diag(exe):
     try:
         d = open(exe, 'rb').read()
@@ -45,6 +59,11 @@ def _run_diag():
     q = os.path.join(root, 'qcc_x86.exe')
     if not os.path.exists(q):
         print('[DIAG] qcc_x86.exe 不存在, 跳过'); return
+    try:
+        gv = subprocess.run(['gcc', '--version'], capture_output=True, text=True, errors='replace', timeout=15)
+        print('[DIAG] gcc: %s' % (gv.stdout or gv.stderr or '').splitlines()[0])
+    except Exception as e:
+        print('[DIAG] gcc-version EXC %r' % e)
     for src, name in [('tests/qcc/ret_a.c', 'ret_a'), ('tests/qcc/simple_call.c', 'simple_call'),
                       ('tests/behavior/b_scanf.c', 'b_scanf')]:
         exe = os.path.join('scratch_test', name + '_diag.exe')
@@ -89,6 +108,7 @@ def _run_diag():
                 po.kill(); print('[DIAG] %s [popen] KILLED' % name)
         except Exception as e:
             print('[DIAG] %s [popen] EXC %r' % (name, e))
+        _crash_events(name)
 _run_diag()
 # ===== [DIAG-0817] 诊断段结束 =====
 
