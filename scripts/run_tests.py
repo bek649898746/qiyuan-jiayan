@@ -109,14 +109,23 @@ def _run_diag():
         except Exception as e:
             print('[DIAG] %s [popen] EXC %r' % (name, e))
         _crash_events(name)
-    # 终极判别: dump IAT 8 槽运行时值 (0x405008 起, kernel32 IAT1@.data+0x08) — 若 ExitProcess 槽=文件初值(未填充)则导入表解析失败
+    # 终极判别: dump 运行时 IAT 值 (动态解析自己 PE 头 — data_rva_base 随代码大小变化, 不能硬编码地址)
     for src, name in [('_iat_dump.c', 'iatdump')]:
         sp = os.path.join('scratch_test', src)
         with open(sp, 'w') as f:
-            f.write('#include <stdio.h>\nint main(void){\n'
-                    '    unsigned long long *p = (unsigned long long*)0x405008;\n'
-                    '    for (int i = 0; i < 9; i++) printf("IAT[%d]=%llx\\n", i, p[i]);\n'
-                    '    for(;;){}\n}\n')
+            f.write('#include <stdio.h>\n'
+                    'int main(void){\n'
+                    '    unsigned char *p = (unsigned char*)0x400000;\n'
+                    '    unsigned int pe = *(unsigned int*)(p + 0x3C);\n'
+                    '    unsigned int imp_rva = *(unsigned int*)(p + pe + 24 + 120);\n'
+                    '    printf("impRVA=%x\\n", imp_rva);\n'
+                    '    unsigned char *d = p + imp_rva;\n'
+                    '    unsigned int ft = *(unsigned int*)(d + 16);\n'
+                    '    printf("firstThunk=%x\\n", ft);\n'
+                    '    unsigned long long *iat = (unsigned long long*)(p + ft);\n'
+                    '    for (int i = 0; i < 10; i++) { if (iat[i] == 0) break; printf("IAT[%d]=%llx\\n", i, iat[i]); }\n'
+                    '    return 0;\n'
+                    '}\n')
         exe = os.path.join('scratch_test', name + '_diag.exe')
         try: os.remove(exe)
         except OSError: pass
@@ -128,7 +137,7 @@ def _run_diag():
             p1 = subprocess.run(['cmd', '/c', exe], capture_output=True, timeout=4)
             print('[DIAG] %s [cmd-pipe] rc=%s out=%r' % (name, p1.returncode, (p1.stdout or b'')[:300]))
         except subprocess.TimeoutExpired:
-            print('[DIAG] %s TIMEOUT(死循环正常, 输出被截断)' % name)
+            print('[DIAG] %s TIMEOUT(死循环正常)' % name)
         except Exception as e:
             print('[DIAG] %s EXC %r' % (name, e))
         _crash_events(name)
