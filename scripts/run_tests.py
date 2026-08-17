@@ -109,11 +109,14 @@ def _run_diag():
         except Exception as e:
             print('[DIAG] %s [popen] EXC %r' % (name, e))
         _crash_events(name)
-    # 特殊判别: while(1) 永不退出 — 若 CI 上不崩(超时kill)则崩溃锁定在退出路径, 若立即崩则入口/启动序列崩
-    for src, name in [('_spin.c', 'spin')]:
+    # 终极判别: dump IAT 8 槽运行时值 (0x405008 起, kernel32 IAT1@.data+0x08) — 若 ExitProcess 槽=文件初值(未填充)则导入表解析失败
+    for src, name in [('_iat_dump.c', 'iatdump')]:
         sp = os.path.join('scratch_test', src)
         with open(sp, 'w') as f:
-            f.write('int main(void){ for(;;){} }\n')
+            f.write('#include <stdio.h>\nint main(void){\n'
+                    '    unsigned long long *p = (unsigned long long*)0x405008;\n'
+                    '    for (int i = 0; i < 9; i++) printf("IAT[%d]=%llx\\n", i, p[i]);\n'
+                    '    for(;;){}\n}\n')
         exe = os.path.join('scratch_test', name + '_diag.exe')
         try: os.remove(exe)
         except OSError: pass
@@ -122,12 +125,12 @@ def _run_diag():
             print('[DIAG] %s: compile FAIL rc=%s' % (name, r.returncode)); continue
         print(_pe_diag(exe))
         try:
-            p1 = subprocess.run(['cmd', '/c', exe], timeout=4)
-            print('[DIAG] %s [cmd-inherit] rc=%s (0=正常退出?! 崩溃码=3221225477)' % (name, p1.returncode))
+            p1 = subprocess.run(['cmd', '/c', exe], capture_output=True, timeout=4)
+            print('[DIAG] %s [cmd-pipe] rc=%s out=%r' % (name, p1.returncode, (p1.stdout or b'')[:300]))
         except subprocess.TimeoutExpired:
-            print('[DIAG] %s [cmd-inherit] TIMEOUT(未崩, 正常运行到死循环) → 崩溃锁定在退出路径' % name)
+            print('[DIAG] %s TIMEOUT(死循环正常, 输出被截断)' % name)
         except Exception as e:
-            print('[DIAG] %s [cmd-inherit] EXC %r' % (name, e))
+            print('[DIAG] %s EXC %r' % (name, e))
         _crash_events(name)
 _run_diag()
 # ===== [DIAG-0817] 诊断段结束 =====
