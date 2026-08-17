@@ -932,7 +932,7 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
         stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
 }
 static int st_add(const char *n) {
-    if (st_n >= 256) return -1;
+    if (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     return st_n++;
@@ -2589,7 +2589,7 @@ static int expr_is_double(int n) {
     return 0;
 }
 
-static int Nd(int t) { if (nc >= ASZ) { fprintf(stderr, "[ERR] AST overflow\n"); return -1; } int i = nc++; nt[i] = t; nv[i] = 0; n0[i] = n1[i] = n2[i] = n3[i] = n4[i] = n5[i] = n6[i] = n7[i] = n8[i] = n9[i] = n10[i] = n11[i] = n12[i] = n13[i] = n14[i] = n15[i] = n16[i] = n17[i] = n18[i] = n19[i] = n20[i] = n21[i] = n22[i] = n23[i] = n24[i] = n25[i] = n26[i] = n27[i] = n28[i] = n29[i] = n30[i] = n31[i] = n32[i] = n33[i] = n34[i] = n35[i] = n36[i] = n37[i] = n38[i] = n39[i] = n40[i] = n41[i] = n42[i] = n43[i] = n44[i] = n45[i] = n46[i] = n47[i] = n48[i] = n49[i] = n50[i] = n51[i] = n52[i] = n53[i] = n54[i] = n55[i] = n56[i] = n57[i] = n58[i] = n59[i] = n60[i] = n61[i] = n62[i] = n63[i] = n64[i] = n65[i] = n66[i] = n67[i] = n68[i] = n69[i] = n70[i] = n71[i] = n72[i] = n73[i] = n74[i] = n75[i] = n76[i] = n77[i] = n78[i] = n79[i] = n80[i] = n81[i] = n82[i] = n83[i] = n84[i] = n85[i] = n86[i] = n87[i] = n88[i] = n89[i] = n90[i] = n91[i] = n92[i] = n93[i] = n94[i] = n95[i] = n96[i] = n97[i] = n98[i] = n99[i] = n100[i] = n101[i] = n102[i] = n103[i] = n104[i] = n105[i] = n106[i] = n107[i] = n108[i] = n109[i] = n110[i] = n111[i] = n112[i] = n113[i] = n114[i] = n115[i] = n116[i] = n117[i] = n118[i] = n119[i] = n120[i] = n121[i] = n122[i] = n123[i] = n124[i] = n125[i] = n126[i] = n127[i] = n128[i] = n129[i] = n130[i] = n131[i] = n132[i] = n133[i] = n134[i] = n135[i] = n136[i] = n137[i] = n138[i] = n139[i] = n140[i] = n141[i] = n142[i] = n143[i] = n144[i] = n145[i] = n146[i] = n147[i] = n148[i] = n149[i] = n150[i] = n151[i] = n152[i] = n153[i] = n154[i] = n155[i] = n156[i] = n157[i] = n158[i] = n159[i] = n160[i] = n161[i] = n162[i] = n163[i] = n164[i] = n165[i] = n166[i] = n167[i] = n168[i] = n169[i] = n170[i] = n171[i] = n172[i] = n173[i] = n174[i] = n175[i] = n176[i] = n177[i] = n178[i] = n179[i] = n180[i] = n181[i] = n182[i] = n183[i] = n184[i] = n185[i] = n186[i] = n187[i] = n188[i] = n189[i] = n190[i] = n191[i] = n192[i] = n193[i] = n194[i] = n195[i] = n196[i] = n197[i] = n198[i] = n199[i] = n200[i] = n201[i] = n202[i] = n203[i] = n204[i] = n205[i] = n206[i] = n207[i] = n208[i] = n209[i] = n210[i] = n211[i] = n212[i] = n213[i] = n214[i] = n215[i] = n216[i] = n217[i] = n218[i] = n219[i] = n220[i] = n221[i] = n222[i] = n223[i] = n224[i] = n225[i] = n226[i] = n227[i] = n228[i] = n229[i] = n230[i] = n231[i] = n232[i] = n233[i] = n234[i] = n235[i] = n236[i] = n237[i] = n238[i] = n239[i] = n240[i] = n241[i] = n242[i] = n243[i] = n244[i] = n245[i] = n246[i] = n247[i] = n248[i] = n249[i] = n250[i] = n251[i] = n252[i] = n253[i] = n254[i] = n255[i] = -1; pesz[i] = 0; return i; }
+static int Nd(int t) { if (nc >= ASZ) { fprintf(stderr, "[ERR] AST overflow (%d) (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方 nv[-1] 越界写)\n", ASZ); exit(1); } int i = nc++; nt[i] = t; nv[i] = 0; n0[i] = n1[i] = n2[i] = n3[i] = n4[i] = n5[i] = n6[i] = n7[i] = n8[i] = n9[i] = n10[i] = n11[i] = n12[i] = n13[i] = n14[i] = n15[i] = n16[i] = n17[i] = n18[i] = n19[i] = n20[i] = n21[i] = n22[i] = n23[i] = n24[i] = n25[i] = n26[i] = n27[i] = n28[i] = n29[i] = n30[i] = n31[i] = n32[i] = n33[i] = n34[i] = n35[i] = n36[i] = n37[i] = n38[i] = n39[i] = n40[i] = n41[i] = n42[i] = n43[i] = n44[i] = n45[i] = n46[i] = n47[i] = n48[i] = n49[i] = n50[i] = n51[i] = n52[i] = n53[i] = n54[i] = n55[i] = n56[i] = n57[i] = n58[i] = n59[i] = n60[i] = n61[i] = n62[i] = n63[i] = n64[i] = n65[i] = n66[i] = n67[i] = n68[i] = n69[i] = n70[i] = n71[i] = n72[i] = n73[i] = n74[i] = n75[i] = n76[i] = n77[i] = n78[i] = n79[i] = n80[i] = n81[i] = n82[i] = n83[i] = n84[i] = n85[i] = n86[i] = n87[i] = n88[i] = n89[i] = n90[i] = n91[i] = n92[i] = n93[i] = n94[i] = n95[i] = n96[i] = n97[i] = n98[i] = n99[i] = n100[i] = n101[i] = n102[i] = n103[i] = n104[i] = n105[i] = n106[i] = n107[i] = n108[i] = n109[i] = n110[i] = n111[i] = n112[i] = n113[i] = n114[i] = n115[i] = n116[i] = n117[i] = n118[i] = n119[i] = n120[i] = n121[i] = n122[i] = n123[i] = n124[i] = n125[i] = n126[i] = n127[i] = n128[i] = n129[i] = n130[i] = n131[i] = n132[i] = n133[i] = n134[i] = n135[i] = n136[i] = n137[i] = n138[i] = n139[i] = n140[i] = n141[i] = n142[i] = n143[i] = n144[i] = n145[i] = n146[i] = n147[i] = n148[i] = n149[i] = n150[i] = n151[i] = n152[i] = n153[i] = n154[i] = n155[i] = n156[i] = n157[i] = n158[i] = n159[i] = n160[i] = n161[i] = n162[i] = n163[i] = n164[i] = n165[i] = n166[i] = n167[i] = n168[i] = n169[i] = n170[i] = n171[i] = n172[i] = n173[i] = n174[i] = n175[i] = n176[i] = n177[i] = n178[i] = n179[i] = n180[i] = n181[i] = n182[i] = n183[i] = n184[i] = n185[i] = n186[i] = n187[i] = n188[i] = n189[i] = n190[i] = n191[i] = n192[i] = n193[i] = n194[i] = n195[i] = n196[i] = n197[i] = n198[i] = n199[i] = n200[i] = n201[i] = n202[i] = n203[i] = n204[i] = n205[i] = n206[i] = n207[i] = n208[i] = n209[i] = n210[i] = n211[i] = n212[i] = n213[i] = n214[i] = n215[i] = n216[i] = n217[i] = n218[i] = n219[i] = n220[i] = n221[i] = n222[i] = n223[i] = n224[i] = n225[i] = n226[i] = n227[i] = n228[i] = n229[i] = n230[i] = n231[i] = n232[i] = n233[i] = n234[i] = n235[i] = n236[i] = n237[i] = n238[i] = n239[i] = n240[i] = n241[i] = n242[i] = n243[i] = n244[i] = n245[i] = n246[i] = n247[i] = n248[i] = n249[i] = n250[i] = n251[i] = n252[i] = n253[i] = n254[i] = n255[i] = -1; pesz[i] = 0; return i; }
 static void Nc(int p, int c);
 static int expr(void);
 /* Brace initializer: walk struct si's fields, consuming values from the token
@@ -3256,6 +3256,7 @@ static void Nc(int p, int c) { if (c < 0) return;
     if (n253[p] < 0) { n253[p] = c; return; }
     if (n254[p] < 0) { n254[p] = c; return; }
     if (n255[p] < 0) { n255[p] = c; return; }
+    fprintf(stderr, "[ERR] AST 节点子节点超过 256 上限 (父节点 %d) (fix 2026-08-17 审计: 原静默丢弃子节点 → 编译产物缺语句)\n", p); exit(1);
 }
 
 static int cl_blk = -1; /* 当前 blk() 块 (compound literal 初始化挂这里, fix 2026-08-11) */
@@ -9240,8 +9241,8 @@ static void emit_crt_stub(void) {
        deep parse 帧读 SIGSEGV）。固�?62MB 偏移：栈向下 1MB 仍在 .data 段内�?
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
     int stk_top = IMAGE_BASE + data_rva_base + data_extent(); /* fix 2026-08-12 自举收敛根因: 栈顶必须在 bump 堆终点之上 — 旧 max(cp*84,8MB) 自举时落进 tll_hi → 栈帧写穿 token 数组 → 2-cycle. 实测 v1g: stk_top=0x52B15D8=heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB. data_extent = statics_end + 堆44MB + 栈8MB */
+    mov_rr64(3, 4);         /* rbx = rsp (保存 loader 栈 — fix 2026-08-17 CI 根因: Server 2025 ntdll LdrShutdownProcess 清理路径 _chkstk 按 TEB 栈探测, 自切栈 rsp 脱离 TEB → SIGSEGV; 退出前切回 loader 栈) */
     mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
-    mov_rr64(15, 4);        /* r15 = rsp (自切栈顶) */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
     mov_ri_ext(13, argv_va + 512);    /* r13 = token area start */
     /* GetCommandLineA() */
@@ -9250,7 +9251,7 @@ static void emit_crt_stub(void) {
     call_iat(7);            /* GetCommandLineA �?rax */
     add_rsp_imm(32);
     mov_rr64(10, 0);        /* r10 = cmdline */
-    mov_rr64(4, 15);        /* rsp = r15 */
+    mov_ri_ext(4, stk_top); /* rsp = stk_top (自切栈顶 — 不用 r15, r15 已让位) */
     mov_ri_ext(11, 0);      /* r11 = i (scan idx) */
     mov_ri_ext(14, 0);      /* r14 = argc */
     int louter = new_label(), lcopy = new_label(), lend_s = new_label(), lend_n = new_label(), lrec = new_label(), lskip = new_label(), ldone = new_label();
@@ -9286,7 +9287,7 @@ static void emit_crt_stub(void) {
     set_label(ldone);
     mov_rr64(1, 14);        /* rcx = argc */
     mov_rr64(2, 12);        /* rdx = &argv[0] */
-    mov_rr64(4, 15);        /* rsp = r15 (argv lives in .data; frame may grow over old stack) */
+    mov_ri_ext(4, stk_top); /* rsp = stk_top (自切栈顶; argv lives in .data; frame may grow over old stack) */
     asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
     sub_rsp_imm(32);        /* shadow space */
     {
@@ -9297,6 +9298,7 @@ static void emit_crt_stub(void) {
     }
     add_rsp_imm(32);
     mov_rr(1, 0);           /* ecx = main's return code */
+    mov_rr64(4, 3);         /* rsp = rbx (loader 栈 — Server 2025 ntdll LdrShutdownProcess _chkstk 需 TEB 栈区) */
     asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
     sub_rsp_imm(32);
     call_iat(6);            /* ExitProcess �?never returns */
