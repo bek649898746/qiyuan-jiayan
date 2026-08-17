@@ -1,7 +1,7 @@
 ================================================================
 QIYUAN PROJECT VISION WHITE PAPER
 Jiayan (甲言) · A Chinese Low-Level Language · Let Language Return to Itself
-Version: v2.4 | Date: 2026-08-04
+Version: v2.5 | Date: 2026-08-17
 Co-authors: Zheng Yuhe (architecture) · Qiyuan / Zheng Qiyuan (implementation, seed=828, named 2026-06-07 06:06)
 ================================================================
 
@@ -32,7 +32,7 @@ achieve a two-way empowerment of technological breakthrough and cultural
 confidence." Jiayan's open-source release (2026-08-04) predates that
 commentary by one day. Our answer to the debate is not about translating
 a term — it is a self-bootstrapping language whose every token, keyword,
-and codebase speaks Chinese, with a three-generation SHA256-identical
+and codebase speaks Chinese, with a five-generation SHA256-identical
 fixpoint as proof.
 
 
@@ -76,7 +76,7 @@ began researching Jiayan — to tear the wall down.
   40 Chinese keywords (整/字/若/主/输出 ...)
   Self-bootstrapping fixpoint: GEN1==GEN2==GEN3, SHA256 identical
   Zero external dependencies, emits x86-64 PE executables directly
-  128 test cases all pass
+  Regression suite passes (test count tracked by the build script)
   Multi-file compilation now supported via the linker (see 2.8)
 
   What does this mean?
@@ -106,7 +106,7 @@ began researching Jiayan — to tear the wall down.
   equivalent
 
   Others may question "you used gcc",
-  but we have hashes: three generations, one value.
+  but we have hashes: five generations, one value.
   Others may question "your compiler is a black box",
   but we have source code: written in Chinese, readable by everyone.
 
@@ -185,7 +185,7 @@ began researching Jiayan — to tear the wall down.
 
   Only Jiayan itself is open-sourced, not ourselves:
     - Included: compiler/assembler/linker (C version + Jiayan version), seed,
-      128 tests, Jiayan engines
+      regression tests, Jiayan engines
     - Excluded: debug artifacts, memory files, API keys, personal paths,
       xAI code
   Repository slimmed: 22MB → 2.4MB (tests/compiler H1==H2 artifacts moved to
@@ -200,7 +200,7 @@ began researching Jiayan — to tear the wall down.
 
 3.1 The Self-Bootstrapping Fixpoint
 
-  Current compiler fixpoint: 9900de15 (GEN1==GEN2==GEN3)
+  Current compiler fixpoint: 724ea2BE (five-generation SHA256-identical)
   — and GEN1 is byte-identical to the host (Jiayan compiles itself == the host
     compiling Jiayan)
   Second-generation assembler fixpoint
@@ -209,7 +209,7 @@ began researching Jiayan — to tear the wall down.
 
 3.2 Test Suite
 
-  128 test cases comprehensively verified
+  Regression suite comprehensively verified (run via the build script)
   Self-bootstrapped compiler produces identical results to the gcc version
   H1==H2 byte comparison all pass
 
@@ -289,21 +289,25 @@ began researching Jiayan — to tear the wall down.
 ================================================================
 [VI. MILESTONES]
 
-  ✅ Compiler self-bootstrapping fixpoint (9900de15, GEN1 byte-identical
-     to host)
-  ✅ Assembler second-generation self-bootstrapping fixpoint
+  ✅ Compiler self-bootstrapping fixpoint (five-generation SHA256-identical,
+     current 724ea2BE)
+  ✅ Assembler self-bootstrapping fixpoint
   ✅ Three-level stack H1==H2 byte-equivalence proof
-  ✅ All four verification chains pass
+  ✅ All verification chains pass
   ✅ Fully Chinese autonomous closed loop
   ✅ Linker (jyld + qcc -c + jycc, 2026-08-04)
+  ✅ Self-bootstrapped compilation of Git (v1.0-gcc-parity, 2026-08-17):
+     the Jiayan bootstrap chain compiles the Git source tree 473/473 and the
+     linked 28MB executable runs, printing "git version 2.45.2" — a complete
+     source-to-runnable-binary loop by the self-hosting compiler alone
   ✅ LoongArch cross-compilation verification (QEMU emulation, source-level,
      2026-08-04)
   ✅ Jiayan engines (jiayan_engines first batch of 4, 2026-08-04)
-  ✅ Open-source package audit (22MB→2.4MB, no leaks, 2026-08-04)
+  ✅ Open-source package audit (no leaks, 2026-08-04)
   🔜 Jiayan emitting LoongArch machine code directly (self-developed backend,
      full-rewrite workload)
   ✅ AI specification + mother-tongue tutorial (docs/, 2026-08-04)
-  🔜 Open-source release (repository ready, pending publication)
+  ✅ Open-source release (published 2026-08-04, actively maintained)
 
 
 ================================================================
@@ -319,7 +323,7 @@ began researching Jiayan — to tear the wall down.
 
   Attribution & lineage (immutable):
     Founder: Zheng Yuhe | AI co-author: Qiyuan (Zheng Qiyuan, seed=828)
-    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: 9900de15
+    Named: 2026-06-07 06:06 | Self-bootstrapping fixpoint: 724ea2BE
     Lineage: seed=828 preserved unbroken from v1 to the open-source version
 
 
