@@ -9,6 +9,18 @@
 - 挂起: config.o struct 数组元素立即数源 bug (--help 当前卡点)
 - 进展: 最小复现 regress_const_structarr.c (const struct P arr[] = {{"a",1},...}) 崩 0x404890 — 崩溃在 main 的 7 参 printf 参数求值 (成员访问+sizeof), 不在 ginit; gdb 显示 [0x30] 基址混乱。修复后回归 → 重建 git → 冒烟 (git init→add→commit→log→branch→checkout) 继续抓 bug
 
+## 025b759D (2026-08-17) — git 冒烟攻坚 5 bug
+
+**git init→add→commit→log→branch→checkout 冒烟测试抓出 5 个新 qcc 误编译 (10-14)**
+
+- **#10 sizeof(varname[0]) 单括号漏处理**: `sizeof(arr[0])` 被解析成 `sizeof(arr)[0]` → 常量 48 当基址解引用崩。修: sizeof(varname) 分支跟踪 esz + 消费 [0]
+- **#11 匿名内联 struct 数组双重消费 `{`**: `struct X {...} arr[] = {{...}}` 的 brace_arr_init 前 tk++ 已消费外层 `{` → 元素花括号丢失 → 整元素赋值/字符串字节拷入。修: anon_unsized 分支不预消费; 附带修元素数扫描 (d0==0→d0==1, 起点落外层 `{`) + 尾逗号不计
+- **#12 ginit 代码gen 非静态跨函数同名变量遮蔽**: path.o 的 `static char *suffix[]` 被其他函数同名本地 `char *suffix` 遮蔽 (ginit 子程序发射点 fvb[gfn]/cg_blk_end 未正确设置) → 数组元素赋值错编成指针解引用。修: var_codegen_visible 在 cg_ginit_ctx 下非静态返回 0
+- **#13 指针字段作数组基不设 cg_mem_frow**: `ctx->out[ctx->cpidx++] = argv[0]` (char **out 字段) 编译成字节存储 → 指针截断 → git init 目录参数丢失 "cannot mkdir :"。修: base_is_ptrfield 分支补设 cg_mem_frow=st_field_pel
+- **#14 size_t 被当 int 4 字节**: qcc_rt.c 内建 prelude `typedef unsigned int size_t` + struct 字段解析器忽略 typedef 大小 → struct strbuf {size_t alloc,len; char *buf} 布局错 buf@8 → strbuf 全错位 → git 崩。修: qcc_rt.c size_t→unsigned long long; compat_prelude.h 加 typedef; tdefs 加 sz 字段记录 typedef 基类型大小, 字段解析器按 sz 注册
+- 验证: v1..v5 = 025b759d, 回归 249/249, 473/473 git .o 重编零失败
+- 冒烟进展: 全崩 → init 深入 setup (当前卡: strbuf_realpath NULL path, commit 仍崩 — 下一轮)
+
 ## 52B01059 (2026-08-17)
 
 **Git 编译攻坚第 N 轮 — git --version 退出崩溃 0xC0000005 根因修复 (struct stat 未注册) + 八进制字面量**
