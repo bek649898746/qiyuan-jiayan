@@ -1,3 +1,15 @@
+## B9C1B056 (2026-08-18)
+
+**git init 攻坚 — 5 个 qcc 误编译 (多级箭头取址/char**/逗号 struct/字段类型继承/sret 误判)**
+
+- **#24 收官: 多级箭头链取址多解引用**: `&o->m->in->buf` — case-15 nested 分支 fsz==8 无条件 `mov rax,[rax]` 忽略 cg_no_deref/cg_addr_of → check(&...->path) 收到"值"当指针崩。修: nested 分支 1/2/4/8 字节加载全部以 !cg_no_deref && !cg_addr_of 守卫 (顶部分支 8715 早已统一守卫)
+- **char**/T** 局部变量元素宽**: `char **addr` 局部只数一个 * → p_esz=1 → *addr 字节加载/addr[i] 步长 1 → 解引用垃圾地址崩。修: 数指针层级 (ptr_depth), 深度≥2 设 arr_esz=8 (主声明+两处逗号路径)
+- **逗号续行 struct 字段缺类型索引 (list_add_tail 崩)**: `struct list_head { struct list_head *next, *prev; }` 的续行 *prev 只继承大小未继承类型 → st_field_ty_idx=-1 → mem_addr 链失败 → 嵌套存储丢弃+无配对 push → ret 弹旧 rbp → SEGV。修: sty_persist — ST 分支设类型索引, 逗号续行继承, ; 重置 (全局+局部两条 struct 解析路径)
+- **sret 返回类型误判 (git_config_from_parameters return 写成写 [fn])**: fn_ret_si_map 按 func_tbl 索引, pass 2 重排后取到别的函数返回类型 → int 返回函数被误判 sret → case-6 return 拷贝到 arg1 指向缓冲 (fn 函数指针!) 崩。修: fn_ret_name_get 名表优先 (fn_ret_name_has 区分「记录为 -1」与「无此函数」), 索引表仅回退
+- **结构体逗号声明花括号初始化器被吞**: `struct strbuf dir = STRBUF_INIT, gitdir = STRBUF_INIT, report = STRBUF_INIT;` — 逗号路径用 Nc(d2,expr()) 解析 { → 失败 → 初始化器丢+后续逗号变量未注册 → buf=NULL / 调用参数链用上次返回值 → git init/config 崩。修: 逗号 struct 变量走 brace_fields (局部+全局两条路径)
+- 验证: v1..v5 = b9c1b056, 回归 261/261, 473/473 git .o 重编零失败
+- 冒烟进展: git init 不再 SEGV — 创建 .git, 深入 config 机制 (当前卡点: fgetc(f) 读文件返回 0 — if 块内调用被错位重编译, 下一步)
+
 ## C2FB1D54 (2026-08-17)
 
 **Git --help 攻坚 — 9 个 qcc 误编译 (char++/指针字段/ginit/指针数组)**
