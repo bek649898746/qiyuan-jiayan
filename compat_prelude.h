@@ -806,6 +806,32 @@ typedef int bool;
 #define PRIx64 "llx"
 #define SCNuMAX "llu"
 
+/* <sys/stat.h> struct stat — MSVCRT 布局 (48 字节, st_mode@6, st_size@20)。
+   系统头被 qcc 跳过 → struct stat 未注册 → blk() si<0 不登记局部变量 →
+   `struct stat st;` 后 &st / st.st_mode 全部失效 → fstat(fileno(stdout), &st)
+   编译成 fstat(fd, fd) → msvcrt _fstat(-1,-1) 崩 (git --version 0xC0000005 根因)。
+   fix 2026-08-17: 预置 MSVCRT _stat64 兼容布局 (实测 sizeof=48). */
+struct stat {
+    int st_dev;
+    unsigned short st_ino;
+    unsigned short st_mode;
+    short st_nlink;
+    short st_uid;
+    short st_gid;
+    int st_rdev;
+    int st_size;
+    long long st_atime;
+    long long st_mtime;
+    long long st_ctime;
+};
+
+/* <sys/utime.h> struct utimbuf — MSVCRT 布局 (16 字节, actime@0, modtime@8)。
+   同 struct stat: 系统头跳过 → 不注册 → utime() 实参 &utb 变垃圾 (fix 2026-08-17). */
+struct utimbuf {
+    long long actime;
+    long long modtime;
+};
+
 /* <sys/stat.h> 文件权限宏 (MSVC/MinGW 值) */
 #define S_IREAD 0x0100
 #define S_IWRITE 0x0080

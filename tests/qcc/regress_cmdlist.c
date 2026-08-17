@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// @EXPECTED out:24-24-1-2
+// @EXPECTED out:24-24-1-8
 // 复现 help.c command_list: 字符串指针 + category 立即数混合 struct 数组
 #include <stdio.h>
 

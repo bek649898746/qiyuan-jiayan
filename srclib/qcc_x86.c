@@ -226,6 +226,8 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
     while (*q == '(') q++; /* (N) 括号包 (fix 2026-08-07) */
     if (*q == '0' && (q[1] == 'x' || q[1] == 'X')) {
         q += 2; while (isxdigit((unsigned char)*q)) { int c = *q; v = v * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); q++; }
+    } else if (*q == '0' && q[1] >= '0' && q[1] <= '7') { /* 八进制 0170000 = 61440 (fix 2026-08-17: 原无八进制分支 → git S_IFMT 0170000 存成十进制 170000 → S_IS* 模式检查全错, is_directory 恒 false) */
+        while (*q >= '0' && *q <= '7') { v = v * 8 + (*q - '0'); q++; }
     } else if (*q >= '0' && *q <= '9') {
         while (*q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); q++; }
     }
@@ -2841,6 +2843,9 @@ static void lex(const char *s) {
                 int msign = 1;
                 if (s[i] == '-') { msign = -1; i++; } /* fix 2026-08-06: #define NEG -5 负号被丢弃 → NEG 注册为 0 (#if NEG < 0 假) */
                 if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) { i += 2; while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') mval = mval * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') mval = mval * 16 + (c - 'a' + 10); else mval = mval * 16 + (c - 'A' + 10); i++; } }
+                else if (s[i] == '0' && s[i + 1] >= '0' && s[i + 1] <= '7') { /* 八进制 0170000 = 61440 (fix 2026-08-17: 原无八进制 → git S_IFMT 0170000 存成十进制 170000 → S_IS* 模式检查全错, is_directory 恒 false) */
+                    while (s[i] >= '0' && s[i] <= '7') { mval = mval * 8 + (s[i++] - '0'); }
+                }
                 else { while (isdigit(s[i])) { mval = mval * 10 + (s[i++] - '0'); } }
                 { int muns = 0, mll = 0;
                   if (s[i] == 'u' || s[i] == 'U') { muns = 1; i++; while (s[i] == 'l' || s[i] == 'L') { mll = 1; i++; } }
