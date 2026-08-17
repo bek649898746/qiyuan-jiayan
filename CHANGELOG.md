@@ -833,3 +833,16 @@
 
 - 每次发布：`scripts/build.ps1` 跑通（自举三代 + 128 测试）
 - 新不动点 = 三代一致的新 SHA，登记到 README.md 与本文档
+
+## 2aad40b6 (2026-08-18) — git 冒烟攻坚 5 bug (17-21) + prelude 三连修 (18/22)
+
+**git init 冒烟深入 (pathname_array → commondir → xmalloc → lockfile)**
+
+- **#17 函数内 static struct 数组误走栈帧**: blk() 无 body 局部 struct 分支无视 is_static → path.c pathname_array[4] .data 槽 0 → gitdir 乱码。修: 数组→var_static_arr/var_static_struct, ={...} 进 ginit; 附修未定长 [] 推断 (fsck.c bufs[]) + 非 static 数组 brace init
+- **#18 prelude size_t 宏冲突**: `#define size_t unsigned int` 与 typedef 8B 冲突 → strbuf 布局 16B 从未真正修复。删宏; 附 qcc_vsnprintf 缺原型 (补声明)
+- **#19 字符串字面量拼接 (qcc lexer)**: `"..."PRIuMAX"..."` 宏展开后 4 段独立 STR 不连接 → wrapper.c die 消息空数字。修: STR 发射点检查前一 token 拼接
+- **#20 typedef 8B (size_t) 变量/参数 is_ll+is_uns 缺失**: static size_t limit=SIZE_MAX 存 32 位 + setg 有符号比较 → xmalloc 误报 OOM。修: tdefs 加 is_uns, 变量/全局/参数三处传播
+- **#21 ++/-- 目标字段误解引用**: `sb->buf[sb->len++]` 的 size_t 字段被当指针字段解引用。修: cg_incdec_target 标记
+- **#22 vsnprintf 截断语义 (prelude)**: 旧 msvcrt _vsnprintf 截断返回 -1 (非 C99) → strbuf_vaddf maxsize 略小 die "unable to format message"。修: 截断时增长缓冲测长
+- 验证: v1..v5 = 2aad40b6, 回归 256/256, 473/473 git .o 零失败, --version exit=0
+- 冒烟: init 过 commondir/xmalloc, 崩于 lockfile commit (commit_lock_file_to lk=0, repository.o 函数编译错疑) — 下一轮

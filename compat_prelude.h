@@ -742,7 +742,6 @@ typedef unsigned int uint32_t;
 typedef int int32_t;
 typedef unsigned long long uint64_t;
 typedef long long int64_t;
-#define size_t unsigned int
 typedef int ssize_t;
 typedef int sig_atomic_t; /* <signal.h> (fix 2026-08-15: static volatile sig_atomic_t 声明未识别 → progress.c parse break) */
 struct DIR;
@@ -1294,3 +1293,38 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define GetVolumeInformationW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetVolumeInformationW undefined) */
 #define FILE_PERSISTENT_ACLS 0x00000008  /* Windows 卷信息标志 (fix 2026-08-15: FILE_PERSISTENT_ACLS undefined) */
 #define TerminateProcess(a,b) 0  /* Windows API stub (fix 2026-08-15: TerminateProcess undefined) */
+/* msvcrt _vsnprintf: 非空缓冲 + count=0 返回 -1 (违反 C99 长度探测语义).
+   strbuf_vinsertf 依赖 vsnprintf(buf,0,...) 返回所需长度 → 每次必死
+   "unable to format message" (fix 2026-08-18: git init get_common_dir_noenv).
+   包装: count=0 用增长缓冲测长; count>0 直通 _vsnprintf.
+   声明原型: qcc 对未声明函数调用约定错乱 → _vsnprintf 返回 0 (fix 2026-08-18). */
+int _vsnprintf(char *str, size_t size, const char *format, va_list ap);
+void *malloc(size_t size);
+void free(void *ptr);
+#define vsnprintf qcc_vsnprintf
+static int qcc_vsnprintf(char *str, size_t maxsize, const char *fmt, va_list ap) {
+    if (maxsize > 0) {
+        int r = _vsnprintf(str, maxsize, fmt, ap);
+        if (r >= 0)
+            return r;
+        /* 旧 msvcrt _vsnprintf 截断返回 -1 (非 C99 所需长度) → 增长缓冲测长 (fix 2026-08-18: strbuf_vaddf maxsize 略小时截断 die) */
+    }
+    size_t cap = 256;
+    for (;;) {
+        char *tmp = (char*)malloc(cap);
+        int r = _vsnprintf(tmp, cap, fmt, ap);
+        free(tmp);
+        if (r >= 0 && (size_t)r < cap)
+            return r;
+        if (cap >= (1u << 20))
+            return -1;
+        cap <<= 1;
+    }
+}
+#define snprintf qcc_snprintf
+static int qcc_snprintf(char *str, size_t maxsize, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int r = qcc_vsnprintf(str, maxsize, fmt, ap);
+    va_end(ap);
+    return r;
+}
