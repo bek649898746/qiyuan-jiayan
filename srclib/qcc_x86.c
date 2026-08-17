@@ -3409,14 +3409,15 @@ static int prim(void) {
         }
         if (tt[tk] == VR) { /* sizeof(varname): array -> N*esz, double -> 8, char -> 1, ptr -> 8, else 4 */
             int sz = 4;
+            int esz = 4; /* element size, for sizeof(varname[0]) (fix 2026-08-17) */
             int base_si = -1; /* struct type of the base var (for sizeof(e->field)) */
             for (int vi = vs_n() - 1; vi >= 0; vi--)
                 if (!strcmp(vars[vi].name, tn[tk]) && var_codegen_visible(vi)) {
-                    if (vars[vi].arr_sz > 0) { int e = vars[vi].arr_esz ? vars[vi].arr_esz : 4; sz = vars[vi].arr_sz * e; }
-                    else if (vars[vi].is_dbl) sz = 8;
-                    else if (vars[vi].is_char) sz = 1;
-                    else if (vars[vi].p_esz != 0) sz = 8; /* pointer: p_esz=element size, slot is 8 bytes */
-                    else sz = 4;
+                    if (vars[vi].arr_sz > 0) { int e = vars[vi].arr_esz ? vars[vi].arr_esz : 4; esz = e; sz = vars[vi].arr_sz * e; }
+                    else if (vars[vi].is_dbl) { esz = 8; sz = 8; }
+                    else if (vars[vi].is_char) { esz = 1; sz = 1; }
+                    else if (vars[vi].p_esz != 0) { esz = vars[vi].p_esz; sz = 8; } /* pointer: p_esz=element size, slot is 8 bytes */
+                    else { esz = 4; sz = 4; }
                     base_si = vars[vi].st_idx;
                     break;
                 }
@@ -3424,9 +3425,13 @@ static int prim(void) {
             while (tt[tk] == DT || tt[tk] == AR) { /* -> / . member chain: sizeof(e->p->name) — 跟随后续成员直到最后字段 (fix 2026-08-15: precompose_utf8 sizeof(prec_dir->dirent_nfc->d_name) 原只跟一级 → d_name 泄漏 undefined) */
                 tk++; /* skip ->/. */
                 if (tt[tk] == VR) {
-                    if (base_si >= 0) { int fs = st_field_size(stypes[base_si].name, tn[tk]); if (fs > 0) sz = fs; int fty = st_field_ty_idx(stypes[base_si].name, tn[tk]); if (fty >= 0) base_si = fty; else base_si = -1; }
+                    if (base_si >= 0) { int fs = st_field_size(stypes[base_si].name, tn[tk]); if (fs > 0) sz = fs; int el2 = st_field_el(base_si, tn[tk]); if (el2 > 0) esz = el2; int fty = st_field_ty_idx(stypes[base_si].name, tn[tk]); if (fty >= 0) base_si = fty; else base_si = -1; }
                     tk++;
                 }
+            }
+            if (tt[tk] == LB) { /* sizeof(varname[0]): element size (fix 2026-08-17: [0] was left dangling -> postfix index on the const-size node -> deref of const base, 0xC0000005 in regress_const_structarr) */
+                tk++; if (tt[tk] == NK || tt[tk] == VR) tk++; if (tt[tk] == RB) tk++;
+                sz = esz;
             }
             if (tt[tk] == KK) tk++; /* ) */
             int n = Nd(0); nv[n] = sz; return n;
@@ -4073,11 +4078,11 @@ static int blk(void) {
                         }
                     }
                     if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct {..} a[] = { {..}, .. } 未定长: 推断元素数 (fix 2026-08-14) */
-                        int save_u = tk; int n = 1, d0 = 0; tk += 2;
+                        int save_u = tk; int n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                         while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                             if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                             else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                            else if (tt[tk] == CK && d0 == 0) n++;
+                            else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                             tk++;
                         }
                         tk = save_u;
@@ -4153,11 +4158,11 @@ static int blk(void) {
                     }
                 }
                 if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct P a[] = { {.x=..}, ... } 未定长: 推断元素数 (fix 2026-08-14: 原 scnt=1 → 标量 struct → brace_fields 遇内层 { 崩溃) */
-                    int save_u = tk; int n = 1, d0 = 0; tk += 2; /* skip = { */
+                    int save_u = tk; int n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                     while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                         if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                         else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                        else if (tt[tk] == CK && d0 == 0) n++;
+                        else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                         tk++;
                     }
                     tk = save_u;
@@ -5634,15 +5639,14 @@ static int parse(const char *s) {
                     if (tt[tk] == AK) { /* = init (fix 2026-08-07: was skipped entirely → global anon struct fields never initialized) */
                         tk++;
                         if (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
-                            tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn_anon, 32);
                             int blkinit;
-                            if (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环) */
+                            if (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环; fix 2026-08-17: 不预消费外层 { — brace_arr_init 自管 {, 原 tk++ 双重消费 → 元素 { 丢失 → 整元素赋值/字符串字节拷入 → 崩) */
                                 int save_i = tk; int n = 1, d0 = 0;
                                 while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                                     if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                                     else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                                    else if (tt[tk] == CK && d0 == 0) n++;
+                                    else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号: 在外层 { 内, 尾逗号不计 (fix 2026-08-17) */
                                     tk++;
                                 }
                                 tk = save_i;
@@ -5651,6 +5655,7 @@ static int parse(const char *s) {
                                 blkinit = Nd(5);
                                 brace_arr_init(blkinit, idn, adimv, 1, 0, stypes[si].sz);
                             } else {
+                                tk++; /* brace_fields 需要 { 已消费 */
                                 blkinit = brace_fields(si, idn);
                             }
                             if (tt[tk] == UK) tk++;

@@ -3409,14 +3409,15 @@ __attribute__((unused))
         }
         若 (tt[tk] == VR) { /* sizeof(varname): array -> N*esz, double -> 8, char -> 1, ptr -> 8, else 4 */
             整 sz = 4;
+            整 esz = 4; /* element size, for sizeof(varname[0]) (fix 2026-08-17) */
             整 base_si = -1; /* struct type of the base var (for sizeof(e->field)) */
             遍 (整 vi = vs_n() - 1; vi >= 0; vi--)
                 若 (!strcmp(vars[vi].name, tn[tk]) && var_codegen_visible(vi)) {
-                    若 (vars[vi].arr_sz > 0) { 整 e = vars[vi].arr_esz ? vars[vi].arr_esz : 4; sz = vars[vi].arr_sz * e; }
-                    否 若 (vars[vi].is_dbl) sz = 8;
-                    否 若 (vars[vi].is_char) sz = 1;
-                    否 若 (vars[vi].p_esz != 0) sz = 8; /* pointer: p_esz=element size, slot is 8 bytes */
-                    否 sz = 4;
+                    若 (vars[vi].arr_sz > 0) { 整 e = vars[vi].arr_esz ? vars[vi].arr_esz : 4; esz = e; sz = vars[vi].arr_sz * e; }
+                    否 若 (vars[vi].is_dbl) { esz = 8; sz = 8; }
+                    否 若 (vars[vi].is_char) { esz = 1; sz = 1; }
+                    否 若 (vars[vi].p_esz != 0) { esz = vars[vi].p_esz; sz = 8; } /* pointer: p_esz=element size, slot is 8 bytes */
+                    否 { esz = 4; sz = 4; }
                     base_si = vars[vi].st_idx;
                     断;
                 }
@@ -3424,9 +3425,13 @@ __attribute__((unused))
             循环 (tt[tk] == DT || tt[tk] == AR) { /* -> / . member chain: sizeof(e->p->name) — 跟随后续成员直到最后字段 (fix 2026-08-15: precompose_utf8 sizeof(prec_dir->dirent_nfc->d_name) 原只跟一级 → d_name 泄漏 undefined) */
                 tk++; /* skip ->/. */
                 若 (tt[tk] == VR) {
-                    若 (base_si >= 0) { 整 fs = st_field_size(stypes[base_si].name, tn[tk]); 若 (fs > 0) sz = fs; 整 fty = st_field_ty_idx(stypes[base_si].name, tn[tk]); 若 (fty >= 0) base_si = fty; 否 base_si = -1; }
+                    若 (base_si >= 0) { 整 fs = st_field_size(stypes[base_si].name, tn[tk]); 若 (fs > 0) sz = fs; 整 el2 = st_field_el(base_si, tn[tk]); 若 (el2 > 0) esz = el2; 整 fty = st_field_ty_idx(stypes[base_si].name, tn[tk]); 若 (fty >= 0) base_si = fty; 否 base_si = -1; }
                     tk++;
                 }
+            }
+            若 (tt[tk] == LB) { /* sizeof(varname[0]): element size (fix 2026-08-17: [0] was left dangling -> postfix index on the const-size node -> deref of const base, 0xC0000005 in regress_const_structarr) */
+                tk++; 若 (tt[tk] == NK || tt[tk] == VR) tk++; 若 (tt[tk] == RB) tk++;
+                sz = esz;
             }
             若 (tt[tk] == KK) tk++; /* ) */
             整 n = Nd(0); nv[n] = sz; 返 n;
@@ -4073,11 +4078,11 @@ __attribute__((unused))
                         }
                     }
                     若 (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct {..} a[] = { {..}, .. } 未定长: 推断元素数 (fix 2026-08-14) */
-                        整 save_u = tk; 整 n = 1, d0 = 0; tk += 2;
+                        整 save_u = tk; 整 n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                         循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                             若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                             否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                            否 若 (tt[tk] == CK && d0 == 0) n++;
+                            否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                             tk++;
                         }
                         tk = save_u;
@@ -4153,11 +4158,11 @@ __attribute__((unused))
                     }
                 }
                 若 (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct P a[] = { {.x=..}, ... } 未定长: 推断元素数 (fix 2026-08-14: 原 scnt=1 → 标量 struct → brace_fields 遇内层 { 崩溃) */
-                    整 save_u = tk; 整 n = 1, d0 = 0; tk += 2; /* skip = { */
+                    整 save_u = tk; 整 n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                     循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                         若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                         否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                        否 若 (tt[tk] == CK && d0 == 0) n++;
+                        否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                         tk++;
                     }
                     tk = save_u;
@@ -5634,15 +5639,14 @@ __attribute__((unused))
                     若 (tt[tk] == AK) { /* = init (fix 2026-08-07: was skipped entirely → global anon struct fields never initialized) */
                         tk++;
                         若 (tt[tk] == FK) { /* struct { ... } b = { a, b, c } — brace init */
-                            tk++;
                             整 idn = Nd(1); memcpy((字*)(nn + idn), vn_anon, 32);
                             整 blkinit;
-                            若 (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环) */
+                            若 (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环; fix 2026-08-17: 不预消费外层 { — brace_arr_init 自管 {, 原 tk++ 双重消费 → 元素 { 丢失 → 整元素赋值/字符串字节拷入 → 崩) */
                                 整 save_i = tk; 整 n = 1, d0 = 0;
                                 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                                     若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
                                     否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                                    否 若 (tt[tk] == CK && d0 == 0) n++;
+                                    否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号: 在外层 { 内, 尾逗号不计 (fix 2026-08-17) */
                                     tk++;
                                 }
                                 tk = save_i;
@@ -5651,6 +5655,7 @@ __attribute__((unused))
                                 blkinit = Nd(5);
                                 brace_arr_init(blkinit, idn, adimv, 1, 0, stypes[si].sz);
                             } 否 {
+                                tk++; /* brace_fields 需要 { 已消费 */
                                 blkinit = brace_fields(si, idn);
                             }
                             若 (tt[tk] == UK) tk++;
