@@ -1079,7 +1079,7 @@ static int st_field_size(const char *sn, const char *fn) {
 
 /* ?????? typedef ??????????? */
 static struct { char name[64]; int is_struct; char st_name[64]; char is_dbl;
-                 char is_fnptr; char fnptr_dbl; } tdefs[512]; static int tdef_n;
+                 char is_fnptr; char fnptr_dbl; int sz; } tdefs[512]; static int tdef_n; /* sz: 基类型字节大小 (fix 2026-08-17: typedef 字段大小) */
 
 __attribute__((unused))
 static int tdef_lookup(const char *n) {
@@ -1093,7 +1093,7 @@ static int td_st_index(const char *n) {
     return -1;
 }
 __attribute__((unused))
-static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl) {
+static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl, int tsz) {
     if (tdef_n >= 512) return;
     /* check for duplicate */
     for (int i = 0; i < tdef_n; i++) if (!strcmp(tdefs[i].name, n)) return;
@@ -1102,6 +1102,7 @@ static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl) {
     tdefs[tdef_n].is_dbl = (char)is_dbl;
     tdefs[tdef_n].is_fnptr = 0;
     tdefs[tdef_n].fnptr_dbl = 0;
+    tdefs[tdef_n].sz = tsz; /* fix 2026-08-17 */
     if (sn) strcpy(tdefs[tdef_n].st_name, sn);
     tdef_n++;
 }
@@ -1756,6 +1757,7 @@ static int var_codegen_visible(int i) {
     if (!vs_end) return (i >= parse_base); /* parse phase: ONLY current function body (parse_base floor).
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
                                               var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
+    if (cg_ginit_ctx) return 0; /* fix 2026-08-17: ginit 只初始化静态; 跨函数非静态同名变量 (char *suffix 遮蔽 static char *suffix[]) 在 ginit 子程序发射点 fvb[gfn]/cg_blk_end 未正确设置时全可见 → 数组元素赋值错编成指针解引用+字节存储 → 崩 */
     return (i >= fvb[gfn] && i < cg_blk_end); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16) */
 }
 static int var_is_dbl(const char *n) {
@@ -5028,7 +5030,7 @@ static int parse(const char *s) {
                             }
                             if (tt[tk] == UK) tk++;
                         } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16) */
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局) */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5278,8 +5280,9 @@ static int parse(const char *s) {
                     continue;
                 }
             }
+            int td_sz = 4; /* fix 2026-08-17: typedef 基类型大小 (char→1, short→2, long long→8, double→8, 指针→8; 默认 4) */
             if (tt[tk] == VK) {
-                while (tt[tk] == VK) { if (!strcmp(tn[tk], "double")) td_isdbl = 1; tk++; } /* skip all base keywords: int/char/const/unsigned/... (fix 2026-08-05: was 1 only → `typedef const char X` lost the alias) */
+                while (tt[tk] == VK) { if (!strcmp(tn[tk], "double")) { td_isdbl = 1; td_sz = 8; } else if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) td_sz = 1; else if (!strcmp(tn[tk], "short")) td_sz = 2; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) td_sz = 8; tk++; } /* skip all base keywords: int/char/const/unsigned/... (fix 2026-08-05: was 1 only → `typedef const char X` lost the alias) */
             } else if (tt[tk] == ST) {
                 tk++; /* skip struct */
                 if (tt[tk] == FK) { /* anonymous: struct { fields } */
@@ -5357,7 +5360,7 @@ static int parse(const char *s) {
                     if (tt[tk] == VR) {
                         strcpy(stypes[si].name, tn[tk]); /* use typedef name as struct name */
                         td_reg(tn[tk]);
-                        tdef_add(tn[tk], 1, stypes[si].name, 0); /* register the alias as a STRUCT typedef (fix 2026-08-03: only td_reg ran → td_st_index() returned -1 → `typedef struct {...} Alias; Alias globals[N];` registered as an int array and the main() body was silently dropped) */
+                        tdef_add(tn[tk], 1, stypes[si].name, 0, stypes[si].sz); /* register the alias as a STRUCT typedef (fix 2026-08-03: only td_reg ran → td_st_index() returned -1 → `typedef struct {...} Alias; Alias globals[N];` registered as an int array and the main() body was silently dropped) */
                         tk++;
                     }
                 } else if (tt[tk] == VR) { /* struct tag name — remember for typedef X */
@@ -5408,7 +5411,7 @@ static int parse(const char *s) {
                                 if (tt[tk] == SK) tk++;
                                 continue;
                             }
-                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16) */
+                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局) */
                             if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                 tk++; int ubw = 0;
                                 if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5467,15 +5470,15 @@ static int parse(const char *s) {
             if (tt[tk] == OK && tt[tk + 1] == VR && tt[tk + 2] == KK) { /* typedef ret (name)(args); — 函数类型 typedef (fix 2026-08-15: interval_fn 未注册 → static interval_fn *table[] 落函数定义分支 break → fsm_health__loop undefined) */
                 char tdfn[64]; strcpy(tdfn, tn[tk + 1]);
                 td_reg(tdfn);
-                tdef_add(tdfn, 0, "", td_isdbl);
+                tdef_add(tdfn, 0, "", td_isdbl, 8);
                 tk += 3; /* skip ( name ) */
                 if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
             }
-            while (tt[tk] == DK) tk++; /* typedef struct Tag *Alias; 的指针 * (fix 2026-08-15: kwset.h typedef struct kwset_t* kwset_t → 别名未注册 → diffcore-pickaxe 整个文件 break) */
+            while (tt[tk] == DK) { td_sz = 8; tk++; } /* typedef struct Tag *Alias; 的指针 * (fix 2026-08-15: kwset.h typedef struct kwset_t* kwset_t → 别名未注册 → diffcore-pickaxe 整个文件 break; fix 2026-08-17: 指针基类型 td_sz=8) */
             if (tt[tk] == VR) {
                 td_reg(tn[tk]); /* register alias as type name */
-                if (td_isst && td_stname[0]) tdef_add(tn[tk], 1, td_stname, 0); /* typedef struct X → Y */
-                else tdef_add(tn[tk], 0, "", td_isdbl); /* typedef double real → remember base type */
+                if (td_isst && td_stname[0]) { int tsz2 = 0; { int tsi2 = st_find(td_stname); if (tsi2 >= 0) tsz2 = stypes[tsi2].sz; } tdef_add(tn[tk], 1, td_stname, 0, tsz2); } /* typedef struct X → Y */
+                else tdef_add(tn[tk], 0, "", td_isdbl, td_sz); /* typedef double real → remember base type; td_sz = 基类型大小 (fix 2026-08-17) */
                 tk++; /* skip alias */
             }
             /* consume tokens until ; (brace-balanced: typedef enum {..} X; must not
@@ -8340,6 +8343,7 @@ static void cg(int n) {
                 } /* end var.field else */
             } else if (nt[n0[n]] == 14) { /* arr[i] = expr */
                 int ac = n0[n]; char*vn=(char*)(nn+arr_base_node(ac));
+
                 int asi_el = var_stidx(vn);
                 /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06).
                    守卫: 仅当 LHS 是直接 arr[i] (n0[n] 的基是名字节点 nt==1)。
@@ -8379,8 +8383,9 @@ static void cg(int n) {
                     mov_rr(11, 0); /* r11d = outer index */
                     push_r(11); /* cg may clobber r11 */
                     int base_is_ptrfield = 0;
-                    if (nt[n0[ac]] == 15) { int mc2 = n0[ac]; char *bvn = (char*)(nn + n0[mc2]); char *bfn = (char*)(nn + mc2); int bsi = var_stidx(bvn); if (bsi >= 0) { int bfty = st_field_ty_idx(stypes[bsi].name, bfn); if (bfty == -1 && st_field_el(bsi, bfn) == 8) base_is_ptrfield = 1; } }
-                    if (base_is_ptrfield) cg(n0[ac]); /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0) */
+                    int pf_el_sz = 0; /* fix 2026-08-17: 指针字段作数组基时的指向元素大小 (p->buf[i] 的 i 缩放/存储宽度) */
+                    if (nt[n0[ac]] == 15) { int mc2 = n0[ac]; char *bvn = (char*)(nn + n0[mc2]); char *bfn = (char*)(nn + mc2); int bsi = var_stidx(bvn); if (bsi >= 0) { int bfty = st_field_ty_idx(stypes[bsi].name, bfn); if (bfty == -1 && st_field_el(bsi, bfn) == 8) base_is_ptrfield = 1; pf_el_sz = st_field_pel(bsi, bfn); } }
+                    if (base_is_ptrfield) { cg(n0[ac]); cg_mem_frow = pf_el_sz > 0 ? pf_el_sz : 8; } /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0); fix 2026-08-17: 补设 cg_mem_frow — 原未设 → 存储宽度默认字节 → char **out 元素赋值只存低字节 (git init 目录参数丢) */
                     else { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
                     pop_r(11);
                     if (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* int *rva[4]: the inner [i] returned the slot address — load the 8-byte pointer before the second subscript (fix 2026-08-16) */
@@ -9370,6 +9375,7 @@ void gen_code(void) {
     if (coff_mode && ginit_sub_label >= 0) { /* fix 2026-08-17: ginit 专用子程序 (每函数守卫调用, 正文只在末尾一次) */
         set_label(ginit_sub_label);
         cg_ginit_ctx = 1;
+
         for (int gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
         cg_ginit_ctx = 0;
         mov_r_imm(0, 1); mov_rip_eax(coff_static_disp(ginit_flag_slot, 0)); /* flag = 1 */

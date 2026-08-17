@@ -18,8 +18,8 @@ void _exit_proc(int c);
 unsigned int _bump_top(void);
 void _bump_set(unsigned int);
 #else
-/* qcc 自宿主: 标准头被跳过；size_t 由 qcc 自己提供 */
-typedef unsigned int size_t;
+/* qcc 自宿主: 标准头被跳过；size_t 由 qcc 自己提供 (fix 2026-08-17: Win64 size_t=8B, 原 int 4B → strbuf 布局错 → git 崩) */
+typedef unsigned long long size_t;
 #endif
 
 

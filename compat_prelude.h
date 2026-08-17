@@ -73,6 +73,8 @@ int *_errno(void);
 #define EO_MAILMAP 4
 /* ref-filter.c typedef enum cmp_type 未注册 (fix 2026-08-15: cmp_type undefined) */
 typedef int cmp_type;
+/* size_t: Win64 = unsigned __int64 = 8 字节 (fix 2026-08-17: 系统头被跳过未注册 size_t → qcc 当 int 4B → struct strbuf {size_t alloc,len; char *buf} 布局错 buf@8, git strbuf 全错位 → 崩) */
+typedef unsigned long long size_t;
 #define FIELD_STR 0
 #define FIELD_ULONG 1
 #define FIELD_TIME 2
