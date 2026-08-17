@@ -15,6 +15,83 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
 os.makedirs('scratch_test', exist_ok=True)
 
+# ===== [DIAG-0817] 诊断段: Server 2025 0xC0000005 根因探测 (PR 专用, 不会合入 main) =====
+import struct
+def _pe_diag(exe):
+    try:
+        d = open(exe, 'rb').read()
+        pe = struct.unpack_from('<I', d, 0x3C)[0]
+        opt = pe + 24
+        sizeimage = struct.unpack_from('<I', d, opt + 56)[0]
+        entry = struct.unpack_from('<I', d, opt + 16)[0]
+        imp_rva, imp_sz = struct.unpack_from('<II', d, opt + 120)
+        nsects = struct.unpack_from('<H', d, pe + 6)[0]
+        sec = opt + 112
+        out = ['[DIAG] %s: sizeimage=0x%X entry=0x%X import=0x%X/%d' % (exe, sizeimage, entry, imp_rva, imp_sz)]
+        for i in range(nsects):
+            off = sec + i * 40
+            nm = d[off:off + 8].rstrip(b'\0').decode(errors='replace')
+            vsz, va, rsz, roff = struct.unpack_from('<IIII', d, off + 8)
+            out.append('[DIAG]   %s: va=0x%X vsz=0x%X raw=0x%X/0x%X' % (nm, va, vsz, roff, rsz))
+            if nm == '.data':
+                stk = 0x10405D00
+                out.append('[DIAG]   .data raw_end=0x%X vs_end=0x%X stk=0x%X d_raw=0x%X d_vs=0x%X'
+                           % (va + rsz, va + vsz, stk, stk - (va + rsz), stk - (va + vsz)))
+        return '\n'.join(out)
+    except Exception as e:
+        return '[DIAG] %s: ERR %r' % (exe, e)
+
+def _run_diag():
+    q = os.path.join(root, 'qcc_x86.exe')
+    if not os.path.exists(q):
+        print('[DIAG] qcc_x86.exe 不存在, 跳过'); return
+    for src, name in [('tests/qcc/ret_a.c', 'ret_a'), ('tests/qcc/simple_call.c', 'simple_call'),
+                      ('tests/behavior/b_scanf.c', 'b_scanf')]:
+        exe = os.path.join('scratch_test', name + '_diag.exe')
+        try: os.remove(exe)
+        except OSError: pass
+        r = subprocess.run([q, src, '-o', exe], capture_output=True, text=True, errors='replace')
+        if r.returncode != 0 or not os.path.exists(exe):
+            print('[DIAG] %s: compile FAIL rc=%s' % (name, r.returncode)); continue
+        print(_pe_diag(exe))
+        # 1) cmd /c 无重定向(继承终端)
+        try:
+            p1 = subprocess.run(['cmd', '/c', exe], timeout=10)
+            print('[DIAG] %s [cmd-inherit] rc=%s' % (name, p1.returncode))
+        except Exception as e:
+            print('[DIAG] %s [cmd-inherit] EXC %r' % (name, e))
+        # 2) cmd /c + capture_output (PIPE) — 完全复刻 run_tests.py 原调用
+        try:
+            p2 = subprocess.run(['cmd', '/c', exe], capture_output=True, timeout=10)
+            print('[DIAG] %s [cmd-pipe] rc=%s out=%r' % (name, p2.returncode, p2.stdout[:40]))
+        except Exception as e:
+            print('[DIAG] %s [cmd-pipe] EXC %r' % (name, e))
+        # 3) cmd /c + 文件重定向 (> out.txt)
+        of = os.path.join('scratch_test', name + '_diag_out.txt')
+        try:
+            p3 = subprocess.run(['cmd', '/c', '%s > %s 2>&1' % (exe, of)], timeout=10)
+            txt = open(of, 'rb').read(40) if os.path.exists(of) else b''
+            print('[DIAG] %s [cmd-file] rc=%s out=%r' % (name, p3.returncode, txt))
+        except Exception as e:
+            print('[DIAG] %s [cmd-file] EXC %r' % (name, e))
+        # 4) subprocess 直启 (8-08 报告 Server 2025 必 0xC0000005)
+        try:
+            p4 = subprocess.run([exe], capture_output=True, timeout=10)
+            print('[DIAG] %s [direct-pipe] rc=%s out=%r' % (name, p4.returncode, p4.stdout[:40]))
+        except Exception as e:
+            print('[DIAG] %s [direct-pipe] EXC %r' % (name, e))
+        # 5) Popen 直启
+        try:
+            po = subprocess.Popen([exe], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                o, _ = po.communicate(timeout=10); print('[DIAG] %s [popen] rc=%s out=%r' % (name, po.returncode, o[:40]))
+            except Exception:
+                po.kill(); print('[DIAG] %s [popen] KILLED' % name)
+        except Exception as e:
+            print('[DIAG] %s [popen] EXC %r' % (name, e))
+_run_diag()
+# ===== [DIAG-0817] 诊断段结束 =====
+
 # 1. 确保编译器
 qcc = os.path.join(root, 'qcc_x86.exe')
 if not os.path.exists(qcc):
