@@ -1001,6 +1001,20 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define CREATE_UNICODE_ENVIRONMENT 0x00000400
 #define EXTENDED_STARTUPINFO_PRESENT 0x00080000
 #define STARTF_USESTDHANDLES 0x100
+#define STARTF_USESHOWWINDOW 0x1
+#define NULL 0
+#define WINAPI
+#define SW_HIDE 0
+#define CREATE_NEW_CONSOLE 0x10
+#define CREATE_NO_WINDOW 0x08000000
+typedef void *HINSTANCE;
+typedef long time_t;
+struct timespec { time_t tv_sec; long tv_nsec; };
+struct timeval { long tv_sec; long tv_usec; };
+struct itimerval { struct timeval it_interval; struct timeval it_value; };
+struct timezone { int tz_minuteswest; int tz_dsttime; };
+#define _alloca(n) malloc(n) /* msvcrt has no _alloca export; headless.c GUI stack buffer -> heap (fix 2026-08-17) */
+
 #define INFINITE 0xFFFFFFFF
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258

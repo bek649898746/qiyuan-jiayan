@@ -5,7 +5,7 @@ GIT = r'C:\Users\Administrator\Desktop\git-2.45.2'
 V1 = r'C:\Users\Administrator\Desktop\qiyuan-jiayan\v1.exe'
 PRE = r'C:\Users\Administrator\Desktop\qiyuan-jiayan\compat_prelude.h'
 files = []
-for d in ['', 'builtin', 'reftable', 'xdiff', 'ewah', 'refs', 'negotiator', 'trace2', 'sha1dc', 'sha256', 'block-sha1']:
+for d in ['', 'builtin', 'reftable', 'xdiff', 'ewah', 'refs', 'negotiator', 'trace2', 'sha1dc', 'sha256', 'sha256/block', 'block-sha1']:
     base = os.path.join(GIT, d)
     if os.path.isdir(base):
         for f in sorted(os.listdir(base)):
@@ -17,6 +17,8 @@ for root, dirs, names in os.walk(os.path.join(GIT, 'compat')):
             rel = os.path.relpath(os.path.join(root, f), GIT).replace('\\', '/')
             if rel.startswith('compat/regex/'):
                 continue  # 已知超时，跳过
+            if rel == 'compat/mingw.c':  # msvc.c includes mingw.c -> duplicate symbols
+                continue  # 与 C 版排除集对齐 (fix 2026-08-17)
             files.append(rel)
 ok = 0; fail = 0; timeout = 0; failed = []
 for rel in files:

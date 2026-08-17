@@ -4499,7 +4499,9 @@ static int blk(void) {
                         while (tt[tk] == LB) { tk++; int cdim2 = 0; if (const_expr_eval(&cdim2)) cnt2 *= cdim2; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
                         int esz2 = tdi_fnptr_v ? 8 : ((is_ptr2 || is_ptr) ? 8 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4))))); /* fix 2026-08-16: 逗号声明 int *rsym[4] 是 8 字节指针数组 (原 is_ptr2 走 var_offset_ptr → arr_sz=0 → rsym[rsec][b2] 存到坏地址崩) */
                         var_array(vn2, cnt2, esz2);
-                        vars[vcnt - 1].p_esz = esz2;
+                        vars[vcnt - 1].p_esz = 0; /* fix 2026-08-17: 1D ptr-array comma decl (int *rsym[4])
+                           must keep p_esz=0 (2nd dim b2 is int, stride 4; old esz2=8 -> cg_mem_frow=8 ->
+                           rsym[rsec][b2] store misaligned, corrupts neighbor ridx -> write_coff_obj reloc */
                         if (is_double) vars[vcnt - 1].is_dbl = 1;
                         if (is_ll) vars[vcnt - 1].is_ll = 1; /* fix 2026-08-06 */
                     } else {
