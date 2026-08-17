@@ -1,3 +1,12 @@
+## 52B01059 (2026-08-17)
+
+**Git 编译攻坚第 N 轮 — git --version 退出崩溃 0xC0000005 根因修复 (struct stat 未注册) + 八进制字面量**
+
+- 根因链: qcc 跳过系统头 `<sys/stat.h>` → `struct stat` 未注册(si=-1) → blk() 局部 `struct stat st;` 因 `si>=0` 门控完全**不登记变量** → `&st`/`st.st_mode` 解析失效不发码 → `git_fstat(fileno(stdout), &st)` 编译成 `git_fstat(fd, fd)` (arg1 复用 arg0 的 rax) → msvcrt `_fstat(-1,-1)` 内部崩 (git_jiayan_v1.exe --version exit=0xC0000005)。abspath.c is_directory 等 40+ 含 struct stat 的文件同样中招。
+- 修法: compat_prelude.h 预置 MSVCRT 布局 struct stat (48B, st_mode@6) + struct utimbuf (16B), 系统头跳过后类型可解析 → 变量正常登记。
+- 附修: #define 值解析无八进制分支 (pp_def_parse + lexer 数值收集两处) → `S_IFMT 0170000` 存成十进制 170000 (0x29810) → git S_IS* 模式检查全错 (is_directory 恒 false)。
+- 验证: v1..v5 = 52B01059 (五代全等), 回归 233/233, 473/473 git .o 重编零失败, git_jiayan_v1.exe --version exit=0
+
 ## DB4BEBC3 (2026-08-13)
 
 **Git 编译攻坚第 6 波: 全局 long long/double/unsigned 算术 64 位修复 + 测试入口修复**
