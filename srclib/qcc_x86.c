@@ -22,6 +22,12 @@
 #include <stdarg.h>
 #include <windows.h>
 #include <stdint.h>
+#define uint8_t unsigned char
+#define uint16_t unsigned short
+#define uint32_t unsigned int
+#define int8_t signed char
+#define int16_t signed short
+#define int32_t signed int
 
 /* The 64MB AST node table (n0..n255, ASZ*4 each) must NOT live in the .data
    bump heap: the self-cut stack sits INSIDE the .data virtual range (stk_top
