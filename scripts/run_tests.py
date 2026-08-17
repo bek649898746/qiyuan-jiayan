@@ -109,6 +109,26 @@ def _run_diag():
         except Exception as e:
             print('[DIAG] %s [popen] EXC %r' % (name, e))
         _crash_events(name)
+    # 特殊判别: while(1) 永不退出 — 若 CI 上不崩(超时kill)则崩溃锁定在退出路径, 若立即崩则入口/启动序列崩
+    for src, name in [('_spin.c', 'spin')]:
+        sp = os.path.join('scratch_test', src)
+        with open(sp, 'w') as f:
+            f.write('int main(void){ for(;;){} }\n')
+        exe = os.path.join('scratch_test', name + '_diag.exe')
+        try: os.remove(exe)
+        except OSError: pass
+        r = subprocess.run([q, sp, '-o', exe], capture_output=True, text=True, errors='replace')
+        if r.returncode != 0 or not os.path.exists(exe):
+            print('[DIAG] %s: compile FAIL rc=%s' % (name, r.returncode)); continue
+        print(_pe_diag(exe))
+        try:
+            p1 = subprocess.run(['cmd', '/c', exe], timeout=4)
+            print('[DIAG] %s [cmd-inherit] rc=%s (0=正常退出?! 崩溃码=3221225477)' % (name, p1.returncode))
+        except subprocess.TimeoutExpired:
+            print('[DIAG] %s [cmd-inherit] TIMEOUT(未崩, 正常运行到死循环) → 崩溃锁定在退出路径' % name)
+        except Exception as e:
+            print('[DIAG] %s [cmd-inherit] EXC %r' % (name, e))
+        _crash_events(name)
 _run_diag()
 # ===== [DIAG-0817] 诊断段结束 =====
 
