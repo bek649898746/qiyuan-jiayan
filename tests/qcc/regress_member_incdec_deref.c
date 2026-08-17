@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// @EXPECTED out:len=4 buf=AB
+// @EXPECTED out:len=2 buf=AB
 // bug#21: ++ 目标为 struct 字段 (size_t) 时被误当指针字段解引用 → 崩
 // (git strbuf_addch `sb->buf[sb->len++]` — case 23 求 &target 时
 //  case 15 的「指针字段作数组基」解引用误触发)
