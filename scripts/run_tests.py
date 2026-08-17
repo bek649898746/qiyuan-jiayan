@@ -141,6 +141,36 @@ def _run_diag():
         except Exception as e:
             print('[DIAG] %s EXC %r' % (name, e))
         _crash_events(name)
+    # 决定性对照: gcc 编译标准程序 (标准 CRT 栈) 在 CI 上是否正常退出 — 排除"环境拦截所有退出"
+    import shutil as _sh
+    gcc_src = os.path.join('scratch_test', '_gcc_hello.c')
+    with open(gcc_src, 'w') as f:
+        f.write('#include <stdio.h>\nint main(void){ printf("gcc-hello\\n"); return 0; }\n')
+    gcc_exe = os.path.join('scratch_test', 'gcc_hello.exe')
+    try: os.remove(gcc_exe)
+    except OSError: pass
+    rg = subprocess.run(['gcc', '-O2', gcc_src, '-o', gcc_exe], capture_output=True, text=True, errors='replace')
+    if rg.returncode == 0 and os.path.exists(gcc_exe):
+        try:
+            p1 = subprocess.run(['cmd', '/c', gcc_exe], capture_output=True, timeout=10)
+            print('[DIAG] gcc-hello [cmd-pipe] rc=%s out=%r' % (p1.returncode, (p1.stdout or b'')[:40]))
+        except Exception as e:
+            print('[DIAG] gcc-hello EXC %r' % e)
+        try:
+            p2 = subprocess.run([gcc_exe], capture_output=True, timeout=10)
+            print('[DIAG] gcc-hello [direct] rc=%s' % p2.returncode)
+        except Exception as e:
+            print('[DIAG] gcc-hello [direct] EXC %r' % e)
+    else:
+        print('[DIAG] gcc-hello compile FAIL rc=%s' % rg.returncode)
+    # 系统 CET / 安全特性状态
+    try:
+        ps = ('powershell', '-NoProfile', '-Command',
+              'Get-ProcessMitigation -System -ErrorAction SilentlyContinue | Format-List * | Out-String')
+        r = subprocess.run(ps, capture_output=True, text=True, errors='replace', timeout=30)
+        print('[DIAG] system mitigations:\n%s' % (r.stdout or '')[:1500])
+    except Exception as e:
+        print('[DIAG] mitigation EXC %r' % e)
 _run_diag()
 # ===== [DIAG-0817] 诊断段结束 =====
 
