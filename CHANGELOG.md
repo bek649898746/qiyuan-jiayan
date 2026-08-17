@@ -1,3 +1,13 @@
+## C2FB1D54 (2026-08-17)
+
+**Git --help 攻坚 — 9 个 qcc 误编译 (char++/指针字段/ginit/指针数组)**
+
+- --version 修复后, --help 路径逐一暴露 9 个真实编译器 bug (详见 memory/construction/20260817_help_9bugs.md)
+- 关键: char 数组 ++ 32 位 RMW; ptr->字段[i] 不解引用; #define 八进制; struct 指针全局初始化; coff ginit 放置; 指针数组 brace init/拷贝/箭头
+- 修法: qcc_x86.c 9 处 + compat_prelude.h offset_1st_component 盘符
+- 验证: v1..v5 = C2FB1D54, 回归 237/237, --version exit=0
+- 挂起: config.o struct 数组元素立即数源 bug (--help 当前卡点)
+
 ## 52B01059 (2026-08-17)
 
 **Git 编译攻坚第 N 轮 — git --version 退出崩溃 0xC0000005 根因修复 (struct stat 未注册) + 八进制字面量**
