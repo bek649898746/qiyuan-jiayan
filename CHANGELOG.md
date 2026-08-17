@@ -7,6 +7,7 @@
 - 修法: qcc_x86.c 9 处 + compat_prelude.h offset_1st_component 盘符
 - 验证: v1..v5 = C2FB1D54, 回归 237/237, --version exit=0
 - 挂起: config.o struct 数组元素立即数源 bug (--help 当前卡点)
+- 进展: 最小复现 regress_const_structarr.c (const struct P arr[] = {{"a",1},...}) 崩 0x404890 — 崩溃在 main 的 7 参 printf 参数求值 (成员访问+sizeof), 不在 ginit; gdb 显示 [0x30] 基址混乱。修复后回归 → 重建 git → 冒烟 (git init→add→commit→log→branch→checkout) 继续抓 bug
 
 ## 52B01059 (2026-08-17)
 
