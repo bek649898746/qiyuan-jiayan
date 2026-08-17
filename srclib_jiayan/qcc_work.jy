@@ -8259,21 +8259,21 @@ __attribute__((unused))
                 字 *vname = (字*)(nn + n0[mc]); /* struct var name */
                 整 off = var_lookup(vname);
                 整 si = var_stidx(vname);
-                若 (off >= 0 && si >= 0) {
+                若 ((off >= 0 || (coff_mode && var_isstatic(vname))) && si >= 0) { /* fix 2026-08-17: coff extern 全局指针成员赋值 (the_repository->worktree=val) — 原 off>=0 排除 → 赋值整个跳过 */
                     整 foff = st_off(stypes[si].name, fname);
                     整 fsz = foff >= 0 ? st_field_size(stypes[si].name, fname) : 0; /* 1/4/8 store width (fix 2026-08-03: fnptr fields were 4-byte truncated) */
                     若 (foff >= 0) {
                         若 (is_arrow) {
                             若 (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); push_xmm0(); /* save rhs (xmm0 slot) */
-                                若(off>=0){ 若 (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
+                                若(off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (fix 2026-08-17: coff extern 全局指针 off<0 — 原 else ptr=0 → the_repository->worktree=val 写 [0] 丢) */
                                 否 {mov_r_imm(0,0);} /* ptr=0 if not found */
                                 若(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
                                 pop_xmm0(); /* xmm0 = rhs */
                                 asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
                             } 否 {
                                 cg(n1[n]); 若 (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196) */
-                                若(off>=0){ 若 (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
+                                若(off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (fix 2026-08-17: coff extern 全局指针 off<0 — 原 else ptr=0 → the_repository->worktree=val 写 [0] 丢) */
                                 否 {mov_r_imm(0,0);} /* ptr=0 if not found */
                                 若(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
                                 pop_r(3); /* ebx = rhs */
@@ -8531,7 +8531,7 @@ __attribute__((unused))
                 若 (n1[n] >= 0 && ndbl[n1[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n1[n]); cvttsd2si_eax_xmm0(); } /* double RHS → int target; POINTER targets take the ADDRESS (fix 2026-08-16: n1[n]=-1 守卫) */
                 否 cg(n1[n]);
                 若 (var_is_ll(vname)) ll_ext32(n1[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06) */
-                若 (off >= 0) {
+                若 (off >= 0 || (coff_mode && var_isstatic(vname) && off < 0)) { /* fix 2026-08-17: coff 模式 extern 全局赋值 (off<0 负槽 + is_static=1) — 原 if(off>=0) 排除 → git_work_tree_cfg=xgetcwd() 只发 call 不存储 → init_db 兜底失效 → 崩 */
                     若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); 否 mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
                     否 若 (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
                     否 若 (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
@@ -8621,7 +8621,7 @@ __attribute__((unused))
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
                     若 (fsz > 4) {
                         整 fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_el(s2, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址 */
+                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址 */
                         /* else: struct/array field -> address (no deref) */
                     } 否 若 (!cg_no_deref) {
                         若 (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
@@ -8650,16 +8650,17 @@ __attribute__((unused))
                 遍(整 i=0;i<st_n;i++){fo=st_off(stypes[i].name,fn);若(fo>=0){si=i;断;}}
                 若(si>=0){ /* found struct */
                     若(o>=0){ 若 (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(o, 1) - 1); 否 若 (var_pesz(vn) > 0) mov_reg_mbrp64(0, o - cur_frame_sz); 否 mov_reg_mbrp(0, o - cur_frame_sz); } /* rax = ptr */
+                    否 若 (o < 0 && var_isstatic(vn)) { mov_rax_rip64(coff_static_disp(o, 1) - 1); } /* fix 2026-08-17: extern 全局指针 (coff off<0 负槽 + is_static) — 原被当参数 load_param_val → 指针值垃圾 → get_git_work_tree 返回垃圾崩 */
                     否 若 (o < 0 && nt[n0[n]] == 1) { load_param_val(vn); } /* param in register or stack */
                     否 若 (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 / 函数调用结果 — 求值得指针 (fix 2026-08-06: 原 load_param_val 对非参数加载垃圾, offsetof 惯用法 ((T*)0)->m 错) */
                     若(fo!=0){add_rax_imm8(fo);} /* rax += offset */
                     若 (cg_no_deref || st_field_is_array_idx(si, fn)) { st_field_2d_setup(si, fn); } /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16: FLEX_ALLOC_MEM ret->orig dereferenced as int) */
                     否 { mov_reg_mreg(0,0); 若 (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
                 }
-            } 否 若(o>=0&&s>=0){整 fo=st_off(stypes[s].name,fn);若(fo>=0){
+            } 否 若((o>=0 || (coff_mode && var_isstatic(vn))) && s>=0){整 fo=st_off(stypes[s].name,fn);若(fo>=0){ /* fix 2026-08-17: o>=0 门控放行 coff extern 静态 (off<0 负槽) — 原排除 → the_repository->worktree 无输出 → get_git_work_tree 空函数返回垃圾 */
                 若(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
                     整 off=var_lookup(vn);
-                    若(off>=0){ 若 (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 若 (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr */
+                    若(off>=0 || (coff_mode && var_isstatic(vn))){ 若 (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 若 (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (extern: coff 符号重定位) */
                     若(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
                     整 afsz = st_field_size(stypes[s].name, fn);
                     若 (cg_no_deref || st_field_is_array_idx(s, fn)) {
@@ -8671,7 +8672,7 @@ __attribute__((unused))
                             cg_frows[0] = pel;
                         }
                     }
-                    否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_el(s, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref, commands[].cmd 传成结构体地址) */ }
+                    否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址) */ }
                     否 若 (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
 否 若 (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                     否 { mov_reg_mreg(0,0); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
@@ -8686,7 +8687,7 @@ __attribute__((unused))
                     若 (st_field_is_dbl(stypes[s].name, fn)) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
                     否 若 (fsz > 4) {
                         整 fty = st_field_ty_idx(stypes[s].name, fn);
-                        若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8) || (fty == -1 && st_field_el(s, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B, 或 char* 字段 fty=-1): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址; fix 2026-08-15) */
+                        若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8) || (fty == -1 && st_field_row(stypes[s].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B, 或 char* 字段 fty=-1): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址; fix 2026-08-15) */
                         /* else: by-value struct (8B) / array field → address */
                     } 否 若 (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
 否 若 (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
@@ -9722,13 +9723,23 @@ __attribute__((unused))
         整 val_node = -1;
         若 (gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 0) val_node = n0[gn];
         否 若 (gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 0) val_node = n1[gn];
+        /* fix 2026-08-17: &var 地址常量 → .data ADDR32 重定位 (coff 多 .o 时 ginit 子程序不被 main 所在 .o 调用 → 全局指针 = &x 保持 0 崩; 单文件非 coff 走 ginit 正常) */
+        否 若 (coff_mode && gn >= 0 && nt[gn] == 7 && n0[gn] >= 0 && nt[n0[gn]] == 11 && n0[n0[gn]] >= 0 && nt[n0[n0[gn]]] == 1) val_node = n0[gn];
+        否 若 (coff_mode && gn >= 0 && nt[gn] == 10 && n1[gn] >= 0 && nt[n1[gn]] == 11 && n0[n1[gn]] >= 0 && nt[n0[n1[gn]]] == 1) val_node = n1[gn];
         若 (val_node >= 0) {
             字 *vn = (字*)(nn + gn);
             整 off = var_lookup(vn);
             若 (off >= 0 && off < stc_n) {
-                整 v = nv[val_node];
-                若 (var_is_ll(vn)) { 长 长 lv = (长 长)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 (fix 2026-08-06: 原 4 字节 → 高 4 字节 0, -5 变 4294967291) */
-                否 memcpy(ddata + 4 * off, &v, 4);
+                若 (nt[val_node] == 11) { /* &target: 8 字节指针槽 0 占位 + ADDR64 重定位 (fix 2026-08-17: 原 4 字节 + REL32_3(0x0006) 错类型 → 链接后垃圾地址) */
+                    字 *tgt = (字*)(nn + n0[val_node]);
+                    整 toff = var_lookup(tgt);
+                    整 tsym = toff >= 0 ? coff_slot_sym(toff) : -1;
+                    若 (tsym >= 0) { memset(ddata + 4 * off, 0, 8); coff_data_crel(4 * off, 0x0001, tsym, 0); }
+                } 否 {
+                    整 v = nv[val_node];
+                    若 (var_is_ll(vn)) { 长 长 lv = (长 长)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 (fix 2026-08-06: 原 4 字节 → 高 4 字节 0, -5 变 4294967291) */
+                    否 memcpy(ddata + 4 * off, &v, 4);
+                }
             }
         }
     }

@@ -21,6 +21,18 @@
 - 验证: v1..v5 = 025b759d, 回归 249/249, 473/473 git .o 重编零失败
 - 冒烟进展: 全崩 → init 深入 setup (当前卡: strbuf_realpath NULL path, commit 仍崩 — 下一轮)
 
+## cdb685ba (2026-08-17) — coff extern 全局成员全链路 6 bug (15-16)
+
+**init 卡 strbuf_realpath NULL path → 深挖出 coff 模式 extern 全局 (off<0) 被各 codegen 路径 if(off>=0)/if(o>=0) 门控排除的系统性问题**
+
+- **#15** case 10 普通赋值 extern 全局 (git_work_tree_cfg = xgetcwd()) 只发 call 不存储 → init_db 兜底失效 → set_git_work_tree(NULL)
+- **#16a** case 15 箭头成员读取 extern 全局指针 (the_repository->worktree) 的 o>=0 门控 → 空函数返回垃圾 (get_git_work_tree)
+- **#16b** case 15 指针字段解引用条件 `st_field_el==8` → `st_field_row==8` (fpel 修复后 char* el=1 漏判 → 返回字段地址)
+- **#16c** case 10 箭头成员赋值/var.field 的 extern 指针 base 加载 (else ptr=0 / off>=0 门控) → the_repository->worktree=val 写 [0]
+- **#16d** write_coff_obj 全局指针 `= &var` 走 ginit 运行时赋值, coff 多 .o 时 ginit 子程序不被 main 所在 .o 调用 → 指针保持 0。修: .data 静态 ADDR64 重定位
+- 验证: v1..v5 = cdb685ba, 回归 254/254, 473/473 .o 零失败
+- 冒烟: init 推进到 hold_lock_file_for_update_timeout lk=NULL (写 config 阶段) — 下一轮
+
 ## 52B01059 (2026-08-17)
 
 **Git 编译攻坚第 N 轮 — git --version 退出崩溃 0xC0000005 根因修复 (struct stat 未注册) + 八进制字面量**
