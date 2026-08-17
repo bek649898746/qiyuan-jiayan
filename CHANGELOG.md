@@ -1,3 +1,15 @@
+## 4272AFD2 (2026-08-18)
+
+**乙层补丁落地 + 链式 AST 扩展 + 指针数组修复 (外部 AI 审计 7 hunks + 自举暴露 3 深坑)**
+
+- **乙层硬上限 ×3** (外部 AI 审计): st_add/Nd 满则 [ERR]+exit(1) 不再返回 -1 (防 stypes[-1]/nv[-1] 越界写); Nc 子节点超 256 不再静默丢弃 → [ERR]+exit(1) (原静默丢弃 → 编译产物缺语句)
+- **CI 退出修复 ×4** (Server 2025 CI 全崩根因): emit_crt_stub — `_start` 开头 `mov rbx,rsp` 保存 loader 栈, 各段改 `mov rsp,stk_top` 重建自备栈, ExitProcess 前 `mov rsp,rbx` 切回 — ntdll LdrShutdownProcess 的 _chkstk 按 TEB 栈探测, 自备栈 rsp 不在 TEB 内 → 0xC0000005
+- **根节点 Nc 豁免**: 自举暴露 — 编译器自身 283 函数 > 256 根子槽 (函数由 fdef_list 保留, root_global 从未被读, 溢出无害); 加 nc_root_p 豁免
+- **链式 AST 扩展**: git 大函数体 > 512 语句 (sequencer.c 等) — n0..n255 + nx[256] 扩展槽 (512) + nchain 溢出链 (无界); 原静默截断大函数尾部 → git 函数错乱
+- **静态指针数组 2D 修复**: `int *nx[8]` 全局指针数组 — (1) cg_mem_ptr 去掉 p_esz==0 限制; (2) 静态分支补 cg_mem_ptr 设置; (3) cg_mem_frow 指针数组按指向元素缩放 (局部+静态, 类型标志推导 pointee); (4) p_esz 保持数组元素大小 (is_struct_elem 判定不破坏) — 原第二维按 8 缩放 + 不解引用指针槽 → 越界 (自举 CG-BAD)
+- 验证: v1..v5 = 4272afd2, 回归 261/261, 473/473 git .o 重编零失败, 链接 32.6MB
+- 冒烟: git init 仍卡 config 读取 (fgetc(f) 读文件返回 0 — if 块内调用错位, 独立下一步)
+
 ## B9C1B056 (2026-08-18)
 
 **git init 攻坚 — 5 个 qcc 误编译 (多级箭头取址/char**/逗号 struct/字段类型继承/sret 误判)**
