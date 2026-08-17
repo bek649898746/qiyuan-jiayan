@@ -832,6 +832,21 @@ struct utimbuf {
     long long modtime;
 };
 
+/* <windows> offset_1st_component: 盘符路径 C:\ → 3 / C: → 2 (fix 2026-08-17:
+   通用版 = is_dir_sep(path[0]) 对 "C:\..." 返回 0 → setup discovery 循环
+   ceil_offset=-2 → 读到 dir->buf[-1] 越界 → --help 0xC0000005 (堆 >4GB 时崩).
+   镜像 mingw compat 的 mingw_offset_1st_component. */
+static inline int git_offset_1st_component_prelude(const char *path) {
+    int off = 0;
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':') {
+        off = 2;
+        if (path[2] == '/' || path[2] == '\\') off = 3;
+    }
+    if (!off && (path[0] == '/' || path[0] == '\\')) off = 1;
+    return off;
+}
+#define offset_1st_component git_offset_1st_component_prelude
+
 /* <sys/stat.h> 文件权限宏 (MSVC/MinGW 值) */
 #define S_IREAD 0x0100
 #define S_IWRITE 0x0080
