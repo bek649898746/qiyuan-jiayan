@@ -10010,11 +10010,16 @@ void gen_code(void) {
     }
     if (coff_mode && ginit_sub_label >= 0) { /* fix 2026-08-17: ginit 专用子程序 (每函数守卫调用, 正文只在末尾一次) */
         set_label(ginit_sub_label);
+        /* fix 2026-08-19: set flag=1 BEFORE running the initializer body so the
+           ginit body can safely call guarded functions in the SAME .o (userdiff.c
+           builtin_drivers init calls the IPATTERN/PATTERNS stubs). With the flag
+           set only at the end, the callee's guard sees flag==0 and calls the
+           ginit sub again -> A<->B mutual recursion -> stack overflow 0xC00000FD. */
+        mov_r_imm(0, 1); mov_rip_eax(coff_static_disp(ginit_flag_slot, 0)); /* flag = 1 FIRST: ginit re-entrant */
         cg_ginit_ctx = 1;
 
         for (int gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
         cg_ginit_ctx = 0;
-        mov_r_imm(0, 1); mov_rip_eax(coff_static_disp(ginit_flag_slot, 0)); /* flag = 1 */
         b(0xC3); /* ret */
     }
     if (coff_mode) {

@@ -638,8 +638,17 @@ static int fchmod(int a, int b) { (void)a; (void)b; return -1; }
 static unsigned int alarm(unsigned int seconds) { (void)seconds; return 0; }  /* POSIX alarm stub (fix 2026-08-15: upload-pack.c alarm undefined) */
 static int fsync(int fd) { (void)fd; return 0; }  /* POSIX fsync stub (fix 2026-08-15: bulk-checkin.c fsync undefined) */
 static void sync(void) {}  /* POSIX sync stub (fix 2026-08-15) */
-static int IPATTERN(const char *a, const char *b, const char *c) { (void)a; (void)b; (void)c; return 0; }  /* userdiff.c 多行初始化宏 qcc 未展开, 兜底满足链接 (fix 2026-08-15) */
-static int PATTERNS(const char *a, const char *b, const char *c) { (void)a; (void)b; (void)c; return 0; }  /* 同上 */
+/* userdiff.c 多行初始化宏 qcc 未展开, 呼叫落在 stub 上 (fix 2026-08-15).
+   fix 2026-08-19: ginit 体把 stub 返回值当 struct 指针拷 88 字节 (sizeof userdiff_driver) --
+   stub 必须返回有效地址 (否则从地址 0 拷贝 SEGV). 参数 a/b/c
+   是调用点传入的真字符串指针 (name/funcname.pattern/word_regex), 填入静态
+   结构; 每次调用后调用方立即拷贝 -> 每个驱动获得正确数据。 */
+/* qcc 嵌套结构体字段赋值 codegen 有 bug (丢存储) → 用扁平字段布局,
+   偏移与 userdiff_driver 一致: name+0 external+8 algorithm+16 binary+24
+   pattern+32 cflags+40 word_regex+48 word_regex_multi_byte+56 textconv+64 cache+72 want_cache+80 (88B) */
+static struct { char *name; char *external; char *algorithm; int binary; char *f_pattern; int f_cflags; char *word_regex; char *word_regex_multi_byte; char *textconv; void *textconv_cache; int textconv_want_cache; } qcc_stub_drv;
+static int IPATTERN(const char *a, const char *b, const char *c) { qcc_stub_drv.name = (char*)a; qcc_stub_drv.binary = -1; qcc_stub_drv.f_pattern = (char*)b; qcc_stub_drv.f_cflags = 3; /* REG_EXTENDED|REG_ICASE (纯数字宏不被展开, 用字面值) */ qcc_stub_drv.word_regex = (char*)c; qcc_stub_drv.word_regex_multi_byte = (char*)c; return (int)(long long)(void*)&qcc_stub_drv; }
+static int PATTERNS(const char *a, const char *b, const char *c) { qcc_stub_drv.name = (char*)a; qcc_stub_drv.binary = -1; qcc_stub_drv.f_pattern = (char*)b; qcc_stub_drv.f_cflags = 1; /* REG_EXTENDED (同上) */ qcc_stub_drv.word_regex = (char*)c; qcc_stub_drv.word_regex_multi_byte = (char*)c; return (int)(long long)(void*)&qcc_stub_drv; }
 
 /* stdarg 变参宏 stub (qcc 跳 stdarg.h) — die() 等变参函数体用 va_list/va_start/va_end (fix 2026-08-14: die 定义因 va_list 未知丢失 → undefined) */
 #define va_list char *
