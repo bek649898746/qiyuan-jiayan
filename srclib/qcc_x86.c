@@ -3522,6 +3522,7 @@ static int prim(void) {
                     else if (vars[vi].is_dbl) { esz = 8; sz = 8; }
                     else if (vars[vi].is_char) { esz = 1; sz = 1; }
                     else if (vars[vi].p_esz != 0) { esz = vars[vi].p_esz; sz = 8; } /* pointer: p_esz=element size, slot is 8 bytes */
+                    else if (vars[vi].st_idx >= 0) { esz = st_sz(stypes[vars[vi].st_idx].name); sz = esz; } /* struct 变量: sizeof = struct 大小 (fix 2026-08-19: init_repository_format memcpy(dst,&fresh,sizeof(fresh)) 原 sz=4 只拷 version → v1_only_extensions.nr/items 栈垃圾 → verify_repository_format 误入 v1-only 错误路径 → git status 死循环/崩溃) */
                     else { esz = 4; sz = 4; }
                     base_si = vars[vi].st_idx;
                     break;
@@ -7920,7 +7921,12 @@ static void cg(int n) {
                (fix 2026-08-05: was p - q*esz → garbage). */
             int pscale = 0;
             int psub_div = 0; /* 指针-指针: (p-q) 再除以元素大小 */
-            if ((o == PK || o == T_MK) && nt[n0[n]] == 1) {
+            if ((o == PK || o == T_MK) && n0[n] >= 0 && pesz[n0[n]] > 0) {
+                /* (T*)ptr ± N: cast 的元素大小优先 (fix 2026-08-19: (char*)pos - 24 原按变量
+                   p_esz=8 缩放 → pos-192 → container_of/list_entry 错位 → chdir_notify
+                   回调取到零化条目 cb=NULL → git status SEGV) */
+                pscale = pesz[n0[n]];
+            } else if ((o == PK || o == T_MK) && n0[n] >= 0 && nt[n0[n]] == 1) {
                 char *pv = (char*)(nn + n0[n]);
                 for (int vi = vs_n() - 1; vi >= 0; vi--)
                     if (!strcmp(vars[vi].name, pv) && var_codegen_visible(vi)) {
@@ -9125,6 +9131,15 @@ static void cg(int n) {
                     cg_no_deref = 1; cg_addr_of = 1;
                     cg(n0[n]);
                     cg_no_deref = 0; cg_addr_of = 0;
+                } else {
+                    /* fix 2026-08-19: &深链字段 — &r->settings.core_commit_graph (最外层是点号,
+                       基是成员链) — 原两分支都不命中 → 表达式静默丢弃 → 调用实参推入残留寄存器
+                       (key 串) → repo_cfg_bool *dest=def 写穿字符串 → git status SEGV.
+                       mem_addr 逐级解析 → rax = 链地址 (final field 取址不 deref). */
+                    int fsz = 4, si_out = -1;
+                    if (n0[n] >= 0 && mem_addr(n0[n], &fsz, &si_out) == 0) {
+                        /* rax = &chain — mem_addr 已就位, 无需再解引用 */
+                    }
                 }
             } else if (nt0 == 14) { /* &arr[i] — yield the element ADDRESS */
                 cg_no_deref = 1;
@@ -9180,18 +9195,30 @@ static void cg(int n) {
                 char *av = (char*)(nn + n0[n0[n]]); /* array variable name */
                 int s2 = var_stidx(av);
                 int fo = s2 >= 0 ? st_off(stypes[s2].name, fn) : -1;
-                if (fo < 0) { /* fix 2026-08-18: arr[i].field 的基是字段链 (store.parsed[0].begin) — av 是字段名 (parsed) 非变量 → 沿基链解析元素 struct 类型 (原 fo=-1 整段跳过 → 事件数组读写空转 → config 写循环坏) */
-                    int pb = n0[n0[n]];
+                if (fo < 0) { /* fix 2026-08-18: arr[i].field 的基是字段链 (store.parsed[0].begin) — av 是字段名 (parsed) 非变量 → 沿基链解析元素 struct 类型 (原 fo=-1 整段跳过 → 事件数组读写空转 → config 写循环坏)
+                                 fix 2026-08-19: 二级字段链 (f.v1_only_extensions.items[i].string) 原只解到中间结构体 (string_list) 就 st_off(中间,fn) → -1 → 表达式静默丢弃 → 调用参数把 fmt 当实参 → git status verify_repository_format strbuf_addf 死循环 */
+                    int pb = n0[n0[n]];    /* case14 的直接基节点 (如 case15(items)) */
+                    int base_si = -1;      /* 链根变量(struct 变量)的结构体类型 */
                     int depth = 0;
-                    while (pb >= 0 && depth < 4 && (nt[pb] == 15 || nt[pb] == 13)) {
+                    /* 第一阶段: 沿基链上溯, 找链根变量 */
+                    while (pb >= 0 && depth < 8 && (nt[pb] == 15 || nt[pb] == 13)) {
                         char *bv = (char*)(nn + n0[pb]);
-                        char *bf = (char*)(nn + pb);
                         int bsi = var_stidx(bv);
-                        if (bsi >= 0) {
-                            int bfty = st_field_ty_idx(stypes[bsi].name, bf);
-                            if (bfty >= 0) { s2 = bfty; fo = st_off(stypes[s2].name, fn); break; }
-                        }
+                        if (bsi >= 0) { base_si = bsi; break; }
                         pb = n0[pb]; depth++;
+                    }
+                    if (base_si >= 0) {
+                        /* 第二阶段: 从链根变量结构体往下逐级解析字段类型, 直到 case14 直接基 → 数组元素 struct */
+                        int chain[8]; int cn = 0;
+                        int q = n0[n0[n]];
+                        while (q >= 0 && cn < 8 && (nt[q] == 15 || nt[q] == 13)) { chain[cn++] = q; q = n0[q]; }
+                        int cur_si = base_si;
+                        for (int ci = cn - 1; ci >= 0 && cur_si >= 0; ci--) {
+                            char *bf = (char*)(nn + chain[ci]);
+                            int fty = st_field_ty_idx(stypes[cur_si].name, bf);
+                            if (fty >= 0) cur_si = fty; else cur_si = -1;
+                        }
+                        if (cur_si >= 0) { s2 = cur_si; fo = st_off(stypes[s2].name, fn); }
                     }
                     if (getenv("QCC_DBG_CHAIN")) fprintf(stderr, "[CHNDBG] fn=%s av=%s s2=%d fo=%d\n", fn, av, s2, fo);
                 }
