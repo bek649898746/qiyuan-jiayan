@@ -9,6 +9,23 @@ int *_errno(void);
 #define __GNUC_MINOR__ 0 /* -D __GNUC__=5 但未给 __GNUC_MINOR__, #if 条件编译引用它 (fix 2026-08-15: __GNUC_MINOR__ undefined) */
 #define HAVE_FSMONITOR_DAEMON_BACKEND 1
 #define USE_WIN32_MMAP 1  /* Windows mmap: git-compat-util.h 定义 PROT_READ/PROT_WRITE/MAP_PRIVATE 并映射 mmap->git_mmap (fix 2026-08-15: PROT_READ undefined) */
+/* fix 2026-08-18: 构建仅 -D _WIN32=1, git-compat-util.h 检查 WIN32(无下划线) → compat/win32/path-utils.h 未 include
+   → has_dos_drive_prefix 默认 stub 返 0 → is_absolute_path("C:/...") 判相对 → 绝对路径被 prepend cwd
+   → git init 写 config.lock 路径重复 (smoke_init/C:\...\.git/config.lock) → 失败 SEGV。
+   在 prelude 预定义真实实现 (git-compat-util.h 的 #ifndef has_dos_drive_prefix 会跳过 stub)。 */
+#ifndef has_dos_drive_prefix
+#define has_dos_drive_prefix qcc_has_dos_drive_prefix
+static inline int qcc_has_dos_drive_prefix(const char *path)
+{
+    return ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':';
+}
+#define skip_dos_drive_prefix qcc_skip_dos_drive_prefix
+static inline int qcc_skip_dos_drive_prefix(char **path)
+{
+    if (qcc_has_dos_drive_prefix(*path)) { *path += 2; return 1; }
+    return 0;
+}
+#endif
 #define _LITTLE_ENDIAN 1234  /* bswap.h 字节序判定 (fix 2026-08-15: defined(A)||defined(B) 修复后 Cannot determine endianness) */
 #define __x86_64__ 1  /* bswap.h 选择 __GNUC__ x86_64 分支 → git_bswap32/64, 定义 ntohl/htonl/ntohll/htonll (fix 2026-08-15: ntohl undefined) */
 #define SUPPORTS_SIMPLE_IPC 1  /* simple-ipc.h 的 SIMPLE_IPC_QUIT 等 API 在 Windows 构建可用 (fix 2026-08-15: 未定义 → #ifdef 跳过 → SIMPLE_IPC_QUIT undefined symbol) */
@@ -569,7 +586,10 @@ typedef struct { DWORD dwLowDateTime; DWORD dwHighDateTime; } FILETIME;
 #define pthread_setcancelstate(a,b) 0
 
 /* POSIX 函数 stub (Windows 无 unistd.h) — static 使每 .o 本地, 无重复 (fix 2026-08-14: geteuid undefined symbol) */
-static int geteuid(void) { return 1; }
+/* fix 2026-08-18: geteuid 必须返 0 (与 msvcrt _stat 的 st_uid=0 匹配)。
+   原返 1 → is_path_owned_by_current_uid: st_uid(0)!=euid(1) → "dubious ownership"
+   → git 拒绝仓库 (config --local 报 not in repo, rev-parse 报 dubious ownership) */
+static int geteuid(void) { return 0; }
 static int getuid(void) { return 1; }
 int _access(const char *path, int mode);
 static int access(const char *path, int mode) { int rc = _access(path, mode); if (rc != 0) errno = 2; return rc; } /* qcc 的 extern errno 与 msvcrt _errno() 不同步; _access 失败时补 errno=ENOENT(2), 否则 access_or_die 报 "No error" (fix 2026-08-15) */
@@ -811,7 +831,11 @@ typedef int bool;
    系统头被 qcc 跳过 → struct stat 未注册 → blk() si<0 不登记局部变量 →
    `struct stat st;` 后 &st / st.st_mode 全部失效 → fstat(fileno(stdout), &st)
    编译成 fstat(fd, fd) → msvcrt _fstat(-1,-1) 崩 (git --version 0xC0000005 根因)。
-   fix 2026-08-17: 预置 MSVCRT _stat64 兼容布局 (实测 sizeof=48). */
+   fix 2026-08-17: 预置 MSVCRT _stat64 兼容布局 (实测 sizeof=48).
+   fix 2026-08-18: st_rdev@14(4) 后需 2 字节 padding → st_size@20(4) —
+   原无 padding 致 st_size@18(4), 与 msvcrt fstat 写入的 st_size@20 错位 →
+   读 st.st_size 恒 0 → git_config_set_multivar_in_file 视旧 config 为空 →
+   写坏 .git/config ("[\n" 开头) → bad config line 1 → git init 失败). */
 struct stat {
     int st_dev;
     unsigned short st_ino;
@@ -819,8 +843,8 @@ struct stat {
     short st_nlink;
     short st_uid;
     short st_gid;
-    int st_rdev;
-    int st_size;
+    char st_rdev[4]; /* MSVCRT: st_rdev@14 — qcc 的 int 4 对齐会 pad 到 16, 用 char[4] 保持 @14 (git 不用 st_rdev, fix 2026-08-18) */
+    int st_size;     /* 18 → 4 对齐 @20, 与 msvcrt fstat 写入一致 (fix 2026-08-18: 原无对齐 st_size@18 → 读 0 → config 写坏) */
     long long st_atime;
     long long st_mtime;
     long long st_ctime;
@@ -1081,7 +1105,7 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define FOPEN_MAX 20
 #define FILENAME_MAX 260
 #define putc(c, stream) fputc(c, stream) /* MSVCRT 只有 fputc, 无独立 putc 导出 (fix 2026-08-15: putc undefined) */
-#define getc(stream) 0  /* C runtime getc stub (fix 2026-08-15: getc undefined) */
+#define getc(stream) fgetc(stream) /* fix 2026-08-18: 原 stub 成常量 0 → config_file_fgetc 恒返回 0 → config 解析器读不到任何字符 → store_aux_event 永不触发 → store.parsed 空 → git_config_set 写入循环用垃圾偏移 → .git/config 写坏 ("[\n" 开头) → bad config line 1. fgetc 走 qcc 内建 (ReadFile 读 1 字节), 对齐 putc→fputc 映射 */
 #define _IOLBF 0x40 /* setvbuf 行缓冲模式 (fix 2026-08-15: _IOLBF undefined) */
 #define _IONBF 0x04  /* setvbuf 无缓冲模式 (fix 2026-08-15: _IONBF undefined) */
 #define _IOFBF 0x00  /* setvbuf 全缓冲模式 (fix 2026-08-15: _IOFBF undefined) */
@@ -1327,4 +1351,45 @@ static int qcc_snprintf(char *str, size_t maxsize, const char *fmt, ...) {
     int r = qcc_vsnprintf(str, maxsize, fmt, ap);
     va_end(ap);
     return r;
+}
+
+/* 真 git_mmap/git_munmap (fix 2026-08-18): jyld 导入表无 CreateFileMapping/MapViewOfFile/
+   GetFileSizeEx/_get_osfhandle → win32mmap.c 被排除出链接; 定义在 compat/prelude_mmap.c
+   (用 _lseek/_read + malloc 读文件进缓冲 — PROT_READ|MAP_PRIVATE 语义等价)。
+   原 stub 返 0/-1 → git init 死 "mmap: could not determine filesize"。
+   注意: 不能在此 header 定义 static 同名函数 — git-compat-util.h 的 extern 声明会把
+   static 升级为 external → 每 .o 一份 → duplicate symbol (fix 2026-08-18)。 */
+
+/* rename 覆盖语义 (fix 2026-08-18): msvcrt rename 不覆盖已存在目标 →
+   config.lock→config 二次提交失败 "could not write config file: File exists"。
+   包装在 compat/prelude_mmap.c (先 _unlink 目标再调真 msvcrt rename)。 */
+#define rename qcc_rename_impl
+int qcc_rename_impl(const char *oldp, const char *newp);
+
+/* 非变参 open/git_open_with_retry (fix 2026-08-18): qcc 变参 va_arg 读 home 区为 0
+   (编译器变参 bug) → O_CREAT mode 丢失 → 新文件变 ReadOnly → config.lock 二次提交
+   Permission denied。定义在 compat/prelude_mmap.c (不 include git-compat-util.h,
+   #define open 宏不激活); compat/open.o 已排除链接。mode 走命名参数 r8。 */
+int open(const char *path, int flags, int mode);
+int git_open_with_retry(const char *path, int flags, int mode);
+
+/* 伪 CSPRNG (fix 2026-08-18): jyld 无 advapi32 RtlGenRandom 导入; csprng_bytes 的 #else
+   分支 open("/dev/urandom") 在 Windows 失败 → mkstemps "unable to get random bytes"。
+   定义 HAVE_RTLGENRANDOM 让 wrapper.c 走 RtlGenRandom 分支, 宏改名到 qcc_rtlgen
+   (static inline, rand 填充 — 对临时文件名唯一性足够)。 */
+#define HAVE_RTLGENRANDOM 1
+#define RtlGenRandom qcc_rtlgen
+int rand(void);
+void srand(unsigned int seed);
+static inline int qcc_rtlgen(void *buf, size_t len)
+{
+    unsigned char *p = (unsigned char*)buf;
+    static int seeded = 0;
+    if (!seeded) {
+        srand(0x828 + (unsigned int)(long long)&seeded);
+        seeded = 1;
+    }
+    for (size_t i = 0; i < len; i++)
+        p[i] = (unsigned char)(rand() & 0xFF);
+    return 1;
 }

@@ -12,7 +12,8 @@ objdir = os.path.join(GIT, '_objs_jy')
 
 # 与 C 版 _git_full_link.py 相同的排除集 (有独立 main 的测试工具/平台变体)
 EXCLUDE = {'_x2.o', 'compat_regcomp_enhanced.o', 'compat_stub_procinfo.o',
-           'compat_mmap.o',
+           'compat_mmap.o', 'compat_win32mmap.o',  # win32mmap.c 用 jyld 无导入的 mmap API → prelude 提供真 git_mmap (fix 2026-08-18)
+           'compat_open.o',  # git_open_with_retry 变参 va_arg 丢 mode → prelude_mmap.c 非变参版替代 (fix 2026-08-18)
            'daemon.o', 'http-backend.o', 'http-fetch.o', 'http-push.o',
            'imap-send.o', 'remote-curl.o', 'scalar.o', 'shell.o', 'sh-i18n--envsubst.o'}
 
