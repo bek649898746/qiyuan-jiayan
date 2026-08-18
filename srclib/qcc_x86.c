@@ -61,7 +61,7 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
-static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; int blk_end; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_end (fix 2026-08-19): 声明所在块的 var 上界 (blk() 结束时 = 该块的 vcnt) — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
+static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; int blk_start, blk_end; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
 static char var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -91,6 +91,7 @@ static int cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a do
 static int cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
 static int cg_mem_chain_si = -1; /* mem_addr: 嵌套链 (a->b->c) 最终字段所在结构体索引 — case-15 指针字段作数组基判定用 (fix 2026-08-18: iter->map->table[i] 嵌套链原只在简单箭头分支解引用, 嵌套链 no_deref 返回字段地址 → 索引进结构体内部, hashmap_iter_next 崩) */
 static int cg_blk_end = 0;  /* codegen: upper var-index bound of the CURRENT block (0 before first function). Later sibling-block locals are excluded so `char nm[9]` in an early loop body isn't shadowed by a later `const char *nm` (fix 2026-08-16 write_coff_obj memset dest=8) */
+static int cg_blk_start = 0; /* codegen: lower var-index bound of the CURRENT block (fix 2026-08-19: 嵌套块变量只在块内可见 — 见 var_codegen_visible) */
 static int cg_fdepth = 0;   /* multi-D nested-array chain depth (fix 2026-08-05) */
 static int cg_fdepth_max = 0; /* innermost array's dimension count (deref only at outermost) */
 static int cg_frows[4];     /* per-dim row sizes, set by the innermost array var */
@@ -1551,6 +1552,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 
 /* ?????? ??????: ???????????????????? */
 #define ASZ 262144
+static int blk_vs[ASZ]; /* fix 2026-08-19: 块节点 (nt==5) 的 var 起点 = blk() 入口 vcnt — codegen case-5 设置 cg_blk_start 用 (嵌套块作用域判定) */
 #define MAX_LABELS 65536
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
@@ -1785,11 +1787,11 @@ static int var_codegen_visible(int i) {
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
                                               var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
     if (cg_ginit_ctx) return 0; /* fix 2026-08-17: ginit 只初始化静态; 跨函数非静态同名变量 (char *suffix 遮蔽 static char *suffix[]) 在 ginit 子程序发射点 fvb[gfn]/cg_blk_end 未正确设置时全可见 → 数组元素赋值错编成指针解引用+字节存储 → 崩 */
-    /* fix 2026-08-19: 嵌套块同名变量只在块内可见 — blk_end >= cg_blk_end: 当前 codegen 块 (上界
-       cg_blk_end) 不得越过该变量的声明块上界 blk_end. 否则 `struct strbuf gitdir` 之后嵌套块
-       `const char *gitdir = ...` 的独立条目会让外层 &gitdir 解析到 char* 条目 (p_esz=1) → 
-       case 11 跳过 off-=sizeof(strbuf) → 地址错位 → strbuf 崩. 参数/顶层块变量 blk_end 覆盖全函数. */
-    return (i >= fvb[gfn] && i < cg_blk_end && (vars[i].is_param || vars[i].blk_end >= cg_blk_end)); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16) */
+    /* fix 2026-08-19: 嵌套块同名变量只在块内可见 — 当前 codegen 块 [cg_blk_start, cg_blk_end)
+       必须被该变量的声明块 [blk_start, blk_end) 包含. 否则 `struct strbuf gitdir` 之后嵌套块
+       `const char *gitdir = ...` 的独立条目会让外层 &gitdir 解析到 char* 条目 (p_esz=1) →
+       case 11 跳过 off-=sizeof(strbuf) → 地址错位 → strbuf 崩. 参数 (is_param) 全函数可见. */
+    return (i >= fvb[gfn] && i < cg_blk_end && (vars[i].is_param || vars[i].blk_end == -1 || (vars[i].blk_start <= cg_blk_start && vars[i].blk_end >= cg_blk_end))); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16). blk_end==-1: 复用条目标记函数级可见 (fix 2026-08-19) */
 }
 static int var_is_dbl(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
@@ -1815,7 +1817,7 @@ static int var_pdbl(const char *n) {
 }
 /* 8-byte frame slot for a local double */
 static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05) */
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_ll = 1; return vars[i].rsp_off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_ll = 1; vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
@@ -1828,7 +1830,7 @@ static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05
     return vars[vcnt++].rsp_off;
 }
 static int var_double(const char *n) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_dbl = 1; return vars[i].rsp_off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_dbl = 1; vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
@@ -1846,7 +1848,7 @@ static int var_offset(const char *n) {
        into a LEA of its own address). Match only non-array entries. During parse the
        search floor is parse_base (this function's var start) so an unrelated function's
        same-named param/local can't be silently reused either. */
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) return vars[i].rsp_off;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 (blk_end=-1) — 同一槽被多块声明 (qcc_vsnprintf 两个块各 int r) 时 blk 作用域判定不得把条目限死在首个声明块 */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 4; rsp_used = (rsp_used + 15) & ~15;
@@ -1857,7 +1859,6 @@ static int var_offset(const char *n) {
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
-static char cur_fn_name[64]; /* fwd for debug (defined later) */
 static int var_offset_ptr(const char *n, int pesz) {
     /* 8-byte slot so full 64-bit pointer fits.
        REUSE only when the existing same-name var is the SAME pointer type (same element
@@ -1868,7 +1869,7 @@ static int var_offset_ptr(const char *n, int pesz) {
        ("gitdir",1) 命中 struct 条目 p_esz:0→1 → codegen case 11 &gitdir 判为指针跳过
        off-=sizeof(strbuf) → gitdir/report 地址间距 56/8 错位 → strbuf_add memcpy(NULL) 崩) */
     int off;
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && vars[i].p_esz == pesz && vars[i].st_idx < 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; return off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && vars[i].p_esz == pesz && vars[i].st_idx < 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; vars[i].blk_end = -1; return off; } /* fix 2026-08-19: 类型兼容才复用 (防污染外层 struct 条目 p_esz); 复用条目标记函数级可见 */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
@@ -2049,6 +2050,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
     }
     return vars[vcnt++].rsp_off;
 }
+static char cur_fn_name[64]; /* fwd for debug (defined later) */
 static int var_lookup(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06) */
@@ -3982,7 +3984,8 @@ static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数�
 static int blk(void) {
     int b = Nd(5); tk++;
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
-    int blk_vstart = vcnt; /* fix 2026-08-19: 本块直接声明的变量起点 — 结束时给未标记 blk_end 的变量 (本块直接声明) 打上本块上界, 嵌套块的变量已由嵌套 blk() 标记, 不会被覆盖 */
+    int blk_vstart = vcnt; /* fix 2026-08-19: 本块直接声明的变量起点 — 结束时给未标记 blk_start/blk_end 的变量 (本块直接声明) 打上本块范围, 嵌套块的变量已由嵌套 blk() 标记, 不会被覆盖 */
+    blk_vs[b_root] = blk_vstart; /* codegen 作用域判定: 本块 var 下界 */
     int cl_prev = cl_blk; cl_blk = b; /* compound literal 初始化挂当前块 (fix 2026-08-11) */
     int b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     while (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
@@ -4874,7 +4877,7 @@ static int blk(void) {
     }
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
-    for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) vars[bvi].blk_end = vcnt; /* fix 2026-08-19: 本块直接声明的变量 blk_end = 本块 var 上界 (嵌套块变量已标记, 保持其块内作用域) */
+    for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) { vars[bvi].blk_start = blk_vstart; vars[bvi].blk_end = vcnt; } /* fix 2026-08-19: 本块直接声明的变量 blk 范围 = 本块 [start,end) (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
     return b_root;
 }
@@ -8475,11 +8478,13 @@ static void cg(int n) {
         } break;
         case 5: {
             int saved_blk_end = cg_blk_end;
-            if (nv[n] > 0) cg_blk_end = nv[n] - 1; /* compound-statement block: nv[] = blk end var bound set by blk() (fix 2026-08-16) */
+            int saved_blk_start = cg_blk_start;
+            if (nv[n] > 0) { cg_blk_end = nv[n] - 1; cg_blk_start = blk_vs[n]; } /* compound-statement block: nv[] = blk end var bound set by blk() (fix 2026-08-16); blk_vs[] = blk start bound (fix 2026-08-19: 嵌套块变量只在其块内可见) */
             for (int i = 0; i < 512; i++) { int c = child_i(n, i); if (c > 0) cg(c); } /* fix 2026-08-18: 256→512 扩展子槽 — 大型函数体 > 256 语句不再截断 */
             for (int ch = nchain[n]; ch > 0; ch = nchain[ch]) /* fix 2026-08-18: 溢出链块 (512+ 语句, git 大函数体) */
                 for (int i = 0; i < 512; i++) { int c = child_i(ch, i); if (c > 0) cg(c); }
             cg_blk_end = saved_blk_end;
+            cg_blk_start = saved_blk_start;
         } break;
         case 6: { /* return �?epilogue */
             if (cur_fn_sret) {
@@ -9128,7 +9133,6 @@ static void cg(int n) {
             } else {
             char *vname = (char*)(nn + n0[n]);
             int off = var_lookup(vname);
-            if (getenv("QCC_DBG_VARS")) { int _i2 = -1; for (int _j = vs_n()-1; _j >= parse_base; _j--) if (!strcmp(vars[_j].name, vname) && var_codegen_visible(_j)) { _i2 = _j; break; } fprintf(stderr, "[AMP2] fn=%s &'%s' off=%d resolved_idx=%d blk_end=%d cg_blk_end=%d is_param=%d\n", cur_fn_name, vname, off, _i2, _i2>=0?vars[_i2].blk_end:-1, cg_blk_end, _i2>=0?vars[_i2].is_param:-1); }
             if (off >= 0) {
                 if (var_isstatic(vname)) { lea_rax_rip(coff_static_disp(off, 1) - 1); } /* static: &var = .data addr (lea 7B) */
                 else {
@@ -9908,6 +9912,7 @@ void gen_code(void) {
         int fv0 = fvb[gfn], fv1 = fve[gfn];
         vs_end = fv1; /* scope var lookups to this function during codegen */
         cg_blk_end = fv1; /* default block bound = whole function; nested case-5 blocks tighten it (fix 2026-08-16) */
+        cg_blk_start = fv1; /* fix 2026-08-19: 默认块下界 = 函数末尾 (宽松, 顶层块变量可见; case-5 进入块时收紧) */
         int bin_no_params = (bin_mode && i == 0) || is_isr; /* -bin 入口函数或 ISR: 跳过参数复制 */
         for (int vi = fv0; vi < fv1; vi++) {
             if (vars[vi].is_param && !bin_no_params) {
