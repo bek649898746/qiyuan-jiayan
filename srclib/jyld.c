@@ -1477,5 +1477,15 @@ int main(int argc, char **argv) {
     fclose(f);
     printf("jyld: %s linked (%d objs, text=%d bytes, entry=0x%X)\n", outf, obj_n,
            out_len[OUT_TEXT] + out_len[OUT_STR] + out_len[OUT_DBL], entry_rva);
+    if (getenv("JYLD_SYMS")) {
+        for (int g = 0; g < gsym_n; g++) {
+            if (1) {
+                long long va = 0;
+                if (gsyms[g].defined && gsyms[g].obj >= 0 && gsyms[g].sym >= 0)
+                    va = objs[gsyms[g].obj].syms[gsyms[g].sym].resolved_va;
+                if (strstr(gsyms[g].name, "xstrfmt") || strstr(gsyms[g].name, "xstrvfmt") || strstr(gsyms[g].name, "strbuf_vaddf")) printf("[SYM] %-44s va=0x%llx obj=%d\n", gsyms[g].name, va, gsyms[g].obj);
+            }
+        }
+    }
     return 0;
 }
