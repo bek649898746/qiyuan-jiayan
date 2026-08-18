@@ -61,7 +61,7 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
-static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏) */
+static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_uns, is_ll; int frows[4]; int blk_end; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_end (fix 2026-08-19): 声明所在块的 var 上界 (blk() 结束时 = 该块的 vcnt) — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
 static char var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -936,11 +936,14 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
     if (si >= 0 && stypes[si].algn > 1 && stypes[si].sz % stypes[si].algn)
         stypes[si].sz += stypes[si].algn - (stypes[si].sz % stypes[si].algn);
 }
+static void st_pend_backfill(int new_si); /* fwd: 前向声明 struct Tag *field 的类型回填 (fix 2026-08-18) */
 static int st_add(const char *n) {
     if (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
-    return st_n++;
+    int ns = st_n++;
+    st_pend_backfill(ns); /* 新结构体定义 (或首次引用即创建) → 回填引用它的 pending 指针字段 (fix 2026-08-18) */
+    return ns;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct '%s' 字段超过 256 上限\n", stypes[si].name); exit(1); }
@@ -1014,6 +1017,20 @@ static void st_field_bit_anon(int si, int bitw) {
 static void st_field_ty(int si, const char *fn, int ty) {
     for (int i = 0; i < stypes[si].fn; i++)
         if (!strcmp(stypes[si].fnames[i], fn)) { stypes[si].ftypes[i] = ty; return; }
+}
+/* 前向声明 struct Tag *field 的标签回填 (fix 2026-08-18):
+   ref_iterator 的 vtable 字段 — struct ref_iterator_vtable 定义在后 (git refs-internal.h 320 vs 478) →
+   字段解析时 inner_si=-1 走"未知标签指针字段"分支 (无 st_field_ty) → st_field_ty_idx=-1 →
+   mem_addr 链 iter->vtable->advance 断 → 函数指针调用目标塌缩成 iter → call *iter → git init SEGV.
+   Tag 结构体定义时 (st_add / 定义体完成) 回填 ftypes 索引 (字段大小/偏移早已按 8 字节指针就位). */
+static char pend_ftag[512][64]; static int pend_fsi[512]; static char pend_ffn[512][64]; static int pend_n;
+static void st_pend_add(const char *tag, int si, const char *fn) {
+    if (pend_n >= 512) { fprintf(stderr, "[ERR] pending 结构体标签表满 512\n"); exit(1); }
+    strcpy(pend_ftag[pend_n], tag); pend_fsi[pend_n] = si; strcpy(pend_ffn[pend_n], fn); pend_n++;
+}
+static void st_pend_backfill(int new_si) {
+    for (int i = 0; i < pend_n; i++)
+        if (!strcmp(pend_ftag[i], stypes[new_si].name)) st_field_ty(pend_fsi[i], pend_ffn[i], new_si);
 }
 static int st_field_ty_idx(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return -1;
@@ -1768,7 +1785,11 @@ static int var_codegen_visible(int i) {
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
                                               var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
     if (cg_ginit_ctx) return 0; /* fix 2026-08-17: ginit 只初始化静态; 跨函数非静态同名变量 (char *suffix 遮蔽 static char *suffix[]) 在 ginit 子程序发射点 fvb[gfn]/cg_blk_end 未正确设置时全可见 → 数组元素赋值错编成指针解引用+字节存储 → 崩 */
-    return (i >= fvb[gfn] && i < cg_blk_end); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16) */
+    /* fix 2026-08-19: 嵌套块同名变量只在块内可见 — blk_end >= cg_blk_end: 当前 codegen 块 (上界
+       cg_blk_end) 不得越过该变量的声明块上界 blk_end. 否则 `struct strbuf gitdir` 之后嵌套块
+       `const char *gitdir = ...` 的独立条目会让外层 &gitdir 解析到 char* 条目 (p_esz=1) → 
+       case 11 跳过 off-=sizeof(strbuf) → 地址错位 → strbuf 崩. 参数/顶层块变量 blk_end 覆盖全函数. */
+    return (i >= fvb[gfn] && i < cg_blk_end && (vars[i].is_param || vars[i].blk_end >= cg_blk_end)); /* codegen: this function's locals/params, and only up to the current block end — later sibling-block locals must not shadow earlier blocks (fix 2026-08-16) */
 }
 static int var_is_dbl(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_dbl;
@@ -1836,10 +1857,18 @@ static int var_offset(const char *n) {
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
+static char cur_fn_name[64]; /* fwd for debug (defined later) */
 static int var_offset_ptr(const char *n, int pesz) {
-    /* 8-byte slot so full 64-bit pointer fits */
+    /* 8-byte slot so full 64-bit pointer fits.
+       REUSE only when the existing same-name var is the SAME pointer type (same element
+       size, and NOT a struct/struct* entry): a nested-block `const char *gitdir` must NOT
+       reuse/repurpose an outer `struct strbuf gitdir` — 原无条件复用把外层 struct 变量的
+       p_esz 改成 1 (fix 2026-08-19: setup.c setup_git_directory_gently 里 `struct strbuf
+       gitdir = STRBUF_INIT;` 之后嵌套块 `const char *gitdir = getenv(...)` → var_offset_ptr
+       ("gitdir",1) 命中 struct 条目 p_esz:0→1 → codegen case 11 &gitdir 判为指针跳过
+       off-=sizeof(strbuf) → gitdir/report 地址间距 56/8 错位 → strbuf_add memcpy(NULL) 崩) */
     int off;
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; return off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && vars[i].p_esz == pesz && vars[i].st_idx < 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; return off; }
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
@@ -1926,10 +1955,11 @@ static void call_iat(int slot) {
     int at = cp; /* instruction start (FF 15 + disp32 = 6 bytes) */
     b(0xFF); b(0x15);
     if (coff_mode) {
-        static const char *impn[24] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
+        static const char *impn[25] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
             "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA",
             "__imp_pow", "__imp_atan2", "__imp_fmod", "__imp_remainder", "__imp_sqrt", "__imp_cbrt", "__imp_cos", "__imp_sin",
-            "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor" };
+            "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor",
+            "__imp__write" };
         b4(0);
         coff_crel(at + 2, 0x0004, coff_func_name_sym(impn[slot]), 0);
         return;
@@ -2019,7 +2049,6 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
     }
     return vars[vcnt++].rsp_off;
 }
-static char cur_fn_name[64]; /* fwd for debug (defined later) */
 static int var_lookup(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
         if (vars[i].rsp_off < 0) { /* extern 标记: 优先找同文件定义 (fix 2026-08-06) */
@@ -2296,7 +2325,7 @@ static int mem_addr(int n, int *fsz_out, int *si_out) {
     if (nt[n] == 1) { /* root identifier */
         char *vn = (char*)(nn + n);
         int off = var_lookup(vn);
-        if (off < 0) return -1;
+        if (off < 0 && !(coff_mode && var_isstatic(vn))) return -1; /* fix 2026-08-18: extern 全局 (off<0 负槽) 允许 — coff 符号重定位 (var_isstatic=1); 原拒绝对外引用 → 嵌套链 the_repository->hash_algo->null_oid 根节点失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩 (简单箭头 case-15 早已允许, mem_addr 缺) */
         *fsz_out = 4;
         *si_out = var_stidx(vn);
         if (var_isstatic(vn)) lea_rax_rip(coff_static_disp(off, 1) - 1);
@@ -2313,7 +2342,12 @@ static int mem_addr(int n, int *fsz_out, int *si_out) {
         *si_out = si;
         return 0;
     }
-    if (nt[n] == 15 || nt[n] == 13) {
+    if (nt[n] == 12 || nt[n] == 13) { /* *ptr 作链基 (e.g. (*e)->next): 委托 + 一次解引用取操作数值 — 外层 is_arrow 再解引用得到 *e (fix 2026-08-18: 原只委托不解引用 → 少一层 → &(*e)->next 编成 &e 的值 → hashmap 链遍历死循环 → git init 读取 config 挂起) */
+        if (mem_addr(n0[n], fsz_out, si_out) < 0) return -1;
+        mov_reg_mreg64(0, 0); /* rax = [rax] = 操作数值 (e 的值); 外层 is_arrow 再 [rax] = *e */
+        return 0;
+    }
+    if (nt[n] == 15) {
         char *fn = (char*)(nn + n);
         int is_arrow = (nt[n] == 15 && nv[n] == 1);
         int sub_si = -1, sub_fsz = 4;
@@ -3948,6 +3982,7 @@ static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数�
 static int blk(void) {
     int b = Nd(5); tk++;
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
+    int blk_vstart = vcnt; /* fix 2026-08-19: 本块直接声明的变量起点 — 结束时给未标记 blk_end 的变量 (本块直接声明) 打上本块上界, 嵌套块的变量已由嵌套 blk() 标记, 不会被覆盖 */
     int cl_prev = cl_blk; cl_blk = b; /* compound literal 初始化挂当前块 (fix 2026-08-11) */
     int b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     while (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
@@ -4558,13 +4593,18 @@ static int blk(void) {
                 if (dims == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                     int save = tk;
                     tk += 2; /* skip '=' '{' */
-                    int n = 1, depth = 0;
+                    int n = 1, depth = 0, last_comma = 0;
+                    if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' dims=%d before-infer, tk=%d tt[tk]=%d tt[tk+1]=%d\n", vn, dims, tk, tt[tk], tt[tk + 1]);
                     while (tk < TS && !(tt[tk] == UK && depth == 0)) {
                         if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) depth++;
                         else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) depth--;
-                        else if (tt[tk] == CK && depth == 0) n++;
+                        else if (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
+                        else if (depth == 0) last_comma = 0; /* fix 2026-08-19: C99 尾逗号 — 局部 static `char *arr[] = {"A","B",}` 原算成 3 元素 → sizeof=24 → ARRAY_SIZE=3 → is_special_ref special_refs[2] 越界 (git init strcmp 崩); 与全局路径 last_comma 对齐 */
+                        if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR]   tok[%d]=%d '%s' depth=%d n=%d\n", tk, tt[tk], tn[tk], depth, n);
                         tk++;
                     }
+                    if (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
+                    if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' inferred n=%d\n", vn, n);
                     cnt = n;
                     adimv[0] = n; /* fix 2026-08-07: 未定长数组推断的个数必须进 adimv — 否则 brace_arr_init 的 gi_idx 进位读 dims[0]=0 → 所有初始化值写进元素 0 (int a[]={1,2,3} 得 3 0 0) */
                     tk = save; /* rewind to '=' — normal init path below */
@@ -4834,6 +4874,7 @@ static int blk(void) {
     }
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
+    for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) vars[bvi].blk_end = vcnt; /* fix 2026-08-19: 本块直接声明的变量 blk_end = 本块 var 上界 (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
     return b_root;
 }
@@ -5306,6 +5347,7 @@ static int parse(const char *s) {
                                     char fn[64]; strcpy(fn, tn[tk]); tk++;
                                     if (is_union) st_union_field(si, fn, 8);
                                     else { st_field_sz_r(si, fn, 8, 8); int fidx = stypes[si].fn - 1; stypes[si].fptrs[fidx] = 1; stypes[si].fpels[fidx] = npel_st > 1 ? 8 : 4; stypes[si].fels[fidx] = 8; }
+                                    if (npel_st == 1 && !sub_is_union) st_pend_add(iname, si, fn); /* 单指针 → pointee 是 struct; Tag 定义后回填类型索引 (fix 2026-08-18) */
                                     fsz = 8; frow = 8;
                                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; if (tt[tk] == RB) tk++; }
                                 }
@@ -5379,6 +5421,7 @@ static int parse(const char *s) {
                     }
                     if (tt[tk] == UK) tk++; /* } */
                     st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
+                    st_pend_backfill(si); /* 定义体完成 → 回填引用本结构的 pending 指针字段类型 (fix 2026-08-18) */
                     /* instance variable(s): struct Item {...} items[4]; / *ptr */
                     if (tt[tk] == DK) { while (tt[tk] == DK) tk++; if (tt[tk] == VR) { var_static(tn[tk], 4); vars[vcnt - 1].st_idx = si; if (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } } /* fix 2026-08-15: **entries — 多级指针实例只吃一个 * → cmd_mktree 被吞; = NULL 初始化器 */
                     else if (tt[tk] == VR) {
@@ -5400,8 +5443,8 @@ static int parse(const char *s) {
                        无 body 变量声明. decl 分支不认 ST → 变量未注册 → 外部 UND
                        (repository.c the_repository, add-patch.c colored, alloc.c `struct commit commit;`).
                        不同名的普通 `struct S8 g8;` 走 global-decl (原正确处理). */
-                    if (!st_static && (tt[tk] == DK || (tt[tk] == VR && tt[tk + 1] != OK && tt[tk + 1] != LB && (tt[tk + 1] == CK || (tt[tk + 1] == SK && !strcmp(tn[tk], tn[tk - 2])))))) {
-                        char gtag[64]; strcpy(gtag, tn[tk - 2]); /* tag name (逗号声明复用) */
+                    if (!st_static && (tt[tk] == DK || (tt[tk] == VR && tt[tk + 1] != OK && tt[tk + 1] != LB && (tt[tk + 1] == CK || (tt[tk + 1] == SK && !strcmp(tn[tk], tn[tk - 1])))))) {
+                        char gtag[64]; strcpy(gtag, tn[tk - 1]); /* tag name (fix 2026-08-18: 原 tn[tk-2] 取到 'struct' 关键字 → st_find=-1 → 指针全局变量 st_idx 未注册 → mem_addr 嵌套链 (the_repository->hash_algo->null_oid) 解析失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩; tk 已越过 tag 名, 正确位置是 tk-1) */
                         int np = 0; while (tt[tk] == DK) { np++; tk++; }
                         if (tt[tk] == VR && tt[tk + 1] != OK) {
                             char vn[64]; strcpy(vn, tn[tk]); tk++;
@@ -5505,7 +5548,7 @@ static int parse(const char *s) {
                 tk++; /* struct */
                 if (tt[tk] == VR) {
                     char tag[64]; strcpy(tag, tn[tk]); tk++;
-                    int si = st_add(tag); e_stidx = si;
+                    int si = st_find(tag); if (si < 0) si = st_add(tag); e_stidx = si; /* fix 2026-08-18: 原无条件 st_add → extern struct X *p 每次新建空 struct 副本 → e_stidx 指空壳 → extern 指针变量 st_idx=空壳 → mem_addr 嵌套链 (the_repository->hash_algo->null_oid) st_off(空壳) 失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩; 已定义的类型必须 st_find 命中真实条目 */
                     if (tt[tk] == FK) { tk++; /* { */
                         while (tk < TS && tt[tk] != UK) {
                             int tk0 = tk; int fsz = 4, frow = 1;
@@ -6149,6 +6192,7 @@ static int parse(const char *s) {
                         }
                         if (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
                         gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n; /* fix 2026-08-17: gdims[0] 未设 → brace_arr_init 的 gi_idx 进位 dims[0]=0 永远重置 → 所有元素写 arr[0] (git trace2 tr2_tgt_builtins 全写槽0) */
+                        if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d\n", gname, n);
                         tk = save; /* rewind to '=' */
                     }
                     if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
@@ -6591,14 +6635,46 @@ static void emit_print(const char *fname, int nargs) {
        IMPORTANT: the fmt must NOT be parked in the stack shadow space ([rsp+8..32]
        at the call) �?kernel32 owns that region and clobbers it. rbx is callee-saved,
        preserved by GetStdHandle, and restored by the epilogue, so it's a safe slot. */
-    if (is_fprintf) { asm_emit("    取64 r0, [r13+8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x45); b(8); } /* mov rax, [r13+8] = fmt */
-    else mov_rr64(0, 1); /* rax = rcx = fmt (arg0) */
-    mov_rr64(3, 0);    /* rbx = fmt (callee-saved �?survives GetStdHandle) */
-    mov_r_imm(1, -11); /* ecx = -11 = STD_OUTPUT_HANDLE */
-    sub_rsp_imm(32);   /* shadow space for GetStdHandle — fix 2026-08-03: was missing (ABI requires 32B) */
-    call_iat(0);       /* eax = handle */
-    add_rsp_imm(32);
-    mov_rr64(10, 0);   /* r10 = handle */
+    if (is_fprintf) {
+        asm_emit("    取64 r0, [r13+8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x45); b(8); /* mov rax, [r13+8] = fmt (arg1) */
+        mov_rr64(3, 0);    /* rbx = fmt (callee-saved, survives calls) */
+        /* fix 2026-08-19: fprintf 必须写 FILE* 而非 stdout — git create_symref_locked
+           fprintf(get_lock_file_fp(&lock->lk), "ref: %s\n", target) 曾全部打进 stdout
+           → HEAD.lock 空/HEAD 空/残留 .lock。分派 (r10=目标, sc+248=is_fd 标志):
+           fp==0 → stdout (self-host 的 stderr 值被置 0, 保持旧行为);
+           fp<0x10000 → qcc fopen 的 HANDLE → WriteFile(fp,...);
+           fp≥0x10000 → msvcrt fdopen 的 CRT FILE* → 取 _iobuf._file(fd)@+28 → _write(fd,...). */
+        int lfp_nz = new_label(), lfp_h = new_label(), lfp_done = new_label();
+        mov_r_imm(0, 0); mov_mbrp_reg(scratch_base - cur_frame_sz + 248, 0); /* is_fd = 0 — 必须先存 (mov_r_imm 会清 rax) */
+        asm_emit("    取64 r0, [r13+16]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x45); b(16); /* mov rax, [r13+16] = fp (arg0; [r13]=首变参, [r13+8]=fmt) */
+        test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, lfp_nz, 3);
+        /* fp == 0 → stdout */
+        mov_r_imm(1, -11); /* ecx = -11 = STD_OUTPUT_HANDLE */
+        sub_rsp_imm(32);
+        call_iat(0);       /* GetStdHandle */
+        add_rsp_imm(32);
+        mov_rr64(10, 0);   /* r10 = handle */
+        jmp_rel(-1); patch_label(cp - 4, lfp_done, 2);
+        set_label(lfp_nz);
+        asm_emit("    比较64 r0, 0x10000\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x3D); b4(0x10000); /* cmp rax, 0x10000 */
+        b(0x0F); b(0x82); b4(0); patch_label(cp - 4, lfp_h, 8); /* jb → HANDLE */
+        /* CRT FILE* (msvcrt fdopen): _iobuf._file (fd) @ +28 (实测 msvcrt _iob: off=28 val=fd; UCRT 才是 24 — git 链 msvcrt; fix 2026-08-19) */
+        b(0x8B); b(0x40); b(28); /* mov eax, [rax+28] */
+        mov_rr64(10, 0);   /* r10 = fd */
+        mov_r_imm(0, 1); mov_mbrp_reg(scratch_base - cur_frame_sz + 248, 0); /* is_fd = 1 */
+        jmp_rel(-1); patch_label(cp - 4, lfp_done, 2);
+        set_label(lfp_h);
+        mov_rr64(10, 0);   /* r10 = fp (qcc fopen HANDLE) */
+        set_label(lfp_done);
+    } else {
+        mov_rr64(0, 1); /* rax = rcx = fmt (arg0) */
+        mov_rr64(3, 0);    /* rbx = fmt (callee-saved — survives GetStdHandle) */
+        mov_r_imm(1, -11); /* ecx = -11 = STD_OUTPUT_HANDLE */
+        sub_rsp_imm(32);   /* shadow space for GetStdHandle — fix 2026-08-03: was missing (ABI requires 32B) */
+        call_iat(0);       /* eax = handle */
+        add_rsp_imm(32);
+        mov_rr64(10, 0);   /* r10 = handle */
+    }
     mov_rr64(11, 3);   /* r11 = fmt */
     lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf — 缓冲下移到状态区之下 [rbp-4368] (fix 2026-08-06: 原与状态槽/&written 重叠) */
     mov_rr64(14, 12);  /* r14 = buf start */
@@ -6638,12 +6714,34 @@ static void emit_print(const char *fname, int nargs) {
         set_label(lbin_done);
     } else {
     sub_rsp_imm(32);
+    int lwdone2 = -1;
+    if (is_fprintf) {
+        /* is_fd(sc+248)==1 -> msvcrt _write(fd, buf, len); else WriteFile(handle, buf, len, &written, NULL) (fix 2026-08-19) */
+        int lwf = new_label();
+        lwdone2 = new_label();
+        mov_reg_mbrp(0, scratch_base - cur_frame_sz + 248); /* eax = is_fd */
+        test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lwf, 1);
+        sub_rsp_imm(32); /* shadow space for _write */
+        mov_rr64(1, 10); /* rcx = fd */
+        mov_rr64(2, 14); /* rdx = buf */
+        /* r8 = len already */
+        if (coff_mode) {
+            b(0xE8); b4(0); /* call rel32 - jyld resolves _write -> msvcrt import */
+            coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0);
+        } else {
+            call_iat(24); /* _write IAT slot (msvcrt) */
+        }
+        add_rsp_imm(32);
+        jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
+        set_label(lwf);
+    }
     mov_rr64(1, 10); /* rcx = handle */
     mov_rr64(2, 14); /* rdx = buf */
     lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz); /* r9 = &written */
-    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (8-byte NULL overlapped �?arg5 at [rsp+32] per real ABI) */
+    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 (8-byte NULL overlapped - arg5 at [rsp+32] per real ABI) */
     call_iat(1);       /* WriteFile */
     add_rsp_imm(32);
+    if (is_fprintf) set_label(lwdone2);
     }
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
@@ -8202,7 +8300,31 @@ static void cg(int n) {
                     mov_rr(0, 8);                 /* return old counter */
                     set_label(le);
                 } else { mov_rr(0, 1); } /* 单文件自举: return same ptr (旧行为) */
-            } else if (!strcmp(fname, "free") || !strcmp(fname, "fclose") || !strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
+            } else if (!strcmp(fname, "free")) {
+                mov_r_imm(0, 0);
+            } else if (!strcmp(fname, "fclose")) {
+                /* fix 2026-08-19: msvcrt fdopen 的 CRT FILE* → 提取 fd@+28 → msvcrt _close(fd)。
+                   原 fclose 恒 no-op → close_tempfile_gently 不关锁文件 fd →
+                   qcc_rename_impl 的 _unlink(HEAD.lock) 因文件占用失败 → HEAD.lock 残留。
+                   coff 模式: fp≥0x10000 (CRT FILE*) 走 _close; fp<0x10000 (qcc fopen HANDLE)
+                   或 fp==0 → no-op (无 CloseHandle 导入, 沿用旧行为; self-host 只走此路)。 */
+                if (coff_mode) {
+                    int lfz = new_label();
+                    mov_rr64(10, 1); /* r10 = fp (arg0) */
+                    test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lfz, 1);
+                    asm_emit("    比较64 r10, 0x10000\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x81); b(0xFA); b4(0x10000); /* cmp r10, 0x10000 */
+                    b(0x0F); b(0x82); b4(0); patch_label(cp - 4, lfz, 1); /* jb lfz (HANDLE no-op) */
+                    b(0x41); b(0x8B); b(0x42); b(28); /* mov eax, [r10+28] = CRT _file (fd) */
+                    mov_rr64(1, 0); /* rcx = fd */
+                    sub_rsp_imm(32);
+                    b(0xE8); b4(0); coff_crel(cp - 4, 0x0004, coff_func_name_sym("_close"), 0);
+                    add_rsp_imm(32);
+                    set_label(lfz);
+                    mov_r_imm(0, 0); /* return 0 */
+                } else {
+                    mov_r_imm(0, 0); /* no-op (self-host fopen HANDLE 模型) */
+                }
+            } else if (!strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
                 /* no-op, return nothing used */
                 mov_r_imm(0, 0);
             } else if (!strcmp(fname, "ftell")) {
@@ -9006,6 +9128,7 @@ static void cg(int n) {
             } else {
             char *vname = (char*)(nn + n0[n]);
             int off = var_lookup(vname);
+            if (getenv("QCC_DBG_VARS")) { int _i2 = -1; for (int _j = vs_n()-1; _j >= parse_base; _j--) if (!strcmp(vars[_j].name, vname) && var_codegen_visible(_j)) { _i2 = _j; break; } fprintf(stderr, "[AMP2] fn=%s &'%s' off=%d resolved_idx=%d blk_end=%d cg_blk_end=%d is_param=%d\n", cur_fn_name, vname, off, _i2, _i2>=0?vars[_i2].blk_end:-1, cg_blk_end, _i2>=0?vars[_i2].is_param:-1); }
             if (off >= 0) {
                 if (var_isstatic(vname)) { lea_rax_rip(coff_static_disp(off, 1) - 1); } /* static: &var = .data addr (lea 7B) */
                 else {
@@ -9091,8 +9214,9 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         else { mov_reg_mreg(0, 0); }
                     }
                 }
-            } else if (nt[n0[n]] == 13 || nt[n0[n]] == 15) {
-                /* nested member chain: o.in.a / n1.next->val — recursive address generation */
+            } else if (nt[n0[n]] == 12 || nt[n0[n]] == 13 || nt[n0[n]] == 15) {
+                /* nested member chain: o.in.a / n1.next->val — recursive address generation
+                   (fix 2026-08-18: 基是解引用 (*e)->next — case-12 原落简单分支当变量名 → &(*e)->next 编成 e=e → hashmap 链遍历死循环) */
                 int fsz = 4, si_out = -1;
                 if (mem_addr(n, &fsz, &si_out) == 0) {
                     /* rax = &chain; deref by the final field's byte size (fix 2026-08-18: &取址/++目标 上下文保留末字段地址, 不再按字段大小解引用 — 多级箭头链 &o->m->in->buf 原 fsz==8 无条件 mov rax,[rax] 多解引用一层 → expand_base_dir(&...->path) 传 NULL 崩) */
@@ -9516,7 +9640,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x1A8); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
+    w4(f, data_rva_base + 0x1B8); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -9556,42 +9680,43 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* .data section: write heap counter, then import table
        布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
-       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (16 msvcrt + term=136B)
-       ILT1@+0xD8 (8+term) ILT2@+0x120 (16+term) desc@+0x1A8 (3*20=60B) names@+0x1E4 */
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (17 msvcrt + term=144B)
+       ILT1@+0xE0 (8+term) ILT2@+0x128 (17+term) desc@+0x1B8 (3*20=60B) names@+0x1F4
+       (fix 2026-08-19: IAT2 扩 16→17 加 _write — fprintf 文件写路径) */
     fseek(f, data_foff, SEEK_SET);
     int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
-    static const char *mnames[16] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs" };
-    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0xD8, ilt2 = 0x120, desc_off = 0x1A8, name_off = 0x1E4;
-    int n_off[24];
+    static const char *mnames[17] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "_write" };
+    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0xE0, ilt2 = 0x128, desc_off = 0x1B8, name_off = 0x1F4;
+    int n_off[25];
     /* IAT/ILT 占位 */
     fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 17; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 18; i++) w8(f, 0);
     fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 17; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 18; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
     for (int i = 0; i < 8; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    for (int i = 0; i < 16; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    for (int i = 0; i < 17; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
     /* 回填 IAT1（8 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* 回填 IAT2（16 + term） */
+    /* 回填 IAT2（17 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    for (int i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 17; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    for (int i = 0; i < 16; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 17; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
@@ -10149,6 +10274,7 @@ static void coff_write_lval_value(uint8_t *ddata, int data_off, int esz, int rhs
         int si = nv[rhs];
         if (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
         int addend = (si >= 0 && si < 2048 && str_offs[si] >= 0) ? str_offs[si] : 0;
+        if (getenv("QCC_DBG_STR")) fprintf(stderr, "[STRI] si=%d str_offs=%d str='%s'\n", si, (si >= 0 && si < 2048) ? str_offs[si] : -1, (si >= 0 && si < 2048) ? str_tbl[si] : "(bad)");
         coff_data_crel(data_off, 0x0002, coff_str_sym, addend);
         return;
     }
@@ -10312,6 +10438,22 @@ static void write_coff_obj(FILE *f) {
         rva[rsec][b2] = (rsec == 3) ? (crel[i].site - COFF_DATA_SITE_BASE) : crel[i].site;
         rsym[rsec][b2] = crel[i].sym;
         rtyp[rsec][b2] = crel[i].type;
+    }
+
+    /* fix 2026-08-18: ADDR32/ADDR64 .data 重定位的 addend 必须写进 .data 站点 —
+       COFF 的 addend 存在节数据里 (链接器读站点字节加符号地址); 原只记 reloc 表不写 addend
+       → 全局指针 = 字符串 (special_refs[]={"FETCH_HEAD",...}) 的 addend 全 0 →
+       指针指向 .rstr 偏移 0 ("SUDO_UID") → is_special_ref strcmp 垃圾 → git init SEGV */
+    for (int i = 0; i < crel_n; i++) {
+        if (crel[i].site >= COFF_DATA_SITE_BASE && (crel[i].type == 0x0002 || crel[i].type == 0x0001)) {
+            int off = crel[i].site - COFF_DATA_SITE_BASE;
+            if (getenv("QCC_DBG_STR")) fprintf(stderr, "[ADDP] site=0x%x off=0x%x type=0x%x addend=%d\n", crel[i].site, off, crel[i].type, crel[i].addend);
+            if (off >= 0 && off + 8 <= stc_n * 4) {
+                int a = crel[i].addend;
+                if (crel[i].type == 0x0001) { long long la = (long long)(unsigned int)a; memcpy(ddata + off, &la, 8); }
+                else memcpy(ddata + off, &a, 4);
+            }
+        }
     }
 
     /* COFF header */
