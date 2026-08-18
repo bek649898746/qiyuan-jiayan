@@ -9236,7 +9236,8 @@ static void cg(int n) {
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
                     if (fsz > 4) {
                         int fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址 */
+                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
+                                 fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
                         /* else: struct/array field -> address (no deref) */
                     } else if (!cg_no_deref) {
                         if (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
