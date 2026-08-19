@@ -929,7 +929,8 @@ static int rsp_used;           /* ????????? */
 static struct { char name[64]; char fnames[256][64]; int foffs[256]; int fsizes[256]; int frows[256]; int ftypes[256]; int fbits[256]; int fbitof[256]; char fdbls[256]; char fsgn[256]; int fels[256]; int fpels[256]; char fptrs[256]; int fn; int sz; int algn; } stypes[256]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段) */
 
 static int st_find(const char *n) {
-    for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) return i;
+    for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_find '%s' -> %d sz=%d algn=%d fn=%d\n", n, i, stypes[i].sz, stypes[i].algn, stypes[i].fn); return i; }
+    if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_find '%s' -> -1\n", n);
     return -1;
 }
 static int bit_slot = -1, bit_pos = 0;  /* bit-field packing state: current int-slot foffs + bit offset inside it */
@@ -943,6 +944,7 @@ static int st_add(const char *n) {
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     int ns = st_n++;
+    if (getenv("QCC_DBG_NS")) if (n[0] == 0 || strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_add name='%s' ns=%d\n", n, ns);
     st_pend_backfill(ns); /* 新结构体定义 (或首次引用即创建) → 回填引用它的 pending 指针字段 (fix 2026-08-18) */
     return ns;
 }
@@ -968,6 +970,7 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     bit_slot = -1; bit_pos = 0; /* a non-bit-field ends any pending bit run */
     stypes[si].sz += fsz;
     if (align > stypes[si].algn) stypes[si].algn = align; /* 记录 struct 最大对齐（总大小 round up） */
+    if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS] fld '%s' field='%s' si=%d idx=%d foffs=%d fsz=%d frow=%d\n", stypes[si].name, fn, si, idx, stypes[si].foffs[idx], fsz, frow);
     stypes[si].fn = stypes[si].fn + 1;
 }
 static int st_fidx(int si, const char *fn) { for (int i = 0; i < stypes[si].fn; i++) if (!strcmp(stypes[si].fnames[i], fn)) return i; return -1; }
@@ -1003,6 +1006,7 @@ static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, in
     stypes[si].fbitof[idx] = bit_pos;
     stypes[si].fsgn[idx] = uns;
     bit_pos += bitw;
+    if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS] bit '%s' field='%s' si=%d idx=%d foffs=%d bitof=%d bw=%d uns=%d\n", stypes[si].name, fn, si, idx, stypes[si].foffs[idx], stypes[si].fbitof[idx], bitw, uns);
     stypes[si].fn = stypes[si].fn + 1;
 }
 static void st_field_bit_anon(int si, int bitw) {
@@ -1917,7 +1921,7 @@ static int var_isstatic(const char *n) {
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
 static int var_static_arr(const char *n, int pesz, int esz, int count) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } return vars[i].rsp_off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vsa '%s' HIT i=%d rsp=%d pesz=%d esz=%d count=%d\n", n, i, vars[i].rsp_off, pesz, esz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } return vars[i].rsp_off; }
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
     if (vcnt >= 16000 || stc_n + slots >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-06: 4M→8M 槽（str_tbl 扩到 2048 后自宿主逼近旧上限） */
@@ -1932,9 +1936,10 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
 static int var_static_struct(const char *n, int si, int count) {
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; stc_n += sl3; vars[i].arr_sz = count; vars[i].st_idx = si; } return vars[i].rsp_off; }
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vss '%s' HIT i=%d rsp=%d si=%d sz=%d count=%d\n", n, i, vars[i].rsp_off, si, stypes[si].sz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; int ct = count > 0 ? count : 1; stc_n += sl3 * ct; vars[i].st_sz = sl3 * 4; vars[i].arr_sz = (count > 1) ? count : 0; vars[i].arr_esz = stypes[si].sz; vars[i].st_idx = si; } return vars[i].rsp_off; }
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
+    if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vss '%s' NEW si=%d sz=%d count=%d slots=%d total=%d stc_n=%d\n", n, si, stypes[si].sz, count, slots, total, stc_n);
     if (vcnt >= 16000 || stc_n + total >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
@@ -5168,6 +5173,7 @@ static int parse(const char *s) {
             tk++; /* skip struct */
             if (tt[tk] == VR || (tt[tk] == VK && !strcmp(tn[tk], "FILE"))) { /* tagged: keep the tag as the struct name (FILE 被 kw() 归为 VK, 但 `struct FILE;` 前向声明必须识别 — fix 2026-08-15: transport_connect undefined 根因) */
                 int si = st_find(tn[tk]); if (si < 0) si = st_add(tn[tk]); /* fix 2026-08-05: `struct S s;` (no body) re-added an EMPTY S → st_find later hit the wrong index → global struct field reads/writes broke */
+                if (getenv("QCC_DBG_NS")) if (!strcmp(tn[tk], "ref_namespace_info")) { fprintf(stderr, "[NS] main-parser struct tag='%s' si=%d next_tt=%d next='%s'\n", tn[tk], si, tk + 1 < TS ? tt[tk + 1] : -1, tk + 1 < TS ? tn[tk + 1] : "-"); for (int _dt = tk + 1; _dt < tk + 12 && _dt < TS; _dt++) fprintf(stderr, "[NS]   tok[%d] tt=%d '%s'\n", _dt, tt[_dt], tn[_dt]); }
                 tk++; /* struct name */
                 if (tt[tk] == SK) { tk++; continue; } /* struct X; 前向声明 (无 body 无变量) — 原回退到 decl 分支后落函数检测 break 截断 parse (fix 2026-08-13 Phase3: regex_internal.h struct re_dfa_t;) */
                 if (tt[tk] == FK) { /* { */
@@ -5175,15 +5181,18 @@ static int parse(const char *s) {
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     int fsz = 4; int frow = 1; int fdbl = 0; int fll = 0; int ffnptr = 0; int fpel_persist = 4; int sty_persist = -1; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 的后续字段必须继承类型 (原每次迭代重置 fsz=4 → char 字段算成 int → vars 结构 136 算成 152 → 变量表步长错位 → Git 大文件崩); fpel_persist: 逗号继承的指针指向元素大小 (fix 2026-08-17); sty_persist: 逗号续行 struct 字段继承类型索引 (fix 2026-08-18: struct list_head *next, *prev — 续行 *prev 原缺 st_field_ty → st_field_ty_idx=-1 → mem_addr 链 head.prev->next 失败 → 存储丢弃+无配对 push → git init list_add_tail 崩) */
                     while (tk < TS && tt[tk] != UK) {
+                        if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS]  body-tok %d tt=%d '%s'\n", tk, tt[tk], tn[tk]);
                         int tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
                         int dims = 0; int first = 1; /* dims/first 数组维度每次迭代独立 */
                         int type_seen = 0; /* fix 2026-08-17: 本次迭代是否确定新类型 (char* 的 pointee 捕获依据) */
-                        if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* fix 2026-08-18: `const char *name` — 原只消费第一个 VK (const) → char 留在 token 流 → 后续字段解析错 */ if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; type_seen = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; type_seen = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } type_seen = 1; } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; type_seen = 1; } if (!(tt[tk] == ST || tt[tk] == EN)) tk++; /* fix 2026-08-18: const 后跟 struct/enum (`const struct ref_storage_be *be`) 不能吞关键字 — 原无条件 tk++ 吃掉 struct → 字段类型索引丢失 (ty_idx=-1) → 多级成员链 (refs->be->init_db) 断 → call *refs SEGV; 让 5114 ST 分支正常解析 */
+                        int tkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 — 已见基类型时后续 VR 是字段名 (char *ref; 的 ref 撞 remote.h struct ref 标签被当类型吞掉) */
+                        if (tt[tk] == VK) { tkw = 1; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* fix 2026-08-18: `const char *name` — 原只消费第一个 VK (const) → char 留在 token 流 → 后续字段解析错 */ if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; type_seen = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; type_seen = 1; } else if (!strcmp(tn[tk], "long")) { if (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } type_seen = 1; } else if (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; type_seen = 1; } if (!(tt[tk] == ST || tt[tk] == EN)) tk++; /* fix 2026-08-18: const 后跟 struct/enum (`const struct ref_storage_be *be`) 不能吞关键字 — 原无条件 tk++ 吃掉 struct → 字段类型索引丢失 (ty_idx=-1) → 多级成员链 (refs->be->init_db) 断 → call *refs SEGV; 让 5114 ST 分支正常解析 */
                             if (tt[tk] == VK && !strcmp(tn[tk], "long")) { if (fll == 0 && tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } tk++; } /* 第二个 long: unsigned long long 场景 — unsigned 后第一个 long 未设 8B, 第二个 long 补设 (fix 2026-08-17: 原只消费不设 → unsigned long long 字段 4B) */ }
                         int npel = 0; /* 指针地块数 (指针字段标记, fix 2026-08-18: ctx->argv++ char** 需按 8 缩放) */
                         int fpel = type_seen ? fsz : fpel_persist; /* fix 2026-08-17: 指针字段的指向元素大小 (char *buf → 1); 逗号继承 (char *p, *q) 用 fpel_persist */
                         int fsz_base = fsz; /* fix 2026-08-18: 指针字段前的基类型大小 (unsigned *seen, x → x 是 unsigned 4B 非 8B) — 逗号续行用 fsz_base 恢复 */
                         { while (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; } if (npel > 1) fpel = 8; } /* pointer field (fix 2026-08-16: frow=8 — 逗号后指针字段继承); 多级指针 → pointee 8 */
+                        if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS]  post-ptr tok=%d tt=%d '%s' fsz=%d frow=%d npel=%d is_union=%d\n", tk, tt[tk], tn[tk], fsz, frow, npel, is_union);
                         if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             int sub_is_union = !strcmp(tn[tk], "union");
                             tk++; /* struct */
@@ -5391,7 +5400,7 @@ static int parse(const char *s) {
                             }
                             if (tt[tk] == UK) tk++;
                         } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局) */
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !tkw && npel == 0) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局); fix 2026-08-19: 已见基类型/指针时该 VR 是字段名 — `char *ref;` 的 ref 撞 remote.h `struct ref` 标签 → 原被当类型吞掉 → ref_namespace_info 布局 8B(错 16B) → ref_namespace 与 ref_rev_parse_rules .data 重叠 → git status strbuf_vaddf 死循环 */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5599,6 +5608,7 @@ static int parse(const char *s) {
                         }
                         if (e_cnt > 1) { vars[vi].arr_sz = e_cnt; vars[vi].arr_esz = e_esz; }
                         else if (saw_lb) { vars[vi].arr_sz = -1; vars[vi].arr_esz = e_esz; }
+                        if (getenv("QCC_DBG_NS")) if (strstr(ename, "ref_namespace")) fprintf(stderr, "[NS] extern '%s' e_stidx=%d e_esz=%d e_cnt=%d arr_sz=%d arr_esz=%d\n", ename, e_stidx, e_esz, e_cnt, vars[vi].arr_sz, vars[vi].arr_esz);
                     }
                     break;
                 }
@@ -5658,7 +5668,8 @@ static int parse(const char *s) {
                     int ffnptr = 0; /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                     while (tk < TS && tt[tk] != UK) {
                         ffnptr = 0; /* per-field reset (fix 2026-08-16) */
-                        if (tt[tk] == VK) { fdflt = 4; if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
+                        int ftkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 (typedef 匿名 struct 同 5402 撞名根因) */
+                        if (tt[tk] == VK) { ftkw = 1; fdflt = 4; if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
@@ -5695,7 +5706,7 @@ static int parse(const char *s) {
                             if (tt[tk] == CK) { tk++; } if (tt[tk] == SK) tk++;
                             continue;
                         }
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fdflt = 8; ffnptr = 1; } tk++; }
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !ftkw) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0 && tdefs[tdv].is_fnptr) { fdflt = 8; ffnptr = 1; } tk++; } /* typedef type (fix 2026-08-19: 已见类型关键字时是字段名 — 与 main-parser 5402 同根因) */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5735,8 +5746,8 @@ static int parse(const char *s) {
                         tk++; /* { */
                         int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                         while (tk < TS && tt[tk] != UK) {
-                            int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0;
-                            if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                            int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0; int ttkw = 0; /* fix 2026-08-19: 类型关键字已消费标记 (同 5402 撞名根因) */
+                            if (tt[tk] == VK) { ttkw = 1; if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                             if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
@@ -5774,7 +5785,7 @@ static int parse(const char *s) {
                                 if (tt[tk] == SK) tk++;
                                 continue;
                             }
-                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局) */
+                            else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !ttkw) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tk++; } /* typedef type (fix 2026-08-19: 已见类型关键字时是字段名 — 与 main-parser 5402 同根因); typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局) */
                             if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                                 tk++; int ubw = 0;
                                 if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5882,6 +5893,7 @@ static int parse(const char *s) {
                 /* anonymous struct definition + global var: struct {...} name; */
                 tk++; /* { */
                 char aname[64]; aname[0] = 0; int si = st_add(aname);
+                if (getenv("QCC_DBG_NS")) fprintf(stderr, "[NS] anon-global body si=%d tag='%s'\n", si, (tk >= 2 && tt[tk - 2] == VR) ? tn[tk - 2] : "?");
                 int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                 int fsz = 4; int frow = 1; int fdbl = 0; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 匿名 struct (static struct {...} vars[16384]) 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 后续字段必须继承 char (原每次迭代重置 fsz=4 → char 算 int → vars 136 算 152 → 变量表步长错位 → Git 大文件崩) */
                 while (tk < TS && tt[tk] != UK) {
@@ -6225,6 +6237,7 @@ static int parse(const char *s) {
                             vars[vcnt - 1].st_idx = g_stidx;
                         } else if (g_stidx >= 0) {
                             /* struct-typed array var: struct B globals[N]; */
+                            if (getenv("QCC_DBG_NS")) if (strstr(gname, "ref_namespace")) fprintf(stderr, "[NS] global-array '%s' gcnt=%d g_stidx=%d sz=%d ptrd=%d\n", gname, gcnt, g_stidx, stypes[g_stidx].sz, ptrd);
                             var_static_struct(gname, g_stidx, gcnt);
                         } else {
                             /* multi-dim: the first index's element is the inner array (row). e.g.
