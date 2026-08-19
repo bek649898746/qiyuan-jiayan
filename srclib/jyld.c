@@ -1206,8 +1206,9 @@ static int gen_crt(uint8_t *buf, int base_off, int main_va) {
     /* 完整 argv 解析（移植 qcc emit_crt_stub）：GetCommandLineA → 空格分割 → argc/argv */
     cr_mov_ri(buf, &p, 11, 0);             /* r11 = i (scan idx) */
     cr_mov_ri(buf, &p, 14, 0);             /* r14 = argc */
-    int lab[7];
-    for (int li = 0; li < 7; li++) lab[li] = -1;
+    cr_mov_ri(buf, &p, 9, 0);              /* r9 = in-quote flag (fix 2026-08-19: argv 引号支持 — 原只空格分割, git commit -m "first commit" 拆错; 用 r9 非 r15 — r15 保存 loader rsp 调用 main 前恢复) */
+    int lab[10];
+    for (int li = 0; li < 10; li++) lab[li] = -1;
     int bf[16][2]; int bf_n = 0;           /* 回填: {disp位置, label} */
     #define BF_JZ(l) { cr_jz_rel(buf, &p, 0); bf[bf_n][0] = p - 4; bf[bf_n][1] = (l); bf_n++; }
     #define BF_JMP(l) { cr_jmp_rel(buf, &p, 0); bf[bf_n][0] = p - 4; bf[bf_n][1] = (l); bf_n++; }
@@ -1219,15 +1220,35 @@ static int gen_crt(uint8_t *buf, int base_off, int main_va) {
     BF_JZ(6);                              /* jz L_done */
     cr_cmp_ri8(buf, &p, 1, 0x20);          /* cmp ecx, ' ' */
     BF_JZ(5);                              /* jz L_skip */
+    cr_cmp_ri8(buf, &p, 1, 0x22);          /* cmp ecx, '"' */
+    BF_JZ(7);                              /* jz L_qstart */
     cr_mov_rr64(buf, &p, 8, 13);           /* r8 = token_start (r13) */
     lab[1] = p; /* L_copy: */
     cr_movzx_sib(buf, &p);
     cr_mov_rr32(buf, &p, 1, 0);
     cr_test_rr32(buf, &p, 1);
     BF_JZ(3);                              /* jz L_end_n */
-    cr_cmp_ri8(buf, &p, 1, 0x20);
-    BF_JZ(2);                              /* jz L_end_s */
+    cr_cmp_ri8(buf, &p, 1, 0x22);          /* cmp ecx, '"' */
+    BF_JZ(8);                              /* jz L_quote */
+    cr_cmp_ri8(buf, &p, 1, 0x20);          /* cmp ecx, ' ' */
+    BF_JZ(9);                              /* jz L_spc */
     cr_store_byte_m13_cl(buf, &p);         /* mov byte [r13], cl */
+    cr_inc_r11(buf, &p);
+    cr_inc_r13(buf, &p);
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[7] = p; /* L_qstart: 引号 token 起点 — 跳过 "，置 in-quote=1 */
+    cr_inc_r11(buf, &p);                   /* skip " */
+    cr_mov_ri(buf, &p, 9, 1);              /* in-quote = 1 */
+    cr_mov_rr64(buf, &p, 8, 13);           /* r8 = token_start */
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[8] = p; /* L_quote: 翻转引号状态 — 跳过 "，不写入 token */
+    cr_inc_r11(buf, &p);                   /* skip " */
+    buf[p++]=0x41; buf[p++]=0x83; buf[p++]=0xF1; buf[p++]=0x01; /* xor r9d, 1 */
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[9] = p; /* L_spc: 引号内空格复制, 引号外结束 token */
+    cr_cmp_ri8(buf, &p, 9, 0);             /* cmp r9d, 0 */
+    BF_JZ(2);                              /* jz L_end_s */
+    cr_store_byte_m13_cl(buf, &p);         /* 引号内空格: 复制 */
     cr_inc_r11(buf, &p);
     cr_inc_r13(buf, &p);
     BF_JMP(1);                             /* jmp L_copy */
