@@ -4906,7 +4906,7 @@ __attribute__((unused))
         返 n;
     }
     若 (tt[tk] == RK) { tk++; 整 r = Nd(6); Nc(r, expr()); tk++; 返 r; }
-    若 (tt[tk] == IK) { tk++; tk++; 整 n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt()); 若 (tt[tk] == ZK) { tk++; Nc(n, stmt()); } 返 n; }
+    若 (tt[tk] == IK) { tk++; tk++; 整 n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt()); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] after then-stmt tk=%d tt=%d tok='%s' n2check\n", tk, tt[tk], tn[tk]); 若 (tt[tk] == ZK) { tk++; Nc(n, stmt()); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] else attached, after else-stmt tk=%d tt=%d\n", tk, tt[tk]); } 否 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] NO else (tt=%d)\n", tt[tk]); 返 n; }
     若 (tt[tk] == WK) { tk++; tk++; 整 n = Nd(9); Nc(n, expr()); tk++; Nc(n, stmt()); 返 n; }
     若 (tt[tk] == DW) { /* do stmt while (cond); */
         tk++; /* do */
@@ -5043,8 +5043,9 @@ __attribute__((unused))
     若 (tt[tk] == FK) 返 blk();
     若 (tt[tk] == BR) { tk++; 整 r = Nd(16); tk++; 返 r; } /* break; */
     若 (tt[tk] == CN) { tk++; 整 r = Nd(21); tk++; 返 r; } /* continue; */
+    若 (tt[tk] == SK) { tk++; 返 Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[STMT] expr-stmt starting at 'ref', next tt=%d\n", tt[tk+1]);
-    整 e = expr(); tk++; 返 e;
+    { 整 _tk0 = tk; 整 e = expr(); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[STMT] expr-stmt tk %d->%d (was '%s' tt=%d), node=%d nt=%d\n", _tk0, tk, tn[_tk0], tt[_tk0], e, nt[e]); tk++; 返 e; }
 }
 /* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
    左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
@@ -8615,6 +8616,7 @@ __attribute__((unused))
         } 断;
         例 8: { /* if */
             整 le = new_label(), ld = new_label();
+            若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[CG-IF] n1=%d n2=%d nt[n1]=%d nt[n2]=%d\n", n1[n], n2[n], n1[n] >= 0 ? nt[n1[n]] : -1, n2[n] >= 0 ? nt[n2[n]] : -1);
             cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, le, 1);
             cg(n1[n]);
             若 (n2[n] >= 0) { jmp_rel(-1); patch_label(cp - 4, ld, 2); set_label(le); cg(n2[n]); set_label(ld); }
@@ -9236,7 +9238,8 @@ __attribute__((unused))
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
                     若 (fsz > 4) {
                         整 fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址 */
+                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
+                                 fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
                         /* else: struct/array field -> address (no deref) */
                     } 否 若 (!cg_no_deref) {
                         若 (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
@@ -10009,11 +10012,16 @@ __attribute__((unused))
     }
     若 (coff_mode && ginit_sub_label >= 0) { /* fix 2026-08-17: ginit 专用子程序 (每函数守卫调用, 正文只在末尾一次) */
         set_label(ginit_sub_label);
+        /* fix 2026-08-19: set flag=1 BEFORE running the initializer body so the
+           ginit body can safely call guarded functions in the SAME .o (userdiff.c
+           builtin_drivers init calls the IPATTERN/PATTERNS stubs). With the flag
+           set only at the end, the callee's guard sees flag==0 and calls the
+           ginit sub again -> A<->B mutual recursion -> stack overflow 0xC00000FD. */
+        mov_r_imm(0, 1); mov_rip_eax(coff_static_disp(ginit_flag_slot, 0)); /* flag = 1 FIRST: ginit re-entrant */
         cg_ginit_ctx = 1;
 
         遍 (整 gi = 0; gi < ginit_n; gi++) cg(ginit[gi]);
         cg_ginit_ctx = 0;
-        mov_r_imm(0, 1); mov_rip_eax(coff_static_disp(ginit_flag_slot, 0)); /* flag = 1 */
         b(0xC3); /* ret */
     }
     若 (coff_mode) {
