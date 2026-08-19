@@ -18,6 +18,9 @@ memory/Agent内核/
 # 公开文档统一写在 README / CHANGELOG 中。
 # 🚫 禁令(2026-08-10): 禁用 git add -A; 只提交 srclib/scripts/tests/README/CHANGELOG/seed。
 # 违反 = 把大哥全部知识公开。先读 _启元禁令.md。
+# 🚫 上传纪律(2026-08-19 大哥定稿): 每次上传 = ①等完工(该波 bug 修完/git status 通)
+# ②整理(拔调试插桩 jyld JYLD_DEBUG、清临时文件) ③再上传。杜绝战地状态/半成品上远端。
+# srclib_jiayan/qcc_work.jy = 甲言镜像(铁律5) 必提交; _g1_*.c 等根目录临时文件 = 越界, 删除时一并提交清理。
 
 # 内部规则文件（不公开）
 _启元禁令.md
