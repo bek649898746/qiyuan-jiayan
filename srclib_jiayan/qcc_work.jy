@@ -9416,6 +9416,31 @@ __attribute__((unused))
                     若 (d > dp) el = 8; 否 若 (d == dp) el = var_pinner((字*)(nn + q)); 否 el = 1;
                 }
             }
+            否 若 (nt[pnode] == 15 || nt[pnode] == 13) { /* *p->field / *(*e)->field — 成员链解引用宽度 = 最终字段 pointee 元素大小 (fix 2026-08-19: 原 el=0 → movzbl 字节加载 → `*arg = *++p->argv` 只取指针低字节 (56) → git commit do_get_value 读垃圾 arg → strbuf_addstr(sb,56) 崩) */
+                整 q2 = pnode, depth2 = 0, base_si2 = -1;
+                循环 (q2 >= 0 && depth2 < 8 && (nt[q2] == 15 || nt[q2] == 13)) {
+                    字 *bv2 = (字*)(nn + n0[q2]);
+                    整 bsi2 = var_stidx(bv2);
+                    若 (bsi2 >= 0) { base_si2 = bsi2; 断; }
+                    q2 = n0[q2]; depth2++;
+                }
+                若 (base_si2 >= 0) {
+                    整 chain2[8]; 整 cn2 = 0;
+                    整 q3 = pnode;
+                    循环 (q3 >= 0 && cn2 < 8 && (nt[q3] == 15 || nt[q3] == 13)) { chain2[cn2++] = q3; q3 = n0[q3]; }
+                    整 cur_si2 = base_si2;
+                    遍 (整 ci2 = cn2 - 1; ci2 >= 1 && cur_si2 >= 0; ci2--) { /* 排除 chain2[0]=pnode (最终字段自身) — 指针字段 fty=-1 会清掉容器类型 */
+                        字 *bf2 = (字*)(nn + chain2[ci2]);
+                        整 fty2 = st_field_ty_idx(stypes[cur_si2].name, bf2);
+                        若 (fty2 >= 0) cur_si2 = fty2; 否 cur_si2 = -1;
+                    }
+                    若 (cur_si2 >= 0) {
+                        字 *ff2 = (字*)(nn + pnode);
+                        整 fpel2 = st_field_pel(cur_si2, ff2);
+                        若 (fpel2 > 0) el = fpel2; /* char** → 8, char* → 1, int* → 4 */
+                    }
+                }
+            }
             若 (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
             若 (ndbl[n] || (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode)))) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); 断; } /* double* deref → xmm0 */
             }

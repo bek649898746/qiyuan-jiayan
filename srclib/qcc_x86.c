@@ -9416,6 +9416,31 @@ static void cg(int n) {
                     if (d > dp) el = 8; else if (d == dp) el = var_pinner((char*)(nn + q)); else el = 1;
                 }
             }
+            else if (nt[pnode] == 15 || nt[pnode] == 13) { /* *p->field / *(*e)->field — 成员链解引用宽度 = 最终字段 pointee 元素大小 (fix 2026-08-19: 原 el=0 → movzbl 字节加载 → `*arg = *++p->argv` 只取指针低字节 (56) → git commit do_get_value 读垃圾 arg → strbuf_addstr(sb,56) 崩) */
+                int q2 = pnode, depth2 = 0, base_si2 = -1;
+                while (q2 >= 0 && depth2 < 8 && (nt[q2] == 15 || nt[q2] == 13)) {
+                    char *bv2 = (char*)(nn + n0[q2]);
+                    int bsi2 = var_stidx(bv2);
+                    if (bsi2 >= 0) { base_si2 = bsi2; break; }
+                    q2 = n0[q2]; depth2++;
+                }
+                if (base_si2 >= 0) {
+                    int chain2[8]; int cn2 = 0;
+                    int q3 = pnode;
+                    while (q3 >= 0 && cn2 < 8 && (nt[q3] == 15 || nt[q3] == 13)) { chain2[cn2++] = q3; q3 = n0[q3]; }
+                    int cur_si2 = base_si2;
+                    for (int ci2 = cn2 - 1; ci2 >= 1 && cur_si2 >= 0; ci2--) { /* 排除 chain2[0]=pnode (最终字段自身) — 指针字段 fty=-1 会清掉容器类型 */
+                        char *bf2 = (char*)(nn + chain2[ci2]);
+                        int fty2 = st_field_ty_idx(stypes[cur_si2].name, bf2);
+                        if (fty2 >= 0) cur_si2 = fty2; else cur_si2 = -1;
+                    }
+                    if (cur_si2 >= 0) {
+                        char *ff2 = (char*)(nn + pnode);
+                        int fpel2 = st_field_pel(cur_si2, ff2);
+                        if (fpel2 > 0) el = fpel2; /* char** → 8, char* → 1, int* → 4 */
+                    }
+                }
+            }
             if (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
             if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
             }
