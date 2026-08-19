@@ -4906,7 +4906,7 @@ static int stmt(void) {
         return n;
     }
     if (tt[tk] == RK) { tk++; int r = Nd(6); Nc(r, expr()); tk++; return r; }
-    if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt()); if (tt[tk] == ZK) { tk++; Nc(n, stmt()); } return n; }
+    if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt()); if (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] after then-stmt tk=%d tt=%d tok='%s' n2check\n", tk, tt[tk], tn[tk]); if (tt[tk] == ZK) { tk++; Nc(n, stmt()); if (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] else attached, after else-stmt tk=%d tt=%d\n", tk, tt[tk]); } else if (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] NO else (tt=%d)\n", tt[tk]); return n; }
     if (tt[tk] == WK) { tk++; tk++; int n = Nd(9); Nc(n, expr()); tk++; Nc(n, stmt()); return n; }
     if (tt[tk] == DW) { /* do stmt while (cond); */
         tk++; /* do */
@@ -5043,8 +5043,9 @@ static int stmt(void) {
     if (tt[tk] == FK) return blk();
     if (tt[tk] == BR) { tk++; int r = Nd(16); tk++; return r; } /* break; */
     if (tt[tk] == CN) { tk++; int r = Nd(21); tk++; return r; } /* continue; */
+    if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     if (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[STMT] expr-stmt starting at 'ref', next tt=%d\n", tt[tk+1]);
-    int e = expr(); tk++; return e;
+    { int _tk0 = tk; int e = expr(); if (getenv("QCC_DBG_IF")) fprintf(stderr, "[STMT] expr-stmt tk %d->%d (was '%s' tt=%d), node=%d nt=%d\n", _tk0, tk, tn[_tk0], tt[_tk0], e, nt[e]); tk++; return e; }
 }
 /* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
    左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
@@ -8615,6 +8616,7 @@ static void cg(int n) {
         } break;
         case 8: { /* if */
             int le = new_label(), ld = new_label();
+            if (getenv("QCC_DBG_IF")) fprintf(stderr, "[CG-IF] n1=%d n2=%d nt[n1]=%d nt[n2]=%d\n", n1[n], n2[n], n1[n] >= 0 ? nt[n1[n]] : -1, n2[n] >= 0 ? nt[n2[n]] : -1);
             cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, le, 1);
             cg(n1[n]);
             if (n2[n] >= 0) { jmp_rel(-1); patch_label(cp - 4, ld, 2); set_label(le); cg(n2[n]); set_label(ld); }
