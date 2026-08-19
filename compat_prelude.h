@@ -430,8 +430,25 @@ int lstat(const char *path, void *buf);
 #define GIT_HTML_PATH "/git/html"     /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_HTML_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
 #define GIT_LOCALE_PATH "/git/locale" /* Makefile -D 生成, qcc 跳过 (fix 2026-08-15: GIT_LOCALE_PATH undefined; POSIX 绝对路径避开 system_path %s/%s) */
 
-/* zlib 常量 + stub (Windows 无系统 zlib 库, 压缩/解压路径返回错误; fix 2026-08-15: Z_FINISH undefined) */
-typedef int z_stream;
+/* zlib 常量 + minimal stored-block 实现 (fix 2026-08-19): 原 stub 全 no-op (z_stream=int) → git commit 写对象崩;
+   真实现: deflate 输出存储块 (合法 zlib: 0x78 0x01 头 + BFINAL/BTYPE + LEN/NLEN + 数据 + adler32),
+   inflate 读存储块 — 自包含 static, qcc 可编译 */
+typedef struct z_stream_s {
+    const unsigned char *next_in;
+    unsigned int avail_in;
+    unsigned long total_in;
+    unsigned char *next_out;
+    unsigned int avail_out;
+    unsigned long total_out;
+    const char *msg;
+    void *state;
+    void *zalloc;
+    void *zfree;
+    void *opaque;
+    int data_type;
+    unsigned long adler;
+    unsigned long reserved;
+} z_stream;
 #define Byte unsigned char
 #define Bytef unsigned char
 #define uInt unsigned int
@@ -463,19 +480,206 @@ typedef int z_stream;
 #define Z_BEST_SPEED 1
 #define Z_DEFAULT_STRATEGY 0
 #define ZLIB_VERNUM 0x1221
-static int inflate(z_stream *s, int f) { (void)s; (void)f; return Z_STREAM_ERROR; }
-static int deflate(z_stream *s, int f) { (void)s; (void)f; return Z_STREAM_ERROR; }
-static int inflateInit(z_stream *s) { (void)s; return Z_OK; }
-static int inflateInit2(z_stream *s, int w) { (void)s; (void)w; return Z_OK; }
-static int inflateEnd(z_stream *s) { (void)s; return Z_OK; }
-static int inflateReset(z_stream *s) { (void)s; return Z_OK; }
-static int deflateInit(z_stream *s, int l) { (void)s; (void)l; return Z_OK; }
-static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) { (void)s; (void)l; (void)m; (void)w; (void)ml; (void)st; return Z_OK; }
-static int deflateEnd(z_stream *s) { (void)s; return Z_OK; }
-static unsigned long deflateBound(z_stream *s, unsigned long n) { (void)s; return n + 256; }
-static int deflateSetHeader(z_stream *s, void *h) { (void)s; (void)h; return Z_OK; } /* fix 2026-08-15: deflateSetHeader undefined (archive-zip.c ZIP header) */
-static unsigned long crc32(unsigned long crc, const void *buf, unsigned len) { (void)buf; (void)len; return crc; } /* fix 2026-08-15: crc32 undefined */
-static unsigned long adler32(unsigned long adler, const void *buf, unsigned len) { (void)buf; (void)len; return adler; }
+
+typedef struct {
+    unsigned char buf[65536];
+    unsigned len;
+    unsigned em;
+    unsigned epos;
+    unsigned char ehdr[5];
+    unsigned ehdr_len;
+    int hdr_done;
+    int finished;
+    unsigned long adler;
+} qcc_deflate_state;
+
+static unsigned long qcc_adler32(unsigned long adler, const unsigned char *buf, unsigned len) {
+    unsigned long a = adler & 0xFFFF, b = (adler >> 16) & 0xFFFF;
+    unsigned i;
+    for (i = 0; i < len; i++) { a = (a + buf[i]) % 65521; b = (b + a) % 65521; }
+    return (b << 16) | a;
+}
+static unsigned long adler32(unsigned long adler, const void *buf, unsigned len) {
+    return qcc_adler32(adler, (const unsigned char *)buf, len);
+}
+static unsigned long crc32(unsigned long crc, const void *buf, unsigned len) {
+    unsigned long c = crc ^ 0xFFFFFFFFUL;
+    const unsigned char *p = (const unsigned char *)buf;
+    unsigned i, j;
+    for (i = 0; i < len; i++) {
+        c ^= p[i];
+        for (j = 0; j < 8; j++) c = (c >> 1) ^ (0xEDB88320UL & (0UL - (c & 1)));
+    }
+    return c ^ 0xFFFFFFFFUL;
+}
+static int qcc_deflate_emit(z_stream *s, const unsigned char *src, unsigned len) {
+    unsigned n = len, i;
+    if (n > s->avail_out) n = s->avail_out;
+    for (i = 0; i < n; i++) s->next_out[i] = src[i];
+    s->next_out += n; s->avail_out -= n; s->total_out += n;
+    return (int)n;
+}
+static int qcc_deflate_flush_block(z_stream *s, qcc_deflate_state *st, int final) {
+    if (st->em == 0) {
+        st->ehdr[0] = final ? 1 : 0;
+        st->ehdr[1] = st->len & 0xFF;
+        st->ehdr[2] = (st->len >> 8) & 0xFF;
+        st->ehdr[3] = (~st->len) & 0xFF;
+        st->ehdr[4] = ((~st->len) >> 8) & 0xFF;
+        st->ehdr_len = 5;
+        st->em = 1; st->epos = 0;
+    }
+    if (st->em == 1) {
+        while (st->epos < st->ehdr_len && s->avail_out > 0) {
+            s->next_out[0] = st->ehdr[st->epos];
+            s->next_out++; s->avail_out--; s->total_out++; st->epos++;
+        }
+        if (st->epos < st->ehdr_len) return 0;
+        st->em = 2; st->epos = 0;
+    }
+    if (st->em == 2) {
+        while (st->epos < st->len && s->avail_out > 0) {
+            s->next_out[0] = st->buf[st->epos];
+            s->next_out++; s->avail_out--; s->total_out++; st->epos++;
+        }
+        if (st->epos < st->len) return 0;
+        st->len = 0; st->em = 0; st->epos = 0;
+    }
+    return 1;
+}
+static int deflate(z_stream *s, int flush) {
+    qcc_deflate_state *st = (qcc_deflate_state *)s->state;
+    printf("[ZD] deflate flush=%d avail_in=%u avail_out=%u total_out=%lu st=%p\n", flush, s->avail_in, s->avail_out, s->total_out, (void*)st); /* tmp diag */
+    if (!st) return Z_STREAM_ERROR;
+    if (st->finished) { printf("[ZD] finished -> END\n"); return Z_STREAM_END; }
+    if (!st->hdr_done) {
+        unsigned char hd[2];
+        if (s->avail_out < 2) { printf("[ZD] no room for hdr\n"); return Z_OK; }
+        hd[0] = 0x78; hd[1] = 0x01;
+        qcc_deflate_emit(s, hd, 2);
+        st->hdr_done = 1;
+    }
+    while (s->avail_in > 0) {
+        unsigned n = s->avail_in, i;
+        if (n > 65535 - st->len) n = 65535 - st->len;
+        for (i = 0; i < n; i++) st->buf[st->len + i] = s->next_in[i];
+        st->adler = qcc_adler32(st->adler, s->next_in, n);
+        s->next_in += n; s->avail_in -= n; s->total_in += n;
+        st->len += n;
+        if (st->len == 65535) {
+            if (!qcc_deflate_flush_block(s, st, 0)) { printf("[ZD] block full, no out room\n"); return Z_OK; }
+        }
+    }
+    if (flush == Z_FINISH) {
+        unsigned char tr[4];
+        if (!qcc_deflate_flush_block(s, st, 1)) { printf("[ZD] flush_block no out room\n"); return Z_OK; }
+        if (st->em == 0) {
+            tr[0] = (st->adler >> 24) & 0xFF;
+            tr[1] = (st->adler >> 16) & 0xFF;
+            tr[2] = (st->adler >> 8) & 0xFF;
+            tr[3] = st->adler & 0xFF;
+            if (qcc_deflate_emit(s, tr, 4) < 4) { printf("[ZD] no room for adler\n"); return Z_OK; }
+            st->finished = 1;
+            printf("[ZD] END\n");
+            return Z_STREAM_END;
+        }
+        printf("[ZD] flush_block pending em=%d\n", st->em);
+    }
+    return Z_OK;
+}
+static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) {
+    qcc_deflate_state *d;
+    (void)l; (void)m; (void)w; (void)ml; (void)st;
+    d = (qcc_deflate_state *)malloc(sizeof(qcc_deflate_state));
+    if (!d) return Z_MEM_ERROR;
+    d->len = 0; d->em = 0; d->epos = 0; d->ehdr_len = 0; d->hdr_done = 0; d->finished = 0; d->adler = 1;
+    s->state = (void *)d;
+    s->msg = 0;
+    return Z_OK;
+}
+static int deflateInit(z_stream *s, int l) { (void)l; return deflateInit2(s, l, Z_DEFLATED, 15, 8, Z_DEFAULT_STRATEGY); }
+static int deflateEnd(z_stream *s) { if (s->state) free(s->state); s->state = 0; return Z_OK; }
+static unsigned long deflateBound(z_stream *s, unsigned long n) { (void)s; return n + n / 1000 + 64; }
+static int deflateSetHeader(z_stream *s, void *h) { (void)s; (void)h; return Z_OK; }
+
+typedef struct {
+    int phase;
+    unsigned char b0;
+    unsigned len_read;
+    unsigned block_len;
+    unsigned tr_read;
+    int final;
+} qcc_inflate_state;
+static int inflate(z_stream *s, int f) {
+    qcc_inflate_state *st = (qcc_inflate_state *)s->state;
+    (void)f;
+    if (!st) return Z_STREAM_ERROR;
+    for (;;) {
+        if (st->phase == 3) { /* skip zlib header (CMF FLG 2 字节) — fix 2026-08-19: 原从流头直接读块 → 0x78 0x01 被当块头 → LEN=0x2C01 巨大 → total_out 读多字节 → commit 对象解压错 */
+            if (s->avail_in == 0) return Z_OK;
+            s->next_in++; s->avail_in--; s->total_in++;
+            if (s->avail_in == 0) return Z_OK;
+            s->next_in++; s->avail_in--; s->total_in++;
+            st->phase = 0;
+            continue;
+        }
+        if (st->phase == 2) return Z_STREAM_END;
+        if (st->phase == 0) { /* block header: b0 + LEN(2) + NLEN(2) */
+            if (st->len_read < 5) {
+                if (s->avail_in == 0) return Z_OK;
+                if (st->len_read == 0) st->b0 = s->next_in[0];
+                if (st->len_read == 1) st->block_len = s->next_in[0];
+                if (st->len_read == 2) st->block_len |= (unsigned)s->next_in[0] << 8;
+                s->next_in++; s->avail_in--; s->total_in++;
+                st->len_read++;
+                continue;
+            }
+            st->final = st->b0 & 1;
+            if (((st->b0 >> 1) & 3) != 0) { s->msg = "unsupported compression"; return Z_DATA_ERROR; }
+            st->len_read = 0;
+            st->phase = 1;
+            continue;
+        }
+        if (st->phase == 1) { /* block data */
+            unsigned n = st->block_len, i;
+            if (n > s->avail_in) n = s->avail_in;
+            if (n > s->avail_out) n = s->avail_out;
+            for (i = 0; i < n; i++) s->next_out[i] = s->next_in[i];
+            st->block_len -= n;
+            s->next_in += n; s->avail_in -= n; s->total_in += n;
+            s->next_out += n; s->avail_out -= n; s->total_out += n;
+            if (st->block_len > 0) return Z_OK;
+            if (st->final) {
+                st->phase = 2; /* done (trailer optional) */
+                return Z_STREAM_END;
+            }
+            st->len_read = 0;
+            st->phase = 0;
+            continue;
+        }
+        return Z_OK;
+    }
+}
+static int inflateInit2(z_stream *s, int w) {
+    qcc_inflate_state *d;
+    (void)w;
+    d = (qcc_inflate_state *)malloc(sizeof(qcc_inflate_state));
+    if (!d) return Z_MEM_ERROR;
+    d->phase = 3; d->b0 = 0; d->len_read = 0; d->block_len = 0; d->tr_read = 0; d->final = 0; /* phase=3: 先跳 zlib 头 (fix 2026-08-19) */
+    s->state = (void *)d;
+    s->msg = 0;
+    return Z_OK;
+}
+static int inflateInit(z_stream *s) { return inflateInit2(s, 15); }
+static int inflateEnd(z_stream *s) { if (s->state) free(s->state); s->state = 0; return Z_OK; }
+static int inflateReset(z_stream *s) {
+    qcc_inflate_state *d = (qcc_inflate_state *)s->state;
+    if (d) { d->phase = 3; d->len_read = 0; d->block_len = 0; d->final = 0; } /* fix 2026-08-19: reset 也回跳头阶段 */
+    return Z_OK;
+}
+static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
+static int compress2(void *d, unsigned long *dl, const void *s, unsigned long sl, int l) { (void)d; (void)dl; (void)s; (void)sl; (void)l; return Z_STREAM_ERROR; }
+static int uncompress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
 static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
 static int compress2(void *d, unsigned long *dl, const void *s, unsigned long sl, int l) { (void)d; (void)dl; (void)s; (void)sl; (void)l; return Z_STREAM_ERROR; }
 static int uncompress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
@@ -792,10 +996,10 @@ typedef struct dirent {  /* <dirent.h> 目录项: Git 大量访问 de->d_name/d_
     char d_name[256];
     unsigned char d_type;
 } dirent;
-#define DT_UNKNOWN 0  /* dirent d_type 常量 */
-#define DT_DIR 4
-#define DT_REG 8
-#define DT_LNK 10
+#define DT_UNKNOWN 0  /* dirent d_type 常量 — win32/dirent.h 同值 (fix 2026-08-19: 原 glibc 值 4/8/10 与 win32 1/2/3 冲突 → dirent.c 写 d_type=4/8, dir.c switch DT_REG=2 不匹配 → 目录扫描全 path_none → add 空转) */
+#define DT_DIR 1
+#define DT_REG 2
+#define DT_LNK 3
 /* dirent 函数 (fix 2026-08-19): 声明后 qcc 生成真调用, jyld 链接 compat/prelude_dirent.o
    (_findfirst/_findnext 实现)。原未声明 → qcc 内联 return 0/NULL → 目录扫描空转 →
    status/add "could not open directory" + SEGV。 */
@@ -1349,7 +1553,7 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define GetLengthSid(a) 0  /* Windows SID 长度 stub (fix 2026-08-15: GetLengthSid undefined) */
 #define CopySid(a,b,c) 0  /* Windows SID 复制 stub (fix 2026-08-15: CopySid undefined) */
 #define CloseHandle(a) 0  /* Windows API stub (fix 2026-08-15: CloseHandle undefined) */
-#define GetLastError() 0  /* Windows API stub (fix 2026-08-15: GetLastError undefined) */
+unsigned long GetLastError(void); /* fix 2026-08-19: 原宏 =0 掩盖真实错误 (FindNextFileW 失败 err=0 假象) — jyld k32_names 已导入, 真调用 */
 #define LookupAccountSidA(a,b,c,d,e,f,g) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: LookupAccountSidA undefined) */
 #define GetNamedSecurityInfoW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: ERROR_SUCCESS (fix 2026-08-15: GetNamedSecurityInfoW undefined) */
 #define SE_FILE_OBJECT 1  /* Windows SE_OBJECT_TYPE (fix 2026-08-15: SE_FILE_OBJECT undefined) */
