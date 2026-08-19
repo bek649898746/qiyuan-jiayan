@@ -905,6 +905,12 @@ static inline int git_offset_1st_component_prelude(const char *path) {
 #define S_ISFIFO(m) (((m) & S_IFMT) == 0x1000)
 #define S_ISSOCK(m) (((m) & S_IFMT) == 0xC000)
 
+/* <sys/types.h> mode_t (fix 2026-08-19: 系统头被跳过 + git unistd.h 未 include →
+   compat/stat.c mode_native_to_git(mode_t native_mode) 的 mode_t 未注册 →
+   被解析成幻影参数占 rcx → 真参数绑到 rdx → 调用方传 rcx 读到垃圾 →
+   S_ISREG 判定读错槽 → st_mode 变 0x4550 (S_IFDIR) → git status 把 HEAD 当目录 → SEGV) */
+typedef unsigned short mode_t;
+
 /* Windows API 文件属性常量 (<windows.h> 跳过, Git compat 用) */
 #define FILE_ATTRIBUTE_READONLY 0x01
 #define FILE_ATTRIBUTE_HIDDEN 0x02

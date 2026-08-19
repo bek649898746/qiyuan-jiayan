@@ -78,3 +78,53 @@ _g1_sqlite3.h
 
 # �������� (��� 2026-08-09)
 build/
+
+# 内部战略素材，不入库（2026-08-19）
+甲言吞噬素材库_*
+
+# 内部资产清单/愿景白皮书（不公开 2026-08-19）
+jiayan_engines_清单.md
+启元项目愿景白皮书.txt
+
+# 内部战报与战略文件（不公开 2026-08-19 全面检查）
+PHASE15_BRIEFING.md
+releases/
+
+# 调试残留（本地保留，不上传）
+_bak_fix_cast/
+_gdb*.gdb
+_gdb*.txt
+_jdbg*.txt
+_taq.asm
+_td.asm*
+_tv*.asm*
+a.exe.asm
+ce.txt
+compile_err.txt
+qcc_x86*.bak
+qcc_x86*.bak2
+_*.txt
+_*.py
+_*.h
+_*.o
+scripts/_dbg*.py
+scripts/_fix*.py
+scripts/_tmp*.py
+scripts/_clean*.py
+scripts/_dump*.py
+scripts/_find*.py
+scripts/_git_*.py
+scripts/_host*.py
+scripts/_jy_*.py
+scripts/_scan*.py
+scripts/_va_*.py
+scripts/_patch*.py
+scripts/_restore*.py
+scripts/_unpatch*.py
+scripts/_upd*.py
+scripts/_verify*.py
+scripts/_gen*.py
+scripts/_pe_*.py
+
+# 本地冒烟脚本（含绝对路径，不公开）
+scripts/_git_smoke.ps1

@@ -6423,6 +6423,7 @@ static int parse(const char *s) {
                     continue;
                 }
                 if (tt[tk] == VR) {
+                    if (tt[tk + 1] == VR && tt[tk + 2] != OK) { tk++; } /* 未知类型参数: `mode_t native_mode` — 类型未注册 (系统头被跳过) 时 VR VR 两连, 第一个是类型名非参数名; 原把类型注册成参数占掉 rcx 槽 → 真参数绑到 rdx → 调用方传 rcx 读到垃圾 (fix 2026-08-19: git compat/stat.c mode_t 未注册 → mode_native_to_git 读错槽 → S_ISREG 判定错 → git status 把 HEAD 当目录 → SEGV) */
                     if (p_fptr) { /* typedef'd fnptr param: fp_t cb — 8-byte pointer slot (fix 2026-08-03) */
                         var_param(tn[tk], pr, 4, 8, -1, 0, 0);
                         if (p_fptr_dbl) vars[vcnt - 1].p_dbl = 1;
@@ -8820,6 +8821,7 @@ static void cg(int n) {
                 else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
                         else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx */
                         else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
+                        mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         }
                     }
                 } else if (nt[n0[mc]] == 13 || nt[n0[mc]] == 15) {
@@ -8833,6 +8835,7 @@ static void cg(int n) {
                 else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
                         else if (fsz == 8) { rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx (64-bit ptr/struct field) */
                         else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
+                        mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     }
                 } else {
                 char *vname = (char*)(nn + n0[mc]); /* struct var name */
@@ -8861,6 +8864,7 @@ static void cg(int n) {
                                 else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
                 else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
                                 else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [eax],ebx */
+                            mov_rr(0, 3); /* eax = stored value (chained assignments) */
                             }
                         } else if (var_isstatic(vname)) {
                             /* static struct member write */
@@ -8878,6 +8882,7 @@ static void cg(int n) {
                                 else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
                 else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
                                 else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax], ebx */
+                            mov_rr(0, 3); /* eax = stored value (chained assignments) */
                             }
                         } else if (var_big_param(vname)) {
                             /* big-struct param field write: load copy ptr, +foff, store */
@@ -8899,8 +8904,8 @@ static void cg(int n) {
                                 cg(n1[n]);
                                 if (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); bf_store(stypes[si].name, fname); } /* bit-field RMW store (fix 2026-08-05) */
                                 else if (fsz == 8) { if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); mov_mbrp_reg64(var_sbase(vname, off) + foff - cur_frame_sz, 0); } /* ll 字段: int RHS 符号扩展 (fix 2026-08-06); fnptr 字段不扩 */
-                                else if (fsz == 1) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl (char store: lea must not clobber the value in eax — fix 2026-08-03) */
-                else if (fsz == 2) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field) */
+                                else if (fsz == 1) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); mov_rr(0, 3); } /* MOV [rax], bl (char store: lea must not clobber the value in eax — fix 2026-08-03; mov_rr restores value for chained assignments fix 2026-08-19) */
+                else if (fsz == 2) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); mov_rr(0, 3); } /* MOV [rax], bx (short field; mov_rr restores value for chained assignments fix 2026-08-19) */
                                 else { mov_mbrp_reg(var_sbase(vname, off) + foff - cur_frame_sz, 0); }
                             }
                         }
@@ -8911,13 +8916,21 @@ static void cg(int n) {
                     int fo = -1, si2 = -1;
                     for (int i = 0; i < st_n; i++) { fo = st_off(stypes[i].name, fname); if (fo >= 0) { si2 = i; break; } }
                     cg(n1[n]); push_r(0); /* save rhs on stack */
-                    if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                    if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
+                        /* 表达式基: (ptr)->field 的 ptr 是取址/解引用表达式 (fix 2026-08-19:
+                           链式赋值 (&t->list)->next = (&t->list)->prev = &t->list 的基是 case-11 取址 —
+                           原 load_param_val(vname='') 不发码 → 沿用内层赋值残留 rax 当写地址 → 写错位/写 NULL.
+                           INIT_LIST_HEAD 的 next 字段从未写 → git status tempfile 链表节点 next=0 → SEGV) */
+                        cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
+                    }
+                    else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
                     else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                     else { mov_r_imm(0, 0); }
                     if (fo != 0) add_rax_imm8(fo);
                     pop_r(3); /* ebx = rhs */
                     if (si2 >= 0 && bf_store(stypes[si2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                     else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [eax], ebx */
+                    mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
                 } /* end var.field else */
             } else if (nt[n0[n]] == 14) { /* arr[i] = expr */
