@@ -83,6 +83,7 @@ static const char *k32_names[] = {
     "GetModuleHandleW","GetProcessHeap","GetSystemInfo","GetSystemTime",
     "GetSystemTimeAsFileTime","GetTempPathA","GetTempPathW","GetTickCount",
     "FindFirstFileW","FindNextFileW","FindClose", /* dirent (fix 2026-08-19): compat/win32/dirent.c 真实现 */
+    "GetFileInformationByHandle","GetFileType","PeekNamedPipe", /* mingw_fstat/stat (fix 2026-08-20): prelude stub 移除后需真链接 — 原 _get_osfhandle stub -1 → mingw_fstat EBADF → git init fstat config 失败 */
     "HeapAlloc","HeapCompact","HeapCreate","HeapDestroy","HeapFree",
     "HeapReAlloc","HeapSize","HeapValidate","LocalFree","LockFile","LockFileEx",
     "MapViewOfFile","MultiByteToWideChar","OutputDebugStringA","OutputDebugStringW",
@@ -574,7 +575,7 @@ static const char *msvcrt_names[] = {
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "_mkdir","_open","_close","_read","_write","_lseek","_dup","_dup2",
-    "_getpid","_isatty","_fileno",
+    "_getpid","_isatty","_fileno","_get_osfhandle", /* mingw_fstat fd→HANDLE (fix 2026-08-20): 原 prelude stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败 */
     "_unlink","_rmdir","_chmod","_access",
     "_fdopen","_pipe","_popen","_pclose",
     "_stat","_fstat",

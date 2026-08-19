@@ -490,7 +490,10 @@ typedef struct {
     unsigned ehdr_len;
     int hdr_done;
     int finished;
+    int final_started;
     unsigned long adler;
+    unsigned char adler_buf[4];
+    unsigned adler_pos;
 } qcc_deflate_state;
 
 static unsigned long qcc_adler32(unsigned long adler, const unsigned char *buf, unsigned len) {
@@ -549,16 +552,25 @@ static int qcc_deflate_flush_block(z_stream *s, qcc_deflate_state *st, int final
 }
 static int deflate(z_stream *s, int flush) {
     qcc_deflate_state *st = (qcc_deflate_state *)s->state;
+    int made_progress = 0;
     printf("[ZD] deflate flush=%d avail_in=%u avail_out=%u total_out=%lu st=%p\n", flush, s->avail_in, s->avail_out, s->total_out, (void*)st); /* tmp diag */
     if (!st) return Z_STREAM_ERROR;
     if (st->finished) { printf("[ZD] finished -> END\n"); return Z_STREAM_END; }
+    /* 1. resume 部分已发出的块 */
+    if (st->em != 0) {
+        if (!qcc_deflate_flush_block(s, st, 0)) { printf("[ZD] resume block no out room\n"); return Z_OK; }
+        made_progress = 1;
+    }
+    /* 2. zlib 头 (0x78 0x01) */
     if (!st->hdr_done) {
         unsigned char hd[2];
         if (s->avail_out < 2) { printf("[ZD] no room for hdr\n"); return Z_OK; }
         hd[0] = 0x78; hd[1] = 0x01;
         qcc_deflate_emit(s, hd, 2);
         st->hdr_done = 1;
+        made_progress = 1;
     }
+    /* 3. 消费输入到缓冲 (stored 块, 满 65535 才发非终块) */
     while (s->avail_in > 0) {
         unsigned n = s->avail_in, i;
         if (n > 65535 - st->len) n = 65535 - st->len;
@@ -566,25 +578,34 @@ static int deflate(z_stream *s, int flush) {
         st->adler = qcc_adler32(st->adler, s->next_in, n);
         s->next_in += n; s->avail_in -= n; s->total_in += n;
         st->len += n;
+        made_progress = 1;
         if (st->len == 65535) {
             if (!qcc_deflate_flush_block(s, st, 0)) { printf("[ZD] block full, no out room\n"); return Z_OK; }
         }
     }
+    /* 4. Z_FINISH: 终块 + adler → Z_STREAM_END */
     if (flush == Z_FINISH) {
-        unsigned char tr[4];
-        if (!qcc_deflate_flush_block(s, st, 1)) { printf("[ZD] flush_block no out room\n"); return Z_OK; }
-        if (st->em == 0) {
-            tr[0] = (st->adler >> 24) & 0xFF;
-            tr[1] = (st->adler >> 16) & 0xFF;
-            tr[2] = (st->adler >> 8) & 0xFF;
-            tr[3] = st->adler & 0xFF;
-            if (qcc_deflate_emit(s, tr, 4) < 4) { printf("[ZD] no room for adler\n"); return Z_OK; }
-            st->finished = 1;
-            printf("[ZD] END\n");
-            return Z_STREAM_END;
+        if (!st->final_started) {
+            st->final_started = 1;
+            if (!qcc_deflate_flush_block(s, st, 1)) { printf("[ZD] final block no out room\n"); return Z_OK; }
         }
-        printf("[ZD] flush_block pending em=%d\n", st->em);
+        if (st->adler_pos == 0) {
+            st->adler_buf[0] = (st->adler >> 24) & 0xFF;
+            st->adler_buf[1] = (st->adler >> 16) & 0xFF;
+            st->adler_buf[2] = (st->adler >> 8) & 0xFF;
+            st->adler_buf[3] = st->adler & 0xFF;
+        }
+        while (st->adler_pos < 4 && s->avail_out > 0) {
+            s->next_out[0] = st->adler_buf[st->adler_pos];
+            s->next_out++; s->avail_out--; s->total_out++; st->adler_pos++;
+        }
+        if (st->adler_pos < 4) { printf("[ZD] adler partial\n"); return Z_OK; }
+        st->finished = 1;
+        printf("[ZD] END\n");
+        return Z_STREAM_END;
     }
+    /* 5. Z_NO_FLUSH 无输入且本调用无任何进展 → Z_BUF_ERROR (匹配 zlib: git 用 while(...==Z_OK) 循环收尾) */
+    if (!made_progress) { printf("[ZD] no progress -> Z_BUF_ERROR\n"); return Z_BUF_ERROR; }
     return Z_OK;
 }
 static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) {
@@ -592,7 +613,7 @@ static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) {
     (void)l; (void)m; (void)w; (void)ml; (void)st;
     d = (qcc_deflate_state *)malloc(sizeof(qcc_deflate_state));
     if (!d) return Z_MEM_ERROR;
-    d->len = 0; d->em = 0; d->epos = 0; d->ehdr_len = 0; d->hdr_done = 0; d->finished = 0; d->adler = 1;
+    d->len = 0; d->em = 0; d->epos = 0; d->ehdr_len = 0; d->hdr_done = 0; d->finished = 0; d->final_started = 0; d->adler = 1; d->adler_pos = 0;
     s->state = (void *)d;
     s->msg = 0;
     return Z_OK;
@@ -1067,6 +1088,7 @@ typedef int bool;
    原无 padding 致 st_size@18(4), 与 msvcrt fstat 写入的 st_size@20 错位 →
    读 st.st_size 恒 0 → git_config_set_multivar_in_file 视旧 config 为空 →
    写坏 .git/config ("[\n" 开头) → bad config line 1 → git init 失败). */
+struct timespec { time_t tv_sec; long tv_nsec; }; /* fix 2026-08-20: 提到 struct stat 前 (struct stat 现含 timespec 成员) */
 struct stat {
     int st_dev;
     unsigned short st_ino;
@@ -1074,12 +1096,16 @@ struct stat {
     short st_nlink;
     short st_uid;
     short st_gid;
-    char st_rdev[4]; /* MSVCRT: st_rdev@14 — qcc 的 int 4 对齐会 pad 到 16, 用 char[4] 保持 @14 (git 不用 st_rdev, fix 2026-08-18) */
-    int st_size;     /* 18 → 4 对齐 @20, 与 msvcrt fstat 写入一致 (fix 2026-08-18: 原无对齐 st_size@18 → 读 0 → config 写坏) */
-    long long st_atime;
-    long long st_mtime;
-    long long st_ctime;
+    int st_rdev;         /* @14 (4) → @18 */
+    long long st_size;   /* @24 (8, 对齐 24) — 与 mingw_stat 布局一致 (fix 2026-08-20) */
+    struct timespec st_atim;  /* @32 (16) */
+    struct timespec st_mtim;  /* @48 (16) */
+    struct timespec st_ctim;  /* @64 (16) */
 };
+/* 旧 MSVCRT 名 (git 代码经 mingw.h 宏 st_atime→st_atim.tv_sec; __MINGW32__ 未定义时 prelude 兜底) */
+#define st_atime st_atim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
 
 /* <sys/utime.h> struct utimbuf — MSVCRT 布局 (16 字节, actime@0, modtime@8)。
    同 struct stat: 系统头跳过 → 不注册 → utime() 实参 &utb 变垃圾 (fix 2026-08-17). */
@@ -1149,7 +1175,24 @@ typedef unsigned short mode_t;
 #define FILE_SHARE_READ 1
 #define FILE_SHARE_WRITE 2
 #define FILE_SHARE_DELETE 4
-#define GetFileInformationByHandle(hFile, lpFileInformation) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetFileInformationByHandle undefined) */
+/* BY_HANDLE_FILE_INFORMATION + GetFileInformationByHandle/GetFileType/PeekNamedPipe
+   (fix 2026-08-20): mingw_fstat 真实现需要 — 原 stub 返 0 → FILE_TYPE_UNKNOWN → EBADF
+   → git init fstat config "Bad file descriptor"; jyld 已加 kernel32 导入 */
+typedef struct {
+    DWORD dwFileAttributes;
+    FILETIME ftCreationTime;
+    FILETIME ftLastAccessTime;
+    FILETIME ftLastWriteTime;
+    DWORD dwVolumeSerialNumber;
+    DWORD nFileSizeHigh;
+    DWORD nFileSizeLow;
+    DWORD nNumberOfLinks;
+    DWORD nFileIndexHigh;
+    DWORD nFileIndexLow;
+} BY_HANDLE_FILE_INFORMATION;
+int GetFileInformationByHandle(void *hFile, void *lpFileInformation);
+unsigned int GetFileType(void *hFile);
+int PeekNamedPipe(void *h, void *b, unsigned int n, unsigned int *r, unsigned int *a, void *o);
 #define GetFileAttributesExA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetFileAttributesExA undefined) */
 #define LoadLibraryExA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: LoadLibraryExA undefined) */
 #define GetProcAddress(a,b) 0  /* Windows API stub (fix 2026-08-15: GetProcAddress undefined) */
@@ -1178,10 +1221,8 @@ static int listen(int sockfd, int backlog) { (void)sockfd; (void)backlog; return
 static int InitializeProcThreadAttributeList(void *a, int b, int c, void *d) { (void)a; (void)b; (void)c; (void)d; return 0; }  /* Windows API stub: 长函数名 fn_macro 匹配不上, 必须真函数 (fix 2026-08-15: InitializeProcThreadAttributeList undefined) */
 static int UpdateProcThreadAttribute(void *a, int b, int c, void *d, int e, void *f, void *g) { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 0; }  /* Windows API stub (fix 2026-08-15: UpdateProcThreadAttribute undefined) */
 static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API stub (fix 2026-08-15: DeleteProcThreadAttributeList undefined) */
-#define GetFileType(a) 0  /* Windows API stub: FILE_TYPE_UNKNOWN (fix 2026-08-15: GetFileType undefined) */
 #define GetHandleInformation(a,b) 0  /* Windows API stub (fix 2026-08-15: GetHandleInformation undefined) */
 #define GetNamedPipeInfo(a,b,c,d,e) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetNamedPipeInfo undefined) */
-#define PeekNamedPipe(a,b,c,d,e,f) 0  /* Windows API stub (fix 2026-08-15: PeekNamedPipe undefined) */
 #define CreatePipe(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: CreatePipe undefined) */
 #define FILE_TYPE_UNKNOWN 0
 #define FILE_TYPE_DISK 1
@@ -1412,6 +1453,19 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 /* xutftowcs_path — 真实现 (fix 2026-08-19): 原 stub 宏展开成 0 → compat/win32/dirent.c 的
    opendir len=0 → FindFirstFileW 模式错 → 目录扫描崩。实现见 compat/prelude_dirent_support.c */
 int xutftowcs_path(wchar_t *wcs, const char *utf);
+/* WIN32_FILE_ATTRIBUTE_DATA + GetFileAttributesExW (fix 2026-08-20): mingw.c do_lstat 需要,
+   原缺失 → fdata 未定义类型(4B) → GetFileAttributesExW 写 36B 穿栈 → attrs=0x8100 垃圾 →
+   S_ISDIR 判错 → read_gitfile open 目录 → add 死 "Permission denied" */
+typedef struct {
+    DWORD dwFileAttributes;
+    FILETIME ftCreationTime;
+    FILETIME ftLastAccessTime;
+    FILETIME ftLastWriteTime;
+    DWORD nFileSizeHigh;
+    DWORD nFileSizeLow;
+} WIN32_FILE_ATTRIBUTE_DATA;
+#define GetFileExInfoStandard 0
+int GetFileAttributesExW(const wchar_t *lpFileName, int fInfoLevelId, void *lpFileInformation);
 /* WIN32_FIND_DATAW — compat/win32/dirent.c 的 FindFirstFileW 需要 (fix 2026-08-19) */
 typedef struct {
     DWORD dwFileAttributes;
@@ -1439,7 +1493,7 @@ static int _wopen(const wchar_t *filename, int oflags, int pmode) { (void)filena
 #define _wfopen(a, b) 0  /* C runtime 宽字符 fopen stub (fix 2026-08-15: _wfopen undefined) */
 #define _wfreopen(a, b, c) 0  /* C runtime 宽字符 freopen stub (fix 2026-08-15: _wfreopen undefined) */
 #define _open_osfhandle(a,b) 0  /* C runtime fd 包装 stub (fix 2026-08-15: _open_osfhandle undefined) */
-#define _get_osfhandle(a) ((intptr_t)-1)  /* C runtime fd→HANDLE stub (fix 2026-08-15: _get_osfhandle undefined) */
+intptr_t _get_osfhandle(int fd); /* fix 2026-08-20: mingw_fstat 需要真 fd→HANDLE — 原 stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败; jyld 已加 msvcrt 导入 */
 #define swprintf(buf, len, fmt, ...) 0  /* C runtime 宽字符格式化 stub (fix 2026-08-15: swprintf undefined) */
 #define wcscmp(a, b) 0  /* C runtime 宽字符串比较 stub (fix 2026-08-15: wcscmp undefined) */
 #define wcslen(a) 0  /* C runtime 宽字符串长度 stub (fix 2026-08-15: wcslen undefined) */

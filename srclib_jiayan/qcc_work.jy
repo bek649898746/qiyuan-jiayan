@@ -987,7 +987,7 @@ __attribute__((unused))
 静 整 st_field_el(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 返 (idx >= 0 && stypes[si].fels[idx] > 0) ? stypes[si].fels[idx] : (idx >= 0 ? stypes[si].frows[idx] : 1); } /* 数组字段元素大小; 未设置→frow (标量) */
 静 整 st_field_pel(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 返 (idx >= 0 && stypes[si].fpels[idx] > 0) ? stypes[si].fpels[idx] : 4; } /* 指针字段的指向元素大小 (fix 2026-08-17: char *buf → 1, int * → 4; 未设置→4) */
 静 整 st_field_is_ptr(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 返 idx >= 0 && stypes[si].fptrs[idx] != 0; } /* 指针字段标记 (struct X 星号 等; fix 2026-08-18: 指针字段作数组基判定 — 原 fty==-1 漏判 struct 指针字段) */
-静 整 st_field_is_array_idx(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 若 (idx >= 0 && stypes[si].fptrs[idx]) 返 0; 返 idx >= 0 && stypes[si].fels[idx] > 0 && stypes[si].fels[idx] != stypes[si].fsizes[idx]; } /* 数组字段: fels>0 且 fels(元素大小) != fsizes(总大小); fnptr 字段 fels==0, 标量 fels==fsize (fix 2026-08-16); fix 2026-08-19: 指针字段 (fptrs=1) 的 fels=指向元素大小≠fsizes=指针大小 → 被误判为内联数组 → s->next_out[i] 保留字段地址+按 frow(8) 缩放 → qcc_deflate_emit 拷贝写坏 z_stream (next_out=7a/avail_out=-1) */
+静 整 st_field_is_array_idx(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 若 (idx >= 0 && stypes[si].fptrs[idx]) 返 0; 若 (idx < 0) 返 0; 若 (stypes[si].fels[idx] > 0) 返 stypes[si].fels[idx] != stypes[si].fsizes[idx]; 返 stypes[si].fsizes[idx] == 0; } /* 数组字段: fels>0 且 fels(元素大小) != fsizes(总大小); fels==0 时 fsizes==0 → flex/空数组 char name[0] 也是数组 → 成员访问取地址 (fix 2026-08-20: dir_entry.name[FLEX_ARRAY=0] fsz=0 原落 4 字节标量加载 → "hell" 当地址 → add_files %s 崩); fnptr 字段 fels==0, 标量 fels==fsize (fix 2026-08-16); fix 2026-08-19: 指针字段 (fptrs=1) 的 fels=指向元素大小≠fsizes=指针大小 → 被误判为内联数组 → s->next_out[i] 保留字段地址+按 frow(8) 缩放 → qcc_deflate_emit 拷贝写坏 z_stream (next_out=7a/avail_out=-1) */
 静 整 st_field_row(常 字 *sn, 常 字 *fn); /* fwd */
 静 整 st_field_is_dbl(常 字 *sn, 常 字 *fn); /* fwd */
 静 空 st_field_2d_setup(整 si, 常 字 *fn) { /* fix 2026-08-07: struct 数组字段 → 布好 2D 深度状态 (第一维行大小, 第二维元素大小) */
@@ -1411,6 +1411,18 @@ __attribute__((unused))
     b(0xC6);
     若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); }
     否 { modrm(2, 0, 5); b4(disp); }
+    b(imm & 0xFF);
+}
+/* char arr[N] = "lit" (static, coff): store one string byte into [rax+disp]
+   (C6 /0 MOV r/m8, imm8 — no relocation needed; rax 已由 lea_rax_rip 指向 .data 槽,
+   fix 2026-08-20: mov_byte_rip_imm 的 C6 05 disp32 imm8 在 coff 模式无法生成 REL32
+   修复 (imm8 在 disp32 后, jyld 按 P+4 修正会偏 1) → static char x[]="lit" 在 git
+   对象里存成字符串地址 → mkstemps 的 x_pattern 内容垃圾 → git init EINVAL) */
+静 空 mov_byte_rax_imm(整 disp, 整 imm) {
+    asm_emit("    存字节 [rax%+d], %d\n", (字*)(长 长)(disp), (字*)(长 长)(imm), (字*)(长 长)0);
+    b(0xC6);
+    若 (disp < 128 && disp >= -128) { modrm(1, 0, 0); b(disp); }
+    否 { modrm(2, 0, 0); b4(disp); }
     b(imm & 0xFF);
 }
 /* 64-bit variants: preserve full pointer values in registers/slots */
@@ -3408,6 +3420,7 @@ __attribute__((unused))
 
 静 整 prim(空) {
         若 (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
+        若 (getenv("QCC_DBG_NS")) fprintf(stderr, "[PRIM] PREFIX INC/DEC tok=%d '%s' tk=%d\n", tt[tk], tn[tk], tk); /* tmp diag */
         整 is_dec = (tt[tk] == MM); tk++;
         整 v = prim();
         整 m = Nd(26); nv[m] = is_dec; Nc(m, v);
@@ -4143,7 +4156,8 @@ __attribute__((unused))
                upload-pack.c pfd). */
             若 (tt[tk] != FK && (tt[tk] == DK || (tt[tk] == VR && (tt[tk + 1] == LB || tt[tk + 1] == CK || tt[tk + 1] == AK)))) {
                 整 is_ptr = (tt[tk] == DK);
-                若 (is_ptr) tk++; /* * */
+                整 ptr_depth = 0;
+                循环 (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; } /* fix 2026-08-20: 数指针层级 — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件 */
                 若 (tt[tk] == VR) {
                     字 vn[64]; strcpy(vn, tn[tk]); tk++;
                     整 d = Nd(7); memcpy((字*)(nn + d), vn, 32);
@@ -4177,11 +4191,17 @@ __attribute__((unused))
                         } 否 {
                             var_array(vn, scnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
                         }
-                        vars[vcnt - 1].st_idx = si;
+                        vars[vcnt - 1].st_idx = si; /* fix 2026-08-20: T** 数组 st_idx 保留 si — mem_addr 链需要 pointee 结构体类型 */
                     } 否 若 (is_ptr) {
-                        若 (is_static) var_static(vn, 4);
-                        否 var_offset_ptr(vn, 4);
-                        vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                        若 (ptr_depth >= 2) { /* struct X **: 元素=指针 8B (p_esz/arr_esz=8), 但 st_idx 保留 si — mem_addr 链 (*e)->next 需要 pointee 结构体类型 (fix 2026-08-20: st_idx=-1 → mem_addr sub_si<0 → &(*e)->next 空转 → hashmap 链遍历死循环) */
+                            若 (is_static) var_static(vn, 4);
+                            否 var_offset_ptr(vn, 8);
+                            vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                        } 否 {
+                            若 (is_static) var_static(vn, 4);
+                            否 var_offset_ptr(vn, 4);
+                            vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
+                        }
                     } 否 若 (si >= 0) {
                         若 (is_static) var_static_struct(vn, si, 1);
                         否 var_struct(vn, si);
@@ -4755,6 +4775,16 @@ __attribute__((unused))
                     cnt = n;
                     adimv[0] = n; /* fix 2026-08-07: 未定长数组推断的个数必须进 adimv — 否则 brace_arr_init 的 gi_idx 进位读 dims[0]=0 → 所有初始化值写进元素 0 (int a[]={1,2,3} 得 3 0 0) */
                     tk = save; /* rewind to '=' — normal init path below */
+                }
+                /* fix 2026-08-20: 局部 static char x[] = "literal" — 字符串初始化器推断数组大小
+                   (原只处理 ={..} 分支; cnt=1 → sizeof=1 → wrapper.c git_mkstemps_mode 的
+                   num_x=ARRAY_SIZE(x_pattern)-1=0 → XXXXXX 永不替换 → git commit 写对象死循环;
+                   与全局路径 6412 行的 STR 分支对齐) */
+                若 (dims == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
+                    整 slen = (整)strlen(str_tbl[tv[tk + 1]]) + 1;
+                    cnt = slen;
+                    adimv[0] = slen;
+                    若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' string-init inferred n=%d\n", vn, slen);
                 }
                 acnt = cnt; adims = dims; /* expose to ={...} init */
                 若 (ltd_si >= 0 && !is_ptr) { esz = stypes[ltd_si].sz; } /* struct element size; pointer-to-struct array elements are 8-byte pointers (fix 2026-08-15: tr2_tgt_builtins[] miscompiled as struct array → for_each_builtin never derefs NULL terminator) */
@@ -7954,6 +7984,38 @@ __attribute__((unused))
     fprintf(stderr, "[ERR] __asm 未编码: %s\n", asmtext);
 }
 
+/* 指针表达式节点的元素大小 (T* → sizeof(T); 数组名 → 元素宽; 非指针 → 0)
+   fix 2026-08-20: 成员访问 p->field 也是指针 — 原指针运算只识别 cast/纯变量名,
+   `d.entries + 1` 不缩放 (步进 1 字节 → 全错位), `dst - d.entries` 不识别 →
+   prune_directory `dir->nr = dst - dir->entries` 算错 → git add 丢全部文件. */
+静 整 node_psz(整 n) {
+    若 (n < 0) 返 0;
+    若 (pesz[n] > 0) 返 pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) */
+    若 (nt[n] == 1) { /* 变量名: 数组名→元素宽, T** 指针→arr_esz(8), T*→p_esz */
+        字 *vn = (字*)(nn + n);
+        遍 (整 vi = vs_n() - 1; vi >= 0; vi--)
+            若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) {
+                若 (getenv("QCC_DBG_NS")) fprintf(stderr, "[NPSZ] var '%s' arr_sz=%d arr_esz=%d p_esz=%d\n", vn, vars[vi].arr_sz, vars[vi].arr_esz, vars[vi].p_esz); /* tmp diag */
+                若 (vars[vi].arr_esz > 0) 返 vars[vi].arr_esz; /* 数组行/T** 元素 (T** 的 arr_esz=8, p_esz=4 — fix 2026-08-20: 原优先 p_esz → dst-entries 按 4 缩放错) */
+                返 vars[vi].p_esz;
+            }
+        返 0;
+    }
+    若 (nt[n] == 13 || nt[n] == 15) { /* s.field / p->field: 指针字段的元素大小 */
+        整 mc = n;
+        字 *sv = (字*)(nn + n0[mc]);
+        字 *fn = (字*)(nn + mc);
+        整 si2 = var_stidx(sv);
+        若 (si2 >= 0) {
+            整 fidx = st_fidx(si2, fn);
+            若 (fidx >= 0 && stypes[si2].fptrs[fidx])
+                返 stypes[si2].fpels[fidx] ? stypes[si2].fpels[fidx] : 8;
+        }
+        返 0;
+    }
+    返 0;
+}
+
 静 空 cg(整 n) {
     若 (n < 0) 返;
     若 (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
@@ -8145,27 +8207,19 @@ __attribute__((unused))
                (fix 2026-08-05: was p - q*esz → garbage). */
             整 pscale = 0;
             整 psub_div = 0; /* 指针-指针: (p-q) 再除以元素大小 */
-            若 ((o == PK || o == T_MK) && n0[n] >= 0 && pesz[n0[n]] > 0) {
-                /* (T*)ptr ± N: cast 的元素大小优先 (fix 2026-08-19: (char*)pos - 24 原按变量
-                   p_esz=8 缩放 → pos-192 → container_of/list_entry 错位 → chdir_notify
-                   回调取到零化条目 cb=NULL → git status SEGV) */
-                pscale = pesz[n0[n]];
-            } 否 若 ((o == PK || o == T_MK) && n0[n] >= 0 && nt[n0[n]] == 1) {
-                字 *pv = (字*)(nn + n0[n]);
-                遍 (整 vi = vs_n() - 1; vi >= 0; vi--)
-                    若 (!strcmp(vars[vi].name, pv) && var_codegen_visible(vi)) {
-                        若 (vars[vi].arr_esz > 0) pscale = vars[vi].arr_esz;   /* array row / pointer element */
-                        否 若 (vars[vi].p_esz > 0) pscale = vars[vi].p_esz;  /* int* → 4, char* → 1 */
-                        若 (o == T_MK && pscale > 0 && nt[n1[n]] == 1) { /* p - q: q 是同元素指针? */
-                            字 *qv = (字*)(nn + n1[n]);
-                            遍 (整 vj = vs_n() - 1; vj >= 0; vj--)
-                                若 (!strcmp(vars[vj].name, qv) && var_codegen_visible(vj)) {
-                                    若 (vars[vj].arr_sz == 0 && vars[vj].p_esz == vars[vi].p_esz) { psub_div = pscale; pscale = 0; }
-                                    断;
-                                }
-                        }
-                        断;
+            若 (o == PK || o == T_MK) {
+                /* (T*)ptr ± N: cast 元素大小优先 (fix 2026-08-19); 变量/数组名/成员
+                   指针统一走 node_psz (fix 2026-08-20: 成员 p->field 原不识别 →
+                   d.entries+1 步进 1 字节; prune_directory dir->nr=dst-dir->entries 算错) */
+                整 lpsz = node_psz(n0[n]);
+                若 (lpsz > 0) {
+                    pscale = lpsz;
+                    若 (o == T_MK) {
+                        整 rpsz = node_psz(n1[n]);
+                        若 (getenv("QCC_DBG_NS")) fprintf(stderr, "[PSUB] o=%d lpsz=%d rpsz=%d lnt=%d rnt=%d\n", o, lpsz, rpsz, nt[n0[n]], nt[n1[n]]); /* tmp diag */
+                        若 (rpsz == pscale) { psub_div = pscale; pscale = 0; } /* p - q 同元素指针 → 除元素大小 */
                     }
+                }
             }
             cg(n0[n]); push_r(0); cg(n1[n]); pop_r(3);
             若 (pscale > 1) { mov_rr(10, 0); mov_r_imm(0, pscale); asm_emit("    乘 r0, r10\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); } /* eax = index * row size (REX.B=1 → rm=r10; fix 2026-08-03: text said r2) */
@@ -8789,16 +8843,26 @@ __attribute__((unused))
                     否 { cg_f(n0[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
                 }
                 否 {
-                若 (nt[n0[n]] == STR && var_isstatic(vname) && var_arrsz(vname) > 1 && !var_pdbl(vname) && !coff_mode) {
+                若 (nt[n0[n]] == STR && var_isstatic(vname) && var_arrsz(vname) > 1 && !var_pdbl(vname)) {
                     /* global char arr[N] = "lit": write string bytes into the static
                        .data slot (fix 2026-08-05: was storing the string ADDRESS →
-                       garbage bytes printed). */
+                       garbage bytes printed). fix 2026-08-20: coff 模式不能走
+                       mov_byte_rip_imm (C6 05 disp32 imm8 无法生成可修复的 REL32 —
+                       imm8 在 disp32 之后, jyld 按 P+4 修正偏 1) → 改用
+                       lea_rax_rip + mov_byte_rax_imm (无重定位, git wrapper.c
+                       mkstemps x_pattern 内容从此正确). */
                     整 arr_sz = var_arrsz(vname);
                     常 字 *sv = str_tbl[nv[n0[n]]];
                     整 len = (整)strlen(sv) + 1; /* include NUL */
                     若 (len > arr_sz) len = arr_sz;
-                    遍 (整 i = 0; i < len; i++)
-                        mov_byte_rip_imm(stc_disp(off) - 1 + i, (无 字)sv[i]); /* stc_disp is RIP-relative per-instruction: recompute each time */
+                    若 (coff_mode) {
+                        lea_rax_rip(coff_static_disp(off, 1) - 1); /* rax = &static 槽 (REL32, jyld 修复) */
+                        遍 (整 i = 0; i < len; i++)
+                            mov_byte_rax_imm(i, (无 字)sv[i]);
+                    } 否 {
+                        遍 (整 i = 0; i < len; i++)
+                            mov_byte_rip_imm(stc_disp(off) - 1 + i, (无 字)sv[i]); /* stc_disp is RIP-relative per-instruction: recompute each time */
+                    }
                 } 否 若 (nt[n0[n]] == STR && var_pesz(vname) == 0 && !var_isstatic(vname) && sti < 0 && var_arrsz(vname) > 1) {
                     /* char arr[N] = "lit"; — copy the string BYTES into the array
                        (fix 2026-08-05: was storing the string ADDRESS as a 4-byte
@@ -9387,6 +9451,7 @@ __attribute__((unused))
         } 断;
         例 11: { /* &var �?also &struct.field, &arr[i] */
             整 nt0 = nt[n0[n]];
+            若 (getenv("QCC_DBG_NS")) { 字 *_vn = (字*)(nn + n0[n]); fprintf(stderr, "[AMP2] nt0=%d base='%s' basent=%d nv=%d\n", nt0, _vn, (n0[n] >= 0 && n0[n0[n]] >= 0) ? nt[n0[n0[n]]] : -1, nv[n0[n]]); } /* tmp diag */
             若 (nt0 == 13 || nt0 == 15) { /* &b.count */
                 整 mc = n0[n];
                 字 *vn = (字*)(nn + n0[mc]); /* struct var */
@@ -9421,6 +9486,7 @@ __attribute__((unused))
             } 否 {
             字 *vname = (字*)(nn + n0[n]);
             整 off = var_lookup(vname);
+            若 (getenv("QCC_DBG_AMP")) 若 (!strcmp(vname, "dir") || !strcmp(vname, "pathspec")) fprintf(stderr, "[AMP] &%s off=%d sz=%d pesz=%d\n", vname, off, var_stidx(vname) >= 0 ? stypes[var_stidx(vname)].sz : -1, var_pesz(vname)); /* tmp diag */
             若 (off >= 0) {
                 若 (var_isstatic(vname)) { lea_rax_rip(coff_static_disp(off, 1) - 1); } /* static: &var = .data addr (lea 7B) */
                 否 {
@@ -9532,7 +9598,7 @@ __attribute__((unused))
                     若 (fo != 0) add_rax_imm8(fo);
                     整 fsz = st_field_size(stypes[s2].name, fn);
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
-                    若 (fsz > 4) {
+                    若 (fsz > 4 || fsz == 0) { /* fsz==0: flex/空数组字段 char name[0] → 取地址 (fix 2026-08-20) */
                         整 fty2 = st_field_ty_idx(stypes[s2].name, fn);
                         若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
                                  fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
@@ -9550,7 +9616,7 @@ __attribute__((unused))
                 整 fsz = 4, si_out = -1;
                 若 (mem_addr(n, &fsz, &si_out) == 0) {
                     /* rax = &chain; deref by the final field's byte size (fix 2026-08-18: &取址/++目标 上下文保留末字段地址, 不再按字段大小解引用 — 多级箭头链 &o->m->in->buf 原 fsz==8 无条件 mov rax,[rax] 多解引用一层 → expand_base_dir(&...->path) 传 NULL 崩) */
-                    若 (fsz > 8) { /* struct/array field → address */ }
+                    若 (fsz > 8 || fsz == 0) { /* struct/array field → address; fsz==0: flex 数组取址 (fix 2026-08-20) */ }
                     否 若 (fsz == 1) { 若 (!cg_no_deref && !cg_addr_of) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* movzx eax, byte[rax] */
                     否 若 (fsz == 2) { 若 (!cg_no_deref && !cg_addr_of) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                     否 若 (fsz == 8) { /* 64-bit pointer / struct field (fix 2026-08-18: 多级箭头取址不再解引用末指针字段) */
