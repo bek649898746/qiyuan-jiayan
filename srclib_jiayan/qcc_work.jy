@@ -1114,7 +1114,11 @@ __attribute__((unused))
 静 整 st_field_size(常 字 *sn, 常 字 *fn) {
     整 si = st_find(sn); 若 (si < 0) 返 0;
     遍 (整 i = 0; i < stypes[si].fn; i++)
-        若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v; memcpy(&v, &stypes[si].fsizes[i], 4); 返 v; }
+        若 (!strcmp(stypes[si].fnames[i], fn)) {
+            整 v; memcpy(&v, &stypes[si].fsizes[i], 4);
+            若 (stypes[si].fptrs[i] && v < 8) 返 8; /* fix 2026-08-20: 指针字段 (void **queue 等) 跨 .o 注册 fsizes=4 → store 32 位 → 高位残留栈垃圾 (DIFF_QUEUE_CLEAR outq.queue=NULL → git status diff_queued_diff alloc=936 nr=32765 → diff_resolve_rename_copy SEGV) */
+            返 v;
+        }
     返 0;
 }
 
@@ -6425,22 +6429,24 @@ __attribute__((unused))
                        `char *names[] = {...}` → infer count from the brace init list
                        (was: gcnt=0 → registered as scalar, `= {` fell into expr()
                        which can't eat '{' → parse() aborted → no main → entry crash). */
-                    若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
-                        整 save = tk;
-                        tk += 2; /* skip '=' '{' */
-                        整 n = 1, depth = 0, last_comma = 0;
-                        循环 (tk < TS && !(tt[tk] == UK && depth == 0)) {
-                            若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) depth++;
-                            否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) depth--;
-                            否 若 (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
-                            否 若 (depth == 0) last_comma = 0;
-                            tk++;
-                        }
-                        若 (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
-                        gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n; /* fix 2026-08-17: gdims[0] 未设 → brace_arr_init 的 gi_idx 进位 dims[0]=0 永远重置 → 所有元素写 arr[0] (git trace2 tr2_tgt_builtins 全写槽0) */
-                        若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d\n", gname, n);
-                        tk = save; /* rewind to '=' */
-                    }
+                     若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
+                         整 save = tk;
+                         tk += 2; /* skip '=' '{' */
+                         整 n = 1, depth = 0, last_comma = 0, max_des = -1, in_des = 0;
+                         循环 (tk < TS && !(tt[tk] == UK && depth == 0)) {
+                             若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) { depth++; 若 (tt[tk] == LB) in_des = 1; }
+                             否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { depth--; 若 (tt[tk] == RB && in_des) in_des = 0; }
+                             否 若 (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
+                             否 若 (tt[tk] == NK && in_des && depth >= 1) { 若 (tv[tk] > max_des) max_des = tv[tk]; }
+                             否 若 (depth == 0) last_comma = 0;
+                             tk++;
+                         }
+                         若 (last_comma) n--; /* C99 trailing comma */
+                         若 (max_des >= 0) n = max_des + 1; /* sparse designated init: size = max_index+1 (C99) */
+                         gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n;
+                         若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d max_des=%d\n", gname, n, max_des);
+                         tk = save; /* rewind to '=' */
+                     }
                     若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
                         /* char arr[] = "literal": infer array size from the string length + NUL
                            (fix 2026-08-16: version.c git_version_string[] was registered as a
