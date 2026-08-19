@@ -82,6 +82,7 @@ static const char *k32_names[] = {
     "GetFileSize","GetFullPathNameA","GetFullPathNameW","GetLastError",
     "GetModuleHandleW","GetProcessHeap","GetSystemInfo","GetSystemTime",
     "GetSystemTimeAsFileTime","GetTempPathA","GetTempPathW","GetTickCount",
+    "FindFirstFileW","FindNextFileW","FindClose", /* dirent (fix 2026-08-19): compat/win32/dirent.c 真实现 */
     "HeapAlloc","HeapCompact","HeapCreate","HeapDestroy","HeapFree",
     "HeapReAlloc","HeapSize","HeapValidate","LocalFree","LockFile","LockFileEx",
     "MapViewOfFile","MultiByteToWideChar","OutputDebugStringA","OutputDebugStringW",
@@ -581,6 +582,7 @@ static const char *msvcrt_names[] = {
     "strerror","_strerror","_strdup",
     "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
+    "_findfirst","_findnext","_findclose", /* dirent 兼容: prelude_dirent.c (fix 2026-08-19) */
     "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
     "_stricmp","_strnicmp",
     "toupper","tolower","isalpha","isdigit","isalnum","isspace","isupper","islower",
@@ -1073,6 +1075,12 @@ static void apply_relocs(void) {
                 int site = base + r->va;
                 uint8_t *at = out_data[which] + o->secs[si].out_off + r->va;
                 int addend = (int)r4(at);
+                if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_vtable")))
+                    fprintf(stderr, "[VTB] ref to vtable: sec=%d value=0x%x resolved=0x%llx site=0x%x type=0x%x\n",
+                            o->syms[csym].sec, o->syms[csym].value, target, site, r->type);
+                if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_advance")))
+                    fprintf(stderr, "[VTDBG] %s adv: sym sec=%d value=0x%x secs_rva=0x%llx resolved=0x%llx\n",
+                            o->filename, o->syms[csym].sec, o->syms[csym].value, (long long)(o->syms[csym].sec > 0 ? o->secs[o->syms[csym].sec-1].rva : 0), target);
                 switch (r->type) {
                     case 0x0000: /* ABSOLUTE: 值 += 目标 RVA (.pdata BeginAddress/UnwindInfoAddress, fix 2026-08-07) */
                         w4_at(at, addend + (int)(target - 0x400000LL));
@@ -1085,6 +1093,8 @@ static void apply_relocs(void) {
                         break;
                     case 0x0002: /* ADDR32 */
                         w4_at(at, (int)(target + addend));
+                        if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_advance")))
+                            fprintf(stderr, "[VTW] wrote 0x%x at out_data[%d]+0x%llx (sec %s)\n", (int)(target + addend), which, (unsigned long long)(o->secs[si].out_off + r->va), o->secs[si].name);
                         break;
                     case 0x0001: /* ADDR64 */
                         w8_at(at, target + addend);
@@ -1384,8 +1394,21 @@ static void write_pe(FILE *f, int entry_rva) {
     }
     /* 可写 .data 初始化内容（导入区之后） */
     if (out_len[OUT_DATA]) {
+        if (getenv("JYLD_DEBUG")) {
+            fprintf(stderr, "[PEW] out_data[4]+0xa5288 = 0x%x (before fwrite)\n", *(unsigned int*)(out_data[OUT_DATA] + 0xa5288));
+            fprintf(stderr, "[PEW] out_data[4]+0xa5188 = 0x%x\n", *(unsigned int*)(out_data[OUT_DATA] + 0xa5188));
+            fprintf(stderr, "[PEW] out_data[4]+0xa5270.. = ");
+            for (int k = 0; k < 8; k++) fprintf(stderr, "%08x ", *(unsigned int*)(out_data[OUT_DATA] + 0xa5270 + k*4));
+            fprintf(stderr, "\n");
+        }
         fseek(f, data_foff + msvcrt_end, SEEK_SET);
         fwrite(out_data[OUT_DATA], 1, out_len[OUT_DATA], f);
+        if (getenv("JYLD_DEBUG")) {
+            fprintf(stderr, "[PEW] msvcrt_end=%d out_len=%d data_foff=0x%x fwrite_pos=0x%x data_raw=0x%x\n", msvcrt_end, out_len[OUT_DATA], data_foff, data_foff + msvcrt_end, data_raw);
+            fflush(f);
+            unsigned int v; fseek(f, data_foff + msvcrt_end + 0xa5288, SEEK_SET); fread(&v, 1, 4, f);
+            fprintf(stderr, "[PEW] after-fwrite file@vtable = 0x%x\n", v);
+        }
     }
     /* pad .data to raw size（从 .data 内容之后开始，勿覆盖） */
     fseek(f, data_foff + msvcrt_end + out_len[OUT_DATA], SEEK_SET);
@@ -1478,14 +1501,16 @@ int main(int argc, char **argv) {
     printf("jyld: %s linked (%d objs, text=%d bytes, entry=0x%X)\n", outf, obj_n,
            out_len[OUT_TEXT] + out_len[OUT_STR] + out_len[OUT_DBL], entry_rva);
     if (getenv("JYLD_SYMS")) {
+        FILE *sf = fopen("_syms.txt", "w");
         for (int g = 0; g < gsym_n; g++) {
             if (1) {
                 long long va = 0;
                 if (gsyms[g].defined && gsyms[g].obj >= 0 && gsyms[g].sym >= 0)
                     va = objs[gsyms[g].obj].syms[gsyms[g].sym].resolved_va;
-                if (strstr(gsyms[g].name, "xstrfmt") || strstr(gsyms[g].name, "xstrvfmt") || strstr(gsyms[g].name, "strbuf_vaddf")) printf("[SYM] %-44s va=0x%llx obj=%d\n", gsyms[g].name, va, gsyms[g].obj);
+                if (sf) fprintf(sf, "[SYM] %-44s va=0x%llx obj=%d\n", gsyms[g].name, va, gsyms[g].obj);
             }
         }
+        if (sf) fclose(sf);
     }
     return 0;
 }

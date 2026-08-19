@@ -487,8 +487,19 @@ static char *gzgets(void *f, char *b, int n) { (void)f; (void)b; (void)n; return
 static int gzeof(void *f) { (void)f; return 1; }
 static int gzputs(void *f, const char *s) { (void)f; (void)s; return 0; }
 
-/* Win32 类型 typedef (pthread 映射展开后需要; fix 2026-08-15: CRITICAL_SECTION undefined) */
-typedef int CRITICAL_SECTION;
+/* Win32 类型 typedef (pthread 映射展开后需要; fix 2026-08-15: CRITICAL_SECTION undefined;
+   fix 2026-08-19: CRITICAL_SECTION 原 typedef int (4B) — 真实是 40B 结构体 (x64) →
+   raw_object_store 的 replace_mutex (pthread_mutex_t=CRITICAL_SECTION) 字段 4B →
+   commit_graph 偏移少 40 → generation_numbers_enabled 读到 mutex 垃圾 (DebugInfo=-1) →
+   git status 0xC0000409) */
+typedef struct _RTL_CRITICAL_SECTION {
+    void *DebugInfo;              /* @0  */
+    long LockCount;               /* @8  */
+    long RecursionCount;          /* @12 */
+    void *OwningThread;           /* @16 */
+    void *LockSemaphore;          /* @24 */
+    unsigned long long SpinCount; /* @32 */
+} CRITICAL_SECTION;               /* 40 bytes */
 typedef int CONDITION_VARIABLE;
 typedef unsigned long DWORD;
 #define LPDWORD DWORD*  /* Windows 指针类型宏 (fix 2026-08-15: LPDWORD undefined) */
@@ -785,6 +796,12 @@ typedef struct dirent {  /* <dirent.h> 目录项: Git 大量访问 de->d_name/d_
 #define DT_DIR 4
 #define DT_REG 8
 #define DT_LNK 10
+/* dirent 函数 (fix 2026-08-19): 声明后 qcc 生成真调用, jyld 链接 compat/prelude_dirent.o
+   (_findfirst/_findnext 实现)。原未声明 → qcc 内联 return 0/NULL → 目录扫描空转 →
+   status/add "could not open directory" + SEGV。 */
+struct DIR *opendir(const char *name);
+struct dirent *readdir(struct DIR *dirp);
+int closedir(struct DIR *dirp);
 typedef struct text_stat {
     unsigned nul;
     unsigned lonecr;
@@ -967,9 +984,9 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define FILE_TYPE_CHAR 2
 #define FILE_TYPE_PIPE 3
 #define FILE_TYPE_REMOTE 0x8000
-#define FindFirstFileW(a,b) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: FindFirstFileW undefined) */
-#define FindNextFileW(a,b) 0  /* Windows API stub (fix 2026-08-15: FindNextFileW undefined) */
-#define FindClose(a) 0  /* Windows API stub (fix 2026-08-15: FindClose undefined) */
+/* FindFirstFileW/FindNextFileW/FindClose — 真实现 (fix 2026-08-19): 原 stub 宏把调用展开成常量 →
+   compat/win32/dirent.c 的 opendir 恒失败 → 目录扫描空转 → status/add 崩。
+   jyld k32_names 已加导入, qcc 生成真调用。 */
 #define SetFileAttributesW(a,b) 0  /* Windows API stub (fix 2026-08-15: SetFileAttributesW undefined) */
 #define MoveFileExW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: MoveFileExW undefined) */
 #define CreateHardLinkW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: CreateHardLinkW undefined) */
@@ -1187,7 +1204,23 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #endif
 #define gmtime_s(a, b) 0  /* C runtime secure gmtime stub: 成功 (fix 2026-08-15: gmtime_s undefined) */
 #define localtime_s(a, b) 0  /* C runtime secure localtime stub: 成功 (fix 2026-08-15: localtime_s undefined) */
-#define xutftowcs_path(wcs, utf) 0  /* compat/mingw.h UTF-8→wchar_t 路径转换 stub (fix 2026-08-15: xutftowcs_path undefined) */
+#define CP_UTF8 65001  /* MultiByteToWideChar 代码页 (fix 2026-08-19: dirent 的 xutftowcs_path 真实现) */
+/* xutftowcs_path — 真实现 (fix 2026-08-19): 原 stub 宏展开成 0 → compat/win32/dirent.c 的
+   opendir len=0 → FindFirstFileW 模式错 → 目录扫描崩。实现见 compat/prelude_dirent_support.c */
+int xutftowcs_path(wchar_t *wcs, const char *utf);
+/* WIN32_FIND_DATAW — compat/win32/dirent.c 的 FindFirstFileW 需要 (fix 2026-08-19) */
+typedef struct {
+    DWORD dwFileAttributes;
+    FILETIME ftCreationTime;
+    FILETIME ftLastAccessTime;
+    FILETIME ftLastWriteTime;
+    DWORD nFileSizeHigh;
+    DWORD nFileSizeLow;
+    DWORD dwReserved0;
+    DWORD dwReserved1;
+    wchar_t cFileName[260];
+    wchar_t cAlternateFileName[14];
+} WIN32_FIND_DATAW;
 #define convert_slashes(a) ((void)0)  /* compat/mingw.h 路径斜杠转换 stub (fix 2026-08-15: convert_slashes undefined) */
 #define xutftowcs(a, b, c) 0  /* compat/mingw.h UTF-8→wchar_t 转换 stub (fix 2026-08-15: xutftowcs undefined) */
 #define _wchmod(a, b) 0  /* C runtime 宽字符 chmod stub (fix 2026-08-15: _wchmod undefined) */
@@ -1388,6 +1421,11 @@ int qcc_rename_impl(const char *oldp, const char *newp);
    #define open 宏不激活); compat/open.o 已排除链接。mode 走命名参数 r8。 */
 int open(const char *path, int flags, int mode);
 int git_open_with_retry(const char *path, int flags, int mode);
+
+/* getenv 声明 (fix 2026-08-19): qcc 对"从未声明的外部函数"静默编译成 return 0 →
+   git 的 getenv (GIT_DIR / GIT_WORK_TREE / GIT_CONFIG / HOME) 全失效 + QCC_DBG 插桩不触发。
+   显式声明后 coff 模式生成真调用, jyld 链接 msvcrt 的 getenv。 */
+extern char *getenv(const char *name);
 
 /* 伪 CSPRNG (fix 2026-08-18): jyld 无 advapi32 RtlGenRandom 导入; csprng_bytes 的 #else
    分支 open("/dev/urandom") 在 Windows 失败 → mkstemps "unable to get random bytes"。
