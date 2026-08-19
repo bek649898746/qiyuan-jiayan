@@ -1705,3 +1705,17 @@ static inline int qcc_rtlgen(void *buf, size_t len)
         p[i] = (unsigned char)(rand() & 0xFF);
     return 1;
 }
+
+/* enum file_rename_relevance — merge-ort.c/diffcore-rename.c 引用但 git-2.45.2 源码
+   缺定义 (补丁层兜底, fix 2026-08-20: 幽灵 enum → qcc 当 extern UND → jyld 链接失败
+   NOT_RELEVANT/RELEVANT_LOCATION 等; 值按 git 官方语义:
+   NOT_RELEVANT=0 (strintmap default), RELEVANT_CONTENT=1, RELEVANT_LOCATION=2,
+   RELEVANT_FOR_SELF=3, RELEVANT_FOR_ANCESTOR=4, RELEVANT_NO_MORE=5) */
+enum file_rename_relevance {
+    NOT_RELEVANT = 0,
+    RELEVANT_CONTENT,
+    RELEVANT_LOCATION,
+    RELEVANT_FOR_SELF,
+    RELEVANT_FOR_ANCESTOR,
+    RELEVANT_NO_MORE
+};

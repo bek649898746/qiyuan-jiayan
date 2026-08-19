@@ -1114,7 +1114,11 @@ static int st_sz(const char *sn) { int si = st_find(sn); return si >= 0 ? stypes
 static int st_field_size(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return 0;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].fsizes[i], 4); return v; }
+        if (!strcmp(stypes[si].fnames[i], fn)) {
+            int v; memcpy(&v, &stypes[si].fsizes[i], 4);
+            if (stypes[si].fptrs[i] && v < 8) return 8; /* fix 2026-08-20: 指针字段 (void **queue 等) 跨 .o 注册 fsizes=4 → store 32 位 → 高位残留栈垃圾 (DIFF_QUEUE_CLEAR outq.queue=NULL → git status diff_queued_diff alloc=936 nr=32765 → diff_resolve_rename_copy SEGV) */
+            return v;
+        }
     return 0;
 }
 
@@ -6428,17 +6432,19 @@ static int parse(const char *s) {
                     if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                         int save = tk;
                         tk += 2; /* skip '=' '{' */
-                        int n = 1, depth = 0, last_comma = 0;
+                        int n = 1, depth = 0, last_comma = 0, max_des = -1, in_des = 0;
                         while (tk < TS && !(tt[tk] == UK && depth == 0)) {
-                            if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) depth++;
-                            else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) depth--;
+                            if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) { depth++; if (tt[tk] == LB) in_des = 1; }
+                            else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { depth--; if (tt[tk] == RB && in_des) in_des = 0; }
                             else if (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
+                            else if (tt[tk] == NK && in_des && depth >= 1) { if (tv[tk] > max_des) max_des = tv[tk]; }
                             else if (depth == 0) last_comma = 0;
                             tk++;
                         }
-                        if (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
-                        gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n; /* fix 2026-08-17: gdims[0] 未设 → brace_arr_init 的 gi_idx 进位 dims[0]=0 永远重置 → 所有元素写 arr[0] (git trace2 tr2_tgt_builtins 全写槽0) */
-                        if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d\n", gname, n);
+                        if (last_comma) n--; /* C99 trailing comma */
+                        if (max_des >= 0) n = max_des + 1; /* sparse designated init: size = max_index+1 (C99) */
+                        gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n;
+                        if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d max_des=%d\n", gname, n, max_des);
                         tk = save; /* rewind to '=' */
                     }
                     if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
