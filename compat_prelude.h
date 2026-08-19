@@ -646,7 +646,8 @@ static void sync(void) {}  /* POSIX sync stub (fix 2026-08-15) */
 /* qcc 嵌套结构体字段赋值 codegen 有 bug (丢存储) → 用扁平字段布局,
    偏移与 userdiff_driver 一致: name+0 external+8 algorithm+16 binary+24
    pattern+32 cflags+40 word_regex+48 word_regex_multi_byte+56 textconv+64 cache+72 want_cache+80 (88B) */
-static struct { char *name; char *external; char *algorithm; int binary; char *f_pattern; int f_cflags; char *word_regex; char *word_regex_multi_byte; char *textconv; void *textconv_cache; int textconv_want_cache; } qcc_stub_drv;
+typedef struct { char *name; char *external; char *algorithm; int binary; char *f_pattern; int f_cflags; char *word_regex; char *word_regex_multi_byte; char *textconv; void *textconv_cache; int textconv_want_cache; } qcc_userdiff_stub_t;
+static qcc_userdiff_stub_t qcc_stub_drv; /* 具名 typedef + static — 匿名 struct + static 变量会被 qcc 导出为全局 → 跨 .o 重复符号 (fix 2026-08-19) */
 static int IPATTERN(const char *a, const char *b, const char *c) { qcc_stub_drv.name = (char*)a; qcc_stub_drv.binary = -1; qcc_stub_drv.f_pattern = (char*)b; qcc_stub_drv.f_cflags = 3; /* REG_EXTENDED|REG_ICASE (纯数字宏不被展开, 用字面值) */ qcc_stub_drv.word_regex = (char*)c; qcc_stub_drv.word_regex_multi_byte = (char*)c; return (int)(long long)(void*)&qcc_stub_drv; }
 static int PATTERNS(const char *a, const char *b, const char *c) { qcc_stub_drv.name = (char*)a; qcc_stub_drv.binary = -1; qcc_stub_drv.f_pattern = (char*)b; qcc_stub_drv.f_cflags = 1; /* REG_EXTENDED (同上) */ qcc_stub_drv.word_regex = (char*)c; qcc_stub_drv.word_regex_multi_byte = (char*)c; return (int)(long long)(void*)&qcc_stub_drv; }
 
