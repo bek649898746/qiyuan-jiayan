@@ -4286,7 +4286,11 @@ static int blk(void) {
                 int sty_persist = -1; /* fix 2026-08-18: 逗号续行 struct 字段继承类型索引 (同全局路径 — struct list_head *next, *prev) */
                 while (tk < TS && tt[tk] != UK) {
                     int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0;
-                    if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fsz = 1; else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; } /* funs: unsigned prefix marks the bit-field (fix 2026-08-05) */
+                    if (tt[tk] == VK) {
+                        while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* fix 2026-08-19: 限定符可多个 (const char * const key) — 原只吃一个 const → 指针后 const 被当独立字段类型 → key 注册 4B → trace_key 布局错 → get_trace_fd 读错位 → git add getenv(NULL) 崩 */
+                        if (tt[tk] == VK) { if (!strcmp(tn[tk], "unsigned")) funs = 1; if (!strcmp(tn[tk], "char")) fsz = 1; else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
+                        while (tt[tk] == DK) { fsz = 8; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } /* 每级指针后可跟 const/volatile (char * const p / const struct entry * const *) */
+                    } /* funs: unsigned prefix marks the bit-field (fix 2026-08-05) */
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field: int *p / char *s / void **pp — 8-byte on 64-bit (fix: DK was unhandled → infinite loop) */
                     if (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
                         tk++;
@@ -5315,7 +5319,7 @@ static int parse(const char *s) {
                         int npel = 0; /* 指针地块数 (指针字段标记, fix 2026-08-18: ctx->argv++ char** 需按 8 缩放) */
                         int fpel = type_seen ? fsz : fpel_persist; /* fix 2026-08-17: 指针字段的指向元素大小 (char *buf → 1); 逗号继承 (char *p, *q) 用 fpel_persist */
                         int fsz_base = fsz; /* fix 2026-08-18: 指针字段前的基类型大小 (unsigned *seen, x → x 是 unsigned 4B 非 8B) — 逗号续行用 fsz_base 恢复 */
-                        { while (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; } if (npel > 1) fpel = 8; } /* pointer field (fix 2026-08-16: frow=8 — 逗号后指针字段继承); 多级指针 → pointee 8 */
+                        { while (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } if (npel > 1) fpel = 8; } /* pointer field (fix 2026-08-16: frow=8 — 逗号后指针字段继承); 多级指针 → pointee 8; fix 2026-08-19: 每级指针后吞 const/volatile (`const char * const key`) — 原 const 残留 → 字段名被当类型吞掉 → trace_key key 字段丢失 → get_trace_fd 错位 → git add getenv(NULL) 崩 */
                         if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS]  post-ptr tok=%d tt=%d '%s' fsz=%d frow=%d npel=%d is_union=%d\n", tk, tt[tk], tn[tk], fsz, frow, npel, is_union);
                         if (tt[tk] == ST) { /* nested struct field: struct Inner in; (or struct Node *next — self ref) */
                             int sub_is_union = !strcmp(tn[tk], "union");
@@ -5457,7 +5461,7 @@ static int parse(const char *s) {
                                                         int v2pel = 4;
                                                         if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) v2sz = 1; else if (!strcmp(tn[tk], "double")) v2sz = 8; else if (!strcmp(tn[tk], "long") && tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) v2sz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; v2pel = v2sz; /* pointee = 基类型 (fix 2026-08-19: char *value → fpels=1) */ while (tt[tk] == DK) { v2sz = 8; tk++; } }
                                                         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; } /* enum {...} field / enum E field → int */
-                                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == DK) { while (tt[tk] == DK) { v2sz = 8; tk++; } } }
+                                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int v2ty = st_find(tn[tk]); if (v2ty >= 0 && stypes[v2ty].sz > 0) { v2sz = stypes[v2ty].sz; v2row = v2sz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == DK) { while (tt[tk] == DK) { v2sz = 8; tk++; } } } /* fix 2026-08-19: 非指针 struct 字段 v2sz = struct 大小 (原默认 4 → 3 级嵌套 struct 数组字段缩放错) */
                                                         if (tt[tk] == VR) {
                                                             char v2f[64]; strcpy(v2f, tn[tk]); tk++;
                                                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (v2dims == 0) v2first = tv[tk]; v2dims++; v2sz *= tv[tk]; tk++; } if (tt[tk] == RB) tk++; }
@@ -5472,7 +5476,7 @@ static int parse(const char *s) {
                                                     if (tt[tk] == UK) tk++; /* } */
                                                 }
                                                 if (tt[tk] == DK) { while (tt[tk] == DK) { ifsz = 8; ifrow = 8; ifnpel++; tk++; } ifpel = (u2si >= 0 && stypes[u2si].sz > 0) ? stypes[u2si].sz : 4; } /* struct Inner *field / *prev 续行 — pointee = struct 大小 */
-                                                if (tt[tk] == VR) { if_sty = u2si; } /* 字段名留在下一段统一处理 */
+                                                if (tt[tk] == VR) { if_sty = u2si; if (ifnpel == 0 && u2si >= 0 && stypes[u2si].sz > 0) { ifsz = stypes[u2si].sz; ifrow = stypes[u2si].sz; } } /* 字段名留在下一段统一处理; fix 2026-08-19: 非指针 struct 字段 ifsz 必须 = struct 大小 — 原保持默认 4 → `struct exclude_list_group exclude_list_group[3]` (字段名=标签名) 注册 fsz=12/frow=4 → [i] 缩放 4 → group 垃圾指针 → git status SEGV; 指针字段 (ifnpel>0) 已设 8 */
                                             } else if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } if (tt[tk] == DK) { while (tt[tk] == DK) { ifsz = 8; ifrow = 8; ifnpel++; tk++; } } } /* 匿名 struct {...} *field */
                                         } /* fix 2026-08-13: 三层嵌套 struct X { ... } *field; 定义 body 未消费 → 死循环 (pathspec_item.attr_match) */
                                         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char enm[64]; memcpy(enm, tn[tk], 64); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(enm, ev); ev++; } if (tt[tk] == CK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-13: 匿名 enum 字段 (内层嵌套 struct body); fix 2026-08-15: 注册常量 REV_CMD_PARENTS_ONLY undefined */
