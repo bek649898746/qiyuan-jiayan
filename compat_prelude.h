@@ -1719,3 +1719,10 @@ enum file_rename_relevance {
     RELEVANT_FOR_ANCESTOR,
     RELEVANT_NO_MORE
 };
+
+/* diff_queued_diff — diff.c L5902 定义但 git-2.45.2 头文件缺 extern 声明
+   (补丁层兜底, fix 2026-08-20: diffcore-rename.c 引用 &diff_queued_diff 无声明
+   → qcc 当未定义变量 → case-11 静默丢弃 → q=NULL → status SEGV) */
+struct diff_queue_struct;
+extern struct diff_queue_struct diff_queued_diff;
+
