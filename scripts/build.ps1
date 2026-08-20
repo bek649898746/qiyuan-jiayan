@@ -19,10 +19,10 @@ Write-Host "[2/4] 宿主自检 --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
 if ($t -notmatch 'PASS') { Write-Host "[FAIL] 自检失败: $t" -ForegroundColor Red; exit 1 }
 
-# 3. 自举五代 (v4==v5 验证收敛; 2026-08-10: 修复镜像 typedef struct 别名注册后
-#    链为 v1==v3==v4==v5, v2 为过渡态)
-Write-Host "[3/4] 自举五代 ..." -ForegroundColor Yellow
-& .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
+# 3. 自举五代 (v1==v2==v3==v4==v5 五代全等; 2026-08-20: 不动点封存 — 宿主 = qcc_boot.exe
+#    即自举不动点 27B42CE1, 一步收敛。C 宿主 qcc_x86.exe 仅作种源/过渡宿主保留)
+Write-Host "[3/4] 自举五代 (宿主 qcc_boot.exe = 不动点 27B42CE1) ..." -ForegroundColor Yellow
+& .\qcc_boot.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
 & .\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe | Out-Null
 & .\v3.exe srclib_jiayan\qcc_work.jy -o v4.exe | Out-Null
@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。当前 1-cycle (2026-08-13: 镜像同步 15 类修复 + 刻名):
-# v1==v2==v3==v4==v5 五代全等。
-$expected = '57BAC3AC30D61EF7511248CBD143DF109D7E87F9651986787B05F4B64C9EB9C1'
+# 验收标准: 自举闭环收敛。2026-08-20 不动点封存:
+# v1==v2==v3==v4==v5 五代全等 = 27B42CE1 (宿主 qcc_boot.exe 即不动点, 一步收敛)。
+$expected = '27B42CE1FC43D6DA9529A321DA792627286F4B1B722A6F8128E4301E8CCC0C4C'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
