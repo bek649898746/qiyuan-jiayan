@@ -5195,6 +5195,7 @@ static int stmt(void) {
                 }
                 if(tt[tk]==BR){tk++;if(tt[tk]==SK)tk++;had_br=1;} /* already consumed */
                 if(ft_n>0 && n0[body]>=0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 继续等下一个非空 case) */
+                if(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链 — `case OPEN: case CLOSED: break;` 中 case 1 的 break 应让 case 0 也 break, 不得共享后续 case 的 body (git refs.c ref_transaction_free: state==0/1 命中 case PREPARED 的 BUG → 'free called on a prepared reference transaction') */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
                 int cvn=Nd(0);nv[cvn]=cv;
                 int eq=Nd(2);nv[eq]=T_QK;Nc(eq,sw_var);Nc(eq,cvn);
@@ -5212,6 +5213,7 @@ static int stmt(void) {
                 }
                 if(tt[tk]==BR){tk++;if(tt[tk]==SK)tk++;had_br=1;}
                 if(ft_n>0 && n0[body]>=0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* fix 2026-08-20: 空 default body 不设置 then（同 case 分支修复） */
+                if(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链（同 case 分支修复） */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* case '\\': C; default: D — 把 D 追加进 C (fix 2026-08-18) */
                 int t=Nd(0);nv[t]=1;
                 int ifn=Nd(8);Nc(ifn,t);Nc(ifn,body);
