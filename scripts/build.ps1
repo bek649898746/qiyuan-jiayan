@@ -40,8 +40,9 @@ Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
 # 验收标准: 自举闭环收敛。2026-08-20 不动点封存:
-# v1==v2==v3==v4==v5 五代全等 = 27B42CE1 (宿主 qcc_boot.exe 即不动点, 一步收敛)。
-$expected = '27B42CE1FC43D6DA9529A321DA792627286F4B1B722A6F8128E4301E8CCC0C4C'
+# v1==v2==v3==v4==v5 五代全等 = 48B12A52 (宿主 qcc_boot.exe 即不动点, 一步收敛)。
+# 注: size_t 兜底修复后, C 宿主 vs 自举仍有 3 字节 movsxd 差异 (pp_read_file rd, 疑似 UB) — 技术债待攻。
+$expected = '48B12A52970EB25E67E09103E52ACA79198B419DB5D143959D56EB844124EC35'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
