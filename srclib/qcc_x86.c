@@ -953,7 +953,7 @@ static int st_add(const char *n) {
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct '%s' 字段超过 256 上限\n", stypes[si].name); exit(1); }
-    if (getenv("QCC_DBG_NS")) if (!strcmp(stypes[si].name, "gz3") || !strcmp(stypes[si].name, "z_stream_s") || !strcmp(stypes[si].name, "git_zstream")) fprintf(stderr, "[FLD] struct '%s' fld='%s' fsz=%d frow=%d idx=%d\n", stypes[si].name, fn, fsz, frow, stypes[si].fn); /* tmp diag */
+    if (getenv("QCC_DBG_NS")) if (!strcmp(stypes[si].name, "gz3") || !strcmp(stypes[si].name, "z_stream_s") || !strcmp(stypes[si].name, "git_zstream") || strstr(stypes[si].name, "z_stream")) fprintf(stderr, "[FLD] struct '%s' fld='%s' fsz=%d frow=%d idx=%d\n", stypes[si].name, fn, fsz, frow, stypes[si].fn); /* tmp diag */
     int idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
        frow>=8 → 8 (double/LL/指针); frow>=4 → 4 (int/float); frow>=2 → 2 (short)。数组字段 frow=元素大小。
@@ -2202,6 +2202,19 @@ static int var_esz(const char *n) {
             return vars[i].p_esz > 0 ? vars[i].p_esz : 4;
         }
     return 4;
+}
+/* 变量类型大小 (fix 2026-08-20: sizeof(uint64_t v) 原返回 4 → csprng_bytes(&v, sizeof(v)) 只填低 4 字节
+   → mkstemp 随机后缀高 4 字节是栈垃圾 → 第一次替换出乱码文件名 (git_mkstemps_mode tmp_obj_XXXXXX) */
+static int var_sizeof(const char *n) {
+    for (int i = vs_n() - 1; i >= 0; i--)
+        if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
+            if (vars[i].st_idx >= 0 && stypes[vars[i].st_idx].sz > 0) return stypes[vars[i].st_idx].sz; /* struct/typedef 变量 */
+            if (vars[i].arr_sz > 0) return vars[i].arr_sz * (vars[i].arr_esz > 0 ? vars[i].arr_esz : 4); /* 数组总字节 */
+            if (vars[i].p_depth > 0 || vars[i].p_esz > 0) return 8; /* 指针 8 字节 */
+            if (vars[i].is_ll) return 8; /* long long */
+            return 4;
+        }
+    return 0;
 }
 static int cur_frame_sz = 96; /* set in main() before codegen: size of every function frame */
 
@@ -3716,7 +3729,7 @@ static int prim(void) {
                 int osi = -1;
                 while (tt[tk] == VK) tk++; /* const/volatile 前缀 */
                 if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } } /* struct Tag */
-                else if (tt[tk] == VR) { osi = st_find(tn[tk]); tk++; } /* typedef 名 / __typeof__ 等 */
+                else if (tt[tk] == VR) { osi = st_find(tn[tk]); if (osi < 0) osi = td_st_index(tn[tk]); tk++; } /* typedef 名 — fix 2026-08-20: offsetof(z_stream, m) typedef 名≠struct名(z_stream vs z_stream_s) → st_find 失败 → off=0 → git-zlib z_stream 字段全 0 → deflate Z_MEM_ERROR */
                 { int d = 0; while (tk < TS && tt[tk] != EK) { /* 跳过剩余类型 token 到顶层逗号 (__typeof__(*e) 嵌套括号) */
                     if (tt[tk] == CK && d == 0) break;
                     if (tt[tk] == KK && d == 0) break;
@@ -4652,6 +4665,7 @@ static int blk(void) {
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
+            if (tt[tk] == VR && td_is(tn[tk])) { int tdi2b = tdef_lookup(tn[tk]); if (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr && tdefs[tdi2b].sz == 8) { is_ll = 1; if (tdefs[tdi2b].is_uns) is_uns = 1; } } /* fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
                 tk++; /* skip { */
@@ -5166,8 +5180,11 @@ static int stmt(void) {
         while(tt[tk]!=UK&&tt[tk]!=EK){
             if(tt[tk]==CA){ /* case CONST: */
                 tk++; int cv=0;
+                if(tt[tk]==OK)tk++; /* fix 2026-08-20: 宏展开带括号: case (-5): token 序列是 ( - 5 ) — 原括号未处理 → cv=0 且 (-5) 表达式被当 body 语句 (git-zlib.c case Z_BUF_ERROR 宏 (-5) 带括号 → switch 全错) */
                 if(tt[tk]==NK){cv=tv[tk];tk++;}
+                else if(tt[tk]==MK){ tk++; if (tt[tk]==NK) { cv = -tv[tk]; tk++; } } /* fix 2026-08-20: 负值 case 字面量: case -5: — 原负号 MK 未处理 → cv=0 且 `-5` 被当 body 语句解析 → 负值 case 全错 (zerr_to_string case Z_MEM_ERROR(-4) 比较 0 → status=0 返回 "out of memory"; git_deflate case Z_BUF_ERROR(-5) 变 0 → deflate Z_BUF_ERROR 走 error) */
                 else if(tt[tk]==VR){ int evc = e_lookup(tn[tk]); if (evc != 0x80000000) { cv = evc; tk++; } } /* enum constant label: case STR: (fix 2026-08-09: != 哨兵, 支持负值 case) */
+                if(tt[tk]==KK)tk++; /* 右括号 (fix 2026-08-20) */
                 if(tt[tk]==CL)tk++; /* : */
                 int body=Nd(5); /* case body */
                 int had_br=0; /* fix 2026-08-18: case 内 break 已消费 → 不是 fall-through */
@@ -5177,7 +5194,7 @@ static int stmt(void) {
                     Nc(body,stmt());
                 }
                 if(tt[tk]==BR){tk++;if(tt[tk]==SK)tk++;had_br=1;} /* already consumed */
-                if(ft_n>0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body */
+                if(ft_n>0 && n0[body]>=0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 继续等下一个非空 case) */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
                 int cvn=Nd(0);nv[cvn]=cv;
                 int eq=Nd(2);nv[eq]=T_QK;Nc(eq,sw_var);Nc(eq,cvn);
@@ -5194,7 +5211,7 @@ static int stmt(void) {
                     Nc(body,stmt());
                 }
                 if(tt[tk]==BR){tk++;if(tt[tk]==SK)tk++;had_br=1;}
-                if(ft_n>0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; }
+                if(ft_n>0 && n0[body]>=0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* fix 2026-08-20: 空 default body 不设置 then（同 case 分支修复） */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* case '\\': C; default: D — 把 D 追加进 C (fix 2026-08-18) */
                 int t=Nd(0);nv[t]=1;
                 int ifn=Nd(8);Nc(ifn,t);Nc(ifn,body);
@@ -5251,11 +5268,14 @@ static int const_expr_prim(int *val) {
         else if (tt[tk] == VK) { if (!strcmp(tn[tk],"char")||!strcmp(tn[tk],"_Bool")) sz=1; else if (!strcmp(tn[tk],"double")) sz=8; else if (!strcmp(tn[tk],"short")) sz=2; tk++; while (tt[tk] == DK) { sz = 8; tk++; } }
         else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int si = st_find(tn[tk]); if (si >= 0) sz = stypes[si].sz; tk++; } }
         else if (tt[tk] == DK) { sz = 8; tk++; if (tt[tk] == VR) tk++; }
-        else if (tt[tk] == VR) { int si = var_stidx(tn[tk]); tk++; if ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { if (si >= 0) { int fs = st_field_size(stypes[si].name, tn[tk + 1]); if (fs > 0) sz = fs; } tk += 2; }
+        else if (tt[tk] == VR) { int si = var_stidx(tn[tk]);
+            if (si < 0 && td_is(tn[tk])) { int tdi = tdef_lookup(tn[tk]); if (tdi >= 0 && tdefs[tdi].sz > 0) { sz = tdefs[tdi].sz; tk++; } } /* fix 2026-08-20: typedef 名 sizeof (sizeof(uint64_t) 原 4 → csprng_bytes(&v,sizeof(v)) 只填低 4 字节 → mkstemp 随机后缀高 4 字节垃圾 → 乱码文件名) */
+            else tk++;
+            if ((tt[tk] == AR || tt[tk] == DT) && tt[tk + 1] == VR) { if (si >= 0) { int fs = st_field_size(stypes[si].name, tn[tk + 1]); if (fs > 0) sz = fs; } tk += 2; }
             /* fix 2026-08-17: sizeof(裸数组名) 返回数组总字节数 (arr_sz * esz) — 原默认 4 →
                ARRAY_SIZE(arr) 展开 sizeof(arr) 除错 → 数组维度求值错 (diff-no-index.c to_free).
                仅当是数组变量 (arr_sz>0) 才覆盖, 普通变量保持默认 4. */
-            else { int an = var_arrsz(tn[tk - 1]); if (an > 0) sz = an * var_esz(tn[tk - 1]); } }
+            else { int an = var_arrsz(tn[tk - 1]); if (an > 0) sz = an * var_esz(tn[tk - 1]); else { int vsz = var_sizeof(tn[tk - 1]); if (vsz > 0) sz = vsz; } } } /* fix 2026-08-20: 普通变量 sizeof (long long v → 8; 原 4) */
         if (tt[tk] == KK) tk++;
         *val = sz; return 1;
     }
@@ -5635,6 +5655,7 @@ static int parse(const char *s) {
                                 st_field_bit(si, fn, fsz, fsz, bitw, funs); /* bit-field: packed into shared int slots */
                                 if (fdbl) st_field_dbl(si, fn);
                                 funs = 0;
+                                fsz = 4; frow = 4; /* fix 2026-08-20: 位域后逗号续行继承 slot 基类型 4B — 原 frow 残留 1 (timestamp SK 重置) → CK 后 fsz=frow=1 → 后续位域 initialized 等 fsz=1 → 读取走 movzbl 字节路径 → read_index_from 误判已读 */
                             } else {
                             int unsized = 0; /* 柔性数组 int arr[] (fix 2026-08-05: was sized 4 → sizeof overcounted) */
                             int fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
@@ -5798,6 +5819,14 @@ static int parse(const char *s) {
                         if (tt[tk] == UK) tk++; /* } */
                         st_finalize(si);
                     }
+                }
+            }
+            if (tt[tk] == EN || (tt[tk] == VR && !strcmp(tn[tk], "enum"))) { /* extern enum Type var; — 跳过 enum 类型名 (fix 2026-08-20: 原 extern 分支不认 enum → 整行跳到分号丢弃 → object_creation_mode 未注册 extern → var_lookup=-1 → 当函数取地址 mov $addr → git finalize_object_file object_creation_mode 读成地址 → rename 分支错 → 对象不落盘) */
+                tk++; /* enum */
+                if (tt[tk] == VR) tk++; /* enum 标签 */
+                if (tt[tk] == FK) { /* enum body 跳过 */
+                    int ebd = 1; tk++;
+                    while (tk < TS && ebd > 0) { if (tt[tk] == FK) ebd++; else if (tt[tk] == UK) { ebd--; if (ebd <= 0) { tk++; break; } } tk++; }
                 }
             }
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* 函数声明 extern int inc(int); — 记录返回类型后跳过 */
@@ -6209,6 +6238,7 @@ static int parse(const char *s) {
                             st_field_bit(si, fn, fsz, fsz, bitw, funs); /* bit-field: packed into shared int slots */
                             if (fdbl) st_field_dbl(si, fn);
                             funs = 0;
+                            fsz = 4; frow = 4; /* fix 2026-08-20: 同 5637 — 位域逗号续行继承 slot 基类型 4B (mirror) */
                         } else {
                             int fel = fsz; /* fix 2026-08-07 */
                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000 && evc != -1) { if (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } else { dims++; int bd = 1; while (tk < TS && bd > 0) { if (tt[tk] == LB) bd++; else if (tt[tk] == RB) { bd--; if (bd == 0) { tk++; break; } } tk++; } } if (tt[tk] == PK || tt[tk] == MK) { int op = tt[tk]; tk++; if (tt[tk] == NK) { if (op == PK) fsz += tv[tk]; else fsz -= tv[tk]; tk++; } } if (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
@@ -7770,9 +7800,19 @@ static void emit_fileio(const char *fname) {
         mov_rr64(4, 15);
         mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes read */
     } else if (!strcmp(fname, "fwrite")) {
-        /* fwrite(ptr=rcx, size=rdx, nmemb=r8, stream=r9): WriteFile */
-        mov_rr64(10, 9); /* r10 = handle */
-        mov_rr64(11, 1); /* r11 = ptr */
+        /* fwrite(ptr=rcx, size=rdx, nmemb=r8, stream=r9): WriteFile
+           stream==0 → stdout (git 的 FILE* stdout/stderr 值为 0; fix 2026-08-20:
+           git ls-files write_name fputs/stdout 全打进无效句柄 0 → 无输出) */
+        int lfw0 = new_label(), lfw1 = new_label();
+        mov_mbrp_reg(scratch_base + 224 - cur_frame_sz, 1); /* 保存 ptr(rcx) — GetStdHandle 破坏 rcx (fix 2026-08-20: 原 GetStdHandle 后 mov rcx→r11 读到垃圾 → strlen/WriteFile 错) */
+        mov_rr64(11, 9); test_rr(11, 11); jz_rel(-1); patch_label(cp - 4, lfw0, 1);
+        mov_rr64(10, 11); /* r10 = stream (HANDLE) */
+        jmp_rel(-1); patch_label(cp - 4, lfw1, 2);
+        set_label(lfw0);
+        mov_r_imm(1, -11); sub_rsp_imm(32); call_iat(0); add_rsp_imm(32); /* GetStdHandle(STD_OUTPUT) */
+        mov_rr64(10, 0); /* r10 = handle */
+        set_label(lfw1);
+        mov_reg_mbrp(11, scratch_base + 224 - cur_frame_sz); /* 恢复 ptr */
         mov_rr64(0, 2);  /* rax = size */
         asm_emit("    乘64 r0, r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0x0F); b(0xAF); modrm(3, 0, 0); /* imul rax, r8 */
         mov_rr64(8, 0);  /* r8 = count */
@@ -7814,9 +7854,18 @@ static void emit_fileio(const char *fname) {
         mov_r_imm(0, -1); /* EOF */
         set_label(lf_done); }
     } else if (!strcmp(fname, "fputc")) {
-        /* fputc(c=rcx, stream=rdx): WriteFile(handle, &byte, 1, &written, NULL) */
-        mov_rr64(10, 2); /* r10 = handle */
-        mov_mbrp_reg(scratch_base + 232 - cur_frame_sz, 1); /* [scratch+232] = c (low byte) */
+        /* fputc(c=rcx, stream=rdx): WriteFile(handle, &byte, 1, &written, NULL)
+           stream==0 → stdout (fix 2026-08-20) */
+        int lfc0 = new_label(), lfc1 = new_label();
+        mov_mbrp_reg(scratch_base + 232 - cur_frame_sz, 1); /* 先存 c(rcx) — GetStdHandle 破坏 rcx (fix 2026-08-20: 原 GetStdHandle 后存 c 读到垃圾字节) */
+        mov_rr64(11, 2); test_rr(11, 11); jz_rel(-1); patch_label(cp - 4, lfc0, 1);
+        mov_rr64(10, 11); /* r10 = stream */
+        jmp_rel(-1); patch_label(cp - 4, lfc1, 2);
+        set_label(lfc0);
+        mov_r_imm(1, -11); sub_rsp_imm(32); call_iat(0); add_rsp_imm(32); /* GetStdHandle(STD_OUTPUT) */
+        mov_rr64(10, 0); /* r10 = handle */
+        set_label(lfc1);
+        /* [scratch+232] 已存 c */
         lea_r_mbrp(11, scratch_base + 232 - cur_frame_sz); /* r11 = &byte */
         mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* align */
         sub_rsp_imm(48); /* shadow 32 + stack arg 8 + pad 8 */
@@ -7830,9 +7879,18 @@ static void emit_fileio(const char *fname) {
         mov_rr64(4, 15);
         mov_r_imm(0, 1); /* return c (positive) */
     } else if (!strcmp(fname, "fputs")) {
-        /* fputs(str=rcx, stream=rdx): WriteFile(handle, str, strlen(str), &written, NULL) */
-        mov_rr64(10, 2); /* r10 = handle */
-        mov_rr64(11, 1); /* r11 = str */
+        /* fputs(str=rcx, stream=rdx): WriteFile(handle, str, strlen(str), &written, NULL)
+           stream==0 → stdout (fix 2026-08-20) */
+        int lfs0 = new_label(), lfs1 = new_label();
+        mov_mbrp_reg(scratch_base + 224 - cur_frame_sz, 1); /* 先存 str(rcx) — GetStdHandle 破坏 rcx (fix 2026-08-20: 原 GetStdHandle 后 mov rcx→r11 读到垃圾 → strlen 扫描垃圾地址 → WriteFile 失败) */
+        mov_rr64(11, 2); test_rr(11, 11); jz_rel(-1); patch_label(cp - 4, lfs0, 1);
+        mov_rr64(10, 11); /* r10 = stream */
+        jmp_rel(-1); patch_label(cp - 4, lfs1, 2);
+        set_label(lfs0);
+        mov_r_imm(1, -11); sub_rsp_imm(32); call_iat(0); add_rsp_imm(32); /* GetStdHandle(STD_OUTPUT) */
+        mov_rr64(10, 0); /* r10 = handle */
+        set_label(lfs1);
+        mov_reg_mbrp(11, scratch_base + 224 - cur_frame_sz); /* 恢复 str */
         mov_rr64(8, 11); /* r8 = scan */
         mov_r_imm(0, 0); /* eax = len */
         int lps = new_label(), lpd = new_label();
@@ -8525,6 +8583,19 @@ static void cg(int n) {
                     asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
                     coff_mov_counter_eax();       /* store back */
                     mov_rr(0, 8);
+                    /* fix 2026-08-20: calloc 必须清零 (C 语义) — bump allocator 原不清 →
+                       git xcalloc 返回 .data 区垃圾 (attr_stack +24=0x72657355 "User") → attr 解析崩溃 */
+                    mov_r_imm(0, 0); /* eax = 0 */
+                    mov_rr(11, 8);   /* r11 = 返回地址 */
+                    { int lzc = new_label(), lzd = new_label();
+                    set_label(lzc);
+                    test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lzd, 1);
+                    rex(0, 0, 0, 1); b(0x88); modrm(0, 0, 3); /* mov [r11], al — REX.B(r11=rbx) */
+                    rex(0, 0, 0, 1); b(0xFF); modrm(3, 0, 3); /* inc r11d */
+                    rex(0, 0, 0, 1); b(0xFF); modrm(3, 1, 2); /* dec r10d — REX.B(r10=rdx), reg=1(/1=dec) */
+                    jmp_rel(-1); patch_label(cp - 4, lzc, 2);
+                    set_label(lzd);
+                    mov_rr(0, 8); } /* 清零循环用 eax 存 0 覆盖了返回地址 — 恢复 r8 到 rax (fix 2026-08-20) */
                 } else {
                     /* RIP-relative: load counter from .data section (RVA data_rva_base).
                        Mnemonic emitters for complete -S output (fix 2026-08-03). */
