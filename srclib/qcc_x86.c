@@ -6250,15 +6250,21 @@ static int parse(const char *s) {
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn_anon, 32);
                             int blkinit;
                             if (anon_unsized) { /* struct { ... } a[] = { [i]={...}, ... } 未定长结构体数组: 推断元素数并走 brace_arr_init (fix 2026-08-14: 原走 brace_fields 遇 [i] 设计器死循环; fix 2026-08-17: 不预消费外层 { — brace_arr_init 自管 {, 原 tk++ 双重消费 → 元素 { 丢失 → 整元素赋值/字符串字节拷入 → 崩) */
-                                int save_i = tk; int n = 1, d0 = 0;
+                                int save_i = tk; int n = 1, d0 = 0, max_des = -1, in_des = 0;
                                 while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
-                                    if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                                    else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
-                                    else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号: 在外层 { 内, 尾逗号不计 (fix 2026-08-17) */
+                                    if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) { d0++; if (tt[tk] == LB) in_des = 1; }
+                                    else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (tt[tk] == RB && in_des) in_des = 0; }
+                                    else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* C99 trailing comma excluded */
+                                    else if (tt[tk] == NK && in_des && d0 >= 1) { if (tv[tk] > max_des) max_des = tv[tk]; }
                                     tk++;
                                 }
                                 tk = save_i;
-                                if (n > 1) vars[vcnt - 1].arr_sz = n; /* 修正已注册的 arr_sz=0 → 实际元素数 */
+                                if (max_des >= 0 && max_des + 1 > n) n = max_des + 1; /* fix 2026-08-20: designated idx -> size = max+1 */
+                                if (n > 1) {
+                                    int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
+                                    stc_n += slots * (n - 1); /* fix 2026-08-20: extend .data to n elems (todo_command_info[15] was 1) */
+                                    vars[vcnt - 1].arr_sz = n;
+                                }
                                 int adimv[1]; adimv[0] = n;
                                 blkinit = Nd(5);
                                 brace_arr_init(blkinit, idn, adimv, 1, 0, stypes[si].sz);
