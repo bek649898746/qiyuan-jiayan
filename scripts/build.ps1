@@ -39,10 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。2026-08-20 五代全等恢复 (typedef ll 镜像修复):
-# v1==v2==v3==v4==v5 五代全等 = F5DDC673 (宿主 qcc_boot.exe 即不动点, C 宿主重推第一代全等)。
-# 注: 7c6af5f 8连修 typedef ll 只改 C 源未镜像甲言源 → 破链; acda83a 补镜像后 H1==H2 恢复。
-$expected = 'F5DDC67363341C3917177DA893DC77335032053A6B979943044DACD2AD038A06'
+# 验收标准: 自举闭环收敛。2026-08-20 三次不动点 (realloc 真实现 + (*argv)[i] 缩放修复):
+# qcc_boot == v1==v2==v3==v4==v5 = 8054BEBE (新不动点; git -c 不再 strchr(NULL) 崩)。
+$expected = '8054BEBEE9335271543FDCAB979541B5DB200052A39EEBBD807F2A4340C47485'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

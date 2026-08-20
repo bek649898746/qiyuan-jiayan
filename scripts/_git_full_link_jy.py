@@ -21,6 +21,7 @@ PLATFORM_SUFFIXES = ('-darwin.o', '-linux.o', '-macos.o', '-unix.o', '-apple.o')
 
 objs = sorted(f for f in os.listdir(objdir)
               if f.endswith('.o') and f not in EXCLUDE
+              and not f.startswith('_')  # 测试残留 (_a7.c/_repro_*.c 等, 有独立 main, fix 2026-08-20)
               and not f.endswith(PLATFORM_SUFFIXES)
               and not f.startswith('compat_linux_')
               and f != 'compat_mingw.o'  # mingw.c 被 msvc.c include, 重复符号 (fix 2026-08-17)
