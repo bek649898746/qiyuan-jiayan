@@ -553,18 +553,17 @@ static int qcc_deflate_flush_block(z_stream *s, qcc_deflate_state *st, int final
 static int deflate(z_stream *s, int flush) {
     qcc_deflate_state *st = (qcc_deflate_state *)s->state;
     int made_progress = 0;
-    printf("[ZD] deflate flush=%d avail_in=%u avail_out=%u total_out=%lu st=%p\n", flush, s->avail_in, s->avail_out, s->total_out, (void*)st); /* tmp diag */
     if (!st) return Z_STREAM_ERROR;
-    if (st->finished) { printf("[ZD] finished -> END\n"); return Z_STREAM_END; }
+    if (st->finished) { return Z_STREAM_END; }
     /* 1. resume 部分已发出的块 */
     if (st->em != 0) {
-        if (!qcc_deflate_flush_block(s, st, 0)) { printf("[ZD] resume block no out room\n"); return Z_OK; }
+        if (!qcc_deflate_flush_block(s, st, 0)) { return Z_OK; }
         made_progress = 1;
     }
     /* 2. zlib 头 (0x78 0x01) */
     if (!st->hdr_done) {
         unsigned char hd[2];
-        if (s->avail_out < 2) { printf("[ZD] no room for hdr\n"); return Z_OK; }
+        if (s->avail_out < 2) { return Z_OK; }
         hd[0] = 0x78; hd[1] = 0x01;
         qcc_deflate_emit(s, hd, 2);
         st->hdr_done = 1;
@@ -580,14 +579,14 @@ static int deflate(z_stream *s, int flush) {
         st->len += n;
         made_progress = 1;
         if (st->len == 65535) {
-            if (!qcc_deflate_flush_block(s, st, 0)) { printf("[ZD] block full, no out room\n"); return Z_OK; }
+            if (!qcc_deflate_flush_block(s, st, 0)) { return Z_OK; }
         }
     }
     /* 4. Z_FINISH: 终块 + adler → Z_STREAM_END */
     if (flush == Z_FINISH) {
         if (!st->final_started) {
             st->final_started = 1;
-            if (!qcc_deflate_flush_block(s, st, 1)) { printf("[ZD] final block no out room\n"); return Z_OK; }
+            if (!qcc_deflate_flush_block(s, st, 1)) { return Z_OK; }
         }
         if (st->adler_pos == 0) {
             st->adler_buf[0] = (st->adler >> 24) & 0xFF;
@@ -599,13 +598,12 @@ static int deflate(z_stream *s, int flush) {
             s->next_out[0] = st->adler_buf[st->adler_pos];
             s->next_out++; s->avail_out--; s->total_out++; st->adler_pos++;
         }
-        if (st->adler_pos < 4) { printf("[ZD] adler partial\n"); return Z_OK; }
+        if (st->adler_pos < 4) { return Z_OK; }
         st->finished = 1;
-        printf("[ZD] END\n");
         return Z_STREAM_END;
     }
     /* 5. Z_NO_FLUSH 无输入且本调用无任何进展 → Z_BUF_ERROR (匹配 zlib: git 用 while(...==Z_OK) 循环收尾) */
-    if (!made_progress) { printf("[ZD] no progress -> Z_BUF_ERROR\n"); return Z_BUF_ERROR; }
+    if (!made_progress) { return Z_BUF_ERROR; }
     return Z_OK;
 }
 static int deflateInit2(z_stream *s, int l, int m, int w, int ml, int st) {
@@ -644,7 +642,14 @@ static int inflate(z_stream *s, int f) {
             st->phase = 0;
             continue;
         }
-        if (st->phase == 2) return Z_STREAM_END;
+        if (st->phase == 2) { /* consume adler32 trailer (4 字节) 再 END — fix 2026-08-20: 原直接 END → 输入残留 trailer → git 读对象报 "garbage at end of loose object" */
+            while (st->tr_read < 4) {
+                if (s->avail_in == 0) return Z_OK; /* 等待更多输入 */
+                s->next_in++; s->avail_in--; s->total_in++;
+                st->tr_read++;
+            }
+            return Z_STREAM_END;
+        }
         if (st->phase == 0) { /* block header: b0 + LEN(2) + NLEN(2) */
             if (st->len_read < 5) {
                 if (s->avail_in == 0) return Z_OK;
@@ -671,8 +676,8 @@ static int inflate(z_stream *s, int f) {
             s->next_out += n; s->avail_out -= n; s->total_out += n;
             if (st->block_len > 0) return Z_OK;
             if (st->final) {
-                st->phase = 2; /* done (trailer optional) */
-                return Z_STREAM_END;
+                st->phase = 2; /* fix 2026-08-20: continue 进 phase=2 消费 adler trailer — 原直接 return Z_STREAM_END → phase=2 永不执行 → 输入残留 4 字节 adler → git 读对象 "garbage at end of loose object" */
+                continue;
             }
             st->len_read = 0;
             st->phase = 0;
@@ -1522,7 +1527,7 @@ intptr_t _get_osfhandle(int fd); /* fix 2026-08-20: mingw_fstat 需要真 fd→H
 #define AF_UNSPEC 0
 #define AI_CANONNAME 0x00000002
 #define AI_PASSIVE 0x00000001
-#define htons(x) (((x) >> 8) | ((x) << 8))  /* Winsock 网络字节序 stub (fix 2026-08-15: htons undefined) */
+#define htons(x) ((((x) & 0xFF) << 8) | (((x) >> 8) & 0xFF))  /* Winsock 网络字节序 stub (fix 2026-08-15: htons undefined; fix 2026-08-20: 原 ((x)>>8)|((x)<<8) 对未截断 32 位输入错 — short flags 赋值 qcc 不截断 → 0x1C0009 → 0x1D00 而非 0x0900 → index flags.namelen 写 29 → ls-files 读 namelen 29 → 名称错位) */
 #define ntohs(x) htons(x)
 #define PF_INET 2
 #define SOCK_STREAM 1
@@ -1679,6 +1684,14 @@ int qcc_rename_impl(const char *oldp, const char *newp);
    #define open 宏不激活); compat/open.o 已排除链接。mode 走命名参数 r8。 */
 int open(const char *path, int flags, int mode);
 int git_open_with_retry(const char *path, int flags, int mode);
+
+/* 标准流 FILE* 统一为 0 (fix 2026-08-20): qcc 跳过系统 stdio.h, stdin/stdout/stderr
+   若编译成 UND 符号 → jyld 解析到 msvcrt &_iob[i] (非 0 FILE*) → fputs/fputc/fwrite
+   内联代码把 FILE* 当 HANDLE WriteFile → 无效句柄静默失败 → git ls-files 无输出。
+   定义为 0 后走 GetStdHandle(STD_OUTPUT/INPUT_HANDLE) (qcc 内联 I/O 的 stream==0 分支)。 */
+#define stdin  0
+#define stdout 0
+#define stderr 0
 
 /* getenv 声明 (fix 2026-08-19): qcc 对"从未声明的外部函数"静默编译成 return 0 →
    git 的 getenv (GIT_DIR / GIT_WORK_TREE / GIT_CONFIG / HOME) 全失效 + QCC_DBG 插桩不触发。
