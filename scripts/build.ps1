@@ -39,10 +39,10 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。2026-08-20 不动点封存:
-# v1==v2==v3==v4==v5 五代全等 = 48B12A52 (宿主 qcc_boot.exe 即不动点, 一步收敛)。
-# 注: size_t 兜底修复后, C 宿主 vs 自举仍有 3 字节 movsxd 差异 (pp_read_file rd, 疑似 UB) — 技术债待攻。
-$expected = '48B12A52970EB25E67E09103E52ACA79198B419DB5D143959D56EB844124EC35'
+# 验收标准: 自举闭环收敛。2026-08-20 五代全等恢复 (typedef ll 镜像修复):
+# v1==v2==v3==v4==v5 五代全等 = F5DDC673 (宿主 qcc_boot.exe 即不动点, C 宿主重推第一代全等)。
+# 注: 7c6af5f 8连修 typedef ll 只改 C 源未镜像甲言源 → 破链; acda83a 补镜像后 H1==H2 恢复。
+$expected = 'F5DDC67363341C3917177DA893DC77335032053A6B979943044DACD2AD038A06'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
