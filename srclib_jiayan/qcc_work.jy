@@ -4659,7 +4659,8 @@ __attribute__((unused))
             整 is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
             整 is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             整 is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
-                     || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
+                     || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long"));
+            若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdi2b = tdef_lookup(tn[tk]); 若 (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr && tdefs[tdi2b].sz == 8) { is_ll = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } } /* fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 → v%62 → 64 位无符号 DIV (原 is_uns 缺失 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名); 镜像 7c6af5f C 源改动 (修复自举一致性 v1==v2) */ /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
             tk++; 若 (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             若 (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
                 tk++; /* skip { */
