@@ -1,8 +1,7 @@
 // @EXPECTED exit:0
 // @EXPECTED out:two
-// 注: 第二个 switch 的 fall-through (case 1 无 break) 是已知未实现特性 —
-//     qcc 按 if-else 链生成, case 1 命中后不落入 case 2 (输出仅 "a")。
-//     实现 fall-through 后需同步更新本断言。
+// 第二个 switch 的 fall-through (case 1 无 break) 已实现 (fix 2026-08-18/20):
+// case 1 命中后落入 case 2 与 default → 输出 "a\nb\nc\n" (b_switch.expected 已同步)。
 int printf(const char*, ...);
 int main() {
     int x = 42;

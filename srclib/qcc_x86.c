@@ -8678,20 +8678,115 @@ static void cg(int n) {
                     mov_rip_eax(rel_b);          /* [rip+counter] = eax */
                 }
             } else if (!strcmp(fname, "realloc")) {
-                if (coff_mode) { /* -c: bump-allocator realloc; p==NULL → malloc(size); p!=NULL 暂返回同指针 (fix 2026-08-15: no-op same-ptr made xrealloc(NULL,size) die "Out of memory") */
-                    int lz = new_label(), le = new_label();
-                    test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, lz, 1); /* if (ptr == 0) malloc(size) */
-                    mov_rr(0, 1); jmp_rel(-1); patch_label(cp - 4, le, 2); /* else return ptr */
-                    set_label(lz);
-                    coff_mov_eax_counter();       /* mov eax, [rip+counter] */
-                    mov_rr(8, 0);                 /* r8d = old counter (return value) */
-                    mov_rr(10, 2);                /* r10d = size (rdx) */
-                    coff_mov_eax_counter();       /* reload counter */
+                if (coff_mode) { /* -c: bump-allocator real realloc (fix 2026-08-20): p==NULL → malloc(size);
+                                    p==heap_top → 原地扩展 (counter += size, 内容保留);
+                                    否则 → malloc 新块 + 拷贝 size 字节 (旧块泄漏, bump 无法回退).
+                                    原 no-op (p!=NULL 恒返回同指针) → strbuf_grow 扩容失效 →
+                                    getcwd 写穿 16B 旧块 → bump 后续分配落进"逻辑扩容区" → 重叠 →
+                                    git init 路径截断 (C:\Users\Adminis.git/config) */
+                    int lr_nok = new_label(), lr_malloc = new_label(), lr_copy = new_label();
+                    int lr_cp = new_label(), lr_cpd = new_label(), lr_done = new_label();
+                    /* n <= 0 → n = 1 */
+                    test_rr(2, 2); jnz_rel(-1); patch_label(cp - 4, lr_nok, 1);
+                    mov_r_imm(2, 1);
+                    set_label(lr_nok);
+                    /* if (p == 0) → malloc path */
+                    test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, lr_malloc, 1);
+                    /* top = counter; if (p == top) → extend in place */
+                    coff_mov_eax_counter();               /* eax = counter */
+                    asm_emit("    比较 r1, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3, 0, 1); /* cmp ecx, eax */
+                    jnz_rel(-1); patch_label(cp - 4, lr_copy, 1);
+                    mov_rr(0, 1);                         /* eax = ecx (p) */
+                    asm_emit("    加 r0, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x01); modrm(3, 2, 0); /* add eax, edx */
+                    coff_mov_counter_eax();               /* counter = p + n */
+                    mov_rr(0, 1);                         /* return p (内容原位保留) */
+                    jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
+                    /* copy path: q = malloc(n); memcpy(q, p, n); return q */
+                    set_label(lr_copy);
+                    coff_mov_eax_counter();
+                    mov_rr(8, 0);                         /* r8d = q (old counter) */
+                    mov_rr(11, 8);                        /* r11 = q (保存返回用, 拷贝循环会递增 r8, fix 2026-08-20) */
+                    mov_rr(10, 2);                        /* r10d = n */
+                    coff_mov_eax_counter();
                     asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                    coff_mov_counter_eax();       /* store back */
-                    mov_rr(0, 8);                 /* return old counter */
-                    set_label(le);
-                } else { mov_rr(0, 1); } /* 单文件自举: return same ptr (旧行为) */
+                    coff_mov_counter_eax();
+                    mov_rr(9, 1);                         /* r9 = p (src) */
+                    set_label(lr_cp);
+                    test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lr_cpd, 1);
+                    asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0,0,1); /* mov al, [r9] */
+                    asm_emit("    写字节 [r8], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,0); /* mov [r8], al */
+                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
+                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
+                    asm_emit("    自减 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,1,2); /* dec r10 */
+                    jmp_rel(-1); patch_label(cp - 4, lr_cp, 2);
+                    set_label(lr_cpd);
+                    mov_rr(0, 11);                        /* return q (r11 保存的原始 q, fix 2026-08-20: 原返回 r8=q+n 错) */
+                    jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
+                    /* malloc path (p == 0) */
+                    set_label(lr_malloc);
+                    coff_mov_eax_counter();               /* mov eax, [rip+counter] */
+                    mov_rr(8, 0);                         /* r8d = old counter (return value) */
+                    mov_rr(10, 2);                        /* r10d = size (rdx) */
+                    coff_mov_eax_counter();               /* reload counter */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    coff_mov_counter_eax();               /* store back */
+                    mov_rr(0, 8);                         /* return old counter */
+                    set_label(lr_done);
+                } else {
+                    /* 单文件自举: 真 realloc (fix 2026-08-20 与 coff 同语义, RIP-relative counter) */
+                    int lr_nok = new_label(), lr_malloc = new_label(), lr_copy = new_label();
+                    int lr_cp = new_label(), lr_cpd = new_label(), lr_done = new_label();
+                    test_rr(2, 2); jnz_rel(-1); patch_label(cp - 4, lr_nok, 1);
+                    mov_r_imm(2, 1);
+                    set_label(lr_nok);
+                    test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, lr_malloc, 1);
+                    { int rel_t1 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_t1);                  /* eax = counter */
+                    asm_emit("    比较 r1, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3, 0, 1); /* cmp ecx, eax */
+                    jnz_rel(-1); patch_label(cp - 4, lr_copy, 1);
+                    mov_rr(0, 1);                         /* eax = p */
+                    asm_emit("    加 r0, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x01); modrm(3, 2, 0); /* add eax, edx */
+                    int rel_t2 = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_t2);                  /* counter = p + n */
+                    mov_rr(0, 1);                         /* return p */
+                    jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
+                    set_label(lr_copy);
+                    int rel_c1 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_c1);
+                    mov_rr(8, 0);                         /* r8d = q */
+                    mov_rr(11, 8);                        /* r11 = q (保存返回用, fix 2026-08-20) */
+                    mov_rr(10, 2);                        /* r10d = n */
+                    int rel_c2 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_c2);
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    int rel_c3 = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_c3);
+                    mov_rr(9, 1);                         /* r9 = p (src) */
+                    set_label(lr_cp);
+                    test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lr_cpd, 1);
+                    asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0,0,1); /* mov al, [r9] */
+                    asm_emit("    写字节 [r8], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,0); /* mov [r8], al */
+                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
+                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
+                    asm_emit("    自减 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,1,2); /* dec r10 */
+                    jmp_rel(-1); patch_label(cp - 4, lr_cp, 2);
+                    set_label(lr_cpd);
+                    mov_rr(0, 11);                        /* return q (fix 2026-08-20: r11 保存的原始 q) */
+                    jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
+                    set_label(lr_malloc);
+                    int rel_m1 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_m1);                  /* mov eax, [rip+counter] */
+                    mov_rr(8, 0);                         /* r8d = old counter */
+                    mov_rr(10, 2);                        /* r10d = size (rdx) */
+                    int rel_m2 = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_m2);
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    int rel_m3 = data_rva_base - 0x1000 - cp - 6;
+                    mov_rip_eax(rel_m3);
+                    mov_rr(0, 8);                         /* return old counter */
+                    set_label(lr_done);
+                    }
+                }
             } else if (!strcmp(fname, "free")) {
                 mov_r_imm(0, 0);
             } else if (!strcmp(fname, "fclose")) {
@@ -9657,7 +9752,8 @@ static void cg(int n) {
                 }
             }
             if (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
-            if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
+            cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
+            if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { cg_mem_frow = 8; asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
             }
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
@@ -10008,9 +10104,15 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         if (nt[kid] == 14) peszp = var_esz((char*)(nn + n0[kid])); /* &arr[i]: element = array's arr_esz */
                         else if (nt[kid] == 1) peszp = var_esz((char*)(nn + kid)); /* &var */
                         else peszp = cg_mem_frow ? cg_mem_frow : 4;
-                    } else peszp = cg_mem_frow ? cg_mem_frow : 4;
-                    int save_nd = cg_no_deref; cg(n0[n]); cg_no_deref = save_nd; /* case 11 clobbers the flag; restore (fix 2026-08-09: store path wrote to the VALUE not the address) */
-                    push_r(0);
+                        int save_nd = cg_no_deref; cg(n0[n]); cg_no_deref = save_nd; /* case 11 clobbers the flag; restore (fix 2026-08-09: store path wrote to the VALUE not the address) */
+                        push_r(0);
+                    } else {
+                        /* 先 cg 基址 (case-12 解引用设 cg_mem_frow=元素宽度), 再取 peszp (fix 2026-08-20:
+                           原先读陈旧 cg_mem_frow → (*argv)[1] 缩放 4 + 4字节加载 → 取到 0 → strchr(NULL) git -c 崩) */
+                        int save_nd = cg_no_deref; cg(n0[n]); cg_no_deref = save_nd;
+                        peszp = cg_mem_frow ? cg_mem_frow : 4;
+                        push_r(0);
+                    }
                 }
                 else peszp = var_esz(vname);
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index → eax */
