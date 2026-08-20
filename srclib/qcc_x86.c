@@ -4703,10 +4703,16 @@ static int blk(void) {
                 if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
                 if (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl && tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1;
-                if (tdi2v >= 0 && tdefs[tdi2v].is_uns) { is_uns = 1; } /* fix 2026-08-18: typedef 8B 基类型 (size_t) 函数内变量 → 8 字节槽 */
+                else if (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t"))) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20: 未知 typedef 回退按名字识别 8B unsigned (size_t 未注册时 rd 判 int → v1≠v2 movsxd 差异) */
+                else if (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t"))) is_ll = 1;
+                if (tdi2v >= 0 && tdefs[tdi2v].is_uns) { is_uns = 1; }
+                if (!is_double && (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t"))) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20 兜底: size_t 无论注册的 sz/is_uns 如何, 强制 8B unsigned — v1/v2 统一 (pp_read_file rd) */
+                else if (!is_double && (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t"))) is_ll = 1;
                 tk++;
             } else if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && tt[tk + 1] == VR) { /* const/static 后跟未知 typedef: const uInt max — 注册类型, 否则 uInt 被当变量名, max 泄漏 (fix 2026-08-15: zlib-uncompress2 max undefined) */
                 td_reg(tn[tk]);
+                if (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t")) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20: unknown typedef æåå­è¯å« 8B unsigned (size_t æªæ³¨åæ¶ rd å¤ int â v1â v2 movsxd) */
+                else if (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t")) is_ll = 1;
                 tk++;
             }
             int is_ptr = 0, ptr_depth = 0;
