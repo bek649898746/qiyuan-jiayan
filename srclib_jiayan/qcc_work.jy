@@ -4365,7 +4365,7 @@ __attribute__((unused))
                             整 save_u = tk; 整 n = 1, d0 = 0; tk += 1; /* 落外层 { (镜像具名分支推断) */
                             循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                                 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                                否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                                否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 == 0) { tk++; 断; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
                                 否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++;
                                 tk++;
                             }
@@ -4621,7 +4621,7 @@ __attribute__((unused))
                         整 save_u = tk; 整 n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                         循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                             若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                            否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                                否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 == 0) { tk++; 断; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
                             否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                             tk++;
                         }
@@ -4701,7 +4701,7 @@ __attribute__((unused))
                     整 save_u = tk; 整 n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
                     循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                         若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                        否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--;
+                                否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 == 0) { tk++; 断; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
                         否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                         tk++;
                     }
@@ -5865,7 +5865,7 @@ __attribute__((unused))
                     st_finalize(si); /* fix 2026-08-06: 尾部填充 round up */
                     st_pend_backfill(si); /* 定义体完成 → 回填引用本结构的 pending 指针字段类型 (fix 2026-08-18) */
                     /* instance variable(s): struct Item {...} items[4]; / *ptr */
-                    若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 若 (tt[tk] == VR) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } } /* fix 2026-08-15: **entries — 多级指针实例只吃一个 * → cmd_mktree 被吞; = NULL 初始化器 */
+                    若 (tt[tk] == DK) { 整 pdpth = 0; 循环 (tt[tk] == DK) { pdpth++; tk++; } 若 (tt[tk] == VR) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = (pdpth >= 2) ? 8 : stypes[si].sz; vars[var_last_idx].p_depth = pdpth; 若 (pdpth >= 2) vars[var_last_idx].p_inner = stypes[si].sz; 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
                     否 若 (tt[tk] == VR) {
                         整 cnt = 1;
                         若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
@@ -5876,7 +5876,7 @@ __attribute__((unused))
                         若 (tt[tk] == AK && tt[tk + 1] == FK) { 整 n = 1, d0 = 0; tk += 2; 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) { 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; 否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--; 否 若 (tt[tk] == CK && d0 == 0) n++; tk++; } 若 (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; 若 (tt[tk] == UK) tk++; }
                         否 tk = skip_global_init(tk); /* = expr 初始化器 (fix 2026-08-15) */
                     }
-                    循环 (tt[tk] == CK) { tk++; 整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; } 若 (tt[tk] == VR) { 若 (ip2) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; } 否 var_static_struct(tn[tk], si, 1); 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
+                    循环 (tt[tk] == CK) { tk++; 整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; } 若 (tt[tk] == VR) { 若 (ip2) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = 8; vars[var_last_idx].p_depth = 1; } 否 var_static_struct(tn[tk], si, 1); 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
                     若 (tt[tk] == SK) tk++; /* ; */
                 } 否 {
                     /* struct Big make_big(...): tag present but NO body — rewind so the
@@ -5900,7 +5900,8 @@ __attribute__((unused))
                                     }
                                     var_static_arr(vn, 0, 8, cnt); vars[var_last_idx].st_idx = st_find(gtag);
                                 } 否 {
-                                    var_static(vn, 4); /* 全局 struct 指针: .data 槽 */
+                                    var_static(vn, 4);
+                                    { 整 si2 = st_find(gtag); 若 (si2 >= 0) { vars[var_last_idx].st_idx = si2; vars[var_last_idx].p_esz = (np > 1) ? 8 : stypes[si2].sz; vars[var_last_idx].p_depth = np; 若 (np > 1) vars[var_last_idx].p_inner = stypes[si2].sz; } }
                                     { 整 si2 = st_find(gtag); 若 (si2 >= 0) vars[var_last_idx].st_idx = si2; }
                                     vars[var_last_idx].arr_esz = 8;
                                 }
@@ -6457,7 +6458,7 @@ __attribute__((unused))
                     整 cnt = 1;
                     整 anon_unsized = 0;
                     若 (tt[tk + 1] == LB) { 整 tix = tk + 1; 循环 (tt[tix] == LB) { 若 (tt[tix + 1] == RB) anon_unsized = 1; tix++; 若 (tt[tix] == NK) cnt *= tv[tix]; 若 (tt[tix] == RB) tix++; } }
-                    若 (anon_ptr) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; }
+                    若 (anon_ptr) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = stypes[si].sz; vars[var_last_idx].p_depth = 1; } /* fix 2026-08-22 #33: struct {..} *p 全局指针 p_esz 未设(默认4) -> p[i] 步长4 -> commit_formats[i].name 读错 -> istarts_with(NULL) -> git --format=fuller/email 崩 */
                     否 var_static_struct(tn[tk], si, cnt);
                     字 vn_anon[64]; strcpy(vn_anon, tn[tk]);
                     tk++;
@@ -9607,7 +9608,6 @@ __attribute__((unused))
                                 }
                                 pop_r(3); /* rbx = &dst, rax = &src */
                                 cg_struct_copy(_fcs);
-                            } 否 若 (st_field_is_dbl(stypes[si].name, fname)) {
                             } 否 若 (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); /* double rhs → xmm0 */
                                 movsd_mbrp_xmm0(var_sbase(vname, off) + foff - cur_frame_sz); /* double field write */
