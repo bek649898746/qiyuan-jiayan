@@ -2331,8 +2331,9 @@ static void load_ptr_slot(int off, const char *vn) {
 static void load_param_val(const char *name) {
     for (int i = vs_n() - 1; i >= 0; i--) {
         if (!strcmp(vars[i].name, name) && var_codegen_visible(i)) {
-            if (vars[i].pstk) { if (vars[i].is_ll) mov_reg_mbrp64(0, vars[i].pdisp); else mov_reg_mbrp(0, vars[i].pdisp); } /* eax/rax = [rbp+pdisp] (LL: 64-bit, fix 2026-08-05) */
-            else if (vars[i].is_param) { int r = -(vars[i].rsp_off + 1); if (r != 0) { if (vars[i].is_ll) mov_rr64(0, r); else mov_rr(0, r); } }
+            int _wide = vars[i].is_ll || vars[i].p_esz > 0 || vars[i].st_idx >= 0; /* fix 2026-08-22 #34b: 指针/struct 参数槽存 64 位地址 — 原只有 is_ll 才 64 位读, 指针参数 p->dm=t 高 32 位截断 */
+            if (vars[i].pstk) { if (_wide) mov_reg_mbrp64(0, vars[i].pdisp); else mov_reg_mbrp(0, vars[i].pdisp); } /* eax/rax = [rbp+pdisp] */
+            else if (vars[i].is_param) { int r = -(vars[i].rsp_off + 1); if (r != 0) { if (_wide) mov_rr64(0, r); else mov_rr(0, r); } }
             return;
         }
     }
@@ -9451,7 +9452,7 @@ static void cg(int n) {
             cg(n0[n]); asm_emit("    按位反 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF7); b(0xD0); /* NOT eax */
         break;
         case 10: { /* assign — handles both var=expr and var.field=expr */
-            if (getenv("QCC_DBG_AST") && n0[n] >= 0 && nt[n0[n]] == 1) { char *_vn=(char*)(nn+n0[n]); if (!strcmp(_vn,"ref")||!strcmp(_vn,"full_ref")) fprintf(stderr, "[AST] assign to '%s' nt_rhs=%d fn='%s'\n", _vn, n1[n]>=0?nt[n1[n]]:-1, n1[n]>=0&&nt[n1[n]]==4?(char*)(nn+n1[n]):""); }
+            if (getenv("QCC_DBG_AST")) { fprintf(stderr, "[C10] lhs_node=%d nt_lhs=%d nt0=%d nt0of0=%d nv=%d fname='%s' n1=%d nt_rhs=%d\n", n0[n], n0[n]>=0?nt[n0[n]]:-1, n0[n]>=0&&n0[n0[n]]>=0?nt[n0[n0[n]]]:-1, n0[n]>=0&&n0[n0[n]]>=0&&n0[n0[n0[n]]]>=0?nt[n0[n0[n0[n]]]]:-1, n0[n]>=0?nv[n0[n]]:-1, n0[n]>=0?(char*)(nn+n0[n]):"", n1[n], n1[n]>=0?nt[n1[n]]:-1); }
             if (nt[n0[n]] == 13 || nt[n0[n]] == 15) {
                 /* struct member assign: var.field = expr (also ptr->field, arr[i].field) */
                 int mc = n0[n]; /* member access node */
@@ -9512,15 +9513,44 @@ static void cg(int n) {
                 } else if (nt[n0[mc]] == 13 || nt[n0[mc]] == 15) {
                     /* nested member write: o.in.a = expr / n1.next->val = expr */
                     int fsz = 4, si_out = -1;
-                    cg(n1[n]); push_r(0); /* save rhs */
-                    if (mem_addr(mc, &fsz, &si_out) == 0) { /* rax = &chain */
-                        pop_r(3); /* ebx = rhs */
-                        if (si_out >= 0 && bf_store(stypes[si_out].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                        else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
+                    int _csz4 = 0; /* fix 2026-08-22 #34b: nested 成员 struct 字段整体赋值 (p->dm = t / o.in.a = s) — 原 fsz=16 落 else 只存首4字节 */
+                    if (n1[n] >= 0 && (nt[n1[n]] == 1 || nt[n1[n]] == 12 || nt[n1[n]] == 15)) {
+                        if (mem_addr(mc, &fsz, &si_out) == 0) {
+                            if (fsz > 8 && si_out >= 0 && stypes[si_out].sz > 8) {
+                                if (nt[n1[n]] == 1) {
+                                    if (var_stidx((char*)(nn + n1[n])) == si_out && var_pesz((char*)(nn + n1[n])) == 0) _csz4 = stypes[si_out].sz;
+                                } else {
+                                    int _rfsz5 = 0, _rsi5 = -1;
+                                    if (mem_addr(n1[n], &_rfsz5, &_rsi5) == 0 && _rfsz5 == stypes[si_out].sz) _csz4 = stypes[si_out].sz;
+                                }
+                            }
+                        }
+                    }
+                    if (_csz4 > 0) {
+                        /* rax 已是 &dst (探测 mem_addr 已 emit), push 保存后补 &src */
+                        push_r(0); /* &dst */
+                        if (nt[n1[n]] == 1) {
+                            char *_srn4 = (char*)(nn + n1[n]);
+                            int _sro4 = var_lookup(_srn4);
+                            if (_sro4 >= 0) { if (var_isstatic(_srn4)) lea_rax_rip(coff_static_disp(_sro4, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn4, _sro4) - cur_frame_sz); }
+                            else mov_r_imm(0, 0);
+                        } else {
+                            int _rfsz4 = 0, _rsi4 = -1;
+                            mem_addr(n1[n], &_rfsz4, &_rsi4); /* 重新 emit &RHS */
+                        }
+                        pop_r(3); /* rbx = &dst, rax = &src */
+                        cg_struct_copy(_csz4);
+                    } else {
+                        cg(n1[n]); push_r(0); /* save rhs */
+                        if (mem_addr(mc, &fsz, &si_out) == 0) { /* rax = &chain */
+                            pop_r(3); /* ebx = rhs */
+                            if (si_out >= 0 && bf_store(stypes[si_out].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                            else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
                 else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
-                        else if (fsz == 8) { rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx (64-bit ptr/struct field) */
-                        else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
-                        mov_rr(0, 3); /* eax = stored value (chained assignments) */
+                            else if (fsz == 8) { rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx (64-bit ptr/struct field) */
+                            else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
+                            mov_rr(0, 3); /* eax = stored value (chained assignments) */
+                        }
                     }
                 } else {
                 char *vname = (char*)(nn + n0[mc]); /* struct var name */
@@ -9531,7 +9561,36 @@ static void cg(int n) {
                     int fsz = foff >= 0 ? st_field_size(stypes[si].name, fname) : 0; /* 1/4/8 store width (fix 2026-08-03: fnptr fields were 4-byte truncated) */
                     if (foff >= 0) {
                         if (is_arrow) {
-                            if (st_field_is_dbl(stypes[si].name, fname)) {
+                            int _fty2 = st_field_ty_idx(stypes[si].name, fname);
+                            int _fcs2 = (_fty2 >= 0 && stypes[_fty2].sz > 8) ? stypes[_fty2].sz : 0;
+                            int _fok2 = 0; /* fix 2026-08-22 #34b: arrow 成员结构赋值 p->dm = t (>8B struct 字段整块拷贝; 原标量路径 fsz=16 落 else 只存首4字节) */
+                            if (_fcs2 > 0 && n1[n] >= 0) {
+                                if (nt[n1[n]] == 1) {
+                                    if (var_stidx((char*)(nn + n1[n])) == _fty2 && var_pdepth((char*)(nn + n1[n])) == 0) _fok2 = 1; /* fix 2026-08-22 #34b: 排除指针变量(p_depth>=1), 允许 struct 值参数(槽 p_esz=4 但非指针) */
+                                } else {
+                                    int _rfsz = 0, _rsi = -1;
+                                    if (mem_addr(n1[n], &_rfsz, &_rsi) == 0 && _rfsz == _fcs2) _fok2 = 1;
+                                }
+                            }
+                            if (_fok2) {
+                                if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                                else if (coff_mode && var_isstatic(vname)) { mov_rax_rip64(coff_static_disp(off, 1) - 1); }
+                                else if (off < 0) { load_param_val(vname); } /* param ptr in register/stack (fix 2026-08-22 #34b: 参数指针 arrow 赋值原 rax=0 → 拷贝垃圾) */
+                                else { mov_r_imm(0, 0); }
+                                if(foff!=0)alu_ri(T_PK,0,foff); /* rax = &p->dm */
+                                push_r(0); /* &dst */
+                                if (nt[n1[n]] == 1) {
+                                    char *_srn = (char*)(nn + n1[n]);
+                                    int _sro = var_lookup(_srn);
+                                    if (_sro >= 0) { if (var_big_param(_srn)) mov_reg_mbrp64(0, _sro - cur_frame_sz); else if (var_isstatic(_srn)) lea_rax_rip(coff_static_disp(_sro, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn, _sro) - cur_frame_sz); }
+                                    else mov_r_imm(0, 0);
+                                } else {
+                                    int _rfsz2 = 0, _rsi2 = -1;
+                                    mem_addr(n1[n], &_rfsz2, &_rsi2); /* re-emit &RHS after lea &dst (probe above emitted early) */
+                                }
+                                pop_r(3); /* rbx = &dst, rax = &src */
+                                cg_struct_copy(_fcs2);
+                            } else if (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); push_xmm0(); /* save rhs (xmm0 slot) */
                                 if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (fix 2026-08-17: coff extern 全局指针 off<0 — 原 else ptr=0 → the_repository->worktree=val 写 [0] 丢) */
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
@@ -9626,22 +9685,50 @@ static void cg(int n) {
                 if (is_arrow && si < 0) {
                     int fo = -1, si2 = -1;
                     for (int i = 0; i < st_n; i++) { fo = st_off(stypes[i].name, fname); if (fo >= 0) { si2 = i; break; } }
-                    cg(n1[n]); push_r(0); /* save rhs on stack */
-                    if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
-                        /* 表达式基: (ptr)->field 的 ptr 是取址/解引用表达式 (fix 2026-08-19:
-                           链式赋值 (&t->list)->next = (&t->list)->prev = &t->list 的基是 case-11 取址 —
-                           原 load_param_val(vname='') 不发码 → 沿用内层赋值残留 rax 当写地址 → 写错位/写 NULL.
-                           INIT_LIST_HEAD 的 next 字段从未写 → git status tempfile 链表节点 next=0 → SEGV) */
-                        cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
+                    int _fcs3 = 0; /* fix 2026-08-22 #34b: 参数指针 struct 字段整体赋值 p->dm = t — 原标量路径只存首4字节 */
+                    if (si2 >= 0 && n1[n] >= 0) {
+                        int _fti3 = st_field_ty_idx(stypes[si2].name, fname);
+                        if (_fti3 >= 0 && stypes[_fti3].sz > 8) _fcs3 = stypes[_fti3].sz;
                     }
-                    else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
-                    else if (off < 0) { load_param_val(vname); } /* param in register or stack */
-                    else { mov_r_imm(0, 0); }
-                    if (fo != 0) add_rax_imm8(fo);
-                    pop_r(3); /* ebx = rhs */
-                    if (si2 >= 0 && bf_store(stypes[si2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                    else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [eax], ebx */
-                    mov_rr(0, 3); /* eax = stored value (chained assignments) */
+                    if (_fcs3 > 0 && n1[n] >= 0 && (nt[n1[n]] == 1 || nt[n1[n]] == 12 || nt[n1[n]] == 15)) {
+                        /* struct 拷贝路径: rax = &p->fname, rbx = &rhs */
+                        if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
+                            cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
+                        }
+                        else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                        else if (off < 0) { load_param_val(vname); } /* param in register or stack */
+                        else { mov_r_imm(0, 0); }
+                        if (fo != 0) add_rax_imm8(fo);
+                        push_r(0); /* &dst */
+                        if (nt[n1[n]] == 1) {
+                            char *_srn3 = (char*)(nn + n1[n]);
+                            int _sro3 = var_lookup(_srn3);
+                            if (_sro3 >= 0) { if (var_isstatic(_srn3)) lea_rax_rip(coff_static_disp(_sro3, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn3, _sro3) - cur_frame_sz); }
+                            else mov_r_imm(0, 0);
+                        } else {
+                            int _rfsz3 = 0, _rsi3 = -1;
+                            mem_addr(n1[n], &_rfsz3, &_rsi3); /* re-emit &RHS */
+                        }
+                        pop_r(3); /* rbx = &dst, rax = &src */
+                        cg_struct_copy(_fcs3);
+                    } else {
+                        cg(n1[n]); push_r(0); /* save rhs on stack */
+                        if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
+                            /* 表达式基: (ptr)->field 的 ptr 是取址/解引用表达式 (fix 2026-08-19:
+                               链式赋值 (&t->list)->next = (&t->list)->prev = &t->list 的基是 case-11 取址 —
+                               原 load_param_val(vname='') 不发码 → 沿用内层赋值残留 rax 当写地址 → 写错位/写 NULL.
+                               INIT_LIST_HEAD 的 next 字段从未写 → git status tempfile 链表节点 next=0 → SEGV) */
+                            cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
+                        }
+                        else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                        else if (off < 0) { load_param_val(vname); } /* param in register or stack */
+                        else { mov_r_imm(0, 0); }
+                        if (fo != 0) add_rax_imm8(fo);
+                        pop_r(3); /* ebx = rhs */
+                        if (si2 >= 0 && bf_store(stypes[si2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
+                        else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [eax], ebx */
+                        mov_rr(0, 3); /* eax = stored value (chained assignments) */
+                    }
                 }
                 } /* end var.field else */
             } else if (nt[n0[n]] == 14) { /* arr[i] = expr */
