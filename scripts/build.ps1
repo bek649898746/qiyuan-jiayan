@@ -39,10 +39,10 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛 (2026-08-22 #29/#30/#31 日期全链路修复后新不动点):
-# qcc_boot == v1==v2==v3==v4==v5 = 610B211E (struct tm/__extension__/gmtime_s/>8B结构副值/64位nll)
-$expected = '3474D4E0'
-if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
+# 验收标准: 自举闭环收敛 (2026-08-22 #29/#30/#31/#32/#33/#34 日期+格式+struct赋值全链路修复后新不动点):
+# qcc_boot == v1==v2==v3==v4==v5 = 9D85D29D (struct tm/__extension__/gmtime_s/>8B结构副值/64位nll/unsized数组推断break/全局struct指针p_esz/double字段赋值重复分支删除)
+$expected = '9D85D29D'
+if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
     Write-Host "[WARN] 自举链与仓库记录不同：odd=$h1 even=$h2" -ForegroundColor Yellow
