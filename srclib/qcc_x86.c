@@ -1035,6 +1035,7 @@ static int st_add(const char *n) {
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct '%s' 字段超过 256 上限\n", stypes[si].name); exit(1); }
+    if (getenv("QCC_DBG_XDF")) fprintf(stderr, "[SZR] struct '%s' fld='%s' fsz=%d frow=%d\n", stypes[si].name, fn, fsz, frow); /* tmp diag */
     if (getenv("QCC_DBG_NS")) if (!strcmp(stypes[si].name, "gz3") || !strcmp(stypes[si].name, "z_stream_s") || !strcmp(stypes[si].name, "git_zstream") || strstr(stypes[si].name, "z_stream") || !strcmp(stypes[si].name, "config_set") || !strcmp(stypes[si].name, "hashmap") || !strcmp(stypes[si].name, "configset_list") || !strcmp(stypes[si].name, "string_list")) fprintf(stderr, "[FLD] struct '%s' fld='%s' fsz=%d frow=%d idx=%d\n", stypes[si].name, fn, fsz, frow, stypes[si].fn); /* tmp diag */
     int idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
@@ -1176,7 +1177,7 @@ static int st_field_row(const char *sn, const char *fn) {
 static int st_off(const char *sn, const char *fn) {
     int si = st_find(sn); if (si < 0) return -1;
     for (int i = 0; i < stypes[si].fn; i++)
-        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].foffs[i], 4); return v; }
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v; memcpy(&v, &stypes[si].foffs[i], 4); if (getenv("QCC_DBG_OFF") && !strcmp(fn, "ha")) fprintf(stderr, "[OFF] %s.%s foff=%d\n", sn, fn, v); return v; }
     return -1;
 }
 static int st_field_bitw(const char *sn, const char *fn) { /* bit-field width, 0 = not a bit-field (fix 2026-08-05) */
@@ -2258,7 +2259,11 @@ static int var_small_struct(const char *n) {
 /* big-struct PARAM specifically: its slot holds a POINTER to the caller-side copy */
 static int var_big_param(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
-        if (vars[i].is_param && vars[i].st_idx >= 0) { int sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; return (sz > 8) ? 1 : 0; }
+        /* fix 2026-08-22 #39: 指针参数被误判为大结构值参数 — `&struct_object_id *old_oid`
+           生成了 mov(取值) 而非 lea(取址) → diff_tree_paths 的 parents_oid 收到 NULL → root
+           commit 摘要打印 ll_diff_tree_paths 空指针崩. 大结构值参数必须 p_depth==0 (struct
+           按值), 指针参数 (p_depth>=1, 含 T** 双指针) 槽位存指针值本身, 取地址用 lea. */
+        if (vars[i].is_param && vars[i].st_idx >= 0 && vars[i].p_depth == 0) { int sz = vars[i].st_sz > 0 ? vars[i].st_sz : stypes[vars[i].st_idx].sz; return (sz > 8) ? 1 : 0; }
         return 0;
     }
     return 0;
@@ -2534,6 +2539,28 @@ static int expr_is_ll(int n) {
    value, then offsets val). *fsz_out = final field byte size; *si_out = the
    chain's resulting struct type (for further field lookup). 0 on success. */
 static void cg(int n); /* forward decl: mem_addr recurses through array-access codegen (case-14 base) */
+/* type-only chain resolver: struct index of the VALUE at node n (no codegen).
+   Mirrors mem_addr's struct resolution. -1 if not a struct value.
+   fix 2026-08-22 #41: &p->parent[i].oid 的 mem_addr case-14 基是成员链
+   (nt[n0[n]]==15), 原用 var_stidx(基名字) 把字段名 "parent" 当变量查 → -1 →
+   地址表达式静默丢弃 → oidcpy 目标=残留寄存器 → root commit 摘要 emit_path 崩. */
+static int mem_ty(int n) {
+    if (n < 0) return -1;
+    if (nt[n] == 1) return var_stidx((char*)(nn + n));
+    if (nt[n] == 12) return mem_ty(n0[n]);
+    if (nt[n] == 13 || nt[n] == 15) {
+        int sub = mem_ty(n0[n]);
+        if (sub < 0) return -1;
+        return st_field_ty_idx(stypes[sub].name, (char*)(nn + n));
+    }
+    if (nt[n] == 14) {
+        int b = n0[n];
+        if (b >= 0 && (nt[b] == 15 || nt[b] == 13 || nt[b] == 12 || nt[b] == 14))
+            return mem_ty(b);      /* 成员链基 (p->parent[i]): 元素 struct = 基字段的 struct */
+        if (b >= 0) return var_stidx((char*)(nn + b)); /* 普通数组/指针变量基 */
+    }
+    return -1;
+}
 static int mem_addr(int n, int *fsz_out, int *si_out) {
     if (nt[n] == 1) { /* root identifier */
         char *vn = (char*)(nn + n);
@@ -2547,8 +2574,9 @@ static int mem_addr(int n, int *fsz_out, int *si_out) {
         return 0;
     }
     if (nt[n] == 14) { /* arr[i]: rax = &arr[i]; element struct type from the array var (fix 2026-08-03: nested member chains with an array root, e.g. items[i].p.x, previously returned -1 → stores/loads silently dropped → stack corruption) */
-        char *av = (char*)(nn + n0[n]);
-        int si = var_stidx(av);
+        /* fix 2026-08-22 #41: 成员链基 (p->parent[i]) 的元素 struct 类型用 mem_ty 解析
+           (原 var_stidx(基名字) 把字段名当变量 → -1 → 地址表达式静默丢弃) */
+        int si = mem_ty(n);
         if (si < 0) return -1;
         cg_no_deref = 1; cg(n); cg_no_deref = 0; /* rax = &arr[i] (struct array / struct ptr) */
         *fsz_out = stypes[si].sz;
@@ -5831,7 +5859,7 @@ static int parse(const char *s) {
                             }
                             if (tt[tk] == UK) tk++;
                         } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
-                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !tkw && npel == 0) { int tdv = tdef_lookup(tn[tk]); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tdfield_si = td_st_index(tn[tk]); tk++; /* fix 2026-08-21: typedef 名后的指针 `typedef_name *field` (kh_oid_set_t *set / kh_oid_set_t **table) — 原不消费 * → 安全守卫吞掉 * → 字段名以 typedef 大小(非 8)注册且无类型 → st_field_ty_idx=-1 → mem_addr 嵌套链 (iter->set->n_buckets) 断 → 比较表达式编译成 iter 指针自身 → fsck_blobs oidset_iter_next 对空集返回垃圾 oid → hash-object SEGV */ while (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } if (npel > 0) { fpel = (tdfield_si >= 0 && npel == 1 && stypes[tdfield_si].sz > 0) ? stypes[tdfield_si].sz : 8; } } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局); fix 2026-08-19: 已见基类型/指针时该 VR 是字段名 — `char *ref;` 的 ref 撞 remote.h `struct ref` 标签 → 原被当类型吞掉 → ref_namespace_info 布局 8B(错 16B) → ref_namespace 与 ref_rev_parse_rules .data 重叠 → git status strbuf_vaddf 死循环; fix 2026-08-19: tdfield_si=td_st_index (struct typedef → struct 索引; td_is 只回布尔) → 注册后 st_field_ty 供嵌套链解析 (z_stream z;) */
+                        else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !tkw && npel == 0) { int tdv = tdef_lookup(tn[tk]); if (getenv("QCC_DBG_XDF")) fprintf(stderr, "[TD] %s tok='%s' tdv=%d is_fnptr=%d sz=%d is_struct=%d\n", stypes[si].name, tn[tk], tdv, tdv >= 0 ? tdefs[tdv].is_fnptr : -99, tdv >= 0 ? tdefs[tdv].sz : -99, tdv >= 0 ? tdefs[tdv].is_struct : -99); if (tdv >= 0) { if (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } else if (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tdfield_si = td_st_index(tn[tk]); tk++; /* fix 2026-08-21: typedef 名后的指针 `typedef_name *field` (kh_oid_set_t *set / kh_oid_set_t **table) — 原不消费 * → 安全守卫吞掉 * → 字段名以 typedef 大小(非 8)注册且无类型 → st_field_ty_idx=-1 → mem_addr 嵌套链 (iter->set->n_buckets) 断 → 比较表达式编译成 iter 指针自身 → fsck_blobs oidset_iter_next 对空集返回垃圾 oid → hash-object SEGV */ while (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } if (npel > 0) { fpel = (tdfield_si >= 0 && npel == 1 && stypes[tdfield_si].sz > 0) ? stypes[tdfield_si].sz : 8; } } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局); fix 2026-08-19: 已见基类型/指针时该 VR 是字段名 — `char *ref;` 的 ref 撞 remote.h `struct ref` 标签 → 原被当类型吞掉 → ref_namespace_info 布局 8B(错 16B) → ref_namespace 与 ref_rev_parse_rules .data 重叠 → git status strbuf_vaddf 死循环; fix 2026-08-19: tdfield_si=td_st_index (struct typedef → struct 索引; td_is 只回布尔) → 注册后 st_field_ty 供嵌套链解析 (z_stream z;) */
                         if (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; int ubw = 0;
                             if (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -5855,7 +5883,7 @@ static int parse(const char *s) {
                             else frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             if (unsized) { fsz = 0; frow = 4; } /* 柔性数组: 不占 struct 空间, 元素大小保留 */
                             if (is_union) st_union_field(si, fn, fsz);
-                            else { if (tdfield_si >= 0) st_cur_struct_align = stypes[tdfield_si].algn; st_field_sz_r(si, fn, fsz, frow); stypes[si].fels[stypes[si].fn - 1] = fel; stypes[si].fpels[stypes[si].fn - 1] = fpel; stypes[si].fptrs[stypes[si].fn - 1] = (char)(npel > 0); if (sty_persist >= 0) st_field_ty(si, fn, sty_persist); if (tdfield_si >= 0) st_field_ty(si, fn, tdfield_si); } /* fix 2026-08-07; fix 2026-08-17: fpels 记指针指向元素大小; fix 2026-08-18: fptrs 指针字段标记; sty_persist 逗号续行 struct 字段继承类型 (struct A *x, *y — 原 y 无类型 → mem_addr 失败); fix 2026-08-19: tdfield_si typedef struct 字段类型 (z_stream z; → 嵌套链 gz.z.avail_in); fix 2026-08-19: st_cur_struct_align — struct 成员按自身对齐 */
+                            else { if (tdfield_si >= 0) st_cur_struct_align = stypes[tdfield_si].algn; if (getenv("QCC_DBG_XDF")) fprintf(stderr, "[XDF] %s.%s fsz=%d frow=%d tdfield_si=%d sty=%d\n", stypes[si].name, fn, fsz, frow, tdfield_si, sty_persist); st_field_sz_r(si, fn, fsz, frow); stypes[si].fels[stypes[si].fn - 1] = fel; stypes[si].fpels[stypes[si].fn - 1] = fpel; stypes[si].fptrs[stypes[si].fn - 1] = (char)(npel > 0); if (sty_persist >= 0) st_field_ty(si, fn, sty_persist); if (tdfield_si >= 0) st_field_ty(si, fn, tdfield_si); } /* fix 2026-08-07; fix 2026-08-17: fpels 记指针指向元素大小; fix 2026-08-18: fptrs 指针字段标记; sty_persist 逗号续行 struct 字段继承类型 (struct A *x, *y — 原 y 无类型 → mem_addr 失败); fix 2026-08-19: tdfield_si typedef struct 字段类型 (z_stream z; → 嵌套链 gz.z.avail_in); fix 2026-08-19: st_cur_struct_align — struct 成员按自身对齐 */
                             if (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记: 64 位指针访问 (fix 2026-08-16) */
                             if (fdbl) st_field_dbl(si, fn);
                             if (fll) st_field_ty(si, fn, -3); /* long long 字段标记: 64 位访问 (fix 2026-08-06) */
@@ -6190,10 +6218,10 @@ static int parse(const char *s) {
                         strcpy(stypes[tsi].name, td_stname);
                         tk++; /* { */
                         int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
+                        int fsz = 4; int frow = 1; int tdf_si = -1; /* fix 2026-08-22 #43: 移出循环 — 逗号续行 `xdfile_t xdf1, xdf2;` 的 xdf2 原在迭代重置 fsz=4 → sizeof(xdfenv_t)=120 而非 224 → xdl_malloc 分配过小 → xdiff 哈希数组越界崩. fsz/frow/tdf_si 跨逗号继承, SK 重置 */
                         while (tk < TS && tt[tk] != UK) {
-                            int fsz = 4; int frow = 1; int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0; int ttkw = 0; /* fix 2026-08-19: 类型关键字已消费标记 (同 5402 撞名根因) */
+                            int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0; int ttkw = 0; /* fix 2026-08-19: 类型关键字已消费标记 (同 5402 撞名根因) */
                             int npel = 0; /* fix 2026-08-19: typedef struct Tag 路径指针字段标记 — 原无 npel/fptrs 导致 z_stream_s 的 char 星号字段 fptrs=0 被当内联数组按 8 缩放 */
-                            int tdf_si = -1; /* fix 2026-08-19: typedef struct 字段的 struct 类型索引 (git_zstream 的 z_stream z 成员) — 原只设 fsz 无 fty → 链访问 gz.z.next_in 断 → zlib_pre_call 崩 */
                             if (tt[tk] == VK) { ttkw = 1; if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
                             int fpel = fsz; /* fix 2026-08-19: DK 前的基类型大小 (char* → 1, void* → 4) */
                             while (tt[tk] == DK) { fsz = 8; npel++; tk++; } /* pointer field (fix 2026-08-19: npel++ — 原只设 fsz=8 无标记) */
@@ -6261,7 +6289,7 @@ static int parse(const char *s) {
                                 }
                             }
                             if (tt[tk] == CK) tk++;
-                            if (tt[tk] == SK) tk++;
+                            if (tt[tk] == SK) { tk++; fsz = 4; frow = 1; tdf_si = -1; tfuns = 0; } /* fix 2026-08-22 #43: ; 结束字段类型 — 重置 fsz/frow/tdf_si (防 `double a; int b;` 的 b 继承 8) */
                         }
                         if (tt[tk] == UK) tk++;
                         st_finalize(tsi); /* fix 2026-08-06: 尾部填充 round up (typedef struct) */
@@ -6855,9 +6883,9 @@ static int parse(const char *s) {
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; }
-                else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; if (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); tk++; } /* typedef'd struct / double alias / fnptr */
+                else if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; if (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); if (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: typedef struct 参数 (diffdata_t *dd1) — st_find(typedef名) 找不到, 必须经 td_st_index 回退到真 struct 名, 否则箭头成员访问落"按字段名搜全部 struct"兜底 → ha 字段命中 s_xrecord (foff=20) 而非 s_diffdata (foff=8) → xdiff 哈希数组错位崩 */ tk++; } /* typedef'd struct / double alias / fnptr */
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
-                if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; if (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
+                if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; if (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); if (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -8278,6 +8306,11 @@ static int node_psz(int n) {
             int fidx = st_fidx(si2, fn);
             if (fidx >= 0 && stypes[si2].fptrs[fidx])
                 return stypes[si2].fpels[fidx] ? stypes[si2].fpels[fidx] : 8;
+            /* fix 2026-08-22 #42d: 数组字段的指针算术缩放 — int lens[320] + n 原返回 0
+               → 不缩放 → st->lens+hlit 步进 1 字节 → inflate 动态表 dist 表指针错位
+               → 垃圾 maxbits 崩. 数组字段 (fels!=fsizes 或 flex) 返回元素大小. */
+            if (fidx >= 0 && st_field_is_array_idx(si2, fn))
+                return st_field_el(si2, fn);
         }
         return 0;
     }
@@ -8597,7 +8630,11 @@ static void cg(int n) {
                     char *an = (char*)(nn + n0[c]); /* array variable name */
                     int asi = var_stidx(an);
                     /* fix 2026-08-07: 去掉 !var_isstatic — 静态数组元素按值传参也走 bigarr 拷贝 (原被排除 → 留地址捷径 → 被调方改的是原数组 = 别名 bug) */
-                    if (asi >= 0 && stypes[asi].sz > 8) { bigsz = stypes[asi].sz; bigarr = 1; }
+                    /* fix 2026-08-22 #40: 双指针/指针数组基 (T** pp / T *arr[N]) 的 arr[i] 是指针元素 (8B),
+                       原仅查 st_idx 命中被指 struct → bigsz=40 → 按 40B struct 按值拷贝 → 传垃圾栈指针 →
+                       root commit 摘要 oid_object_info_convert die 崩. 元素尺寸必须等于 struct 大小才按
+                       struct 元素处理 (T* p 单指针 p[i] 仍是 struct, var_esz==sz 保留). */
+                    if (asi >= 0 && stypes[asi].sz > 8 && var_esz(an) == stypes[asi].sz) { bigsz = stypes[asi].sz; bigarr = 1; }
                 }
                 if (bigsz > 0) {
                     int aoff = var_lookup((char*)(nn + c));
@@ -9978,7 +10015,12 @@ static void cg(int n) {
                 int off = var_lookup(vn);
                 int si = var_stidx(vn);
                 int is_arrow = (nt0 == 15 && nv[mc] == 1);
-                if (off >= 0 && si >= 0 && !(is_arrow && var_pesz(vn) > 0)) { /* struct 变量 base: &sa.i — 槽位+foff (指针 base 不走这里) */
+                /* fix 2026-08-22 #41: 基必须是简单变量 (nt[n0[mc]]==1) 才走 "struct 变量 base"
+                   槽位+foff 捷径 — &p->parent[i].oid 的基是成员链 (case 14/13), vn 误解析成
+                   emit_path 局部指针变量 "oid" (st_idx>=0) → 命中此分支但 st_off 找错 struct
+                   → foff=-1 → 不生成任何代码 → dst=残留寄存器 (循环索引 i) → oidcpy 目标垃圾
+                   → root commit 摘要 emit_path 崩. 链基必须走 mem_addr 逐级解析. */
+                if (off >= 0 && si >= 0 && nt[n0[mc]] == 1 && !(is_arrow && var_pesz(vn) > 0)) { /* struct 变量 base: &sa.i — 槽位+foff (指针 base 不走这里) */
                     int foff = st_off(stypes[si].name, fn);
                     if (foff >= 0) {
                         if (var_isstatic(vn)) lea_rax_rip(coff_static_disp(off, 1) + foff - 1); /* static struct field addr via RIP (7-byte lea) */
@@ -10172,7 +10214,9 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
             /* for arrow, search all structs if variable not struct-typed */
             if(is_arrow && s<0){
                 int fo=-1,si=-1;
+                if (getenv("QCC_DBG_OFF")) fprintf(stderr, "[ARROWFALL] vn=%s fn=%s s=%d o=%d\n", vn, fn, s, o);
                 for(int i=0;i<st_n;i++){fo=st_off(stypes[i].name,fn);if(fo>=0){si=i;break;}}
+                if (getenv("QCC_DBG_OFF")) fprintf(stderr, "[ARROWFALL] found si=%d (name=%s) fo=%d\n", si, si>=0?stypes[si].name:"?", fo);
                 if(si>=0){ /* found struct */
                     if(o>=0){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(o, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, o - cur_frame_sz); else mov_reg_mbrp(0, o - cur_frame_sz); } /* rax = ptr */
                     else if (o < 0 && var_isstatic(vn)) { mov_rax_rip64(coff_static_disp(o, 1) - 1); } /* fix 2026-08-17: extern 全局指针 (coff off<0 负槽 + is_static) — 原被当参数 load_param_val → 指针值垃圾 → get_git_work_tree 返回垃圾崩 */
