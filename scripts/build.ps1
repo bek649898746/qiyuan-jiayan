@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛 (2026-08-22 #29..#34b 日期+格式+struct赋值+arrow赋值 全链路修复后新不动点):
-# qcc_boot == v1==v2==v3==v4==v5 = A712B56B (struct tm/__extension__/gmtime_s/>8B结构副值/64位nll/unsized数组推断break/全局struct指针p_esz/double字段赋值重复分支删除/arrow成员结构赋值/参数指针64位加载)
-$expected = 'A712B56B'
+# 验收标准: 自举闭环收敛 (2026-08-22 #29..#37 日期+格式+struct+sha1哈希 全链路修复后新不动点):
+# qcc_boot == v1==v2==v3==v4==v5 = E5897105 (struct tm/__extension__/gmtime_s/>8B结构副值/64位nll/unsized数组推断break/全局struct指针p_esz/double字段赋值/arrow成员结构赋值/参数指针64位加载/全局数组推断break/匿名struct ull字段/cast指针pesz)
+$expected = 'E5897105'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

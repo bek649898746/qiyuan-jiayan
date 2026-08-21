@@ -4045,6 +4045,9 @@ __attribute__((unused))
                 否 若 (cast_ty && !strcmp(cast_ty, "int")) cpe = 4;
                 否 若 (cast_ty && !strcmp(cast_ty, "long")) cpe = 8;
                 否 若 (cast_ty && !strcmp(cast_ty, "double")) cpe = 8;
+                否 若 (cast_ty2 && (!strcmp(cast_ty2, "char") || !strcmp(cast_ty2, "_Bool"))) cpe = 1; /* fix 2026-08-22 #37: (const char*)x / (volatile char*)y — cast_ty=const 时原 cpe=0 不设 pesz → no-op cast 返回原变量 → 加法 node_psz 用 void* 步长 4 → data+left 按 4 缩放 (blk_SHA1_Update data+=left 错 → sha1 长内容哈希全错) */
+                否 若 (cast_ty2 && !strcmp(cast_ty2, "short")) cpe = 2;
+                否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8;
                 若 (cpe && ce >= 0) pesz[ce] = cpe; /* struct/typedef/void ptr: cpe=0 -> keep old behavior (fix 2026-08-16: ce=-1 时 pesz[-1] 越界写) */
             }
             返 ce; /* cast is no-op: value unchanged */
@@ -5874,7 +5877,7 @@ __attribute__((unused))
                         若 (st_static) var_file_static[vcnt - 1] = 1;
                         tk++;
                         循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; }
-                        若 (tt[tk] == AK && tt[tk + 1] == FK) { 整 n = 1, d0 = 0; tk += 2; 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) { 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; 否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) d0--; 否 若 (tt[tk] == CK && d0 == 0) n++; tk++; } 若 (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; 若 (tt[tk] == UK) tk++; }
+                        若 (tt[tk] == AK && tt[tk + 1] == FK) { 整 n = 1, d0 = 0; tk += 2; 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) { 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; 否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 < 0) { tk++; 断; } } /* fix 2026-08-22 #35: 全局具名 struct 数组推断数组 } 后 d0 变负立即 break, 否则后续数组逗号被数进元素数 */ 否 若 (tt[tk] == CK && d0 == 0) n++; tk++; } 若 (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; 若 (tt[tk] == UK) tk++; }
                         否 tk = skip_global_init(tk); /* = expr 初始化器 (fix 2026-08-15) */
                     }
                     循环 (tt[tk] == CK) { tk++; 整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; } 若 (tt[tk] == VR) { 若 (ip2) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = 8; vars[var_last_idx].p_depth = 1; } 否 var_static_struct(tn[tk], si, 1); 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
@@ -6109,7 +6112,7 @@ __attribute__((unused))
                         ffnptr = 0; /* per-field reset (fix 2026-08-16) */
                         整 tdf_si = -1; /* fix 2026-08-19: typedef struct 字段的 struct 类型索引 (匿名 typedef struct 内 FILETIME 成员) — 原只 fnptr 设大小 → WIN32_FIND_DATAW 的 FILETIME 记 4B → cFileName 偏移 32 错 → FindFirstFileW 数据错位 */
                         整 ftkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 (typedef 匿名 struct 同 5402 撞名根因) */
-                        若 (tt[tk] == VK) { ftkw = 1; fdflt = 4; 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) fdflt = 8; tk++; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
+                        若 (tt[tk] == VK) { 整 lc2 = 0; ftkw = 1; fdflt = 4; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) fdflt = 8; 否 若 (!strcmp(tn[tk], "long")) lc2++; 否 若 (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } 若 (lc2 >= 2) fdflt = 8; 否 若 (lc2 == 1) fdflt = 4; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         循环 (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         若 (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
@@ -6347,7 +6350,7 @@ __attribute__((unused))
                 整 fsz = 4; 整 frow = 1; 整 fdbl = 0; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 匿名 struct (static struct {...} vars[16384]) 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 后续字段必须继承 char (原每次迭代重置 fsz=4 → char 算 int → vars 136 算 152 → 变量表步长错位 → Git 大文件崩) */
                 循环 (tk < TS && tt[tk] != UK) {
                     整 dims = 0; 整 first = 1;
-                    若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } tk++; }
+                    若 (tt[tk] == VK) { 整 lc = 0; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; } 否 若 (!strcmp(tn[tk], "long")) lc++; 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; } tk++; } 若 (lc >= 2) { fsz = 8; frow = 8; } 否 若 (lc == 1) { fsz = 4; frow = 4; } }
                     循环 (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                     若 (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
@@ -6473,7 +6476,7 @@ __attribute__((unused))
                                 整 save_i = tk; 整 n = 1, d0 = 0, max_des = -1, in_des = 0;
                                 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) {
                                     若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) { d0++; 若 (tt[tk] == LB) in_des = 1; }
-                                    否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (tt[tk] == RB && in_des) in_des = 0; }
+                                    否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (tt[tk] == RB && in_des) in_des = 0; 若 (d0 == 0) { tk++; 断; } } /* fix 2026-08-22 #35: 全局匿名 struct 数组推断在数组 } 关闭(d0==0)后立即 break, 否则把后续数组初始化器逗号也数进元素数 (git date.c timezone_names 44→132 越界 → match_string(str=NULL) 崩) */
                                     否 若 (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* C99 trailing comma excluded */
                                     否 若 (tt[tk] == NK && in_des && d0 >= 1) { 若 (tv[tk] > max_des) max_des = tv[tk]; }
                                     tk++;
