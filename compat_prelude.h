@@ -621,77 +621,261 @@ static int deflateEnd(z_stream *s) { if (s->state) free(s->state); s->state = 0;
 static unsigned long deflateBound(z_stream *s, unsigned long n) { (void)s; return n + n / 1000 + 64; }
 static int deflateSetHeader(z_stream *s, void *h) { (void)s; (void)h; return Z_OK; }
 
+/* ---- 完整 RFC-1951 inflate (zlib 封装 + stored/fixed/dynamic 三种块) ----
+   fix 2026-08-22 #42: 原实现只支持 stored (BTYPE=0) 块 — 原生 git 的 zlib 对小对象
+   用固定/动态 Huffman 压缩 → "unsupported compression" → jiayan git 读不了原生
+   loose 对象 (commit 摘要 diff 读 blob 崩). 此实现支持全部三种块类型 + 长度/距离匹配. */
 typedef struct {
-    int phase;
-    unsigned char b0;
-    unsigned len_read;
-    unsigned block_len;
-    unsigned tr_read;
-    int final;
+    int phase;            /* 3=zlib头 4=块头 5=stored头 6=stored数据 7=huffman 8=动态表 9=匹配 2=adler尾 */
+    int raw;              /* w<0: 裸 deflate (无 zlib 头/尾) */
+    unsigned tr_read;     /* adler 尾字节计数 */
+    /* 位缓冲 (LSB 优先, 字节从低位进入) */
+    unsigned bitbuf;
+    int bitcnt;
+    /* 块头 */
+    int bfinal;
+    int btype;
+    /* stored 块 */
+    unsigned s_len;
+    /* 动态表构建 */
+    int hlit, hdist, hclen;
+    int cl_lens[19];
+    int lens[320];
+    int lens_idx;
+    int prev_len;
+    int cl_done;
+    /* 规范 Huffman 表 */
+    int l_hcnt[16], l_hsym[288]; int l_maxbits;
+    int d_hcnt[16], d_hsym[32];  int d_maxbits;
+    int c_hcnt[16], c_hsym[19];  int c_maxbits;
+    /* 匹配 */
+    int m_len, m_dist;
 } qcc_inflate_state;
+static const unsigned char qcc_inf_cl_order[19] = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+static const unsigned char qcc_inf_len_extra[29] = {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+static const unsigned short qcc_inf_len_base[29] = {3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+static const unsigned char qcc_inf_dist_extra[30] = {0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+static const unsigned short qcc_inf_dist_base[30] = {1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+static int qcc_inf_byte(z_stream *s, qcc_inflate_state *st) {
+    if (s->avail_in == 0) return 0;
+    st->bitbuf |= (unsigned)s->next_in[0] << st->bitcnt;
+    s->next_in++; s->avail_in--; s->total_in++;
+    st->bitcnt += 8;
+    return 1;
+}
+static int qcc_inf_bits(z_stream *s, qcc_inflate_state *st, int n, int *v) {
+    int x = 0, i;
+    for (i = 0; i < n; i++) {
+        if (st->bitcnt == 0 && !qcc_inf_byte(s, st)) return 0;
+        x |= (int)(st->bitbuf & 1) << i;
+        st->bitbuf >>= 1; st->bitcnt--;
+    }
+    *v = x;
+    return 1;
+}
+static void qcc_inf_align(qcc_inflate_state *st) { st->bitbuf = 0; st->bitcnt = 0; }
+static void qcc_inf_build(int *lens, int n, int *hcnt, int *hsym, int *maxbits) {
+    int i, offs[16], pos[16];
+    for (i = 0; i < 16; i++) hcnt[i] = 0;
+    *maxbits = 1;
+    for (i = 0; i < n; i++) if (lens[i] > 0) { hcnt[lens[i]]++; if (lens[i] > *maxbits) *maxbits = lens[i]; }
+    offs[1] = 0;
+    for (i = 1; i < 15; i++) offs[i + 1] = offs[i] + hcnt[i];
+    for (i = 1; i <= 15; i++) pos[i] = offs[i];
+    for (i = 0; i < n; i++) if (lens[i] > 0) hsym[pos[lens[i]]++] = i;
+}
+static int qcc_inf_huff(z_stream *s, qcc_inflate_state *st, int *hcnt, int *hsym, int maxbits, int *sym) {
+    int code = 0, first = 0, index = 0, len;
+    for (len = 1; len <= maxbits; len++) {
+        if (st->bitcnt == 0 && !qcc_inf_byte(s, st)) return 0;
+        code |= (int)(st->bitbuf & 1);
+        st->bitbuf >>= 1; st->bitcnt--;
+        if (code - first < hcnt[len]) { *sym = hsym[index + (code - first)]; return 1; }
+        index += hcnt[len];
+        first = (first + hcnt[len]) << 1;
+        code <<= 1;
+    }
+    return -1;
+}
+static void qcc_inf_fixed(qcc_inflate_state *st) {
+    int i, lens[288];
+    for (i = 0; i <= 143; i++) lens[i] = 8;
+    for (i = 144; i <= 255; i++) lens[i] = 9;
+    for (i = 256; i <= 279; i++) lens[i] = 7;
+    for (i = 280; i <= 287; i++) lens[i] = 8;
+    qcc_inf_build(lens, 288, st->l_hcnt, st->l_hsym, &st->l_maxbits);
+    for (i = 0; i < 32; i++) lens[i] = 5;
+    qcc_inf_build(lens, 32, st->d_hcnt, st->d_hsym, &st->d_maxbits);
+}
 static int inflate(z_stream *s, int f) {
     qcc_inflate_state *st = (qcc_inflate_state *)s->state;
     (void)f;
     if (!st) return Z_STREAM_ERROR;
     for (;;) {
-        if (st->phase == 3) { /* skip zlib header (CMF FLG 2 字节) — fix 2026-08-19: 原从流头直接读块 → 0x78 0x01 被当块头 → LEN=0x2C01 巨大 → total_out 读多字节 → commit 对象解压错 */
+        if (st->phase == 3) { /* zlib 头 (CMF FLG 2 字节) */
+            if (st->raw) { st->phase = 4; continue; }
             if (s->avail_in == 0) return Z_OK;
             s->next_in++; s->avail_in--; s->total_in++;
             if (s->avail_in == 0) return Z_OK;
             s->next_in++; s->avail_in--; s->total_in++;
-            st->phase = 0;
+            st->phase = 4;
             continue;
         }
-        if (st->phase == 2) { /* consume adler32 trailer (4 字节) 再 END — fix 2026-08-20: 原直接 END → 输入残留 trailer → git 读对象报 "garbage at end of loose object" */
+        if (st->phase == 4) { /* 块头: BFINAL(1) + BTYPE(2) */
+            if (!qcc_inf_bits(s, st, 1, &st->bfinal)) return Z_OK;
+            if (!qcc_inf_bits(s, st, 2, &st->btype)) return Z_OK;
+            if (st->btype == 0) { qcc_inf_align(st); st->phase = 5; continue; }
+            if (st->btype == 1) { qcc_inf_fixed(st); st->phase = 7; continue; }
+            if (st->btype == 2) { st->phase = 8; st->lens_idx = -1; continue; }
+            s->msg = "invalid block type"; return Z_DATA_ERROR;
+        }
+        if (st->phase == 5) { /* stored 块头: LEN(2) + NLEN(2) */
+            int i, lo = 0, hi = 0;
+            for (i = 0; i < 4; i++) {
+                if (s->avail_in == 0) return Z_OK;
+                if (i == 0) lo = s->next_in[0];
+                else if (i == 1) hi = s->next_in[0];
+                else if (i == 2) { if (((s->next_in[0] ^ lo) & 0xff) != 0xff) { s->msg = "invalid stored block lengths"; return Z_DATA_ERROR; } }
+                else { if (((s->next_in[0] ^ hi) & 0xff) != 0xff) { s->msg = "invalid stored block lengths"; return Z_DATA_ERROR; } }
+                s->next_in++; s->avail_in--; s->total_in++;
+            }
+            st->s_len = (unsigned)(lo | (hi << 8));
+            st->phase = 6;
+            continue;
+        }
+        if (st->phase == 6) { /* stored 数据 */
+            unsigned n = st->s_len, i;
+            if (n > s->avail_in) n = s->avail_in;
+            if (n > s->avail_out) n = s->avail_out;
+            if (n > 0) {
+                for (i = 0; i < n; i++) s->next_out[i] = s->next_in[i];
+                st->s_len -= n;
+                s->next_in += n; s->avail_in -= n; s->total_in += n;
+                s->next_out += n; s->avail_out -= n; s->total_out += n;
+                if (st->s_len > 0) return Z_OK;
+            } else if (st->s_len > 0) return Z_OK;
+            st->phase = st->bfinal ? 2 : 4;
+            continue;
+        }
+        if (st->phase == 7) { /* huffman 解码 */
+            int sym, r = qcc_inf_huff(s, st, st->l_hcnt, st->l_hsym, st->l_maxbits, &sym);
+            if (r == 0) return Z_OK;
+            if (r < 0) { s->msg = "invalid literal/length code"; return Z_DATA_ERROR; }
+            if (sym < 256) {
+                if (s->avail_out == 0) return Z_OK;
+                s->next_out[0] = (unsigned char)sym;
+                s->next_out++; s->avail_out--; s->total_out++;
+                continue;
+            }
+            if (sym == 256) { st->phase = st->bfinal ? 2 : 4; continue; }
+            if (sym > 285) { s->msg = "invalid literal/length code"; return Z_DATA_ERROR; }
+            {
+                int li = sym - 257, eb = qcc_inf_len_extra[li], ev = 0, ds;
+                if (eb > 0 && !qcc_inf_bits(s, st, eb, &ev)) return Z_OK;
+                st->m_len = qcc_inf_len_base[li] + ev;
+                r = qcc_inf_huff(s, st, st->d_hcnt, st->d_hsym, st->d_maxbits, &ds);
+                if (r == 0) return Z_OK;
+                if (r < 0 || ds > 29) { s->msg = "invalid distance code"; return Z_DATA_ERROR; }
+                eb = qcc_inf_dist_extra[ds]; ev = 0;
+                if (eb > 0 && !qcc_inf_bits(s, st, eb, &ev)) return Z_OK;
+                st->m_dist = qcc_inf_dist_base[ds] + ev;
+            }
+            st->phase = 9;
+            continue;
+        }
+        if (st->phase == 9) { /* 匹配复制 (重叠允许, 逐字节) */
+            unsigned n = (unsigned)st->m_len, i;
+            if (n > s->avail_out) n = s->avail_out;
+            if (n > 0) {
+                for (i = 0; i < n; i++) s->next_out[i] = s->next_out[(int)i - st->m_dist]; /* fix 2026-08-22 #42b: 索引必须有符号 — unsigned i - int m_dist 在 i<m_dist 下溢成巨值 → 越界读 */
+                st->m_len -= (int)n;
+                s->next_out += n; s->avail_out -= n; s->total_out += n;
+                if (st->m_len > 0) return Z_OK;
+            } else if (st->m_len > 0) return Z_OK;
+            st->phase = 7;
+            continue;
+        }
+        if (st->phase == 8) { /* 动态表头 */
+            if (st->lens_idx == -1) { /* 读 HLIT/HDIST/HCLEN */
+                int h;
+                if (!qcc_inf_bits(s, st, 5, &h)) return Z_OK;
+                st->hlit = h + 257;
+                if (!qcc_inf_bits(s, st, 5, &h)) return Z_OK;
+                st->hdist = h + 1;
+                if (!qcc_inf_bits(s, st, 4, &h)) return Z_OK;
+                st->hclen = h + 4;
+                st->lens_idx = 0; st->cl_done = 0; st->prev_len = 0;
+                {
+                    int z;
+                    for (z = 0; z < 19; z++) st->cl_lens[z] = 0;
+                }
+                continue;
+            }
+            if (!st->cl_done) { /* 读 HCLEN 个 3 位 CL 码长 */
+                while (st->lens_idx < st->hclen) {
+                    int v;
+                    if (!qcc_inf_bits(s, st, 3, &v)) return Z_OK;
+                    st->cl_lens[qcc_inf_cl_order[st->lens_idx]] = v;
+                    st->lens_idx++;
+                }
+                qcc_inf_build(st->cl_lens, 19, st->c_hcnt, st->c_hsym, &st->c_maxbits);
+                st->cl_done = 1;
+                st->lens_idx = 0;
+                st->prev_len = 0;
+                continue;
+            }
+            while (st->lens_idx < st->hlit + st->hdist) { /* 读全部码长 */
+                int sym, r = qcc_inf_huff(s, st, st->c_hcnt, st->c_hsym, st->c_maxbits, &sym);
+                if (r == 0) return Z_OK;
+                if (r < 0) { s->msg = "invalid code lengths"; return Z_DATA_ERROR; }
+                if (sym <= 15) {
+                    st->lens[st->lens_idx] = sym;
+                    if (sym > 0) st->prev_len = sym;
+                    st->lens_idx++;
+                } else if (sym == 16) {
+                    int rep, ev, v;
+                    if (!qcc_inf_bits(s, st, 2, &ev)) return Z_OK;
+                    rep = 3 + ev;
+                    if (st->lens_idx + rep > st->hlit + st->hdist) { s->msg = "invalid bit length repeat"; return Z_DATA_ERROR; }
+                    for (v = 0; v < rep; v++) { st->lens[st->lens_idx] = st->prev_len; st->lens_idx++; }
+                } else if (sym == 17) {
+                    int rep, ev, v;
+                    if (!qcc_inf_bits(s, st, 3, &ev)) return Z_OK;
+                    rep = 3 + ev;
+                    if (st->lens_idx + rep > st->hlit + st->hdist) { s->msg = "invalid bit length repeat"; return Z_DATA_ERROR; }
+                    for (v = 0; v < rep; v++) { st->lens[st->lens_idx] = 0; st->lens_idx++; }
+                } else {
+                    int rep, ev, v;
+                    if (!qcc_inf_bits(s, st, 7, &ev)) return Z_OK;
+                    rep = 11 + ev;
+                    if (st->lens_idx + rep > st->hlit + st->hdist) { s->msg = "invalid bit length repeat"; return Z_DATA_ERROR; }
+                    for (v = 0; v < rep; v++) { st->lens[st->lens_idx] = 0; st->lens_idx++; }
+                }
+            }
+            qcc_inf_build(st->lens, st->hlit, st->l_hcnt, st->l_hsym, &st->l_maxbits);
+            qcc_inf_build(st->lens + st->hlit, st->hdist, st->d_hcnt, st->d_hsym, &st->d_maxbits);
+            st->phase = 7;
+            continue;
+        }
+        if (st->phase == 2) { /* adler32 尾 (4 字节) */
+            if (st->raw) return Z_STREAM_END;
             while (st->tr_read < 4) {
-                if (s->avail_in == 0) return Z_OK; /* 等待更多输入 */
+                if (s->avail_in == 0) return Z_OK;
                 s->next_in++; s->avail_in--; s->total_in++;
                 st->tr_read++;
             }
             return Z_STREAM_END;
-        }
-        if (st->phase == 0) { /* block header: b0 + LEN(2) + NLEN(2) */
-            if (st->len_read < 5) {
-                if (s->avail_in == 0) return Z_OK;
-                if (st->len_read == 0) st->b0 = s->next_in[0];
-                if (st->len_read == 1) st->block_len = s->next_in[0];
-                if (st->len_read == 2) st->block_len |= (unsigned)s->next_in[0] << 8;
-                s->next_in++; s->avail_in--; s->total_in++;
-                st->len_read++;
-                continue;
-            }
-            st->final = st->b0 & 1;
-            if (((st->b0 >> 1) & 3) != 0) { s->msg = "unsupported compression"; return Z_DATA_ERROR; }
-            st->len_read = 0;
-            st->phase = 1;
-            continue;
-        }
-        if (st->phase == 1) { /* block data */
-            unsigned n = st->block_len, i;
-            if (n > s->avail_in) n = s->avail_in;
-            if (n > s->avail_out) n = s->avail_out;
-            for (i = 0; i < n; i++) s->next_out[i] = s->next_in[i];
-            st->block_len -= n;
-            s->next_in += n; s->avail_in -= n; s->total_in += n;
-            s->next_out += n; s->avail_out -= n; s->total_out += n;
-            if (st->block_len > 0) return Z_OK;
-            if (st->final) {
-                st->phase = 2; /* fix 2026-08-20: continue 进 phase=2 消费 adler trailer — 原直接 return Z_STREAM_END → phase=2 永不执行 → 输入残留 4 字节 adler → git 读对象 "garbage at end of loose object" */
-                continue;
-            }
-            st->len_read = 0;
-            st->phase = 0;
-            continue;
         }
         return Z_OK;
     }
 }
 static int inflateInit2(z_stream *s, int w) {
     qcc_inflate_state *d;
-    (void)w;
     d = (qcc_inflate_state *)malloc(sizeof(qcc_inflate_state));
     if (!d) return Z_MEM_ERROR;
-    d->phase = 3; d->b0 = 0; d->len_read = 0; d->block_len = 0; d->tr_read = 0; d->final = 0; /* phase=3: 先跳 zlib 头 (fix 2026-08-19) */
+    memset(d, 0, sizeof(*d));
+    d->phase = 3;
+    d->raw = (w < 0) ? 1 : 0;
     s->state = (void *)d;
     s->msg = 0;
     return Z_OK;
@@ -700,7 +884,7 @@ static int inflateInit(z_stream *s) { return inflateInit2(s, 15); }
 static int inflateEnd(z_stream *s) { if (s->state) free(s->state); s->state = 0; return Z_OK; }
 static int inflateReset(z_stream *s) {
     qcc_inflate_state *d = (qcc_inflate_state *)s->state;
-    if (d) { d->phase = 3; d->len_read = 0; d->block_len = 0; d->final = 0; } /* fix 2026-08-19: reset 也回跳头阶段 */
+    if (d) { int raw = d->raw; memset(d, 0, sizeof(*d)); d->phase = 3; d->raw = raw; }
     return Z_OK;
 }
 static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
