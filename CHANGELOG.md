@@ -1,3 +1,58 @@
+## 2C328901 (2026-08-22, 在途未封存)
+
+**git 攻坚最后一公里: struct tm 修复 + 编译器本体 5 bug 根治 (大哥令转正: 修编译器而非改 git 源码)**
+
+- **struct tm 未定义 (#29)**: compat_prelude.h 补 MinGW 布局 struct tm (9 int = 36 字节, tm_year@20, tm_wday@24) + lexer 吞 __extension__ — git log 日期全崩根因 (%ad/%cI/%aI/%aD/medium/fuller 的 Date 行)
+- **qcc bug #27**: 64位返回值被 movslq %eax 截断 (140728898420658 变 -78) — 加 fn_ll_sig 结构记录函数返回 long long
+- **qcc bug #21**: 全局 struct 双指针步长 = sizeof(struct) (display_notes_trees[i] 步长 56 应为 8)
+- **qcc bug #25**: sret 嵌套调用崩 (show(make_dm(t)) 作为参数) — case-4 参数 sret 分支
+- **qcc bug #28**: 一元负不传播 nll (INT64_MIN 编译错 → date_overflows 误判)
+- **qcc bug #25b**: &大结构值参数 (show_ident_date &mode 错)
+- **验收转向**: 回滚 git 源码 workaround (notes/pretty/date/log-tree), 原版 git 零改动全链路验收
+- 自举: v1..v5 = 2C328901 五代全等 (启元独立实测), H1==H2 保持
+- 状态: QCC_FORCE 全量重编 git 635 文件进行中
+
+## F97BBFA7 (2026-08-21)
+
+**宏展开层根治 + 常量折叠 + 全局初始化器 (git 头文件层问题)**
+
+- 宏展开层: #undef 删除对象宏 (obj_del) + 条件编译栈 (假分支 #define/#undef 不误执行) + 深度≤32 防自引用 (无限递归根治)
+- 全局 const 常量折叠: GIT_SHA1_HEXSZ=(2*RAW) 编译期折叠成 40 (原跳过 → .data 槽 0 → 跨 .o 读垃圾)
+- &target 8字节指针槽 ADDR64 重定位 + 字符串字面量初始化器 (const char *g = "str")
+- 自举: v1..v5 = F97BBFA7 五代全等, H1==H2 保持
+
+## 8B153F9C (2026-08-21)
+
+**config_set 布局根治 + master.lock 修复 + add 打通 (qcc bug #7/#8)**
+
+- Bug7: st_field_pel 对前向声明 struct 指针字段返回 4 → config_set 只分 4 字节 → hashmap 越界 (add SEGV 根因, sizeof(*(repo->config))=4), 修复 fpels<=0 时 fallback 字段类型大小 (4→72)
+- Bug8: open() 的 flags|O_BINARY 被 [OPEN] 调试 fprintf 变参槽覆盖 → master.lock 打开失败, 移除 prelude_mmap.c 两个 [OPEN] 插桩
+- 111 处 git 源码插桩剥离 + ref-cache.c QCC_DBG_REF 残留修复
+- 成果: add 真写通 (index 104B + blob 33B) + status/write-tree 打通 (tree oid, zlib 解压验证有效)
+- 自举: v1..v5 = 8B153F9C 五代全等, H1==H2 保持
+
+## 6A0C6A16 (2026-08-21)
+
+**var_last_idx 静态变量索引修复 (commit 内存污染方向)**
+
+- var_static 匹配旧条目时 vcnt 不变 → 调用者 vars[vcnt-1] 误写中间变量 (current_ref_iter 全局声明把 prefix_ref_iterator_begin 的 _sz st_idx 写成 57)
+- 自举: v1..v5 = 6A0C6A16 五代全等, H1==H2 保持
+
+## 182D9D2C (2026-08-21)
+
+**前向声明 struct 指针字段 fpels 回填 (config_set 根治深化)**
+
+- st_field_pel 对前向声明 struct T *field 的 fpels 也要回填 — 原只回填类型索引, fpels=0 → st_field_pel 默认 4
+- 自举: v1..v5 = 182D9D2C 五代全等, H1==H2 保持
+
+## F5DDC673 (2026-08-20)
+
+**H1==H2 恢复 — typedef ll 镜像补全 (破链修复)**
+
+- 7c6af5f 8连修的 typedef ll 只改 C 源漏镜像甲言源 → 破链 (H1!=H2 跑 4 小时)
+- qcc_work.jy 补 typedef ll 镜像 (is_ll/is_uns 判定) → 双份一致 → H1==H2 恢复
+- 自举: v1..v5 = F5DDC673 五代全等 (C 宿主重推第一代全等 = 路B目标态)
+
 ## 4272AFD2 (2026-08-18)
 
 **乙层补丁落地 + 链式 AST 扩展 + 指针数组修复 (外部 AI 审计 7 hunks + 自举暴露 3 深坑)**
