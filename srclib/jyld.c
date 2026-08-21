@@ -592,7 +592,8 @@ static const char *msvcrt_names[] = {
     "atan2","exp","log","log10","ldexp","frexp","modf",
     "feof","ferror","clearerr","ungetc","freopen","setbuf","setvbuf","tmpfile","tmpnam",
     "signal","raise","setjmp","longjmp","div","mktime","localtime","gmtime","difftime","strftime",
-    "_mktime64","_localtime64","_gmtime64","_difftime64"
+    "_mktime64","_localtime64","_gmtime64","_difftime64",
+    "_gmtime64_s","_localtime64_s" /* fix 2026-08-22: gmtime_s/localtime_s 映射到 msvcrt 真函数 (原 compat_prelude stub 返回 0 不填充 tm) */
 };
 #define MSVCRT_MAX 192
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */
@@ -958,9 +959,13 @@ static void layout(void) {
     { int abss = max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]; /* fix 2026-08-07: .bss 128 对齐（COFF 位 0x8） */
       out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
     bss_rva_base = out_base[OUT_BSS];
+    fprintf(stderr, "[BSS!] data_rva_base=%x msvcrt_end=%x outdata=%d abss=%d -> bss=%x\n", data_rva_base, msvcrt_end, out_len[OUT_DATA], (max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]), bss_rva_base);
+    if (getenv("JYLD_DBG_HEAP")) fprintf(stderr, "[LY] data_rva_base=%x gco=%d\n", data_rva_base, g_heap_counter_off);
+    fprintf(stderr, "[LY!] data_rva_base=%x bss_rva_base=%x outdata=%d outbss=%d gco=%d gtext=%d outdataptr=%p\n", data_rva_base, bss_rva_base, out_len[OUT_DATA], out_len[OUT_BSS], g_heap_counter_off, g_text_total, (void*)out_data[OUT_DATA]);
     if (g_heap_counter_off >= 0 && out_data[OUT_DATA]) {
         long long heap_va = 0x400000LL + bss_rva_base + out_len[OUT_BSS] + 2560; /* fix 2026-08-15: 漏加 argv/token 区 2560 → malloc 堆起点落在 argv[0] → git_setup_gettext 的 calloc 清空 argv → cmd_main 读 argv[1]=NULL 崩溃 */
         heap_va = (heap_va + 7) & ~7LL;
+        printf("[HV!] heap_va=%llx bss_rva_base=%x outbss=%d gco=%d outdatanull=%d\n", heap_va, bss_rva_base, out_len[OUT_BSS], g_heap_counter_off, out_data[OUT_DATA] == NULL);
         w8_at(out_data[OUT_DATA] + g_heap_counter_off, heap_va);
     }
     /* .pdata 异常表 RVA (fix 2026-08-07) */
@@ -996,6 +1001,8 @@ static void layout(void) {
             if (getenv("JYLD_DEBUG") && oi == 1)
                 fprintf(stderr, "[dbg] sym %s sec=%d sc=%d value=%d rva=%llx\n",
                         s->name, s->sec, s->sc, s->value, s->resolved_va);
+            if (getenv("JYLD_DBG_HEAP") && !strcmp(s->name, "__qcc_heap_counter"))
+                fprintf(stderr, "[HEAP] DEF oi=%d sym=%d sec=%d rva=%llx (data_rva_base=%x outoff=%d outlen=%d)\n", oi, si, s->sec, s->resolved_va, data_rva_base, o->secs[s->sec-1].out_off, o->secs[s->sec-1].size);
             if (getenv("JYLD_DEBUG") && oi == 0)
                 fprintf(stderr, "[dbg0] sec %d name %s out_off %d size %d\n",
                         si, o->secs[si].name, o->secs[si].out_off, o->secs[si].size);
@@ -1010,6 +1017,8 @@ static void layout(void) {
                 GSym *g = gsym_add(s->name);
                 if (g->defined && g->obj >= 0) {
                     s->resolved_va = objs[g->obj].syms[g->sym].resolved_va;
+                    if (getenv("JYLD_DBG_HEAP") && !strcmp(s->name, "__qcc_heap_counter"))
+                        fprintf(stderr, "[HEAP] REF oi=%d -> def obj=%d sym=%d va=%llx\n", oi, g->obj, g->sym, s->resolved_va);
                 } else if (g->defined && g->obj == -2) {
                     k32_thunk_idx(g->sym); /* fix 2026-08-07: 记录需要 thunk 的 kernel32 槽 */
                     s->resolved_va = 0x400000LL + data_rva_base + 8 + 8LL * g->sym;
@@ -1297,6 +1306,7 @@ static void write_pe(FILE *f, int entry_rva) {
     int text_size = (text_total + 4095) & ~4095;
     if (text_size < 512) text_size = 512;
     int need = data_rva_base - text_rva;
+    if (getenv("JYLD_DBG_HEAP")) fprintf(stderr, "[WP] g_text_total=%d text_size=%x data_rva_base=%x need=%x\n", text_total, text_size, data_rva_base, need);
     if (text_size < need) text_size = need;
     int text_foff = 0x200;
     int data_rva = data_rva_base;

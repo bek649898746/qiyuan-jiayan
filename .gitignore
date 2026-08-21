@@ -131,3 +131,8 @@ scripts/_pe_*.py
 
 # 本地冒烟脚本（含绝对路径，不公开）
 scripts/_git_smoke.ps1
+
+# 调试归档/备份（不入库）
+_tmp_archive/
+*.bak
+*.bak_*

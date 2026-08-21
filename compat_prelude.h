@@ -1093,6 +1093,20 @@ typedef int bool;
    原无 padding 致 st_size@18(4), 与 msvcrt fstat 写入的 st_size@20 错位 →
    读 st.st_size 恒 0 → git_config_set_multivar_in_file 视旧 config 为空 →
    写坏 .git/config ("[\n" 开头) → bad config line 1 → git init 失败). */
+/* <time.h> struct tm — MinGW 布局 (9 int = 36 字节, tm_year@20, tm_wday@24).
+   系统头被 qcc 跳过 → 原未定义 → sizeof(struct tm)=0 → 成员偏移全 0 → show_date 的 tm->tm_year 等全部编译错 (git log 日期全崩) (fix 2026-08-22) */
+struct tm {
+    int tm_sec;
+    int tm_min;
+    int tm_hour;
+    int tm_mday;
+    int tm_mon;
+    int tm_year;
+    int tm_wday;
+    int tm_yday;
+    int tm_isdst;
+};
+
 struct timespec { time_t tv_sec; long tv_nsec; }; /* fix 2026-08-20: 提到 struct stat 前 (struct stat 现含 timespec 成员) */
 struct stat {
     int st_dev;
@@ -1452,8 +1466,12 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define _(s) (s)
 #define Q_(s,p,n) ((n) == 1 ? (s) : (p))
 #endif
-#define gmtime_s(a, b) 0  /* C runtime secure gmtime stub: 成功 (fix 2026-08-15: gmtime_s undefined) */
-#define localtime_s(a, b) 0  /* C runtime secure localtime stub: 成功 (fix 2026-08-15: localtime_s undefined) */
+/* C runtime secure time: gmtime_s/localtime_s 实际调用 msvcrt 真函数 _gmtime64_s/_localtime64_s.
+   原 stub 返回 0 但不填充 tm → time_to_tm/gmtime_r 返回全零 tm → 日期全崩 (fix 2026-08-22) */
+int _gmtime64_s(struct tm *tm, const long long *time);
+int _localtime64_s(struct tm *tm, const long long *time);
+#define gmtime_s(a, b) _gmtime64_s((a), (b))
+#define localtime_s(a, b) _localtime64_s((a), (b))
 #define CP_UTF8 65001  /* MultiByteToWideChar 代码页 (fix 2026-08-19: dirent 的 xutftowcs_path 真实现) */
 /* xutftowcs_path — 真实现 (fix 2026-08-19): 原 stub 宏展开成 0 → compat/win32/dirent.c 的
    opendir len=0 → FindFirstFileW 模式错 → 目录扫描崩。实现见 compat/prelude_dirent_support.c */

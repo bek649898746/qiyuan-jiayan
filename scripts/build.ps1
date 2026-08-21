@@ -39,9 +39,9 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# 验收标准: 自举闭环收敛。2026-08-20 三次不动点 (realloc 真实现 + (*argv)[i] 缩放修复):
-# qcc_boot == v1==v2==v3==v4==v5 = 8054BEBE (新不动点; git -c 不再 strchr(NULL) 崩)。
-$expected = '8054BEBEE9335271543FDCAB979541B5DB200052A39EEBBD807F2A4340C47485'
+# 验收标准: 自举闭环收敛 (2026-08-22 #29/#30/#31 日期全链路修复后新不动点):
+# qcc_boot == v1==v2==v3==v4==v5 = 610B211E (struct tm/__extension__/gmtime_s/>8B结构副值/64位nll)
+$expected = '610B211EF62548D8A8BAEBC638F03645'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1 -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
