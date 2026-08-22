@@ -571,7 +571,7 @@ static const char *msvcrt_names[] = {
     "putchar","getchar","malloc","calloc","realloc","free","memcpy","memset",
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
     "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
-    "_strtoi64","_strtoui64",
+    "_strtoi64","_strtoui64","_putenv",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
     "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "_mkdir","_open","_close","_read","_write","_lseek","_dup","_dup2",
@@ -686,6 +686,7 @@ static int resolve_one(GSym *g) {
             else if (!strcmp(mn, "chdir")) alias = "_chdir";
             else if (!strcmp(mn, "stat")) alias = "_stat";
             else if (!strcmp(mn, "fstat")) alias = "_fstat";
+            else if (!strcmp(mn, "putenv")) alias = "_putenv"; /* fix 2026-08-23 t49e: msvcrt exports only _putenv */
             else if (!strcmp(mn, "lstat")) alias = "_stat";
             if (alias) {
                 for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)

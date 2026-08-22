@@ -4183,7 +4183,23 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) 
        gi_idx[0..nd-1] = 完整多维游标。遇 { 下钻深度, 遇值生成 a[i][j]... = expr。
        顶层扁平(无内层 {)用低位进位; 嵌套行递归只推进本层列, 行由外层 FK 推进。
        本函数自管 { } 配平 (fix 2026-08-05) */
-    if (depth == 0) { arr_blk = -1; arr_blk_root = -1; arr_blk_cnt = 0; } /* fix 2026-08-06 */
+    if (depth == 0) {
+        arr_blk = -1; arr_blk_root = -1; arr_blk_cnt = 0;
+        /* fix 2026-08-23 t49f: C99 aggregate init zeroes unlisted elements -- brace_fields
+           did this for structs but brace_arr_init did not; `struct ce *src[9] = { NULL, }`
+           left src[1..8] as stack garbage -> git status crashed (oneway_diff tree=src[1]=garbage).
+           memset whole array first; explicit initializers below override. */
+        int zaddr = Nd(11); Nc(zaddr, d);
+        int zcall = Nd(4);
+        int zcallee = Nd(1); memcpy((char*)(nn + zcallee), "memset", 7);
+        Nc(zcall, zaddr);
+        int zz = Nd(0); nv[zz] = 0; Nc(zcall, zz);
+        int ztot = esz;
+        for (int zi = 0; zi < nd; zi++) ztot *= dims[zi];
+        int zsz = Nd(0); nv[zsz] = ztot; Nc(zcall, zsz);
+        Nc(zcall, zcallee);
+        arr_chain_add(zcall);
+    }
     if (tt[tk] == FK) tk++; /* 本层 '{' */
     int has_nested = (tt[tk] == FK); /* 本层是否为嵌套行模式 */
     while (tt[tk] != UK) {
@@ -4499,13 +4515,13 @@ static int blk(void) {
                                 if (ginit_n < 4096) ginit[ginit_n++] = decl;
                                 vars[vcnt - 1].pdisp = ginit_n - 1;
                             }
-                        } else if (tt[tk] == FK && si >= 0 && !is_ptr) {
+                        } else if (tt[tk] == FK && si >= 0 && (is_arr || !is_ptr)) { /* fix 2026-08-23 t49f: is_ptr array ({ NULL, }) was excluded -> Nc(d,expr()) scalar -> elements garbage -> status oneway_diff src[1] crash */
                             int idn = Nd(1); memcpy((char*)(nn + idn), vn, 32);
                             if (is_arr) { /* 局部 struct Tag arr[N] = { {...} } — 数组用 brace_arr_init (fix 2026-08-18: 原 brace_fields 遇多元素 { 解析错) */
                                 for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                                 str_row = 0;
                                 int adimv[8] = {0}; adimv[0] = scnt;
-                                brace_arr_init(b, idn, adimv, 1, 0, stypes[si].sz);
+                                brace_arr_init(b, idn, adimv, 1, 0, is_ptr ? 8 : stypes[si].sz); /* t49f: ptr array elem = 8B */
                                 if (tt[tk] == UK) tk++;
                             } else {
                                 tk++; int bi = brace_fields(si, idn); if (tt[tk] == UK) tk++; int bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++;
@@ -6097,10 +6113,13 @@ static int parse(const char *s) {
                 if (tk < TS && tt[tk] == SK) tk++;
                 continue;
             }
-            while (tt[tk] == DK) { e_pesz = e_pesz ? e_pesz : 4; tk++; } /* 指针 */
-            if (tt[tk] == VR) {
-                char ename[64]; strcpy(ename, tn[tk]); tk++;
-                int ev = var_extern(ename, e_char, e_dbl, e_pesz, e_ll);
+            e_pesz = 0;
+            for (;;) { /* fix 2026-08-23 t49e: extern comma-decl loop, was: only 1st var registered */
+                e_pesz = 0;
+                while (tt[tk] == DK) { e_pesz = e_pesz ? e_pesz : 4; tk++; } /* 指针 */
+                if (tt[tk] == VR) {
+                    char ename[64]; strcpy(ename, tn[tk]); tk++;
+                    int ev = var_extern(ename, e_char, e_dbl, e_pesz, e_ll);
                 for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, ename) && vars[vi].rsp_off == ev) {
                     if (e_stidx >= 0) vars[vi].st_idx = e_stidx;
                     if (tt[tk] == LB) { /* extern array: sane_ctype[256] etc. — was registered as scalar extern char, case-14 fell into param load and crashed */
@@ -6121,8 +6140,13 @@ static int parse(const char *s) {
                         else if (saw_lb) { vars[vi].arr_sz = -1; vars[vi].arr_esz = e_esz; }
                         if (getenv("QCC_DBG_NS")) if (strstr(ename, "ref_namespace")) fprintf(stderr, "[NS] extern '%s' e_stidx=%d e_esz=%d e_cnt=%d arr_sz=%d arr_esz=%d\n", ename, e_stidx, e_esz, e_cnt, vars[vi].arr_sz, vars[vi].arr_esz);
                     }
+                        break;
+                    }
+                } else {
                     break;
                 }
+                if (tt[tk] == CK) { tk++; continue; } /* comma -> next extern var */
+                break;
             }
             while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
             if (tk < TS && tt[tk] == SK) tk++;

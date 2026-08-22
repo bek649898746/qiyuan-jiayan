@@ -395,7 +395,7 @@ int lstat(const char *path, void *buf);
 #define getpass(a) ((char*)0)  /* POSIX getpass stub (fix 2026-08-15: getpass undefined) */
 #define NO_MEMMEM 1
 #define NO_SETENV 1
-#define putenv(a) 0  /* POSIX putenv stub (fix 2026-08-15: putenv undefined) */
+extern int putenv(const char *name);  /* POSIX putenv -> msvcrt _putenv (fix 2026-08-23 t49e: was 0-stub, gitsetenv() putenv() silently returned 0 -> GIT_CONFIG_PARAMETERS never written -> git -c ignored; real decl + jyld alias _putenv, same msvcrt env block as getenv) */
 #define NO_UNSETENV 1
 #define NO_MKDTEMP 1
 #define mktemp(a) (a)  /* POSIX mktemp stub: 返回模板本身 (fix 2026-08-15: mktemp undefined) */
