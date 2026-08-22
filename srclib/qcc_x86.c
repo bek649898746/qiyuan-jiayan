@@ -10176,6 +10176,11 @@ static void cg(int n) {
                 if (pbase >= 0) { /* fix 2026-08-16 根因I: pbase>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c */
                 if (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 if (nt[pbase] == 1) { pe = var_esz((char*)(nn + pbase)); p_sti = var_stidx((char*)(nn + pbase)); pname = (char*)(nn + pbase); }
+                else if (nt[pbase] == 13 || nt[pbase] == 15) { /* fix 2026-08-23 t49g: member-chain ptr deref write width -- `*oi->contentp = unpack_loose_rest(...)` was 32-bit store (pe defaulted 4), upper 32 bits garbage -> parse_commit_buffer corrupted buffer -> HEAD~2 crash. Element width = final field byte size. */
+                    char *pbf2 = (char*)(nn + pbase);
+                    int pbsi2 = (n0[pbase] >= 0) ? var_stidx((char*)(nn + n0[pbase])) : -1;
+                    if (pbsi2 >= 0) { int pf2 = st_field_size(stypes[pbsi2].name, pbf2); if (pf2 == 1 || pf2 == 2 || pf2 == 8) pe = pf2; }
+                }
                 if (pesz[pbase]) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
                 }
                 int rhs_ok = 0; /* 结构体拷贝守卫: RHS 必须是同类型结构体值/解引用 (fix 2026-08-19: 原 nt==1 即拷贝 → *p=q(指针) 误拷整块 → configset 栈损坏 → git init 崩) */

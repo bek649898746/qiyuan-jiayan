@@ -2298,6 +2298,7 @@ __attribute__((unused))
 /* Flatten a member chain (o.in.a / p->x.y) into: root variable name, its struct
    type, the total field offset, and the LAST field's byte size (1/4 for scalars,
    >4 for struct/array fields → address semantics). Returns 0 on success. */
+静 整 node_psz(整 n); /* t49c4 fwd */
 静 整 mem_addr(整 n, 整 *fsz_out, 整 *si_out);
 
 
@@ -2571,6 +2572,11 @@ __attribute__((unused))
     返 -1;
 }
 静 整 mem_addr(整 n, 整 *fsz_out, 整 *si_out) {
+    若 (nt[n] == 5 || nt[n] == 6) { /* PK(+) / MK(-): 指针算术表达式回收操作数元素大小 (t49c4 fix: (recs+nrec)-1 外层 -1 应缩放) */
+        整 l = node_psz(n0[n]);
+        若 (l > 0) 返 l;
+        返 node_psz(n1[n]);
+    }
     若 (nt[n] == 1) { /* root identifier */
         字 *vn = (字*)(nn + n);
         整 off = var_lookup(vn);
@@ -4184,7 +4190,7 @@ __attribute__((unused))
            src[1..8] stack garbage -> git status crashed. memset whole array first. */
         整 zaddr = Nd(11); Nc(zaddr, d);
         整 zcall = Nd(4);
-        整 zcallee = Nd(1); memcpy((char*)(nn + zcallee), "memset", 7);
+        整 zcallee = Nd(1); memcpy((字*)(nn + zcallee), "memset", 7);
         Nc(zcall, zaddr);
         整 zz = Nd(0); nv[zz] = 0; Nc(zcall, zz);
         整 ztot = esz;
@@ -4407,6 +4413,7 @@ __attribute__((unused))
                 循环 (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; } /* fix 2026-08-20: 数指针层级
  — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件 */
 若 (tt[tk] == OK && tt[tk + 1] == VR && (tt[tk + 2] == LB || tt[tk + 2] == KK)) {
+                    tk++; /* ( */
                     字 vnp2[64]; strcpy(vnp2, tn[tk]); tk++; /* name */
                     整 cntp2 = 1;
                     循环 (tt[tk] == LB) {
@@ -6134,7 +6141,7 @@ __attribute__((unused))
                     }
                         断;
                     }
-                } 否则 {
+                } 否 {
                     断;
                 }
                 若 (tt[tk] == CK) { tk++; 续; }
@@ -8403,8 +8410,8 @@ __attribute__((unused))
     若 (n < 0) 返 0;
     若 (nt[n] == 2) { /* binary op ptr +/- expr (t49c4 fix) */
         若 (nv[n] == 5 || nv[n] == 6) {
-            整 l2 = node_psz(n0[n]);
-            若 (l2 > 0) 返 l2;
+            整 l = node_psz(n0[n]);
+            若 (l > 0) 返 l;
             返 node_psz(n1[n]);
         }
     }
@@ -9728,7 +9735,6 @@ __attribute__((unused))
                         /* fix 2026-08-22 t48: arr[i].field = struct — 大结构字段整体赋值 (tx[i].d = t[i])
                            traverse_trees 里 `tx[i].d = t[i]` 原 fsz>8 落标量 else 存首 4 字节地址 → tx[i].d 只写
                            &t[i] 低 32 位 → tree_desc 拷贝失败 → 遍历 tree 全空 → status 误报 staged. */
-                        整 _fty_s = st_field_ty_idx(stypes[s2].name, fname);
                         /* fix 2026-08-22 t48: arr[i].field = struct — 大结构字段整体赋值 (tx[i].d = t[i])
                            traverse_trees 里 `tx[i].d = t[i]` 原 fsz>8 落标量 else 存首 4 字节地址 → tx[i].d 只写
                            &t[i] 低 32 位 → tree_desc 拷贝失败 → 遍历 tree 全空 → status 误报 staged. */
@@ -10171,6 +10177,11 @@ __attribute__((unused))
                 若 (pbase >= 0) { /* fix 2026-08-16 根因I: pbase>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c */
                 若 (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 若 (nt[pbase] == 1) { pe = var_esz((字*)(nn + pbase)); p_sti = var_stidx((字*)(nn + pbase)); pname = (字*)(nn + pbase); }
+                否 若 (nt[pbase] == 13 || nt[pbase] == 15) { /* fix 2026-08-23 t49g: member-chain ptr deref write width */
+                    字 *pbf2 = (字*)(nn + pbase);
+                    整 pbsi2 = (n0[pbase] >= 0) ? var_stidx((字*)(nn + n0[pbase])) : -1;
+                    若 (pbsi2 >= 0) { 整 pf2 = st_field_size(stypes[pbsi2].name, pbf2); 若 (pf2 == 1 || pf2 == 2 || pf2 == 8) pe = pf2; }
+                }
                 若 (pesz[pbase]) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
                 }
                 整 rhs_ok = 0; /* 结构体拷贝守卫: RHS 必须是同类型结构体值/解引用 (fix 2026-08-19: 原 nt==1 即拷贝 → *p=q(指针) 误拷整块 → configset 栈损坏 → git init 崩) */
