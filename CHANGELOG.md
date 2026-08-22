@@ -1,3 +1,33 @@
+## 3AF2F1EF (2026-08-22)
+
+**commit 全链路最后一层: 双指针字段双层下标修复 (#44) + 修改型 commit 打通**
+
+- **#44 双指针字段双层下标**: struct T ** 双指针字段 (slab[i][j]) 作数组基时第二维元素大小被丢弃 → &slab[0][1] 落 slab[0].size 字段 → 修改型 commit 摘要崩。stypes 新增 ffins(最终元素大小)+fdeep(指针层级), 6 处注册点同步, case-15/14 修正
+- 修改型 commit (second) exit=0 + git add exit=0
+- 自举: v1..v5 = 3AF2F1EF 五代全等, 测试 325+20 全绿, git 回归 24/24
+
+## 97fc69b (2026-08-22)
+
+**qcc 7连修打通 git commit 全链路 (#39-#43 + inflate) — root commit 摘要 diffstat exit=0**
+
+- **#42 compat_prelude.h 完整 RFC-1951 inflate**: fixed/dynamic Huffman + LZ77 长度距离匹配 — 读真 git 的 Huffman 压缩对象 (互操作档达成!)
+- #39 var_big_param 误判指针参数 / #40 bigsz 误判指针数组 / #41 mem_addr 成员链基 (新增 mem_ty) / #42d node_psz 数组字段指针算术 / #42e typedef struct 参数 / #43 typedef struct 逗号续行 fsz 继承
+- root commit 摘要 diffstat 成功 exit=0
+
+## E5897105 (2026-08-22)
+
+**sha1 长对象哈希全链路修复 (#35/#36/#37) — hash-object 全长度与 python 一致**
+
+- #35 全局数组推断越界 (timezone_names 44 判 132) / #36 匿名 struct ull 字段 (blk_SHA_CTX.size 4B) / #37 const char* cast pesz (data+left 按 4 缩放)
+- hash-object 全长度 (1..1000B) 与 python 一致; git 24/24 回归全绿
+
+## A712B56B (2026-08-22)
+
+**#34b is_arrow 成员结构赋值三层根因 (revision.c rev->date_mode.type=)**
+
+- nested 分支只存首4字节 / 参数指针32位加载截断 / struct值参数RHS槽需读地址
+- git 24/24 回归全绿
+
 ## 2C328901 (2026-08-22, 在途未封存)
 
 **git 攻坚最后一公里: struct tm 修复 + 编译器本体 5 bug 根治 (大哥令转正: 修编译器而非改 git 源码)**
