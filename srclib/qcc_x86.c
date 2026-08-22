@@ -1634,6 +1634,7 @@ static void jmp_rel(int rel) { b(0xE9); b4(rel); }
 static void jz_rel(int rel) { b(0x0F); b(0x84); b4(rel); }
 __attribute__((unused))
 static void jnz_rel(int rel) { b(0x0F); b(0x85); b4(rel); }
+static void jge_rel(int rel) { b(0x0F); b(0x8D); b4(rel); } /* JGE rel32 — fix 2026-08-22 t45: realloc copy min(旧,新) 计数 */
 /* SETcc ??op is token type (T_LK/T_GK/T_QK/T_XK/T_HK/T_YK) */
 static void setcc(int op) {
     unsigned char cc;
@@ -5456,6 +5457,7 @@ static int stmt(void) {
            jumps into its strcmp -> SIGSEGV). The wrapper makes brk_label point
            at the switch's end; the trailing break exits the wrapper. */
         int sw_wh = Nd(9); { int t = Nd(0); nv[t] = 1; Nc(sw_wh, t); }
+        nv[sw_wh] = -1; /* fix 2026-08-22 t45: 标记 switch wrapper — case 9 检测 nv==-1 不覆盖 cont_label, switch 内 continue 穿透到外层循环的 step (否则 continue 跳 wrapper 循环头 → i 不递增 → diff HEAD 死循环) */
         int sw_bd = Nd(5); Nc(sw_bd, decl); if (chain >= 0) Nc(sw_bd, chain);
         Nc(sw_bd, Nd(16)); /* break; -- leave the wrapper after the chain */
         Nc(sw_wh, sw_bd);
@@ -6246,6 +6248,7 @@ static int parse(const char *s) {
                                         char fn[64]; strcpy(fn, tn[tk]); tk++;
                                         st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (typedef 带标签结构体) */
                                         st_field_ty(tsi, fn, inner_si);
+                                        if (fptr) { int fidx = stypes[tsi].fn - 1; stypes[tsi].fptrs[fidx] = 1; stypes[tsi].fpels[fidx] = stypes[inner_si].sz; stypes[tsi].fels[fidx] = 8; stypes[tsi].ffins[fidx] = stypes[inner_si].sz; stypes[tsi].fdeep[fidx] = 1; } /* fix 2026-08-22 t44: typedef 分支 struct 指针字段缺 fptrs → st_field_is_ptr=0 → 赋值 _fcs2=struct 大小 → 结构体复制 (xdl_classify_record rec->next=rhash[hi] 覆盖 rec->ptr) */
                                     }
                                 }
                                 if (tt[tk] == SK) tk++;
@@ -6956,6 +6959,7 @@ static int parse(const char *s) {
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                 }
                 if (tt[tk] == CK) tk++;
+                if (getenv("QCC_DBG_VA")) fprintf(stderr, "[VAPARSE] fn='%s' tk=%d tt=%d tok='%.20s'\n", (char*)(nn + fdef), tk, tt[tk], (tt[tk]>=0&&tt[tk]<TS&&tn[tk])?tn[tk]:"?");
                 if (tt[tk] == DT) { fn_is_va = 1; while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
             }
             if (fn_is_va) {
@@ -8759,7 +8763,7 @@ static void cg(int n) {
             if (is_user && !fnptr) for (int k = 4; k < nargs; k++) {
                 if (fi >= 0 && fn_dbl_get(fname, k)) {
                     movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[k] - 8);
-                    movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0);
+                    movsd_mrsp64_xmmreg(32 + 8 * (k - 4), 0); /* arg5+ at call-rsp+32 (Win64 shadow 32B; 被调者读 [rbp+0x38+8*(k-5)] 因 rbp=call_rsp-24) */
                 } else { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_mrsp_reg64(32 + 8 * (k - 4), 0); }
             }
 
@@ -8844,13 +8848,17 @@ static void cg(int n) {
             } else if (!strcmp(fname, "calloc")) {
                 if (coff_mode) {
                     coff_mov_eax_counter();        /* mov eax, [rip+counter] */
-                    mov_rr(8, 0); /* r8d = old counter (return value) */
+                    mov_rr(11, 0); /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7); /* add r11d, 7 */
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8); /* and r11d, 0xFFFFFFF8 — bump allocator 8 字节对齐 (fix 2026-08-22 t44: 原 counter 不对齐 → xdl_malloc recs 数组未对齐 → xrecord_t* 未对齐读 → rec=0 → commit 摘要 diff SEGV) */
+                    mov_rr(8, 11); /* r8d = 对齐起始 (return) */
                     mov_rr(10, 1); /* r10d = n */
                     asm_emit("    乘 r10, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x0F); b(0xAF); modrm(3,2,2); /* IMUL r10d, edx */
-                    coff_mov_eax_counter();       /* reload counter */
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d (REX.R=1: reg=r10) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11); /* eax = 新 counter */
                     coff_mov_counter_eax();       /* store back */
-                    mov_rr(0, 8);
                     /* fix 2026-08-20: calloc 必须清零 (C 语义) — bump allocator 原不清 →
                        git xcalloc 返回 .data 区垃圾 (attr_stack +24=0x72657355 "User") → attr 解析崩溃 */
                     mov_r_imm(0, 0); /* eax = 0 */
@@ -8869,31 +8877,52 @@ static void cg(int n) {
                        Mnemonic emitters for complete -S output (fix 2026-08-03). */
                     int rel_load = data_rva_base - 0x1000 - cp - 6;
                     mov_eax_rip(rel_load);        /* mov eax, [rip+rel] */
-                    mov_rr(8, 0); /* r8d = old counter (return value) */
+                    mov_rr(11, 0); /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11); /* r8d = 对齐起始 (header) — fix 2026-08-22 t45: 原 mov_rr(8,0) 取 counter 原值 + mov_rr(11,8) 覆盖对齐 → header 未对齐 → 自举产物分配错 → git init 路径损坏 */
+                    mov_rr(11, 8); /* r11d = header */
+                    asm_emit("    加 r11, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(8); /* 数据区 (fix 2026-08-22 t45: single-file calloc header 同 coff) */
                     /* compute n*size: n=rcx, size=rdx */
                     mov_rr(10, 1); /* r10d = n */
                     /* IMUL r10d, edx */
                     asm_emit("    乘 r10, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x0F); b(0xAF); modrm(3,2,2); /* IMUL r10d, edx */
-                    /* add r10d to counter */
-                    /* reload counter with fresh RIP-relative */
-                    int rel_load2 = data_rva_base - 0x1000 - cp - 6;
-                    mov_eax_rip(rel_load2);       /* mov eax, [rip+rel] */
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                    /* store back */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11); /* eax = 新 counter */
                     int rel_store = data_rva_base - 0x1000 - cp - 6;
                     mov_rip_eax(rel_store);       /* mov [rip+rel], eax */
-                    /* return old counter */
-                    mov_rr(0, 8);
+                    asm_emit("    存32 [r8], r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0x89); modrm(0,2,0); /* mov [r8], r10d — header = n*size */
+                    /* 清零数据区 (fix 2026-08-22 t45: single-file calloc 也清零+header) */
+                    mov_r_imm(0, 0); /* eax = 0 */
+                    mov_rr(11, 8);   /* r11 = header */
+                    asm_emit("    加 r11, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(8);
+                    { int lzc = new_label(), lzd = new_label();
+                    set_label(lzc);
+                    test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lzd, 1);
+                    rex(0, 0, 0, 1); b(0x88); modrm(0, 0, 3); /* mov [r11], al */
+                    rex(0, 0, 0, 1); b(0xFF); modrm(3, 0, 3); /* inc r11d */
+                    rex(0, 0, 0, 1); b(0xFF); modrm(3, 1, 2); /* dec r10d */
+                    jmp_rel(-1); patch_label(cp - 4, lzc, 2);
+                    set_label(lzd); }
+                    mov_rr(0, 8);                 /* return header */
+                    asm_emit("    加 r0, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(8); /* 数据区 */
                 }
             } else if (!strcmp(fname, "malloc")) {
                 if (coff_mode) {
                     coff_mov_eax_counter();          /* mov eax, [rip+counter] */
-                    mov_rr(8, 0);                 /* r8d = old counter (return value) */
+                    mov_rr(11, 0);                /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7); /* add r11d, 7 */
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8); /* and r11d, 0xFFFFFFF8 — 8 字节对齐 (fix 2026-08-22 t44 同 calloc) */
+                    mov_rr(8, 11);                /* r8d = 对齐起始 (return value) */
                     mov_rr(10, 1);                /* r10d = n (rcx) */
-                    coff_mov_eax_counter();          /* reload counter */
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d (REX.R=1: reg=r10) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11);
                     coff_mov_counter_eax();          /* store back */
-                    mov_rr(0, 8);                 /* return old counter */
+                    mov_rr(0, 8);                 /* return 对齐起始 */
                 } else {
                     /* bump allocator (same .data counter as calloc), n in rcx.
                        Rewritten with mnemonic emitters so -S output is complete
@@ -8901,14 +8930,21 @@ static void cg(int n) {
                        breaking H1==H2 on the 3-stage path). */
                     int rel_m1 = data_rva_base - 0x1000 - cp - 6;
                     mov_eax_rip(rel_m1);          /* mov eax, [rip+counter] */
-                    mov_rr(8, 0);                 /* r8d = old counter (return value) */
+                    mov_rr(11, 0);                /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11);                /* r8d = 对齐起始 (header) */
+                    asm_emit("    加 r11, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(8); /* 数据区 (fix 2026-08-22 t45: single-file 同 coff header) */
                     mov_rr(10, 1);                /* r10d = n (rcx) */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11);                /* eax = 新 counter */
                     int rel_m2 = data_rva_base - 0x1000 - cp - 6;
-                    mov_eax_rip(rel_m2);          /* reload counter */
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                    int rel_m3 = data_rva_base - 0x1000 - cp - 6;
-                    mov_rip_eax(rel_m3);          /* store back */
-                    mov_rr(0, 8);                 /* return old counter */
+                    mov_rip_eax(rel_m2);          /* store back */
+                    asm_emit("    存32 [r8], r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x89); modrm(0,1,0); /* mov [r8], ecx — header = n */
+                    mov_rr(0, 8);                 /* return header */
+                    asm_emit("    加 r0, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(8); /* 数据区 */
                 }
             } else if (!strcmp(fname, "_bump_top")) {
                 if (coff_mode) {
@@ -8941,45 +8977,58 @@ static void cg(int n) {
                     set_label(lr_nok);
                     /* if (p == 0) → malloc path */
                     test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, lr_malloc, 1);
-                    /* top = counter; if (p == top) → extend in place */
+                    /* top 检查 (t44 行为): p == counter → extend */
                     coff_mov_eax_counter();               /* eax = counter */
                     asm_emit("    比较 r1, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3, 0, 1); /* cmp ecx, eax */
                     jnz_rel(-1); patch_label(cp - 4, lr_copy, 1);
+                    /* extend in place: counter = align(p + n) */
                     mov_rr(0, 1);                         /* eax = ecx (p) */
                     asm_emit("    加 r0, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x01); modrm(3, 2, 0); /* add eax, edx */
-                    coff_mov_counter_eax();               /* counter = p + n */
+                    asm_emit("    加 r0, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(7);
+                    asm_emit("    与 r0, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,4,0); b(0xF8);
+                    coff_mov_counter_eax();               /* counter = align(p + n) */
                     mov_rr(0, 1);                         /* return p (内容原位保留) */
                     jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
                     /* copy path: q = malloc(n); memcpy(q, p, n); return q */
                     set_label(lr_copy);
                     coff_mov_eax_counter();
-                    mov_rr(8, 0);                         /* r8d = q (old counter) */
-                    mov_rr(11, 8);                        /* r11 = q (保存返回用, 拷贝循环会递增 r8, fix 2026-08-20) */
+                    mov_rr(11, 0);                        /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11);                        /* r8d = q (对齐起始, dst) */
+                    mov_rr(11, 8);                        /* r11 = q (保存返回) */
                     mov_rr(10, 2);                        /* r10d = n */
-                    coff_mov_eax_counter();
+                    mov_rr(0, 8);                         /* eax = q */
                     asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
-                    coff_mov_counter_eax();
+                    asm_emit("    加 r0, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(7);
+                    asm_emit("    与 r0, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,4,0); b(0xF8);
+                    coff_mov_counter_eax();               /* counter = align(q + n) */
                     mov_rr(9, 1);                         /* r9 = p (src) */
                     set_label(lr_cp);
                     test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lr_cpd, 1);
                     asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0,0,1); /* mov al, [r9] */
                     asm_emit("    写字节 [r8], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,0); /* mov [r8], al */
-                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
-                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
+                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
+                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
                     asm_emit("    自减 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,1,2); /* dec r10 */
                     jmp_rel(-1); patch_label(cp - 4, lr_cp, 2);
                     set_label(lr_cpd);
-                    mov_rr(0, 11);                        /* return q (r11 保存的原始 q, fix 2026-08-20: 原返回 r8=q+n 错) */
+                    mov_rr(0, 11);                        /* return q (数据区) */
                     jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
-                    /* malloc path (p == 0) */
+                    /* malloc path (p == 0): 带 header, 同 malloc */
                     set_label(lr_malloc);
                     coff_mov_eax_counter();               /* mov eax, [rip+counter] */
-                    mov_rr(8, 0);                         /* r8d = old counter (return value) */
+                    mov_rr(11, 0);                        /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11);                        /* r8d = 对齐起始 (return) */
                     mov_rr(10, 2);                        /* r10d = size (rdx) */
-                    coff_mov_eax_counter();               /* reload counter */
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11);                        /* eax = 新 counter */
                     coff_mov_counter_eax();               /* store back */
-                    mov_rr(0, 8);                         /* return old counter */
+                    mov_rr(0, 8);                         /* return 对齐起始 */
                     set_label(lr_done);
                 } else {
                     /* 单文件自举: 真 realloc (fix 2026-08-20 与 coff 同语义, RIP-relative counter) */
@@ -8989,50 +9038,81 @@ static void cg(int n) {
                     mov_r_imm(2, 1);
                     set_label(lr_nok);
                     test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, lr_malloc, 1);
-                    { int rel_t1 = data_rva_base - 0x1000 - cp - 6;
-                    mov_eax_rip(rel_t1);                  /* eax = counter */
-                    asm_emit("    比较 r1, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3, 0, 1); /* cmp ecx, eax */
+                    { /* top 检查 (fix 2026-08-22 t45): p + [p-8] == counter */
+                    mov_rr(10, 1);                        /* r10d = p */
+                    asm_emit("    取32 r10, [r10-8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8B); modrm(1,2,2); b(0xF8); /* r10d = [p-8] */
+                    mov_rr(0, 1);                         /* eax = p */
+                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x01); modrm(3,2,0); /* add eax, r10d */
+                    mov_rr(11, 0);                        /* r11d = p + old_size */
+                    int rel_t1b = data_rva_base - 0x1000 - cp - 6;
+                    mov_eax_rip(rel_t1b);                 /* eax = counter */
+                    asm_emit("    比较 r11, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3,0,3); /* cmp r11d, eax */
                     jnz_rel(-1); patch_label(cp - 4, lr_copy, 1);
                     mov_rr(0, 1);                         /* eax = p */
                     asm_emit("    加 r0, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x01); modrm(3, 2, 0); /* add eax, edx */
+                    asm_emit("    加 r0, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(7);
+                    asm_emit("    与 r0, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,4,0); b(0xF8);
                     int rel_t2 = data_rva_base - 0x1000 - cp - 6;
-                    mov_rip_eax(rel_t2);                  /* counter = p + n */
+                    mov_rip_eax(rel_t2);                  /* counter = align(p + n) */
+                    mov_rr(0, 1);                         /* eax = p */
+                    asm_emit("    存32 [rax-8], edx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(1,2,0); b(0xF8); /* header = n */
                     mov_rr(0, 1);                         /* return p */
                     jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
                     set_label(lr_copy);
                     int rel_c1 = data_rva_base - 0x1000 - cp - 6;
                     mov_eax_rip(rel_c1);
-                    mov_rr(8, 0);                         /* r8d = q */
-                    mov_rr(11, 8);                        /* r11 = q (保存返回用, fix 2026-08-20) */
+                    mov_rr(11, 0);                        /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11);                        /* r8d = header */
+                    asm_emit("    加 r11, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(8); /* 数据区 */
+                    asm_emit("    加 r8, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,0); b(8); /* r8 = 数据区 (拷贝 dst, fix 2026-08-22 t45: 同 coff copy 修复) */
+                    mov_rr(11, 8);                        /* r11 = q (保存返回) */
                     mov_rr(10, 2);                        /* r10d = n */
-                    int rel_c2 = data_rva_base - 0x1000 - cp - 6;
-                    mov_eax_rip(rel_c2);
+                    mov_rr(0, 11);                        /* eax = q (数据区) */
                     asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    asm_emit("    加 r0, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(7);
+                    asm_emit("    与 r0, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,4,0); b(0xF8);
                     int rel_c3 = data_rva_base - 0x1000 - cp - 6;
-                    mov_rip_eax(rel_c3);
+                    mov_rip_eax(rel_c3);                  /* counter = align(q + n) */
+                    mov_rr(0, 11);                        /* eax = q */
+                    asm_emit("    存32 [rax-8], edx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(1,2,0); b(0xF8); /* [q-8] = n (新 header) */
                     mov_rr(9, 1);                         /* r9 = p (src) */
+                    mov_rr(10, 2);                        /* r10d = n (count 初值) */
+                    mov_rr(0, 1);                         /* eax = p */
+                    asm_emit("    取32 r0, [rax-8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x8B); modrm(1,0,0); b(0xF8); /* eax = 旧size */
+                    asm_emit("    比较 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x39); modrm(3,2,0); /* cmp eax, r10d */
+                    jge_rel(-1); patch_label(cp - 4, lr_cp, 1); /* 旧>=新 → count=r10 */
+                    mov_rr(10, 0);                        /* 旧<新 → count = 旧size */
                     set_label(lr_cp);
                     test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lr_cpd, 1);
                     asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0,0,1); /* mov al, [r9] */
                     asm_emit("    写字节 [r8], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,0); /* mov [r8], al */
-                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
-                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
+                    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0xFF); modrm(3,0,0); /* inc r8 */
+                    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0xFF); modrm(3,0,1); /* inc r9 */
                     asm_emit("    自减 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3,1,2); /* dec r10 */
                     jmp_rel(-1); patch_label(cp - 4, lr_cp, 2);
                     set_label(lr_cpd);
-                    mov_rr(0, 11);                        /* return q (fix 2026-08-20: r11 保存的原始 q) */
+                    mov_rr(0, 11);                        /* return q */
                     jmp_rel(-1); patch_label(cp - 4, lr_done, 2);
                     set_label(lr_malloc);
                     int rel_m1 = data_rva_base - 0x1000 - cp - 6;
                     mov_eax_rip(rel_m1);                  /* mov eax, [rip+counter] */
-                    mov_rr(8, 0);                         /* r8d = old counter */
+                    mov_rr(11, 0);                        /* r11d = old counter (对齐) */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(8, 11);                        /* r8d = 对齐起始 (header) */
+                    asm_emit("    加 r11, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(8); /* 数据区 */
                     mov_rr(10, 2);                        /* r10d = size (rdx) */
-                    int rel_m2 = data_rva_base - 0x1000 - cp - 6;
-                    mov_eax_rip(rel_m2);
-                    asm_emit("    加 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,2,0,0); b(0x01); modrm(3,2,0); /* ADD eax, r10d */
+                    asm_emit("    加 r11, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,1,0,1); b(0x01); modrm(3,2,3); /* ADD r11d, r10d */
+                    asm_emit("    加 r11, 7\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,0,3); b(7);
+                    asm_emit("    与 r11, -8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3,4,3); b(0xF8);
+                    mov_rr(0, 11);                        /* eax = 新 counter */
                     int rel_m3 = data_rva_base - 0x1000 - cp - 6;
                     mov_rip_eax(rel_m3);
-                    mov_rr(0, 8);                         /* return old counter */
+                    asm_emit("    存32 [r8], r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,2,0); /* mov [r8], edx — header = size */
+                    mov_rr(0, 8);                         /* return header */
+                    asm_emit("    加 r0, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x83); modrm(3,0,0); b(8); /* 数据区 */
                     set_label(lr_done);
                     }
                 }
@@ -9128,13 +9208,13 @@ static void cg(int n) {
                 alu_rr(T_PK, 11, 0); /* r11 += eax */
                 mov_rr(0, 11); /* eax = 结果 */
             } else if (!strcmp(fname, "strlen")) {
-                mov_rr(8, 1); /* r8 = ptr (rcx=arg0) */
+                mov_rr64(8, 1); /* r8 = ptr (rcx=arg0) — fix 2026-08-22 t45: 原 mov_rr(8,1) 32 位移动 → 高 32 位清零 → strlen(高地址指针) movzx 崩 (git branch used_atom[i].name.buf) */
                 mov_r_imm(0, 0); /* eax = 0 (count) */
                 int ls = new_label(), ld = new_label();
                 set_label(ls);
                 asm_emit("    零扩展 ecx, [r8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xB6); modrm(0, 1, 0); /* movzx ecx,byte[r8] */
                 test_rr(1, 1); jz_rel(-1); patch_label(cp-4, ld, 1);
-                asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xFF); modrm(3, 0, 0); /* inc r8 */
+                asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 0, 0); /* inc r8 (64位 — fix 2026-08-22 t45: 原 REX.W=0 inc r8d 32位 → 高地址指针 (0xc0xxxxxx 栈) 低 32 位回绕 → strlen 扫错内存 → strbuf_add len 错 → git init 路径损坏) */
                 asm_emit("    自增 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xC0); /* inc eax */
                 jmp_rel(-1); patch_label(cp-4, ls, 2);
                 set_label(ld);
@@ -9361,7 +9441,10 @@ static void cg(int n) {
         case 9: { /* while */
             int ls = new_label(), ld = new_label();
             int save_brk = brk_label; brk_label = ld; /* set break target */
-            int save_cont = cont_label; cont_label = (nv[n] >= 1) ? nv[n] - 1 : ls; /* for闁愁偅濮眛ep target, else cond */
+            int save_cont = cont_label;
+            if (nv[n] >= 1) cont_label = nv[n] - 1;      /* for: continue → step 开始 */
+            else if (nv[n] == 0) cont_label = ls;        /* 普通 while: continue → 循环头 */
+            /* nv[n] == -1: switch wrapper — continue 穿透到外层循环的 cont_label, 不覆盖 (fix 2026-08-22 t45: switch 内 continue 跳 wrapper 头 → i 不递增 → diff HEAD 死循环) */
             set_label(ls); cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, ld, 1);
             cg(n1[n]); jmp_rel(-1); patch_label(cp - 4, ls, 2); set_label(ld);
             brk_label = save_brk; cont_label = save_cont; /* restore */
@@ -9608,7 +9691,7 @@ static void cg(int n) {
                     if (foff >= 0) {
                         if (is_arrow) {
                             int _fty2 = st_field_ty_idx(stypes[si].name, fname);
-                            int _fcs2 = (_fty2 >= 0 && stypes[_fty2].sz > 8) ? stypes[_fty2].sz : 0;
+                            int _fcs2 = (!st_field_is_ptr(si, fname) && _fty2 >= 0 && stypes[_fty2].sz > 8) ? stypes[_fty2].sz : 0; /* fix 2026-08-22 t44: 排除指针字段 — rec->next 是指针(xrecord_t*) 非结构体, 原 _fcs2=24 → cg_struct_copy(24) 把 rhash[hi] 当结构体复制 3×8B → 覆盖 rec->ptr (xdl_classify_record rec->next=rhash[hi] 崩) */
                             int _fok2 = 0; /* fix 2026-08-22 #34b: arrow 成员结构赋值 p->dm = t (>8B struct 字段整块拷贝; 原标量路径 fsz=16 落 else 只存首4字节) */
                             if (_fcs2 > 0 && n1[n] >= 0) {
                                 if (nt[n1[n]] == 1) {
@@ -9689,11 +9772,11 @@ static void cg(int n) {
                             else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax], ebx */
                         } else {
                             int _fty = st_field_ty_idx(stypes[si].name, fname);
-                            int _fcs = (_fty >= 0 && stypes[_fty].sz > 8) ? stypes[_fty].sz : 0;
+                            int _fcs = (!st_field_is_ptr(si, fname) && _fty >= 0 && stypes[_fty].sz > 8) ? stypes[_fty].sz : 0; /* fix 2026-08-22 t45: 排除指针字段 (r.rev = e — rev 是 entry*, ty_idx 解析成 entry 24B → 原 _fcs=24 → 数组名当 struct 值拷 24B → r.rev=0 崩) — 同步 t44 箭头分支修复 */
                             int _fok = 0; /* fix 2026-08-22 #30: >8B struct field assign (pp.date_mode = rev->date_mode). RHS must be a same-type lvalue; else fall back to scalar path (safe, matches pre-fix behavior) */
                             if (_fcs > 0 && n1[n] >= 0) {
                                 if (nt[n1[n]] == 1) {
-                                    if (var_stidx((char*)(nn + n1[n])) == _fty && var_pesz((char*)(nn + n1[n])) == 0) _fok = 1;
+                                    if (var_stidx((char*)(nn + n1[n])) == _fty && var_pesz((char*)(nn + n1[n])) == 0 && var_arrsz((char*)(nn + n1[n])) == 0) _fok = 1; /* fix 2026-08-22 t45: 数组名 RHS 排除 — 数组 decay 为指针, 不是 struct 值 */
                                 } else {
                                     int _rfsz = 0, _rsi = -1;
                                     if (mem_addr(n1[n], &_rfsz, &_rsi) == 0 && _rfsz == _fcs) _fok = 1;
@@ -9734,7 +9817,7 @@ static void cg(int n) {
                     int _fcs3 = 0; /* fix 2026-08-22 #34b: 参数指针 struct 字段整体赋值 p->dm = t — 原标量路径只存首4字节 */
                     if (si2 >= 0 && n1[n] >= 0) {
                         int _fti3 = st_field_ty_idx(stypes[si2].name, fname);
-                        if (_fti3 >= 0 && stypes[_fti3].sz > 8) _fcs3 = stypes[_fti3].sz;
+                        if (!st_field_is_ptr(si2, fname) && _fti3 >= 0 && stypes[_fti3].sz > 8) _fcs3 = stypes[_fti3].sz; /* fix 2026-08-22 t44: 排除指针字段 (rec->next 是 xrecord_t*) — 原 _fcs3=24 → cg_struct_copy(24) 覆盖 rec->ptr */
                     }
                     if (_fcs3 > 0 && n1[n] >= 0 && (nt[n1[n]] == 1 || nt[n1[n]] == 12 || nt[n1[n]] == 15)) {
                         /* struct 拷贝路径: rax = &p->fname, rbx = &rhs */
@@ -10177,6 +10260,7 @@ static void cg(int n) {
                     if (fo != 0) add_rax_imm8(fo);
                     int fsz = st_field_size(stypes[s2].name, fn);
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
+                    if (st_field_is_ptr(s2, fn)) { int _pel_mb = st_field_pel(s2, fn); cg_mem_frow = _pel_mb; cg_frows[0] = _pel_mb; cg_frows[1] = st_field_ffin(s2, fn); } /* fix 2026-08-22 t44: arr[i].ptrfield[j] — 指针字段作数组基 (mb[i].ptr[k]) st_field_2d_setup 用 fels(字段自身 8) 非 pel(指向元素 char=1) → 按 8 缩放 → xdiff_outf mb[i].ptr[size-1] SEGV; 镜像嵌套链分支 (10216 cg_mem_chain_si) 的 pel 修正 */
                     if (fsz > 4 || fsz == 0) { /* fsz==0: flex/空数组字段 char name[0] → 取地址 (fix 2026-08-20) */
                         int fty2 = st_field_ty_idx(stypes[s2].name, fn);
                         if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
@@ -10234,7 +10318,13 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     if(fo!=0){add_rax_imm8(fo);} /* rax += offset */
                     if (cg_no_deref || st_field_is_array_idx(si, fn)) { st_field_2d_setup(si, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16: FLEX_ALLOC_MEM ret->orig dereferenced as int) */
                         if (!st_field_is_array_idx(si, fn) && !cg_incdec_target && !cg_addr_of && st_field_size(stypes[si].name, fn) == 8 && st_field_is_ptr(si, fn)) { mov_reg_mreg64(0, 0); /* fix 2026-08-19: is_arrow && s<0 (指针参数 var_stidx=-1) 分支指针字段作数组基 — 镜像 9572: s->next_out[i] 原保留字段地址+按 frow(8) 缩放 → zlib 拷贝写坏结构体 */ int pel = st_field_pel(si, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; cg_frows[1] = st_field_ffin(si, fn); if (st_field_fdeep(si, fn) >= 2) cg_fdepth_max = 2; if (st_field_fdeep(si, fn) >= 2) cg_mem_ptr_need = 1; } }
-                    else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
+                    else { int _afsz9 = st_field_size(stypes[si].name, fn);
+                        if (_afsz9 > 4) { int _afy9 = st_field_ty_idx(stypes[si].name, fn);
+                            if (_afsz9 == 8 && (_afy9 == -2 || _afy9 == -3 || (_afy9 >= 0 && stypes[_afy9].sz != 8) || (_afy9 == -1 && st_field_row(stypes[si].name, fn) == 8))) { mov_reg_mreg64(0, 0); if (st_field_is_ptr(si, fn)) { int _pel9 = st_field_pel(si, fn); cg_mem_frow = _pel9; cg_fdepth = 0; cg_frows[0] = _pel9; } } /* 64 位值: fnptr(-2)/LL(-3)/指针字段 — 镜像正常分支 10260 (fix 2026-08-22 t44: ARROWFALL 原无条件 32 位读 → typedef 结构体指针参数 (mmfile_t *mmf var_stidx=-1) 的 char* 字段高 32 位清零 → xdl_mmfile_first 返 ptr 低 32 位 → root commit 摘要 xdl_guess_lines memchr(0x7) SEGV) */
+                        } else if (_afsz9 == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                        else if (_afsz9 == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] */
+                        else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
+                    }
                 }
             } else if((o>=0 || (coff_mode && var_isstatic(vn))) && s>=0){int fo=st_off(stypes[s].name,fn);if(fo>=0){ /* fix 2026-08-17: o>=0 门控放行 coff extern 静态 (off<0 负槽) — 原排除 → the_repository->worktree 无输出 → get_git_work_tree 空函数返回垃圾 */
                 if(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
@@ -10265,6 +10355,17 @@ else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long lon
                     st_field_2d_setup(s, fn); /* fix 2026-08-07 */
                     if (cg_no_deref) {
                         lea_rax_rip(coff_static_disp(o, 1) + fo - 1); /* address only (fix 2026-08-05: was unconditional deref → ++s.v crashed) */
+                        /* fix 2026-08-22 t45d: 静态 struct 指针字段作数组基 (the_index.cache[i] — cache 是 cache_entry**, 原只返回字段地址 → 数组下标从 the_index 基址偏移 → 多文件 commit ce_intent_to_add 遍历崩). 镜像局部分支 10317 的指针字段处理 */
+                        { int afsz3 = st_field_size(stypes[s].name, fn); if (!cg_incdec_target && !cg_addr_of && afsz3 == 8 && st_field_is_ptr(s, fn)) {
+                            mov_reg_mreg64(0, 0); /* 解引用取指针值 (cache 数组) */
+                            int pel3 = st_field_pel(s, fn);
+                            cg_mem_frow = pel3;
+                            cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
+                            cg_frows[0] = pel3;
+                            cg_frows[1] = st_field_ffin(s, fn);
+                            if (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2;
+                            if (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1;
+                        } }
                     } else {
                     lea_rax_rip(coff_static_disp(o, 1) + fo - 1);
                     if (st_field_is_dbl(stypes[s].name, fn)) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
@@ -10359,6 +10460,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 cg_no_deref = sv_noderef;
                 pop_r(11);
                 if (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* inner was a pointer-array slot address: load the 8-byte pointer before the second subscript (fix 2026-08-16) */
+                if (getenv("QCC_DBG_T14")) fprintf(stderr, "[T14] idx_expr base node=%d nt=%d frow=%d fdepth=%d fdepth_max=%d ptr_need=%d nested_cnt=%d no_deref=%d\n", n0[n], n0[n]>=0?nt[n0[n]]:-1, cg_mem_frow, cg_fdepth, cg_fdepth_max, cg_mem_ptr_need, cg_nested_cnt, cg_no_deref);
                 /* scale idx by cg_mem_frow (element/row byte size, set by cg(n0[n])).
                    frow==1 (char) or 0 (unset) -> no scale. frow==4/8 -> scalar deref.
                    frow>8 -> row is an array -> yield the ADDRESS (C decay, no deref).
