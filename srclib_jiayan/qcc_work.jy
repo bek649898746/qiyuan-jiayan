@@ -4389,7 +4389,28 @@ __attribute__((unused))
             若 (tt[tk] != FK && (tt[tk] == DK || (tt[tk] == VR && (tt[tk + 1] == LB || tt[tk + 1] == CK || tt[tk + 1] == AK)))) {
                 整 is_ptr = (tt[tk] == DK);
                 整 ptr_depth = 0;
-                循环 (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; } /* fix 2026-08-20: 数指针层级 — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件 */
+                循环 (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; } /* fix 2026-08-20: 数指针层级
+ — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件 */
+若 (tt[tk] == OK && tt[tk + 1] == VR && (tt[tk + 2] == LB || tt[tk + 2] == KK)) {
+                    字 vnp2[64]; strcpy(vnp2, tn[tk]); tk++; /* name */
+                    整 cntp2 = 1;
+                    循环 (tt[tk] == LB) {
+                        tk++; 若 (tt[tk] == NK) { cntp2 = tv[tk]; tk++; }
+                        否 若 (tt[tk] == VR) { 整 evc2 = e_lookup(tn[tk]); 若 (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); 若 (evc2 != 0x80000000 && evc2 != -1) cntp2 = evc2; tk++; }
+                        若 (tt[tk] == RB) tk++;
+                    }
+                    若 (tt[tk] == KK) tk++; /* ) */
+                    整 esz_p = is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4);
+                    若 (is_static) var_static_arr(vnp2, 0, esz_p, cntp2);
+                    否 var_array(vnp2, cntp2, esz_p);
+                    vars[vcnt - 1].st_idx = si;
+                    若 (is_ptr) { vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = si >= 0 ? stypes[si].sz : 4; }
+                    整 d3 = Nd(7); memcpy((字*)(nn + d3), vnp2, 32);
+                    Nc(b, d3); b_cnt++;
+                    循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                    若 (tt[tk] == SK) tk++;
+                    续;
+                }
                 若 (tt[tk] == VR) {
                     字 vn[64]; strcpy(vn, tn[tk]); tk++;
                     整 d = Nd(7); memcpy((字*)(nn + d), vn, 32);
@@ -6913,7 +6934,7 @@ __attribute__((unused))
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
-                循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; } /* pointer(s) * */
+                循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* pointer(s) * - t49c fix: const X * const * middle const */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
                     tk++; tk++; /* skip ( * */
                     若 (tt[tk] == VR) {
@@ -8357,6 +8378,13 @@ __attribute__((unused))
    prune_directory `dir->nr = dst - dir->entries` 算错 → git add 丢全部文件. */
 静 整 node_psz(整 n) {
     若 (n < 0) 返 0;
+    若 (nt[n] == 2) { /* binary op ptr +/- expr (t49c4 fix) */
+        若 (nv[n] == 5 || nv[n] == 6) {
+            整 l2 = node_psz(n0[n]);
+            若 (l2 > 0) 返 l2;
+            返 node_psz(n1[n]);
+        }
+    }
     若 (pesz[n] > 0) 返 pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) */
     若 (nt[n] == 1) { /* 变量名: 数组名→元素宽, T** 指针→arr_esz(8), T*→p_esz */
         字 *vn = (字*)(nn + n);
@@ -9673,7 +9701,28 @@ __attribute__((unused))
                     }
                     若 (foff >= 0) {
                         整 fsz = st_field_size(stypes[s2].name, fname); /* 1/4/8 → byte/dword/qword store (fix 2026-08-03: char field was stored as 4 bytes) */
-                        若 (st_field_is_dbl(stypes[s2].name, fname)) { /* fix 2026-08-07: double 字段走 cg_f+push_xmm0+movsd — 原用 push_r 只存 4/8 字节 rax, double 值在 xmm0 → 存垃圾 */
+                        整 _fty_s = st_field_ty_idx(stypes[s2].name, fname);
+                        /* fix 2026-08-22 t48: arr[i].field = struct — 大结构字段整体赋值 (tx[i].d = t[i])
+                           traverse_trees 里 `tx[i].d = t[i]` 原 fsz>8 落标量 else 存首 4 字节地址 → tx[i].d 只写
+                           &t[i] 低 32 位 → tree_desc 拷贝失败 → 遍历 tree 全空 → status 误报 staged. */
+                        整 _fty_s = st_field_ty_idx(stypes[s2].name, fname);
+                        /* fix 2026-08-22 t48: arr[i].field = struct — 大结构字段整体赋值 (tx[i].d = t[i])
+                           traverse_trees 里 `tx[i].d = t[i]` 原 fsz>8 落标量 else 存首 4 字节地址 → tx[i].d 只写
+                           &t[i] 低 32 位 → tree_desc 拷贝失败 → 遍历 tree 全空 → status 误报 staged. */
+                        整 _csz_s = (!st_field_is_ptr(s2, fname) && _fty_s >= 0 && stypes[_fty_s].sz > 8 && n1[n] >= 0) ? stypes[_fty_s].sz : 0;
+                        若 (_csz_s > 0) {
+                            cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = &arr[i] */
+                            若 (foff != 0) add_rax_imm8(foff);             /* rax = &arr[i].field = &dst */
+                            push_r(0);                                    /* &dst */
+                            若 (nt[n1[n]] == 1) {                          /* rax = &src (struct 变量) */
+                                字 *_srn5 = (字*)(nn + n1[n]);
+                                整 _sro5 = var_lookup(_srn5);
+                                若 (_sro5 >= 0) { 若 (var_isstatic(_srn5)) lea_rax_rip(coff_static_disp(_sro5, 1) - 1); 否 lea_r_mbrp(0, var_sbase(_srn5, _sro5) - cur_frame_sz); }
+                                否 mov_r_imm(0, 0);
+                            } 否 { cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; } /* rax = &RHS (数组元素/成员链取址) */
+                            pop_r(3); /* rbx = &dst, rax = &src */
+                            cg_struct_copy(_csz_s);
+                        } 否 若 (st_field_is_dbl(stypes[s2].name, fname)) { /* fix 2026-08-07: double 字段走 cg_f+push_xmm0+movsd — 原用 push_r 只存 4/8 字节 rax, double 值在 xmm0 → 存垃圾 */
                             cg_f(n1[n]); push_xmm0();
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = &arr[i] */
                             若 (foff != 0) add_rax_imm8(foff);
@@ -9949,7 +9998,7 @@ __attribute__((unused))
                    守卫: 仅当 LHS 是直接 arr[i] (n0[n] 的基是名字节点 nt==1)。
                    tbl[0].name[0] = 'X' 的基是 case-15 字段链 → 不能当整结构体拷贝 (fix 2026-08-06: probe_sg 崩)。
                    sz>=8: 8 字节 struct 元素拷贝同样要整块 (原 >8 走标量路径 → 存的是元素地址, fix 2026-08-06) */
-                若 (asi_el >= 0 && var_pesz(vn) == 0 && stypes[asi_el].sz >= 8 && n0[n] >= 0 && n0[n0[n]] >= 0 && nt[n0[n0[n]]] == 1) { /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06; fix 2026-08-16 根因J: n0[n]>=0 && n0[n0[n]]>=0 守卫; fix 2026-08-17: var_pesz==0 排除指针数组 struct T *arr[] — 元素是指针(8B) 非结构体值, 原当 struct 拷贝 → NULL 元素从地址 0 拷 → 崩) */
+                若 (asi_el >= 0 && var_pesz(vn) == 0 && var_esz(vn) == stypes[asi_el].sz && stypes[asi_el].sz >= 8 && n0[n] >= 0 && n0[n0[n]] >= 0 && nt[n0[n0[n]]] == 1) { /* struct 数组元素赋值 班级[j] = 班级[j+1] (fix 2026-08-06; fix 2026-08-16 根因J: n0[n]>=0 && n0[n0[n]]>=0 守卫; fix 2026-08-17: var_pesz==0 排除指针数组 struct T *arr[] — 元素是指针(8B) 非结构体值, 原当 struct 拷贝 → NULL 元素从地址 0 拷 → 崩) */
                     整 csz = stypes[asi_el].sz;
                     cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0; /* rax = &arr[i] (目标) */
                     push_r(0);
