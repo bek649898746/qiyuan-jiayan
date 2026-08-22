@@ -7437,6 +7437,30 @@ static void emit_unsigned_digits(int tail) {
     jnz_rel(-1); patch_label(cp-4, lcpd, 3);
     jmp_rel(-1); patch_label(cp-4, tail, 2);
 }
+/* %o: unsigned octal digits into [r12] (ebx = value, base 8). fix 2026-08-22 t47:
+   %o was an unknown spec → swallowed (no output, no arg consume) → 参数表错位 →
+   git ls-files -s 的 "%s%06o %s %d" 后续 %s 读到 mode 当指针 strlen → SEGV. */
+static void emit_octal_digits(int tail) {
+    int ldig = new_label(), lcpd = new_label();
+    lea_r_mbrp(8, scratch_base + 248 + 12 - cur_frame_sz); /* r8 = digit temp end */
+    mov_rr64(9, 8); /* r9 = temp end (advancing) */
+    set_label(ldig);
+    asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); /* xor edx, edx */
+    mov_r_imm(1, 8); /* ecx = 8 */
+    asm_emit("    无符号除 ecx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF7); b(0xF1); /* div ecx: eax=quot, edx=rem */
+    asm_emit("    加字节 r2, 0x30\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
+    asm_emit("    自减 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9 */
+    asm_emit("    写字节 [r9], r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0, 2, 1); /* mov [r9], dl */
+    test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, ldig, 3);
+    set_label(lcpd);
+    asm_emit("    读字节 r0, [r9]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x8A); modrm(0, 0, 1); /* mov al, [r9] */
+    mov_r12_al(); /* mov [r12], al */
+    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9 */
+    asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    比较64 r9, r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,1); b(0x39); modrm(3, 0, 1); /* cmp r9, r8 */
+    jnz_rel(-1); patch_label(cp-4, lcpd, 3);
+    jmp_rel(-1); patch_label(cp-4, tail, 2);
+}
 /* %x/%X: unsigned hex digits into [r12] (ebx = value, base 16; upper=1 → 'A'-'F').
    Fix 2026-08-05: %x was an unknown spec → swallowed (no output, no arg consume). */
 static void emit_hex_digits(int tail, int upper) {
@@ -7558,6 +7582,8 @@ static int emit_fmt_loop(int bound_disp) {
     int ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(), lx32 = new_label(), lxU = new_label(), lxU32 = new_label(); /* fix 2026-08-06: %lld/%llu/%llx/%llX 64 位 (ll_cnt=计数, *32=32 位回退; lxU=%X 大写) */
     int lscale = new_label(), lscdone = new_label(), ldigl = new_label(), ldigd = new_label();
     int lu = new_label(); /* %u unsigned decimal (fix 2026-08-05) */
+    int lo = new_label(); /* %o unsigned octal (fix 2026-08-22 t47) */
+    int lI = new_label(); /* Windows I64 modifier %I64u (fix 2026-08-22 t47) */
     int lp = new_label(); /* %p pointer hex (fix 2026-08-19) */
     int lfdot = new_label(); /* %.0f: no '.' when N==0 */
     int lpfmt = new_label(); /* %% -> literal '%' (root-cause 2026-08-03: was swallowed) */
@@ -7591,9 +7617,20 @@ static int emit_fmt_loop(int bound_disp) {
     mov_r_imm(0, '0'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lzero, 1); /* fix 2026-08-09: '0' flag → 置位 sc+264 */
     mov_r_imm(0, '#'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lhash, 1); /* fix 2026-08-09: '#' flag → 置位 sc+260 */
     mov_r_imm(0, 'l'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, ll_cnt, 1); /* length prefix: count 'l' (fix 2026-08-06) */
+    mov_r_imm(0, 'I'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lI, 1); /* Windows I64 modifier (fix 2026-08-22 t47: %I64u 当 unknown spec 跳过 → cat-file -s 输出 "64u" 不打印 size; PRIuMAX="I64u") */
     mov_r_imm(0, 'h'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lflags, 1);
     mov_r_imm(0, 'L'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lflags, 1);
     jmp_rel(-1); patch_label(cp-4, lwidth, 2);
+    set_label(lI); /* 'I' → 64-bit (I64); skip '6' '4' 修饰符避免当宽度 */
+    mov_r_imm(0, 2); mov_mbrp_reg(scratch_base - cur_frame_sz + 244, 0); /* ll_cnt = 2 (64-bit) */
+    asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past 'I') */
+    asm_emit("    零扩展 ecx, [r11]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
+    mov_r_imm(0, '6'); alu_rr(T_QK, 1, 0); jnz_rel(-1); patch_label(cp-4, lflags, 1); /* not '6' → back to flag loop */
+    asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past '6') */
+    asm_emit("    零扩展 ecx, [r11]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
+    mov_r_imm(0, '4'); alu_rr(T_QK, 1, 0); jnz_rel(-1); patch_label(cp-4, lflags, 1); /* not '4' → back */
+    asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past '4') */
+    jmp_rel(-1); patch_label(cp-4, lflag, 2);
     set_label(lhash); /* '#' flag: sc+260 = 1 (fix 2026-08-09 审计#7: %#x → 0x 前缀) */
     mov_r_imm(0, 1); mov_mbrp_reg(scratch_base - cur_frame_sz + 260, 0);
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 */
@@ -7670,6 +7707,7 @@ static int emit_fmt_loop(int bound_disp) {
     mov_r_imm(0, 'x'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lx, 1); /* %x hex (fix 2026-08-05) */
     mov_r_imm(0, 'X'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lxU, 1); /* %X uppercase hex (fix 2026-08-06) */
     mov_r_imm(0, 'u'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lu, 1); /* %u unsigned decimal (fix 2026-08-05) */
+    mov_r_imm(0, 'o'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lo, 1); /* %o unsigned octal (fix 2026-08-22 t47: 原当未知说明符跳过不消费参数 → git ls-files -s "%s%06o %s %d" 后续 %s 读到 mode 当指针 strlen SEGV) */
     mov_r_imm(0, 'p'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lp, 1); /* %p pointer hex (fix 2026-08-19: 原 %p 当未知说明符跳过不消费参数 → 后续 %d/%u/%s 参数错位一格 → t_zin gz.z.avail_in 读到指针值; git 源码大量 %p) */
     mov_r_imm(0, '%'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lpfmt, 1); /* %% -> literal % */
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11: unknown spec, skip */
@@ -7828,6 +7866,13 @@ static int emit_fmt_loop(int bound_disp) {
     asm_emit("    减即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
     mov_rr(3, 0); /* ebx = value */
     emit_unsigned_digits(lfmt);
+    /* %o: unsigned octal (fix 2026-08-22 t47: 原当未知说明符跳过不消费参数 → git ls-files -s 参数错位 SEGV) */
+    set_label(lo);
+    asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past 'o') */
+    mov_eax_mr13(); /* eax = [r13] */
+    asm_emit("    减即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */
+    mov_rr(3, 0); /* ebx = value */
+    emit_octal_digits(lfmt);
     /* %f: double arg -> int part via ldnum, then '.' + 6 fractional digits */
     set_label(lf);
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past 'f') */
@@ -10063,6 +10108,36 @@ static void cg(int n) {
                     if (rp >= 0 && nt[rp] == 1 && var_stidx((char*)(nn + rp)) == p_sti) rhs_ok = 1;
                 } else if (n1[n] >= 0 && nt[n1[n]] == 1) {
                     if (var_stidx((char*)(nn + n1[n])) == p_sti && var_pesz((char*)(nn + n1[n])) == 0) rhs_ok = 1;
+                } else if (n1[n] >= 0 && (nt[n1[n]] == 15 || nt[n1[n]] == 13)) {
+                    /* fix 2026-08-22 t47: *entry = desc->entry（RHS 是成员链 struct 字段）— 原 rhs_ok=0
+                       落标量存储只存 4 字节地址 → tree_entry `*entry = desc->entry` 只写地址 →
+                       show_tree_default mode=0/oid 垃圾 → cat-file -p tree 段错误. */
+                    int rsi = -1, base_si = -1, depth = 0;
+                    int pb = n1[n];
+                    while (pb >= 0 && depth < 8 && (nt[pb] == 15 || nt[pb] == 13)) {
+                        char *bv = (char*)(nn + n0[pb]);
+                        int bsi = var_stidx(bv);
+                        if (bsi >= 0) { base_si = bsi; break; }
+                        pb = n0[pb]; depth++;
+                    }
+                    if (base_si >= 0) {
+                        int chain[8]; int cn = 0;
+                        int q2 = n1[n];
+                        while (q2 >= 0 && cn < 8 && (nt[q2] == 15 || nt[q2] == 13)) { chain[cn++] = q2; q2 = n0[q2]; }
+                        int cur_si = base_si;
+                        int outer_si = -1; /* fn 所在 struct（处理最外层字段前的 cur_si） */
+                        char *fn2 = (char*)(nn + n1[n]); /* 最外层字段名 */
+                        for (int ci = cn - 1; ci >= 0 && cur_si >= 0; ci--) {
+                            char *bf = (char*)(nn + chain[ci]);
+                            if (ci == 0) outer_si = cur_si;
+                            int fty = st_field_ty_idx(stypes[cur_si].name, bf);
+                            if (fty >= 0) cur_si = fty; else cur_si = -1;
+                        }
+                        rsi = cur_si;
+                        /* fix 2026-08-22 t47b: 最终字段必须非指针 struct — item->next（commit_list* 指针字段）的 fty=commit_list==p_sti
+                           被误判为 struct 拷贝 → `*list = item->next` 走 cg_struct_copy → list 垃圾 → pop_commit 崩 */
+                        if (rsi == p_sti && outer_si >= 0 && !st_field_is_ptr(outer_si, fn2)) rhs_ok = 1;
+                    }
                 }
                 if (p_sti >= 0 && stypes[p_sti].sz > 8 && pname && var_pesz(pname) > 0 && rhs_ok) {
                     /* 结构体指针解引用赋值 *dst = *src (fix 2026-08-19): 原按标量宽度 1/4 字节拷 →
@@ -10070,7 +10145,7 @@ static void cg(int n) {
                        ALLOC_GROW 的 st_mult(sizeof(*items)=0xfff7ffff) → status 崩 */
                     cg_no_deref = 1; cg(pnode); cg_no_deref = 0; /* rax = &dst (case-12 no_deref 给指针值=结构体地址) */
                     push_r(0);
-                    if (nt[n1[n]] == 12) { cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; } /* rax = &src */
+                    if (nt[n1[n]] == 12 || nt[n1[n]] == 15 || nt[n1[n]] == 13) { cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; } /* rax = &src (*src 解引用 / desc->entry 成员链取址, fix 2026-08-22 t47) */
                     else { char *srn = (char*)(nn + n1[n]); int sro = var_lookup(srn); if (var_isstatic(srn)) lea_rax_rip(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz); } /* rax = &结构体变量 */
                     pop_r(3); /* rbx = &dst, rax = &src */
                     cg_struct_copy(stypes[p_sti].sz);
