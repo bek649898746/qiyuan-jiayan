@@ -238,6 +238,66 @@ long strtol(const char *s, char **endptr, int base) {
     return r;
 }
 
+unsigned long strtoul(const char *s, char **endptr, int base) {
+    unsigned long r = 0; unsigned long neg = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = 0 - r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
+unsigned long long _strtoui64(const char *s, char **endptr, int base) {
+    unsigned long long r = 0; unsigned long long neg = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = 0 - r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
 /* ---- 复制分配 (fix 2026-08-13: Phase 2, Git 硬需求 strdup/strndup) ---- */
 char *strdup(const char *s) {
     int n = 0; char *d;
