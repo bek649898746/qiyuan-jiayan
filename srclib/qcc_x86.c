@@ -6976,7 +6976,6 @@ static int parse(const char *s) {
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                 }
                 if (tt[tk] == CK) tk++;
-                if (getenv("QCC_DBG_VA")) fprintf(stderr, "[VAPARSE] fn='%s' tk=%d tt=%d tok='%.20s'\n", (char*)(nn + fdef), tk, tt[tk], (tt[tk]>=0&&tt[tk]<TS&&tn[tk])?tn[tk]:"?");
                 if (tt[tk] == DT) { fn_is_va = 1; while (tt[tk] == DT) tk++; } /* variadic ellipsis ... (dots lex as DT) */
             }
             if (fn_is_va) {
@@ -8575,7 +8574,6 @@ static void cg(int n) {
 
             /* ?????????????????*/
             char *fname = (char*)(nn + fn);
-            if (getenv("QCC_DBG_VA")) fprintf(stderr, "[VA4] call fname='%s' nt=%d\n", fname, nt[fn]);
             int fi = -1;
             if (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
             /* 内建 __asm_byte(v): 发射一个字节到 bin_hdr (Multiboot header/手写内核, fix 2026-08-08) */
@@ -8598,7 +8596,6 @@ static void cg(int n) {
             kids[15] = n15[n]; kids[16] = n16[n]; kids[17] = n17[n]; kids[18] = n18[n]; kids[19] = n19[n];
             int nargs = 0;
             for (int i = 0; i < 20; i++) { int c = kids[i]; if (c == fn || c < 0) continue; nargs++; }
-            if (getenv("QCC_DBG_VA") && !strcmp(fname, "git_stat")) { fprintf(stderr, "[NARG] fname=%s nargs=%d cp=%d kids:", fname, nargs, cp); for (int i = 0; i < 20; i++) fprintf(stderr, " %d", kids[i]); fprintf(stderr, "\n"); }
             /* 内建 __asm(args...): 发射任意字节到代码流 (内核 sti/cli/lidt/iretq, fix 2026-08-08) */
             if (nt[fn] == 1 && !strcmp(fname, "__asm") && bin_mode) {
                 for (int i = 0; i < 20; i++) {
@@ -8640,9 +8637,7 @@ static void cg(int n) {
             int slot_h[20]; int slot_n = 0; int total_h = 0;
             for (int i = 0; i < 20; i++) {
                 int c = kids[i];
-                if (c == fn || c < 0) { if (getenv("QCC_DBG_VA") && !strcmp(fname, "copy_array")) fprintf(stderr, "[PUSH-SKIP] i=%d c=%d fn=%d\n", i, c, fn); continue; }
-                if (getenv("QCC_DBG_VA") && !strcmp(fname, "git_stat")) fprintf(stderr, "[PUSH2] i=%d c=%d nt=%d fn=%d\n", i, c, c>=0?nt[c]:-99, fn);
-                if (getenv("QCC_DBG_VA") && !strcmp(fname, "copy_array")) fprintf(stderr, "[PUSH] i=%d nt=%d before total_h=%d\n", i, nt[c], total_h); /* tmp */
+                if (c == fn || c < 0) { continue; }
                 int bigsz = 0;
                 int bigarr = 0; /* struct array ELEMENT (h[i]) passed by value → r10 = &h[i] (fix 2026-08-03: only identifiers triggered the bigsz copy, so h[i] was passed as a 4-byte read) */
                 if (nt[c] == 1) {
@@ -8713,11 +8708,10 @@ static void cg(int n) {
                     slot_h[slot_n] = total_h;
                     if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); push_xmm0(); } /* fix 2026-08-06: 数学函数调用 int 参数转 double (pow(2.0,10)); ndbl 表达式; 记录签名 double 参数 */
                     else if (nll[c]) { cg(c); push_r64(0); } /* long long 参数: 64 位压栈 (fix 2026-08-06: 原 push_r 只压 32 位，负 LL 高 32 位丢) */
-                    else { if (getenv("QCC_DBG_VA") && !strcmp(fname, "git_stat") && nt[c] == 11) fprintf(stderr, "[AMPARG] i=%d cp_before=%d\n", i, cp); cg(c); if (getenv("QCC_DBG_VA") && !strcmp(fname, "git_stat") && nt[c] == 11) fprintf(stderr, "[AMPARG] i=%d after_cg cp=%d\n", i, cp); push_r(0); if (getenv("QCC_DBG_VA") && !strcmp(fname, "git_stat") && nt[c] == 11) fprintf(stderr, "[AMPARG] i=%d after_push cp=%d\n", i, cp); } /* arg value -> rax */
+                    else { cg(c); push_r(0); } /* arg value -> rax */
                     total_h += 8;
                 }
                 slot_n++;
-                if (getenv("QCC_DBG_VA") && !strcmp(fname, "copy_array")) fprintf(stderr, "[PUSH] i=%d after total_h=%d slot_n=%d\n", i, total_h, slot_n); /* tmp */
             }
             /* fix 2026-08-07 Gate-1: Win64 ABI 调用点 rsp≡0(mod16)。基帧已 ≡0，
                压入 total_h/8 个槽后奇偶 = (total_h/8 + extra) & 1，奇数补 8 对齐。
@@ -9276,7 +9270,6 @@ static void cg(int n) {
             } else if (!strcmp(fname, "_exit_proc")) {
                 emit_exit_proc();
             } else if (!strcmp(fname, "__qcc_va_start")) {
-                if (getenv("QCC_DBG_VA")) fprintf(stderr, "[VA] fn=%s cur_va_home=%d\n", cur_fn_name, cur_va_home);
                 if (cur_va_home >= 0) lea_r_mbrp(0, cur_va_home); /* rax = &first vararg slot (home area) */
                 else mov_r_imm(0, 0); /* 非变参函数: 返回 NULL (fix 2026-08-18: 未设置时 rax 残留垃圾 → va_list 错) */
             } else {
