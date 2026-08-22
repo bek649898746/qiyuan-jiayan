@@ -650,6 +650,9 @@ typedef struct {
     int c_hcnt[16], c_hsym[19];  int c_maxbits;
     /* 匹配 */
     int m_len, m_dist;
+    int pending_lit;              /* t49a: avail_out==0 shi zan cun zi mian liang */
+    unsigned char window[32768];  /* t49b: hua dong chuang kou li shi zi dian */
+    int win_pos;
 } qcc_inflate_state;
 static const unsigned char qcc_inf_cl_order[19] = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
 static const unsigned char qcc_inf_len_extra[29] = {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
@@ -748,7 +751,7 @@ static int inflate(z_stream *s, int f) {
             if (n > s->avail_in) n = s->avail_in;
             if (n > s->avail_out) n = s->avail_out;
             if (n > 0) {
-                for (i = 0; i < n; i++) s->next_out[i] = s->next_in[i];
+                for (i = 0; i < n; i++) { s->next_out[i] = s->next_in[i]; st->window[st->win_pos & 32767] = s->next_in[i]; st->win_pos++; }
                 st->s_len -= n;
                 s->next_in += n; s->avail_in -= n; s->total_in += n;
                 s->next_out += n; s->avail_out -= n; s->total_out += n;
@@ -762,8 +765,9 @@ static int inflate(z_stream *s, int f) {
             if (r == 0) return Z_OK;
             if (r < 0) { s->msg = "invalid literal/length code"; return Z_DATA_ERROR; }
             if (sym < 256) {
-                if (s->avail_out == 0) return Z_OK;
+                if (s->avail_out == 0) { st->pending_lit = sym; st->phase = 10; return Z_OK; }
                 s->next_out[0] = (unsigned char)sym;
+                st->window[st->win_pos & 32767] = (unsigned char)sym; st->win_pos++;
                 s->next_out++; s->avail_out--; s->total_out++;
                 continue;
             }
@@ -787,7 +791,11 @@ static int inflate(z_stream *s, int f) {
             unsigned n = (unsigned)st->m_len, i;
             if (n > s->avail_out) n = s->avail_out;
             if (n > 0) {
-                for (i = 0; i < n; i++) s->next_out[i] = s->next_out[(int)i - st->m_dist]; /* fix 2026-08-22 #42b: 索引必须有符号 — unsigned i - int m_dist 在 i<m_dist 下溢成巨值 → 越界读 */
+                for (i = 0; i < n; i++) {
+                    unsigned char c = st->window[(st->win_pos - st->m_dist) & 32767];
+                    s->next_out[i] = c;
+                    st->window[st->win_pos & 32767] = c; st->win_pos++;
+                }
                 st->m_len -= (int)n;
                 s->next_out += n; s->avail_out -= n; s->total_out += n;
                 if (st->m_len > 0) return Z_OK;
@@ -857,6 +865,14 @@ static int inflate(z_stream *s, int f) {
             st->phase = 7;
             continue;
         }
+        if (st->phase == 10) { /* t49a: output pending literal */
+            if (s->avail_out == 0) return Z_OK;
+            s->next_out[0] = (unsigned char)st->pending_lit;
+            st->window[st->win_pos & 32767] = (unsigned char)st->pending_lit; st->win_pos++;
+            s->next_out++; s->avail_out--; s->total_out++;
+            st->phase = 7;
+            continue;
+        }
         if (st->phase == 2) { /* adler32 尾 (4 字节) */
             if (st->raw) return Z_STREAM_END;
             while (st->tr_read < 4) {
@@ -876,6 +892,7 @@ static int inflateInit2(z_stream *s, int w) {
     memset(d, 0, sizeof(*d));
     d->phase = 3;
     d->raw = (w < 0) ? 1 : 0;
+    d->win_pos = 0;
     s->state = (void *)d;
     s->msg = 0;
     return Z_OK;

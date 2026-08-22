@@ -616,6 +616,7 @@ static int msvcrt_find_slot(int mi) {
     for (int s = 0; s < msvcrt_n; s++) if (msvcrt_used[s] == mi) return s;
     if (msvcrt_n >= MSVCRT_MAX) return -1;
     msvcrt_used[msvcrt_n] = mi;
+    if (getenv("JYLD_MSVCRT")) fprintf(stderr, "[MSVCRT-SLOT] slot=%d mi=%d\n", msvcrt_n, mi); /* tmp diag t48 */
     return msvcrt_n++;
 }
 static int msvcrt_is_direct_slot(int slot) {
@@ -944,8 +945,8 @@ static void layout(void) {
             mhint_end += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint_end;
         int miat = (mdll + 11 + 7) & ~7; /* "msvcrt.dll\0" 后 8 对齐 (fix 2026-08-07: 原 miat=mdll+11 奇数地址, IAT 槽错位; loader 能处理但 x64 惯例应 8 对齐) */
-        int milt = miat + msvcrt_n * 8;
-        int mend = milt + msvcrt_n * 8;
+        int milt = miat + msvcrt_n * 8 + 8; /* +8: IAT 终止 0 槽 (fix 2026-08-22 t48: msvcrt IAT/ILT 缺终止符 → loader 读越界到 out_data → STATUS_ENTRYPOINT_NOT_FOUND) */
+        int mend = milt + msvcrt_n * 8 + 8; /* +8: ILT 终止 0 槽 */
         msvcrt_iat_off = miat;
         msvcrt_end = (mend + 15) & ~15;
     }
@@ -1390,7 +1391,7 @@ static void write_pe(FILE *f, int entry_rva) {
             mhint += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint;                     /* "msvcrt.dll" */
         int miat = (mdll + 11 + 7) & ~7;                 /* msvcrt IAT (8 对齐, fix 2026-08-07, 与 layout 一致) */
-        int milt = miat + msvcrt_n * 8;       /* msvcrt ILT */
+        int milt = miat + msvcrt_n * 8 + 8;       /* msvcrt ILT (+8: IAT 终止 0, fix 2026-08-22 t48) */
         /* msvcrt 导入描述符 (动态位置, fix 2026-08-07) */
         fseek(f, data_foff + mdesc_off, SEEK_SET);
         w4(f, data_rva_base + milt); /* OriginalFirstThunk = ILT RVA */
@@ -1417,12 +1418,16 @@ static void write_pe(FILE *f, int entry_rva) {
             w8(f, (long long)(data_rva_base + hoff));
             hoff += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         }
+        fseek(f, data_foff + miat + msvcrt_n * 8, SEEK_SET);
+        w8(f, 0); /* IAT 终止 0 (fix 2026-08-22 t48: 原缺终止 → loader 读越界到 out_data → STATUS_ENTRYPOINT_NOT_FOUND) */
         hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
             fseek(f, data_foff + milt + s * 8, SEEK_SET);
             w8(f, (long long)(data_rva_base + hoff));
             hoff += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         }
+        fseek(f, data_foff + milt + msvcrt_n * 8, SEEK_SET);
+        w8(f, 0); /* ILT 终止 0 (fix 2026-08-22 t48) */
     }
     /* 可写 .data 初始化内容（导入区之后） */
     if (out_len[OUT_DATA]) {
