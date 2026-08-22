@@ -41,9 +41,10 @@ Write-Host "  v5: $h5"
 
 # 验收标准: 自举闭环收敛 (2026-08-22 #29..#37 日期+格式+struct+sha1哈希 全链路修复后新不动点;
 #            #39 var_big_param / #40 bigsz T** / #41 mem_addr 链基 / #42 完整 inflate / #42d node_psz
-#            / #42e typedef 参数 td_st_index / #43 typedef struct 逗号续行 fsz 继承 修复后新不动点):
-# qcc_boot == v1==v2==v3==v4==v5 = 6824F06E
-$expected = '6824F06E'
+#            / #42e typedef 参数 td_st_index / #43 typedef struct 逗号续行 fsz 继承
+#            / #44 ffins+fdeep 双指针字段双层下标 (slab[i][j]) 修复后新不动点):
+# qcc_boot == v1==v2==v3==v4==v5 = 3AF2F1EF
+$expected = '3AF2F1EF'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
