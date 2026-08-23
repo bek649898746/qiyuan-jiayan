@@ -3773,7 +3773,7 @@ static int prim(void) {
             else if (is_short) tsz = 2;
             else if (is_dbl || long_cnt >= 2) tsz = 8;
             else if (long_cnt == 1) tsz = 4;
-            if (tt[tk] == DK) { tsz = 8; tk++; } /* sizeof(int*) → 8 */
+            if (tt[tk] == DK) { tsz = 8; tk++; while (tt[tk] == DK) tk++; } /* sizeof(int*) → 8; 多级指针 sizeof(void**)/int** 原只消费一个 * -> 残留影响后续解析 (fix 2026-08-23) */
             if (tt[tk] == KK) tk++;
             int n = Nd(0); nv[n] = tsz; return n;
         }
@@ -3782,6 +3782,7 @@ static int prim(void) {
             if (tt[tk] == VR) {
                 if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZST] sizeof(struct %s) sz=%d\n", tn[tk], st_sz(tn[tk])); /* tmp */
                 int sz = st_sz(tn[tk]); tk++; /* struct name */
+                if (tt[tk] == DK) { sz = 8; tk++; while (tt[tk] == DK) tk++; } /* sizeof(struct X*) \xe2\x86\x92 8 - \xe5\x89\x8d\xe5\x90\x91\xe5\xa3\xb0\xe6\x98\x8e struct \xe6\x8c\x87\xe9\x92\x88 st_sz=0 (fix 2026-08-23) */
                 if (tt[tk] == KK) tk++; /* ) */
                 int n = Nd(0); nv[n] = sz; return n;
             } else if (tt[tk] == FK) { /* sizeof(struct {...}) — anonymous inline definition (fix 2026-08-05: was unhandled → parse returned -1 and main() body was silently dropped) */

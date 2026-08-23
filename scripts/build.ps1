@@ -43,7 +43,7 @@ Write-Host "  v5: $h5"
 #            双指针字段回填/柔性数组 frow/mem_addr deref fsz/static struct 字段赋值/匿名 struct typedef 字段;
 #            清理 QCC_DBG_VA varargs 调试插桩 — -Wall -Werror 零警告):
 # qcc_boot == v1==v2==v3==v4==v5 = bd3e48e3
-$expected = 'ADF8FB00'
+$expected = 'D443F953'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
