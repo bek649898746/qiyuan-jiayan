@@ -5160,6 +5160,7 @@ __attribute__((unused))
                         vars[vcnt - 1].p_esz = esz;
                     }
                     若 (dims >= 1) { vars[vcnt - 1].frows[dims - 1] = esz; 遍 (整 fi = dims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * adimv[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
+                    若 (esz == 8 && !is_ll && !is_double && ltd_si < 0) vars[vcnt - 1].p_inner = is_char ? 1 : 4; /* fix 2026-08-23 t35j: 指针数组 (const char *arr[]) 指向元素大小 — p_inner 语义=指向元素; 不动 is_char (is_char 误标 const char* 数组破坏 3797/3915 esz → 自举崩 329B); 元素 8 字节非 ll/dbl/struct → 指针数组 */
                     若 (is_double) vars[vcnt - 1].is_dbl = 1; /* local double array */
                     若 (is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned array (fix 2026-08-05) */
                 }
@@ -11063,7 +11064,7 @@ __attribute__((unused))
                     若 (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) {
                         整 esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         整 elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
-                        { 整 pointee = vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4)); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD) */
+                        { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1) */
                         cg_fdepth = 1; 遍 (整 fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows (fix 2026-08-05) */
                         cg_fdepth_max = 1; 遍 (整 fk = 0; fk < 4; fk++) 若 (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
@@ -11112,7 +11113,7 @@ __attribute__((unused))
                         若 (!strcmp(vars[vi].name, vname) && vars[vi].is_static && vars[vi].arr_esz > 0) {
                             esz = vars[vi].arr_esz;
                             is_row = (vars[vi].p_esz > 0 && vars[vi].arr_esz > vars[vi].p_esz); /* 2D+ array: a[i] is a ROW (array), decays to ADDRESS (fix 2026-08-16: secnames[i] 源被当 8 字节值 load → memcpy 源 0) */
-                            { 整 pointee = vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4)); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 */
+                            { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放; fix 2026-08-23 t35j: p_inner 优先 */
                             /* ADDRESS for: struct arrays, 2D rows (esz>8), and 2D rows where
                                arr_esz > element size (char buf[4][8]: esz=8, elem=1).
                                8-byte POINTER arrays (char *names[3]: esz=8, elem=8) load 64-bit. */
