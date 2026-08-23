@@ -1817,7 +1817,7 @@ static int coff_func_name_sym(const char *name) {
 }
 /* -c 模式：builtin 名（编译器内联发射，不是外部函数） */
 static int coff_is_builtin(const char *n) {
-    static const char *bn[] = { "printf", "fprintf", "sprintf", "snprintf", "putstr", "scanf",
+    static const char *bn[] = { "printf", "fprintf", "vfprintf", "sprintf", "snprintf", "putstr", "scanf",
         "fopen", "fread", "fwrite", "fputc", "fputs", "fgetc", "fclose", "fseek", "ftell", "rewind", /* fix 2026-08-18: fgetc 缺 → coff 模式当用户函数链到 msvcrt fgetc, 拿 HANDLE 当 FILE* 崩 (git config 读取) */
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
@@ -7337,6 +7337,86 @@ static void emit_print(const char *fname, int nargs) {
     }
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
+static void emit_vfprintf(int nargs) {
+    if (getenv("QCC_DBG_EVF")) fprintf(stderr, "[EVF] nargs=%d\n", nargs);
+    /* fix 2026-08-23 t49e: vfprintf(fp, fmt, args) - fp is the qcc standard stream
+       (0=stdout/stderr macro) -> route through WriteFile(GetStdHandle) exactly like the
+       fprintf builtin. Direct msvcrt vfprintf(fp=0) crashes inside RtlEnterCriticalSection
+       (color_vfprintf -> vfprintf(s->fp=stdout=0) -> status --short SEGV).
+       Args already pushed (qcc right-to-left: args, fmt, fp) so the pre-aligned rsp holds
+       [rsp]=fp, [rsp+8]=fmt, [rsp+16]=args. r15 is callee-saved (kernel32 preserves it). */
+    int lfp_nz = new_label(), lfp_h = new_label(), lfp_done = new_label();
+    mov_rr64(15, 4); /* mov r15, rsp (pre-alignment) */
+    if (nargs == 3) {
+        /* va_list case (color_vfprintf -> vfprintf(fp, fmt, args)): qcc pushes arg0 first (highest addr)
+           -> [r15+16]=fp, [r15+8]=fmt, [r15]=args */
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+16]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(16); /* mov rax, [r15+16] = fp */
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(0); /* mov rax, [r15] = args */
+        mov_rr64(13, 0); /* r13 = args (va_list) */
+    } else {
+        /* varargs call: [r15+8*(nargs-1)]=fp, [r15+8*(nargs-2)]=fmt, varargs start at [r15+8*(nargs-3)] */
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+%d]\n", (char*)(long long)(8 * (nargs - 1)), (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(8 * (nargs - 1) & 0xff); /* mov rax, [r15+8*(nargs-1)] = fp */
+        lea_r_mrsp(13, 8 * (nargs - 3)); /* r13 = &first vararg */
+    }
+    asm_emit("    \xe5\xaf\xb9\xe9\xbd\x90\xe6\xa0\x88\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp, -16 */
+    /* fmt -> rbx (callee-saved, survives GetStdHandle); fp stays in rax for dispatch */
+    if (nargs == 3) {
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(8); /* mov rax, [r15+8] = fmt */
+        mov_rr64(3, 0); /* rbx = fmt */
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+16]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(16); /* mov rax, [r15+16] = fp */
+    } else {
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+%d]\n", (char*)(long long)(8 * (nargs - 2)), (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(8 * (nargs - 2) & 0xff); /* mov rax, [r15+8*(nargs-2)] = fmt */
+        mov_rr64(3, 0); /* rbx = fmt */
+        asm_emit("    \xe5\x8f\x96 64 r0, [r15+%d]\n", (char*)(long long)(8 * (nargs - 1)), (char*)(long long)0, (char*)(long long)0); b(0x49); b(0x8B); b(0x47); b(8 * (nargs - 1) & 0xff); /* mov rax, [r15+8*(nargs-1)] = fp */
+    }
+    /* fp dispatch: fp==0 -> stdout (GetStdHandle); fp<0x10000 -> qcc fopen HANDLE; else CRT FILE* -> _file fd */
+    mov_r_imm(0, 0); mov_mbrp_reg(scratch_base - cur_frame_sz + 248, 0); /* is_fd = 0 */
+    test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, lfp_nz, 3);
+    mov_r_imm(1, -11); /* ecx = -11 = STD_OUTPUT_HANDLE */
+    sub_rsp_imm(32); call_iat(0); add_rsp_imm(32); /* GetStdHandle */
+    mov_rr64(10, 0); /* r10 = handle */
+    jmp_rel(-1); patch_label(cp - 4, lfp_done, 2);
+    set_label(lfp_nz);
+    asm_emit("    \xe6\xaf\x94\xe8\xbe\x83 64 r0, 0x10000\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x3D); b4(0x10000); /* cmp rax, 0x10000 */
+    b(0x0F); b(0x82); b4(0); patch_label(cp - 4, lfp_h, 8); /* jb -> HANDLE */
+    b(0x8B); b(0x40); b(28); /* mov eax, [rax+28] = _file fd */
+    mov_rr64(10, 0); /* r10 = fd */
+    mov_r_imm(0, 1); mov_mbrp_reg(scratch_base - cur_frame_sz + 248, 0); /* is_fd = 1 */
+    jmp_rel(-1); patch_label(cp - 4, lfp_done, 2);
+    set_label(lfp_h);
+    mov_rr64(10, 0); /* r10 = fp (HANDLE) */
+    set_label(lfp_done);
+    mov_rr64(11, 3); /* r11 = fmt */
+    lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf */
+    mov_rr64(14, 12); /* r14 = buf start */
+    int ldone = emit_fmt_loop(-272);
+    set_label(ldone);
+    /* len = r12 - r14 */
+    mov_rr64(0, 12); asm_emit("    \xe5\x87\x8f 64 r0, r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0); /* sub rax, r14 */
+    mov_rr(8, 0); /* r8 = len */
+    sub_rsp_imm(32);
+    int lwf = new_label();
+    int lwdone2 = new_label();
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 248); /* eax = is_fd */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lwf, 1);
+    sub_rsp_imm(32); /* shadow space for _write */
+    mov_rr64(1, 10); /* rcx = fd */
+    mov_rr64(2, 14); /* rdx = buf */
+    if (coff_mode) { b(0xE8); b4(0); coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0); }
+    else call_iat(24);
+    add_rsp_imm(32);
+    jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
+    set_label(lwf);
+    mov_rr64(1, 10); /* rcx = handle */
+    mov_rr64(2, 14); /* rdx = buf */
+    lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz); /* r9 = &written */
+    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = 0 overlapped */
+    call_iat(1); /* WriteFile */
+    add_rsp_imm(32);
+    set_label(lwdone2);
+    mov_rr64(4, 15); /* mov rsp, r15 */
+}
+
 
 /* fix 2026-08-12 scanf: args already pushed (fmt first, then &a, &b...).
    Read stdin (GetStdHandle(-10) + ReadFile) into [rbp-4368] buf, then call
@@ -8407,6 +8487,20 @@ static void asm_enc_string(const char *asmtext) {
    fix 2026-08-20: 成员访问 p->field 也是指针 — 原指针运算只识别 cast/纯变量名,
    `d.entries + 1` 不缩放 (步进 1 字节 → 全错位), `dst - d.entries` 不识别 →
    prune_directory `dir->nr = dst - dir->entries` 算错 → git add 丢全部文件. */
+static int mem_ty_peek(int n) { /* query member-chain field struct si (pure query, no codegen) - t49e fix */
+    if (n < 0) return -1;
+    int t = nt[n];
+    if (t == 1) { char *vn = (char*)(nn + n); return var_stidx(vn); }
+    if (t == 13 || t == 15) {
+        int base = mem_ty_peek(n0[n]);
+        if (base < 0) return -1;
+        char *fn = (char*)(nn + n);
+        return st_field_ty_idx(stypes[base].name, fn);
+    }
+    if (t == 11) return mem_ty_peek(n0[n]); /* &expr */
+    if (t == 12) return mem_ty_peek(n0[n]); /* *ptr */
+    return -1;
+}
 static int node_psz(int n) {
     if (n < 0) return 0;
     if (nt[n] == 2) { /* binary op node: ptr +/- expr (t49c4 fix) */
@@ -8429,9 +8523,8 @@ static int node_psz(int n) {
     }
     if (nt[n] == 13 || nt[n] == 15) { /* s.field / p->field: 指针字段的元素大小 */
         int mc = n;
-        char *sv = (char*)(nn + n0[mc]);
         char *fn = (char*)(nn + mc);
-        int si2 = var_stidx(sv);
+        int si2 = mem_ty_peek(n0[mc]); /* fix 2026-08-23 t49e: (&expr)->field base */
         if (si2 >= 0) {
             int fidx = st_fidx(si2, fn);
             if (fidx >= 0 && stypes[si2].fptrs[fidx])
@@ -8577,6 +8670,9 @@ static void cg(int n) {
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     cg(n0[n]); ll_ext32(n0[n]); push_r64(0); /* save lhs; int RHS 符号扩展 (fix 2026-08-06) */
                     cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0);       /* rbx = rhs */
+                    { int pel64 = node_psz(n0[n]); /* fix 2026-08-23 t49e: ptr+int 64-bit scale - items + nr (size_t) */
+                        if (pel64 > 0 && (o == PK || o == MK)) { mov_r_imm(1, pel64); asm_emit("    \xe4\xb9\x98 64 r3, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* imul rbx, rcx */
+                    }
                     pop_r64(0);                      /* rax = lhs */
                     if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); } /* add rax, rbx (REX.R=0: rbx bit3=0) */
                     else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); } /* sub rax, rbx */
@@ -9355,6 +9451,8 @@ static void cg(int n) {
                 mov_rr64(2, 1);  /* mov edx, ecx (port) */
                 asm_emit("    写端口32 dx, eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xEF); /* out dx, eax */
                 mov_r_imm(0, 0);
+            } else if (!strcmp(fname, "vfprintf")) {
+                emit_vfprintf(nargs); /* fix 2026-08-23 t49e: fp=0 \xe6\xa0\x87\xe5\x87\x86\xe6\xb5\x81 \xe2\x86\x92 WriteFile */
             } else if (!strcmp(fname, "printf") || !strcmp(fname, "fprintf") || !strcmp(fname, "putstr")) {
                 emit_print(fname, nargs);
             } else if (!strcmp(fname, "scanf")) { /* fix 2026-08-12: 变参输入 builtin */
@@ -10495,6 +10593,31 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (!cg_no_deref && !cg_addr_of) { mov_reg_mreg(0, 0); if (si_out >= 0 && st_field_bitw(stypes[si_out].name, fn) > 0) bf_extract(stypes[si_out].name, fn); } /* bit-field extract (fix 2026-08-05) */
                 }
             } else {
+            /* fix 2026-08-23 t49e: (&expr)->field - paren-address-of then member access
+               (for_each_string_list_item macro `(&s->untracked)->nr` n0 is case 11(&addr),
+               vn reads empty -> var_stidx=-1 -> ARROWFALL full-table scan matched the FIRST
+               struct with an nr field (diff_queue_struct nr@12) instead of string_list (nr@8)
+               -> read nr high-32 = 0 -> status --short loop bound items+0 -> empty output).
+               Correct: mem_addr resolves case 11's n0 (member chain) for the real struct
+               type, add field offset, deref by field size. */
+            if (nt[n0[n]] == 11 && n0[n0[n]] >= 0) {
+                int fsz11 = 4, si11 = -1;
+                if (mem_addr(n0[n0[n]], &fsz11, &si11) == 0 && si11 >= 0) {
+                    int fo11 = st_off(stypes[si11].name, fn);
+                    if (fo11 >= 0) {
+                        if (fo11 != 0) add_rax_imm8(fo11);
+                        int afsz11 = st_field_size(stypes[si11].name, fn);
+                        st_field_2d_setup(si11, fn);
+                        if (cg_no_deref || st_field_is_array_idx(si11, fn)) {
+                            /* array field: address retained */
+                        } else if (afsz11 == 8) { mov_reg_mreg64(0, 0); }
+                        else if (afsz11 == 1) { asm_emit("    \xe9\x9b\xb6\xe6\x89\xa9\xe5\xb1\x95 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                        else if (afsz11 == 2) { asm_emit("    \xe9\x9b\xb6\xe6\x89\xa9\xe5\xb1\x95\xe5\xad\x97 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] */
+                        else { mov_reg_mreg(0, 0); }
+                        break;
+                    }
+                }
+            }
             char*vn=(char*)(nn+n0[n]);
             int o=var_lookup(vn),s=var_stidx(vn);
             /* for arrow, search all structs if variable not struct-typed */
