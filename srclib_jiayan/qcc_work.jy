@@ -3773,7 +3773,7 @@ __attribute__((unused))
             否 若 (is_short) tsz = 2;
             否 若 (is_dbl || long_cnt >= 2) tsz = 8;
             否 若 (long_cnt == 1) tsz = 4;
-            若 (tt[tk] == DK) { tsz = 8; tk++; } /* sizeof(int*) → 8 */
+            若 (tt[tk] == DK) { tsz = 8; tk++; 循环 (tt[tk] == DK) tk++; } /* sizeof(int*) → 8; 多级指针 sizeof(void**)/int** 原只消费一个 * -> 残留影响后续解析 (fix 2026-08-23) */
             若 (tt[tk] == KK) tk++;
             整 n = Nd(0); nv[n] = tsz; 返 n;
         }
@@ -3782,6 +3782,7 @@ __attribute__((unused))
             若 (tt[tk] == VR) {
                 若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZST] sizeof(struct %s) sz=%d\n", tn[tk], st_sz(tn[tk])); /* tmp */
                 整 sz = st_sz(tn[tk]); tk++; /* struct name */
+                若 (tt[tk] == DK) { sz = 8; tk++; 循环 (tt[tk] == DK) tk++; } /* sizeof(struct X*) \xe2\x86\x92 8 - \xe5\x89\x8d\xe5\x90\x91\xe5\xa3\xb0\xe6\x98\x8e struct \xe6\x8c\x87\xe9\x92\x88 st_sz=0 (fix 2026-08-23) */
                 若 (tt[tk] == KK) tk++; /* ) */
                 整 n = Nd(0); nv[n] = sz; 返 n;
             } 否 若 (tt[tk] == FK) { /* sizeof(struct {...}) — anonymous inline definition (fix 2026-08-05: was unhandled → parse returned -1 and main() body was silently dropped) */
