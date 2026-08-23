@@ -4916,8 +4916,19 @@ static int blk(void) {
             {
                 int bt = tk, bdbl = 0;
                 while (tt[bt] == VK) { if (!strcmp(tn[bt], "double")) bdbl = 1; bt++; }
+                if (tt[bt] == EN) { bt++; if (tt[bt] == VR) bt++; } /* t35k: typedef enum E (*fn)(...) fnptr typedef — 原 EN 未消费 → fnptr 识别失败 → is_fnptr=0 → merge.select 函数指针调用缺失 → show-ref/branch/tag 死循环 */
                 if (tt[bt] == VR && td_is(tn[bt])) bt++;
                 if (tt[bt] == ST) { bt++; if (tt[bt] == VR) bt++; }
+                if (tt[bt] == VR && tt[bt + 1] == OK) { /* t35k: 局部函数类型 typedef: typedef 返回类型 name(参数); — 镜像全局 fnptr 修复 (ref_iterator_select_fn 同款) */
+                    char tdfn[64]; strcpy(tdfn, tn[bt]);
+                    td_reg(tdfn);
+                    tdef_add_fnptr(tdfn, bdbl);
+                    tk = bt; tk++; /* name */
+                    if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
+                    while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
+                    if (tt[tk] == SK) tk++;
+                    continue;
+                }
                 if (tt[bt] == VR) bt++; /* 调用约定宏 WINAPI/SEC_ENTRY 未展开成 VR (fix 2026-08-15: proc_type_GetCurrentConsoleFont undefined) */
                 { int bt_fn = bt; if (tt[bt_fn] == OK) { bt_fn++; if (tt[bt_fn] == VR) bt_fn++; } if (tt[bt] == OK && tt[bt_fn] == DK) { /* 局部 fnptr typedef: typedef BOOL (*fn)(...) 或 BOOL (WINAPI *fn)(...) — 必须注册 (fix 2026-08-15: GetUserNameExW/proc_type_GetCurrentConsoleFont undefined) */
                     tk = bt; tk++; /* ( */
@@ -6230,6 +6241,7 @@ static int parse(const char *s) {
             {
                 int bt = tk, bdbl = 0;
                 while (tt[bt] == VK) { if (!strcmp(tn[bt], "double")) bdbl = 1; bt++; }
+                if (tt[bt] == EN) { bt++; if (tt[bt] == VR) bt++; } /* t35k: typedef enum E (*fn)(...) fnptr typedef — 原 EN 未消费 → fnptr 识别失败 → is_fnptr=0 → merge.select 函数指针调用缺失 → show-ref/branch/tag 死循环 */
                 if (tt[bt] == VR && td_is(tn[bt])) bt++; /* fix 2026-08-14: typedef 类型名作基类型 — typedef BOOL (SEC_ENTRY *fn)(...) 的 BOOL 是 VR typedef, 原只消费 VK → lookahead 失败 → BOOL 被当 struct tag */
                 if (tt[bt] == ST) { bt++; if (tt[bt] == VR) bt++; }
                 if (tt[bt] == OK && tt[bt + 1] == DK) { /* fnptr typedef confirmed */
@@ -6249,6 +6261,17 @@ static int parse(const char *s) {
                             tk++;
                         }
                     }
+                    while (tk < TS && tt[tk] != SK && tt[tk] != UK && tt[tk] != EK) tk++;
+                    if (tt[tk] == SK) tk++;
+                    continue;
+                }
+                else if (tt[bt] == VR && tt[bt + 1] == OK) { /* t35k: 函数类型 typedef: typedef 返回类型 name(参数); — refs-internal.h ref_iterator_select_fn — 原不识别 → is_fnptr=0 → merge.select 函数指针调用缺失 → show-ref/branch/tag 死循环 */
+                    char tdfn[64]; strcpy(tdfn, tn[bt]);
+                    td_reg(tdfn);
+                    tdef_add_fnptr(tdfn, bdbl);
+                    tk = bt;
+                    tk++; /* name */
+                    if (tt[tk] == OK) { int depth = 0; while (tk < TS && tt[tk] != EK) { if (tt[tk] == OK) depth++; else if (tt[tk] == KK) { depth--; if (depth <= 0) { tk++; break; } } tk++; } }
                     while (tk < TS && tt[tk] != SK && tt[tk] != UK && tt[tk] != EK) tk++;
                     if (tt[tk] == SK) tk++;
                     continue;
