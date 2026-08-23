@@ -42,8 +42,8 @@ Write-Host "  v5: $h5"
 # 验收标准: 自举闭环收敛 (2026-08-22 t46: git branch/show-ref 全链路五修复后新不动点 —
 #            双指针字段回填/柔性数组 frow/mem_addr deref fsz/static struct 字段赋值/匿名 struct typedef 字段;
 #            清理 QCC_DBG_VA varargs 调试插桩 — -Wall -Werror 零警告):
-# qcc_boot == v1==v2==v3==v4==v5 = 3498A9B0 (2026-08-23 t35g: %+d/%+05d 恒正号 (槽位 sc+0/sc+4))
-$expected = '3498A9B0'
+# qcc_boot == v1==v2==v3==v4==v5 = C9B6E26A (2026-08-23 t35h: %s 宽度填充 + %+d 恒正号)
+$expected = 'C9B6E26A'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

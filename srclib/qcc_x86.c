@@ -7807,13 +7807,15 @@ static void emit_ll_hex_digits(int tail, int upper) {
 }
 
 static int emit_fmt_loop(int bound_disp) {
-    int ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label(), lsnoprec = new_label();
+    int ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label();
     int lfnum = new_label(), lfrac = new_label(), lfrac2 = new_label(), lfsgn = new_label();
     /* specifier-prefix parse + %f precision (root-cause 2026-08-03) */
     int lflag = new_label(), lflags = new_label(), lwidth = new_label(), lprec = new_label();
     int lplus = new_label(); /* fix 2026-08-23 t35g: %+d / %+05d 恒显正号 */
     int lsign_pre = new_label(), lsign_done = new_label(); /* fix 2026-08-23 t35g: %d 符号提前输出 */
     int lwd_nondigit = new_label(); /* fix 2026-08-23 t35g: 宽度后非数字 — 长度前缀回 lflag */
+    int lstrlen = new_label(), lstrlen_done = new_label(), lsnoprec2 = new_label(), lspad = new_label(), lscopy = new_label(); /* fix 2026-08-23 t35h: %s 宽度填充 */
+    int lcp_done = new_label(), lcp_pad = new_label(); /* fix 2026-08-23 t35h: 左对齐 %-s 尾部 pad */
     int ldot = new_label(), ldig = new_label(), lspec = new_label(), lstar = new_label(); /* fix 2026-08-18: %.*s 星号精度 */
     int ll_cnt = new_label(), lld32 = new_label(), lu32 = new_label(), lx32 = new_label(), lxU = new_label(), lxU32 = new_label(); /* fix 2026-08-06: %lld/%llu/%llx/%llX 64 位 (ll_cnt=计数, *32=32 位回退; lxU=%X 大写) */
     int lz = new_label(); /* %z (size_t) → 64 位 (fix 2026-08-23 t35d) */
@@ -8001,21 +8003,50 @@ static int emit_fmt_loop(int bound_disp) {
     mov_r12_al(); /* mov [r12], al */
     asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
     jmp_rel(-1); patch_label(cp-4, lfmt, 2);
-    /* %s: copy string arg */
+    /* %s: copy string arg — fix 2026-08-23 t35h: %Ns/%*s 宽度填充 (swidth) */
     set_label(ls);
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
     mov_rax_mr13(); /* rax = [r13] (64-bit ptr) */
     if (fmt_va_forward) { asm_emit("    增即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 0, 5); b(8); /* add r13, 8 */ }
     else { asm_emit("    减即 r13, 8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */ }
     mov_rr64(8, 0); /* r8 = string */
-    /* %.Ns precision: bounded copy (fix 2026-08-05: precision was only honored by
-       %f). sc+236 = explicit-precision flag; if set, copy at most N bytes. */
-    mov_reg_mbrp(1, scratch_base - cur_frame_sz + 236); /* ecx = has_explicit_prec */
-    test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lsnoprec, 1); /* no explicit precision -> unbounded */
-    mov_reg_mbrp(1, scratch_base - cur_frame_sz + 224); /* ecx = N */
+    /* ---- 计算 len (r9d), 受 %.Ns 精度界 (t35h) ---- */
+    mov_ri_ext(9, 0); /* r9d = 0 (len) */
+    mov_rr64(2, 8); /* rdx = string (64-bit, fix 2026-08-23 t35h: mov_rr 32 位截断指针) */
+    set_label(lstrlen);
+    asm_emit("    零扩展 eax, [rdx]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 2); /* movzx eax, byte[rdx] \xe2\x80\x94 \xe6\x97\xa0 REX (fix 2026-08-23 t35h: rex B=1 \xe5\x8f\x98 r10) */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lstrlen_done, 1);
+    asm_emit("    自增 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0xFF); modrm(3, 0, 2); /* inc rdx \xe2\x80\x94 REX.W=1 (fix 2026-08-23 t35h) */
+    asm_emit("    自增 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9d */
+    jmp_rel(-1); patch_label(cp-4, lstrlen, 2);
+    set_label(lstrlen_done);
+    /* 精度界: len = min(len, N) */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 236); /* eax = has_explicit_prec */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lsnoprec2, 1);
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 224); /* eax = N */
+    alu_rr(T_QK, 9, 0); b(0x0F); b(0x8E); b4(0); patch_label(cp-4, lsnoprec2, 8); /* cmp r9d, eax; jle lsnoprec2 */
+    mov_rr(9, 0); /* len = N */
+    set_label(lsnoprec2);
+    mov_mbrp_reg(scratch_base - cur_frame_sz + 228, 9); /* save len -> sc+228 */
+    /* pad = W - len; sc+236 存 pad 数 */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 232); /* eax = W */
+    mov_rr(2, 9); /* edx = len */
+    alu_rr(T_MK, 0, 2); /* eax = W - len */
+    mov_r_imm(1, 0); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8E); b4(0); patch_label(cp-4, lscopy, 8); /* cmp eax,0; jle lscopy */
+    mov_mbrp_reg(scratch_base - cur_frame_sz + 236, 0); /* save pad -> sc+236 */
+    /* 左对齐 (sc+252): 先拷贝后 pad */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 252); test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lscopy, 1);
+    /* 右对齐: pad 空格先行 */
+    mov_reg_mbrp(2, scratch_base - cur_frame_sz + 236); /* edx = pad */
+    mov_r_imm(0, ' ');
+    set_label(lspad);
+    mov_r12_al(); /* mov [r12], al */
+    asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    自减 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xCA); /* dec edx */
+    jnz_rel(-1); patch_label(cp-4, lspad, 3);
+    set_label(lscopy);
+    mov_reg_mbrp(1, scratch_base - cur_frame_sz + 228); /* ecx = len */
     jmp_rel(-1); patch_label(cp-4, lcp, 2);
-    set_label(lsnoprec);
-    mov_r_imm(1, 0x7FFFFFFF); /* ecx = huge (practically unbounded) */
     /* H2 fix 2026-08-06: %s 缓冲上限检查 — 仅 printf/putstr 链（bound_disp != 0，= rbp-272 状态区起点）：
        r9 预载 [rbp+bound_disp]，r12 达界即停（缓冲 4096B [rbp-4368..rbp-273]，不碰状态区/&written）。
        sprintf 链 bound_disp=0 → 不设界（用户缓冲，标准 C 语义）。 */
@@ -8026,13 +8057,25 @@ static int emit_fmt_loop(int bound_disp) {
         b(0x0F); b(0x83); b4(0); patch_label(cp-4, lfmt, 7); /* jae lfmt (高于等跳): r12 >= 界 -> stop */
     }
     asm_emit("    零扩展 eax, [r8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 0, 0); /* movzx eax, byte[r8] */
-    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lfmt, 1);
-    test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lfmt, 1); /* count exhausted */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lcp_done, 1);
+    test_rr(1, 1); jz_rel(-1); patch_label(cp-4, lcp_done, 1); /* count exhausted */
     mov_r12_al(); /* mov [r12], al */
     asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
     asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 0); /* inc r8 */
     asm_emit("    自减 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xC9); /* dec ecx */
     jmp_rel(-1); patch_label(cp-4, lcp, 2);
+    set_label(lcp_done); /* fix 2026-08-23 t35h: 左对齐 %-s 尾部 pad */
+    mov_reg_mbrp(0, scratch_base - cur_frame_sz + 252); /* eax = left flag */
+    test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lfmt, 1);
+    mov_reg_mbrp(2, scratch_base - cur_frame_sz + 236); /* edx = pad */
+    test_rr(2, 2); jz_rel(-1); patch_label(cp-4, lfmt, 1);
+    mov_r_imm(0, ' ');
+    set_label(lcp_pad);
+    mov_r12_al(); /* mov [r12], al */
+    asm_emit("    自增 r12\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    自减 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xCA); /* dec edx */
+    jnz_rel(-1); patch_label(cp-4, lcp_pad, 3);
+    jmp_rel(-1); patch_label(cp-4, lfmt, 2);
     /* %d: decimal int arg - with %Nd width padding (root-cause 2026-08-03) */
     set_label(ld);
     asm_emit("    自增 r11\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
