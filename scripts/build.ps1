@@ -1,27 +1,27 @@
 # ============================================================
-# ÆôÔª ¡¤ ¼×ÑÔ Ò»¼ü¹¹½¨ + ×Ô¾ÙÑéÖ¤
-# ÓÃ·¨: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# ¹¦ÄÜ: ±àÒëËÞÖ÷ ¡ú ×Ô¾ÙÈý´ú ¡ú Ð£Ñé²»¶¯µã ¡ú ÅÜ 171 ²âÊÔ
+# ï¿½ï¿½Ôª ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + ï¿½Ô¾ï¿½ï¿½ï¿½Ö¤
+# ï¿½Ã·ï¿½: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+# ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ð£ï¿½é²»ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ 171 ï¿½ï¿½ï¿½ï¿½
 # ============================================================
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-Write-Host "==== ÆôÔª ¡¤ ¼×ÑÔ ¹¹½¨Óë×Ô¾ÙÑéÖ¤ ====" -ForegroundColor Cyan
+Write-Host "==== ï¿½ï¿½Ôª ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½Ö¤ ====" -ForegroundColor Cyan
 
-# 1. ±àÒëËÞÖ÷±àÒëÆ÷
-Write-Host "[1/4] ±àÒëËÞÖ÷±àÒëÆ÷ qcc_x86..." -ForegroundColor Yellow
+# 1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+Write-Host "[1/4] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ qcc_x86..." -ForegroundColor Yellow
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] ËÞÖ÷±àÒëÊ§°Ü" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red; exit 1 }
 
-# 2. ×Ô¼ì
-Write-Host "[2/4] ËÞÖ÷×Ô¼ì --test ..." -ForegroundColor Yellow
+# 2. ï¿½Ô¼ï¿½
+Write-Host "[2/4] ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
-if ($t -notmatch 'PASS') { Write-Host "[FAIL] ×Ô¼ìÊ§°Ü: $t" -ForegroundColor Red; exit 1 }
+if ($t -notmatch 'PASS') { Write-Host "[FAIL] ï¿½Ô¼ï¿½Ê§ï¿½ï¿½: $t" -ForegroundColor Red; exit 1 }
 
-# 3. ×Ô¾ÙÎå´ú (v1==v2==v3==v4==v5 Îå´úÈ«µÈ; 2026-08-20: ²»¶¯µã·â´æ ¡ª ËÞÖ÷ = qcc_boot.exe
-#    ¼´×Ô¾Ù²»¶¯µã 27B42CE1, Ò»²½ÊÕÁ²¡£C ËÞÖ÷ qcc_x86.exe ½ö×÷ÖÖÔ´/¹ý¶ÉËÞÖ÷±£Áô)
-Write-Host "[3/4] ×Ô¾ÙÎå´ú (ËÞÖ÷ qcc_boot.exe = ²»¶¯µã 27B42CE1) ..." -ForegroundColor Yellow
+# 3. ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ (v1==v2==v3==v4==v5 ï¿½ï¿½ï¿½È«ï¿½ï¿½; 2026-08-20: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ = qcc_boot.exe
+#    ï¿½ï¿½ï¿½Ô¾Ù²ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1, Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½C ï¿½ï¿½ï¿½ï¿½ qcc_x86.exe ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
+Write-Host "[3/4] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ qcc_boot.exe = ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1) ..." -ForegroundColor Yellow
 & .\qcc_boot.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
 & .\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe | Out-Null
@@ -39,38 +39,38 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# ÑéÊÕ±ê×¼: ×Ô¾Ù±Õ»·ÊÕÁ² (2026-08-22 t46: git branch/show-ref È«Á´Â·ÎåÐÞ¸´ºóÐÂ²»¶¯µã ¡ª
-#            Ë«Ö¸Õë×Ö¶Î»ØÌî/ÈáÐÔÊý×é frow/mem_addr deref fsz/static struct ×Ö¶Î¸³Öµ/ÄäÃû struct typedef ×Ö¶Î;
-#            ÇåÀí QCC_DBG_VA varargs µ÷ÊÔ²å×® ¡ª -Wall -Werror Áã¾¯¸æ):
-# qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ºãÕýºÅ)
-$expected = 'D8980127'
+# ï¿½ï¿½ï¿½Õ±ï¿½×¼: ï¿½Ô¾Ù±Õ»ï¿½ï¿½ï¿½ï¿½ï¿½ (2026-08-22 t46: git branch/show-ref È«ï¿½ï¿½Â·ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½Â²ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
+#            Ë«Ö¸ï¿½ï¿½ï¿½Ö¶Î»ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ frow/mem_addr deref fsz/static struct ï¿½Ö¶Î¸ï¿½Öµ/ï¿½ï¿½ï¿½ï¿½ struct typedef ï¿½Ö¶ï¿½;
+#            ï¿½ï¿½ï¿½ï¿½ QCC_DBG_VA varargs ï¿½ï¿½ï¿½Ô²ï¿½×® ï¿½ï¿½ -Wall -Werror ï¿½ã¾¯ï¿½ï¿½):
+# qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
+$expected = '7a3a414d'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
-    Write-Host "[OK] ×Ô¾Ù 1-cycle ´ï³É: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
+    Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿½: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] ×Ô¾ÙÁ´Óë²Ö¿â¼ÇÂ¼²»Í¬£ºodd=$h1 even=$h2" -ForegroundColor Yellow
-    Write-Host "       £¨ÈôÔ´ÂëÓÐºÏ·¨ÐÞ¸Ä£¬´ËÎªÐÂµÄ²»¶¯µã£¬Çë¸üÐÂ README ¼ÇÂ¼£©"
+    Write-Host "[WARN] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ï¿½Ö¿ï¿½ï¿½Â¼ï¿½ï¿½Í¬ï¿½ï¿½odd=$h1 even=$h2" -ForegroundColor Yellow
+    Write-Host "       ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ÐºÏ·ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Îªï¿½ÂµÄ²ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½ï¿½ï¿½ README ï¿½ï¿½Â¼ï¿½ï¿½"
 }
 
-# 4. ÅÜÍêÕû²âÊÔÌ×¼þ£¨±àÒë+ÔËÐÐ+¶ÏÑÔ, ´¦Àí @EXPECTED compile_fail ¡ª ÐÞ¸´Ô­ÆÓËØÑ­»·×²¹ÊÒâ±àÒëÊ§°Ü²âÊÔ´¥·¢ NativeCommandError£©
-Write-Host "[4/4] ÅÜÍêÕû²âÊÔÌ×¼þ run_tests.py ..." -ForegroundColor Yellow
+# 4. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ @EXPECTED compile_fail ï¿½ï¿½ ï¿½Þ¸ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü²ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ NativeCommandErrorï¿½ï¿½
+Write-Host "[4/4] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ run_tests.py ..." -ForegroundColor Yellow
 python scripts/run_tests.py
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[FAIL] ²âÊÔÌ×¼þÊ§°Ü" -ForegroundColor Red
+    Write-Host "[FAIL] ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red
     exit 1
 }
 
-# 5. ÐÐÎª¶ÏÑÔ£¨fix 2026-08-09 Êµ²â¸´ÑéÉó¼Æ: ´ËÇ°´Ó²»ÔËÐÐÐÐÎª²âÊÔ, 2 Ê§°ÜÎÞÈËÖª£©
-Write-Host "[5/5] ÅÜÐÐÎª¶ÏÑÔ tests/behavior ..." -ForegroundColor Yellow
+# 5. ï¿½ï¿½Îªï¿½ï¿½ï¿½Ô£ï¿½fix 2026-08-09 Êµï¿½â¸´ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½Ç°ï¿½Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½, 2 Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öªï¿½ï¿½
+Write-Host "[5/5] ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ tests/behavior ..." -ForegroundColor Yellow
 python tests/behavior/run_behavior.py
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[WARN] ÐÐÎª¶ÏÑÔÊ§°Ü" -ForegroundColor Red
+    Write-Host "[WARN] ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red
     exit 1
 }
 
-# 6. ¹¤¾ßÁ´
-Write-Host "[+] ±àÒë¹¤¾ßÁ´ jyld / jycc ..." -ForegroundColor Yellow
+# 6. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+Write-Host "[+] ï¿½ï¿½ï¿½ë¹¤ï¿½ï¿½ï¿½ï¿½ jyld / jycc ..." -ForegroundColor Yellow
 gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
 gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
 
 Write-Host ""
-Write-Host "==== Íê³É¡£¼×ÑÔ×Ô¼ºÉú×Ô¼º£¬¹âÈÙ¡£ ====" -ForegroundColor Cyan
+Write-Host "==== ï¿½ï¿½É¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¡ï¿½ ====" -ForegroundColor Cyan
