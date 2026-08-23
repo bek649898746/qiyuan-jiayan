@@ -29,6 +29,11 @@
 #define int16_t signed 短
 #define int32_t signed 整
 
+/* 拔桩 (2026-08-24 t35u): 禁用所有 QCC_DBG 系列 + QCC_STAGE + QCC_DUMP 运行时调试输出。
+   全部 getenv 仅用于调试开关（共 72 处: QCC_DBG 系 63 + QCC_STAGE 3 + QCC_DUMP 3 + 注释），
+   宏替换为常量 0 使所有 if(getenv(...)) 恒假 — 保留源码结构, 行为等价于删桩. */
+#define getenv(n) (0)
+
 /* The 64MB AST node table (n0..n255, ASZ*4 each) must NOT live in the .data
    bump heap: the self-cut stack sits INSIDE the .data virtual range (stk_top
    ~62MB above .data base) and the table growing up from the statics floods
