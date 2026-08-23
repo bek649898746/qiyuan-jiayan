@@ -12129,7 +12129,7 @@ static char *read_file(const char *path) {
         sz = ftell(f);
         rewind(f);
         if (sz < 0) { fclose(f); return NULL; } /* fix 2026-08-09 BUG-12: ftell 失败(-1L 非 seekable)显式检查 */
-        if (sz > 0 && sz <= 1048576) {
+        if (sz > 0 && sz <= 2097152) { /* fix 2026-08-24 t35u: 1048576→2097152 — qcc_x86.c 自身 t35u 后 1.05MB 超 1MB 上限 → H1 链自举编译自身 "cannot open" */
             b = malloc((sz + 4) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — unaligned bump sizes misalign tt..tll -> tll[tk] garbage -> spurious nll=1 -> 2-cycle */
             fread(b, 1, sz, f);
             b[sz] = 0;
