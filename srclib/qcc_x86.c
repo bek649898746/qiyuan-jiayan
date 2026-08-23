@@ -4217,8 +4217,11 @@ static int prim(void) {
 }
 
 static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
-static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK || tt[tk] == PT || tt[tk] == OR || tt[tk] == XR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } return n; }
-static int cmp(void) { int n = add(); while (tt[tk] == LK || tt[tk] == GK || tt[tk] == QK || tt[tk] == XK || tt[tk] == HK || tt[tk] == YK) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; Nc(a, n); Nc(a, add()); n = a; } return n; }
+static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } return n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
+static int band(void) { int n = add(); while (tt[tk] == PT) { tk++; int a = Nd(2); nv[a] = PT; int r = add(); Nc(a, n); Nc(a, r); n = a; } return n; }
+static int bxor(void) { int n = band(); while (tt[tk] == XR) { tk++; int a = Nd(2); nv[a] = XR; int r = band(); Nc(a, n); Nc(a, r); n = a; } return n; }
+static int bor(void) { int n = bxor(); while (tt[tk] == OR) { tk++; int a = Nd(2); nv[a] = OR; int r = bxor(); Nc(a, n); Nc(a, r); n = a; } return n; }
+static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[tk] == QK || tt[tk] == XK || tt[tk] == HK || tt[tk] == YK) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; Nc(a, n); Nc(a, bor()); n = a; } return n; }
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
