@@ -158,6 +158,7 @@ __attribute__((unused))
 静 整 pp_guard_exists(常 字 *n); /* fwd: 定义在 fn_macro 区域 (fix 2026-08-21: obj_macro_expand 条件编译栈用到) */
 静 整 macro_exists(常 字 *n); /* fwd: 同上 */
 静 整 pp_eval(常 字 *e); /* fwd: 同上 */
+静 整 const_expr_eval(整 *val); /* fwd (fix 2026-08-23 t35k: 3872 sizeof-anon 数组维度求值使用点先于 5628 定义) */
 /* 文本层对象宏展开: 词边界替换, 串内/注释内不换, 链式(深度≤32 防自引用循环) */
 静 字 *obj_macro_expand(常 字 *s) {
     整 cap = (整)strlen(s) * 2 + 2048;
@@ -3869,7 +3870,7 @@ __attribute__((unused))
                         若 (bitw > 0) { st_field_bit(si, fn, fsz, fsz, bitw, funs); 若 (fdbl) st_field_dbl(si, fn); funs = 0; }
                         否 {
                             整 fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } 否 { dims++; 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == PK || tt[tk] == MK) { 整 op = tt[tk]; tk++; 若 (tt[tk] == NK) { 若 (op == PK) fsz += tv[tk]; 否 fsz -= tv[tk]; tk++; } } 若 (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
+                            循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } 否 { dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: sizeof(匿名 struct) 数组维度整体表达式求值 (原 NK/VR/PK/MK 手写分支) */
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
@@ -4158,6 +4159,7 @@ __attribute__((unused))
                 否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) cpe = 8;
                 若 (cpe && ce >= 0) pesz[ce] = cpe; /* struct/typedef/void ptr: cpe=0 -> keep old behavior (fix 2026-08-16: ce=-1 时 pesz[-1] 越界写) */
             }
+            若 (cast_nstar == 0 && ce >= 0) pesz[ce] = -1; /* t35k 2026-08-23: 非指针 cast (uintptr_t/size_t/int/long) → 整数语义 — 原无操作 cast 保留指针属性 → (uintptr_t)p-1 按 node_psz(p)=4 缩放 → cb_node_of 返回 p-4 → cbtree 多节点树崩 (short_sha 修复后暴露: %cI 等 log 格式 SIGSEGV) */
             返 ce; /* cast is no-op: value unchanged */
         }
         tk++; 整 n = expr();
@@ -4735,7 +4737,7 @@ __attribute__((unused))
                             funs = 0;
                         } 否 {
                         整 fel = fsz; /* fix 2026-08-07 */
-                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 */  若 (tt[tk] == RB) tk++; }
+                        循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } 否 { dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: 局部类型定义数组维度同样整体表达式求值 (镜像全局路径) */
                         若 (dims >= 1) frow = fsz / first;
                         否 frow = fsz;
                         st_field_sz_r(nsi, fn, fsz, frow);
@@ -5794,7 +5796,7 @@ __attribute__((unused))
                                                     若 (tt[tk] == CL) { tk++; 若 (tt[tk] == NK) { v2bw = tv[tk]; tk++; } }
                                                     整 v2sz2 = (v2t_si >= 0) ? stypes[v2t_si].sz : v2sz;
                                                     整 v2dims = 0, v2first = 1;
-                                                    循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (v2dims == 0) v2first = tv[tk]; v2dims++; v2sz2 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (v2dims == 0) v2first = evc; v2dims++; v2sz2 *= evc; } tk++; } 若 (tt[tk] == RB) tk++; }
+                                                    循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (v2dims == 0) v2first = cdim; v2dims++; v2sz2 *= cdim > 0 ? cdim : 1; } 否 { v2dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: u2 嵌套内联字段数组维度整体表达式求值 */
                                                     若 (v2bw > 0) v2sz2 = 4;
                                                     若 (u2_union) { st_union_field(u2, v2f, v2sz2); 若 (v2t_si >= 0) st_field_ty(u2, v2f, v2t_si); }
                                                     否 { 整 v2row2 = v2dims >= 1 ? v2sz2 / v2first : v2sz2; st_field_sz_r(u2, v2f, v2sz2, v2row2); 若 (v2t_si >= 0) st_field_ty(u2, v2f, v2t_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] u2 field '%s' sz=%d off=%d\n", v2f, v2sz2, stypes[u2].sz - v2sz2); /* fix 2026-08-20: struct 数组字段按元素 struct algn 校正偏移 — st_field_sz_r 只按 frow 大小推对齐 (frow=16→align 8), 元素纯 int struct (algn=4) 时应对齐 4 (exclude_group[3] 应 off 4 实 8) */ 若 (v2dims >= 1 && v2t_si >= 0 && stypes[v2t_si].algn > 1) { 整 eal5 = stypes[v2t_si].algn; 整 fidx5 = stypes[u2].fn - 1; 整 foff5 = stypes[u2].foffs[fidx5]; 整 fsz5 = stypes[u2].fsizes[fidx5]; 若 (foff5 % eal5) { 整 noff5 = foff5 + (eal5 - (foff5 % eal5)); stypes[u2].foffs[fidx5] = noff5; stypes[u2].sz = noff5 + fsz5; } } }
@@ -5822,7 +5824,7 @@ __attribute__((unused))
                                         整 msz = (u2_si >= 0) ? stypes[u2_si].sz : ufsz;
                                         若 (bitw > 0) msz = 4; /* 位域: 32 位槽 */
                                         整 mdims = 0, mfirst = 1;
-                                        循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (mdims == 0) mfirst = tv[tk]; mdims++; msz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (mdims == 0) mfirst = evc; mdims++; msz *= evc; } tk++; } 若 (tt[tk] == RB) tk++; }
+                                        循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (mdims == 0) mfirst = cdim; mdims++; msz *= cdim > 0 ? cdim : 1; } 否 { mdims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: union 成员数组维度整体表达式求值 */
                                         若 (u_is_union) { st_union_field(u_si, mf, msz); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] union field '%s' msz=%d u_si=%d u2_si=%d\n", mf, msz, u_si, u2_si); }
                                         否 { 整 mrow = mdims >= 1 ? msz / mfirst : msz; st_field_sz_r(u_si, mf, msz, mrow); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] struct field '%s' msz=%d mrow=%d u_si=%d u2_si=%d\n", mf, msz, mrow, u_si, u2_si); }
                                         若 (u_npel > 0) { 整 fidx = stypes[u_si].fn - 1; stypes[u_si].fptrs[fidx] = 1; stypes[u_si].fpels[fidx] = u_npel > 1 ? 8 : ufsz; stypes[u_si].fels[fidx] = 8; stypes[u_si].ffins[fidx] = ufsz; stypes[u_si].fdeep[fidx] = (字)u_npel; }
@@ -5954,7 +5956,7 @@ __attribute__((unused))
                             若 (tt[tk] == VR) {
                                 字 fn[64]; strcpy(fn, tn[tk]); tk++;
                                 整 fsz8 = 8, first = 1, fdims = 0;
-                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (fdims == 0) first = tv[tk]; fdims++; fsz8 *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (fdims == 0) first = evc; fdims++; fsz8 *= evc; } tk++; } /* fix 2026-08-13: 维度标识符 (原 VR 死循环) */ 若 (tt[tk] == RB) tk++; }
+                                循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (fdims == 0) first = cdim; fdims++; fsz8 *= cdim > 0 ? cdim : 1; } 否 { fdims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: fnptr 数组维度整体表达式求值 (原 NK/VR 手写分支) */
                                 若 (is_union) st_union_field(si, fn, fsz8);
                                 否 { st_field_sz_r(si, fn, fdims >= 1 ? fsz8 : 8, fdims >= 1 ? fsz8 / first : 8); st_field_ty(si, fn, -2); } /* mark fnptr field (fix 2026-08-07: 单 fnptr frow=8 — 原 1 触发 brace_fields 数组路径) */
                                 若 (tt[tk] == KK) tk++; /* skip ) closing (*cb) */
@@ -5999,7 +6001,7 @@ __attribute__((unused))
                             } 否 {
                             整 unsized = 0; /* 柔性数组 int arr[] (fix 2026-08-05: was sized 4 → sizeof overcounted) */
                             整 fel = fsz; /* fix 2026-08-07: 数组字段元素大小 */
-                            循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } 否 unsized = 1; tk++; } 否 { unsized = 1; dims++; 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == RB) tk++; /* NK/VR 后消费 ] (fix 2026-08-13 Phase3: 复杂维度 else 已跳过 ] 此句为 no-op) */ }
+                            循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } 否 { unsized = 1; dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; /* t35k 2026-08-23: 维度整体常量表达式求值 (原 NK/VR 手写分支 — `hex_pfx[GIT_MAX_HEXSZ+1]` 对象宏展开成 `(2*32)+1`, 遇 '(' 走 else → unsized=1 → fsz=0 → disambiguate_state.bin_pfx 偏移 4 实 72 → cat-file 短 SHA 失败; `[40+1]` 只吃 40 漏 +1) */ }
                             若 (dims >= 1) frow = fsz / first; /* element/row byte size (same as anon branch) */
                             否 frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             若 (unsized) { fsz = 0; frow = fel; } /* 柔性数组: 不占 struct 空间, 元素大小保留 = 基类型 fel. fix 2026-08-22 t46: 原硬编码 4 → char name[] frow=4 → name[i] 索引按 4 缩放 → ref_entry_cmp_sslice ent->name[key->len] 读错位置 → search_ref_dir bsearch 找不到 refs/ → git branch 空迭代器无输出 */
@@ -7025,9 +7027,9 @@ __attribute__((unused))
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
-                否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: typedef struct 参数 (diffdata_t *dd1) — st_find(typedef名) 找不到, 必须经 td_st_index 回退到真 struct 名, 否则箭头成员访问落"按字段名搜全部 struct"兜底 → ha 字段命中 s_xrecord (foff=20) 而非 s_diffdata (foff=8) → xdiff 哈希数组错位崩 */ tk++; } /* typedef'd struct / double alias / fnptr */
+                否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: typedef struct 参数 (diffdata_t *dd1) — st_find(typedef名) 找不到, 必须经 td_st_index 回退到真 struct 名, 否则箭头成员访问落"按字段名搜全部 struct"兜底 → ha 字段命中 s_xrecord (foff=20) 而非 s_diffdata (foff=8) → xdiff 哈希数组错位崩 */ tk++; } /* typedef'd struct / double alias / fnptr */
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
-                若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
+                若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* pointer(s) * - skip const after each * (t49c fix: const struct X * const *src middle const broke ptr chain) */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -8764,6 +8766,7 @@ __attribute__((unused))
             返 node_psz(n1[n]);
         }
     }
+    若 (pesz[n] < 0) 返 0; /* t35k 2026-08-23: 非指针整数 cast (uintptr_t/size_t) 哨兵 → 指针算术不缩放 (原 (uintptr_t)p-1 按 node_psz=4 缩放 → cb_node_of p-4 → cbtree 崩) */
     若 (pesz[n] > 0) 返 pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) */
     若 (nt[n] == 1) { /* 变量名: 数组名→元素宽, T** 指针→arr_esz(8), T*→p_esz */
         字 *vn = (字*)(nn + n);
@@ -10535,7 +10538,7 @@ __attribute__((unused))
                     整 pbsi2 = (n0[pbase] >= 0) ? var_stidx((字*)(nn + n0[pbase])) : -1;
                     若 (pbsi2 >= 0) { 整 pf2 = st_field_size(stypes[pbsi2].name, pbf2); 若 (pf2 == 1 || pf2 == 2 || pf2 == 8) pe = pf2; }
                 }
-                若 (pesz[pbase]) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width */
+                若 (pesz[pbase] > 0) pe = pesz[pbase]; /* fix 2026-08-08 width bug: (T*) direct cast deref stores by target element width; t35k: 非指针 cast 哨兵 -1 排除 */
                 }
                 整 rhs_ok = 0; /* 结构体拷贝守卫: RHS 必须是同类型结构体值/解引用 (fix 2026-08-19: 原 nt==1 即拷贝 → *p=q(指针) 误拷整块 → configset 栈损坏 → git init 崩) */
                 若 (n1[n] >= 0 && nt[n1[n]] == 12) {
@@ -10750,7 +10753,7 @@ __attribute__((unused))
                     }
                 }
             }
-            若 (pesz[pnode]) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width */
+            若 (pesz[pnode] > 0) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width; t35k: 非指针 cast 哨兵 -1 排除 */
             cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
             若 (ndbl[n] || (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode)))) { cg_mem_frow = 8; asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); 断; } /* double* deref → xmm0 */
             }
