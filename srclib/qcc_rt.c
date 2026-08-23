@@ -298,6 +298,29 @@ unsigned long long _strtoui64(const char *s, char **endptr, int base) {
     return r;
 }
 
+/* ---- strcspn/strspn (fix 2026-08-23 t35d: 直编未定义函数 → 恒返 0 → attr.c parse_attr_line
+       namelen=0 → "[attr]binary" 宏解析错 → "]bina" 警告; git -c 模式走 msvcrt 不受影响) ---- */
+size_t strcspn(const char *s, const char *reject) {
+    const char *p = s, *r;
+    for (; *p; p = p + 1) {
+        for (r = reject; *r; r = r + 1) {
+            if (*p == *r) return (size_t)(p - s);
+        }
+    }
+    return (size_t)(p - s);
+}
+size_t strspn(const char *s, const char *accept) {
+    const char *p = s, *a;
+    for (; *p; p = p + 1) {
+        int found = 0;
+        for (a = accept; *a; a = a + 1) {
+            if (*p == *a) { found = 1; break; }
+        }
+        if (!found) return (size_t)(p - s);
+    }
+    return (size_t)(p - s);
+}
+
 /* ---- 复制分配 (fix 2026-08-13: Phase 2, Git 硬需求 strdup/strndup) ---- */
 char *strdup(const char *s) {
     int n = 0; char *d;
