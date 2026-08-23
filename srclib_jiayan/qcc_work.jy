@@ -1866,7 +1866,7 @@ __attribute__((unused))
 /* -c 模式：builtin 名（编译器内联发射，不是外部函数） */
 静 整 coff_is_builtin(常 字 *n) {
     静 常 字 *bn[] = { "printf", "fprintf", "vfprintf", "sprintf", "snprintf", "vsnprintf", "_vsnprintf", "putstr", "scanf",
-        "fopen", "fread", "fwrite", "fputc", "fputs", "fgetc", "fclose", "fseek", "ftell", "rewind", /* fix 2026-08-18: fgetc 缺 → coff 模式当用户函数链到 msvcrt fgetc, 拿 HANDLE 当 FILE* 崩 (git config 读取) */
+        "fopen", "fread", "fwrite", "fputc", "fputs", "fgetc", "fclose", "fseek", "ftell", "rewind", "feof", "fflush", "ferror", "fgets", /* fix 2026-08-18: fgetc 缺 → coff 模式当用户函数链到 msvcrt fgetc, 拿 HANDLE 当 FILE* 崩 (git config 读取); fix 2026-08-24 t35t: feof/fflush/ferror 补内置 — 否则当用户函数外部调用 msvcrt, 句柄当 FILE* 崩 (reflog/strbuf_getwholeline) */
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
         "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
@@ -8582,6 +8582,91 @@ __attribute__((unused))
         set_label(lf_eof);
         mov_r_imm(0, -1); /* EOF */
         set_label(lf_done); }
+    } 否 若 (!strcmp(fname, "fseek")) {
+        /* fseek(stream=rcx, offset=rdx, origin=r8) → SetFilePointer(handle, offset, NULL, origin)
+           stream==0 (stdin/stdout) → return 0 (fix 2026-08-24 t35t: reflog 反向读取 fseek(句柄)
+           原走 msvcrt 需 FILE* 而 emit_fileio fopen 返回 HANDLE → reflog 崩) */
+        整 lfs0 = new_label(), lfs1 = new_label();
+        mov_rr64(10, 1); test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lfs0, 1);
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10); /* rcx = handle */
+        /* rdx = offset (参数原样) */
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = NULL (high) */
+        mov_rr64(9, 8); /* r9 = origin */
+        call_iat(5); /* SetFilePointer */
+        add_rsp_imm(48);
+        mov_rr64(4, 15);
+        mov_r_imm(0, 0); /* return 0 */
+        jmp_rel(-1); patch_label(cp - 4, lfs1, 2);
+        set_label(lfs0);
+        mov_r_imm(0, 0); /* stream==0 → 0 */
+        set_label(lfs1);
+    } 否 若 (!strcmp(fname, "ftell")) {
+        /* ftell(stream=rcx) → SetFilePointer(handle, 0, NULL, FILE_CURRENT=1)
+           (fix 2026-08-24 t35t: 原走 msvcrt 拿句柄当 FILE* 崩) */
+        整 lft0 = new_label(), lft1 = new_label();
+        mov_rr64(10, 1); test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lft0, 1);
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10);
+        mov_r_imm(2, 0);
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        mov_ri_ext(9, 1); /* r9 method (mov_r_imm 不支持 r9, fix 2026-08-24 t35t) */ /* FILE_CURRENT */
+        call_iat(5);
+        add_rsp_imm(48);
+        mov_rr64(4, 15);
+        jmp_rel(-1); patch_label(cp - 4, lft1, 2);
+        set_label(lft0);
+        mov_r_imm(0, 0);
+        set_label(lft1);
+    } 否 若 (!strcmp(fname, "feof")) {
+        /* feof(stream=rcx): cur=SetFilePointer(h,0,NULL,CUR); size=SetFilePointer(h,0,NULL,END);
+           恢复 cur; return (cur >= size) — 句柄语义下无缓冲 EOF 标志, 用位置比较
+           (fix 2026-08-24 t35t: strbuf_getwholeline 的 feof(句柄) 原走 msvcrt 崩) */
+        整 lfe0 = new_label(), lfe1 = new_label();
+        mov_rr64(10, 1); test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lfe0, 1);
+        /* cur */
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10); mov_r_imm(2, 0);
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        mov_ri_ext(9, 1); /* r9 method (mov_r_imm 不支持 r9, fix 2026-08-24 t35t) */ call_iat(5);
+        add_rsp_imm(48); mov_rr64(4, 15);
+        mov_mbrp_reg(scratch_base + 240 - cur_frame_sz, 0); /* 存 cur */
+        /* size */
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10); mov_r_imm(2, 0);
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        mov_ri_ext(9, 2); /* r9 method (mov_r_imm 不支持 r9) */ call_iat(5); /* FILE_END */
+        add_rsp_imm(48); mov_rr64(4, 15);
+        mov_mbrp_reg(scratch_base + 248 - cur_frame_sz, 0); /* 存 size */
+        /* 恢复 cur */
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10);
+        mov_reg_mbrp(2, scratch_base + 240 - cur_frame_sz);
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        mov_ri_ext(9, 0); /* r9 method (mov_r_imm 不支持 r9) */ call_iat(5); /* FILE_BEGIN */
+        add_rsp_imm(48); mov_rr64(4, 15);
+        /* return (cur >= size) */
+        mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = cur */
+        push_r(0);
+        mov_reg_mbrp(0, scratch_base + 248 - cur_frame_sz); /* eax = size */
+        pop_r(3); /* ebx = cur */
+        asm_emit("    比较 r3, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 0, 3); /* cmp rbx, rax → rbx-rax = cur-size */
+        b(0x0F); b(0x93); modrm(3, 0, 0); /* setae al (cur >= size → EOF) */
+        movzx_eax_al();
+        jmp_rel(-1); patch_label(cp - 4, lfe1, 2);
+        set_label(lfe0);
+        mov_r_imm(0, 0); /* stream==0 → 0 (非 EOF) */
+        set_label(lfe1);
     } 否 若 (!strcmp(fname, "fputc")) {
         /* fputc(c=rcx, stream=rdx): WriteFile(handle, &byte, 1, &written, NULL)
            stream==0 → stdout (fix 2026-08-20) */
@@ -8641,6 +8726,112 @@ __attribute__((unused))
         add_rsp_imm(48);
         mov_rr64(4, 15);
         mov_r_imm(0, 0); /* return 0 */
+    } 否 若 (!strcmp(fname, "fflush")) {
+        /* fflush(stream): 句柄 IO 无缓冲 → no-op (fix 2026-08-24 t35t) */
+        mov_r_imm(0, 0);
+    } 否 若 (!strcmp(fname, "ferror")) {
+        /* ferror(stream): 句柄语义无错误跟踪 → 0 (fix 2026-08-24 t35t) */
+        mov_r_imm(0, 0);
+    } 否 若 (!strcmp(fname, "rewind")) {
+        /* rewind(stream) = fseek(stream, 0, SEEK_SET=0) (fix 2026-08-24 t35t) */
+        整 lrw0 = new_label(), lrw1 = new_label();
+        mov_rr64(10, 1); test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lrw0, 1);
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_rr64(1, 10);
+        mov_r_imm(2, 0);
+        mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        mov_ri_ext(9, 0); /* r9 method (mov_r_imm 不支持 r9) */ /* FILE_BEGIN */
+        call_iat(5);
+        add_rsp_imm(48);
+        mov_rr64(4, 15);
+        mov_r_imm(0, 0);
+        jmp_rel(-1); patch_label(cp - 4, lrw1, 2);
+        set_label(lrw0);
+        mov_r_imm(0, 0);
+        set_label(lrw1);
+    } 否 若 (!strcmp(fname, "fclose")) {
+        /* fclose(stream): stream==0 (stdin/stdout) → 0; 否则无 CloseHandle IAT 槽 →
+           先 no-op (句柄由进程退出回收; fix 2026-08-24 t35t: 原走 msvcrt 拿句柄当 FILE* 崩) */
+        mov_r_imm(0, 0);
+    } 否 若 (!strcmp(fname, "fgets")) {
+        /* fgets(str=rcx, size=rdx, stream=r8): 逐字符 ReadFile 到 '\n'/EOF/容量; 返回 str/NULL
+           stream==0 → stdin (fix 2026-08-24 t35t: 原走 msvcrt 拿句柄当 FILE* 崩; mailmap/shallow 读文件行触发) */
+        整 l0 = new_label(), l1 = new_label(), lloop = new_label(), ldone = new_label(), leof = new_label(), lret = new_label();
+        mov_rr64(10, 1); /* r10 = str */
+        mov_rr64(11, 2); /* r11 = size */
+        mov_mbrp_reg64(scratch_base + 220 - cur_frame_sz, 10); /* 原始 str */
+        mov_mbrp_reg64(scratch_base + 224 - cur_frame_sz, 10); /* 当前 str */
+        /* size-1 → scratch+236 */
+        mov_rr64(0, 11);
+        asm_emit("    减 r0, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x83); modrm(3, 5, 0); b(1); /* sub eax,1 */
+        mov_mbrp_reg(scratch_base + 236 - cur_frame_sz, 0);
+        /* handle: r13 = stream==0 ? STD_INPUT : stream */
+        mov_rr64(13, 8); test_rr(13, 13); jz_rel(-1); patch_label(cp - 4, l0, 1);
+        jmp_rel(-1); patch_label(cp - 4, l1, 2);
+        set_label(l0);
+        mov_r_imm(1, -10); sub_rsp_imm(32); call_iat(0); add_rsp_imm(32); /* GetStdHandle(STD_INPUT) */
+        mov_rr64(13, 0);
+        set_label(l1);
+        mov_mbrp_reg64(scratch_base + 244 - cur_frame_sz, 13); /* handle */
+        mov_r_imm(0, 0); mov_mbrp_reg(scratch_base + 252 - cur_frame_sz, 0); /* count = 0 */
+        set_label(lloop);
+        /* count >= size-1 → done */
+        mov_reg_mbrp(0, scratch_base + 252 - cur_frame_sz); push_r(0);
+        mov_reg_mbrp(0, scratch_base + 236 - cur_frame_sz); pop_r(3);
+        asm_emit("    比较 r3, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 0, 3);
+        b(0x0F); b(0x93); modrm(3, 0, 0); movzx_eax_al(); /* count >= size-1 */
+        test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, ldone, 1);
+        /* ReadFile(handle, &byte, 1, &read, NULL) */
+        mov_rr64(15, 4); asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+        sub_rsp_imm(48);
+        mov_reg_mbrp64(1, scratch_base + 244 - cur_frame_sz); /* rcx = handle */
+        lea_r_mbrp(2, scratch_base + 232 - cur_frame_sz); /* &byte */
+        mov_ri_ext(8, 1); /* r8 = 1 */
+        lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz); /* &read */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
+        call_iat(3); /* ReadFile */
+        add_rsp_imm(48); mov_rr64(4, 15);
+        mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* read */
+        test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, leof, 1); /* read==0 → EOF */
+        /* str[count] = byte; eax 符号扩展 byte (movzx) */
+        mov_reg_mbrp64(3, scratch_base + 224 - cur_frame_sz); /* rbx = 当前 str */
+        { 整 d = scratch_base + 232 - cur_frame_sz;
+          若 (d >= -128 && d <= 127) { b(0x0F); b(0xB6); b(0x45); b((无 字)d); }
+          否 { b(0x0F); b(0xB6); b(0x85); b4(d); } } /* movzx eax, byte[scratch+232] */
+        mov_mbrp_reg(scratch_base + 232 - cur_frame_sz, 0); /* 保存 byte 值 (供 '\n' 检查) */
+        asm_emit("    存字节 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 0, 3); /* mov [rbx], al */
+        /* str++ */
+        mov_reg_mbrp64(0, scratch_base + 224 - cur_frame_sz);
+        asm_emit("    自增 r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0xFF); modrm(3, 0, 0);
+        mov_mbrp_reg64(scratch_base + 224 - cur_frame_sz, 0);
+        /* count++ */
+        mov_reg_mbrp(0, scratch_base + 252 - cur_frame_sz);
+        asm_emit("    自增 r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xFF); b(0xC0);
+        mov_mbrp_reg(scratch_base + 252 - cur_frame_sz, 0);
+        /* byte == '\n' → done */
+        mov_reg_mbrp(0, scratch_base + 232 - cur_frame_sz);
+        asm_emit("    比较字节即 r0, 0x0a\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x3C); b(0x0A);
+        jz_rel(-1); patch_label(cp - 4, ldone, 1);
+        jmp_rel(-1); patch_label(cp - 4, lloop, 2);
+        set_label(ldone);
+        /* *str = 0 */
+        mov_reg_mbrp64(3, scratch_base + 224 - cur_frame_sz);
+        mov_r_imm(0, 0);
+        asm_emit("    存字节 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 0, 3);
+        mov_reg_mbrp64(0, scratch_base + 220 - cur_frame_sz); /* return 原始 str */
+        jmp_rel(-1); patch_label(cp - 4, lret, 2);
+        set_label(leof);
+        /* EOF: 有字符 → 返回 str (需先 *str=0), 无字符 → NULL */
+        mov_reg_mbrp(0, scratch_base + 252 - cur_frame_sz);
+        test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lret, 1); /* count==0 → 0 */
+        mov_reg_mbrp64(3, scratch_base + 224 - cur_frame_sz);
+        mov_r_imm(0, 0);
+        asm_emit("    存字节 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 0, 3);
+        mov_reg_mbrp64(0, scratch_base + 220 - cur_frame_sz);
+        jmp_rel(-1); patch_label(cp - 4, lret, 2);
+        set_label(lret);
     }
 }
 
@@ -9761,7 +9952,7 @@ __attribute__((unused))
                 emit_print(fname, nargs);
             } 否 若 (!strcmp(fname, "scanf")) { /* fix 2026-08-12: 变参输入 builtin */
                 emit_scanf(nargs);
-            } 否 若 (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc")) {
+            } 否 若 (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc") || !strcmp(fname, "fseek") || !strcmp(fname, "ftell") || !strcmp(fname, "feof") || !strcmp(fname, "fflush") || !strcmp(fname, "fclose") || !strcmp(fname, "ferror") || !strcmp(fname, "rewind") || !strcmp(fname, "fgets")) {
                 emit_fileio(fname);
             } 否 若 (!strcmp(fname, "sprintf")) {
                 emit_sprintf(nargs, 2);
