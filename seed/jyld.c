@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#define MAX_OBJS 256
+#define MAX_OBJS 1024
 #define MAX_SECS 512
 #define MAX_SYMS 65536
 #define MAX_ARCH 1024
@@ -68,7 +68,7 @@ static JObj objs[MAX_OBJS];
 static int obj_n = 0;
 
 typedef struct { char name[NSYMLEN]; int obj; int sym; int defined; } GSym;
-static GSym gsyms[65536];
+static GSym gsyms[262144];
 static int gsym_n = 0;
 
 /* kernel32 IAT 动态槽（qcc write_pe 同源 + Gate-1 sqlite3 扩展 60+ 函数, fix 2026-08-07） */
@@ -82,12 +82,16 @@ static const char *k32_names[] = {
     "GetFileSize","GetFullPathNameA","GetFullPathNameW","GetLastError",
     "GetModuleHandleW","GetProcessHeap","GetSystemInfo","GetSystemTime",
     "GetSystemTimeAsFileTime","GetTempPathA","GetTempPathW","GetTickCount",
+    "FindFirstFileW","FindNextFileW","FindClose", /* dirent (fix 2026-08-19): compat/win32/dirent.c 真实现 */
+    "GetFileInformationByHandle","GetFileType","PeekNamedPipe", /* mingw_fstat/stat (fix 2026-08-20): prelude stub 移除后需真链接 — 原 _get_osfhandle stub -1 → mingw_fstat EBADF → git init fstat config 失败 */
     "HeapAlloc","HeapCompact","HeapCreate","HeapDestroy","HeapFree",
     "HeapReAlloc","HeapSize","HeapValidate","LocalFree","LockFile","LockFileEx",
     "MapViewOfFile","MultiByteToWideChar","OutputDebugStringA","OutputDebugStringW",
     "QueryPerformanceCounter","SetEndOfFile","Sleep","SystemTimeToFileTime",
     "UnlockFile","UnlockFileEx","UnmapViewOfFile","WaitForSingleObject",
-    "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI"
+    "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI",
+    "InitializeCriticalSection","DeleteCriticalSection","EnterCriticalSection","LeaveCriticalSection",
+    "InitializeConditionVariable","SleepConditionVariableCS","WakeConditionVariable","WakeAllConditionVariable"
 };
 #define K32_MAX 128
 static int k32_used[K32_MAX]; /* 槽 → 名字索引 */
@@ -99,6 +103,8 @@ static int kdesc_off = 0;    /* kernel32 导入描述符 .data 偏移 */
 static int mdesc_off = 0;    /* msvcrt 导入描述符 .data 偏移 */
 static int g_pdata_rva = 0;  /* .pdata 异常表 RVA (Exception Directory) */
 static int g_pdata_len = 0;   /* .pdata 总大小 */
+static int g_heap_obj = -1;   /* __qcc_heap_counter 内置对象索引 */
+static int g_heap_counter_off = -1; /* 该对象 .data 节在 OUT_DATA 缓冲区中的偏移 */
 
 /* ---------- 读取文件 ---------- */
 static uint8_t *read_all(const char *path, int *len) {
@@ -363,10 +369,179 @@ static void add_builtin_main(void) {
     obj_n++;
 }
 
+/* ---------- 内置 errno: 多 .o 链接时提供唯一定义 (compat_prelude.h extern int errno) ---------- */
+static void add_builtin_errno(void) {
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-errno>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)calloc(4, 1); /* int errno = 0 */
+    o->secs[0].size = 4;
+    o->secs[0].align = 4;
+    memcpy(o->secs[0].name, ".data", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "errno");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2; /* 定义 */
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    obj_n++;
+}
+
+/* ---------- 内置 __qcc_heap_counter: qcc -c 内建 malloc/calloc 的共享堆计数器 ---------- */
+static void add_builtin_heap_counter(void) {
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-heap>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)calloc(8, 1); /* 64 位计数器，初始 0 */
+    o->secs[0].size = 8;
+    o->secs[0].align = 8;
+    memcpy(o->secs[0].name, ".data", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "__qcc_heap_counter");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2; /* 定义 */
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    obj_n++;
+    g_heap_obj = obj_n - 1;
+}
+
+/* ---------- 内置 regex stub：compat/regex/regex.c 在 qcc -c 下超时，提供 0 返回值 stub 满足链接 ---------- */
+static GSym *gsym_add(const char *name); /* fwd (fix 2026-08-15: ipc stub 在 gsym_add 定义前使用) */
+static void add_builtin_regex_stubs(void) {
+    static const char *names[] = { "git_regexec", "git_regcomp", "git_regfree", "git_regerror" };
+    int n = (int)(sizeof(names) / sizeof(names[0]));
+    int include[8]; int inc_n = 0;
+    for (int i = 0; i < n; i++) {
+        GSym *g = gsym_add(names[i]);
+        if (!g->defined) include[inc_n++] = i;
+    }
+    if (inc_n == 0) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-regex>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(inc_n * 6);
+    o->secs[0].size = inc_n * 6;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    for (int j = 0; j < inc_n; j++) {
+        o->secs[0].data[j * 6 + 0] = 0xB8; /* mov eax, 0 */
+        o->secs[0].data[j * 6 + 1] = 0;
+        o->secs[0].data[j * 6 + 2] = 0;
+        o->secs[0].data[j * 6 + 3] = 0;
+        o->secs[0].data[j * 6 + 4] = 0;
+        o->secs[0].data[j * 6 + 5] = 0xC3; /* ret */
+    }
+    o->nsym = inc_n;
+    o->syms = (JSym*)calloc(inc_n ? inc_n : 1, sizeof(JSym));
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    for (int j = 0; j < inc_n; j++) {
+        GSym *g = gsym_add(names[include[j]]);
+        strcpy(o->syms[j].name, names[include[j]]);
+        o->syms[j].value = j * 6;
+        o->syms[j].sec = 1;
+        o->syms[j].sc = 2;
+        g->obj = obj_n - 1;
+        g->sym = j;
+        g->defined = 1;
+    }
+}
+
+/* ---------- 内置 gettext `_` stub: 恒等返回 msgid ---------- */
+static void add_builtin_gettext_stub(void) {
+    GSym *g = gsym_add("_");
+    if (g->defined) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-gettext>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(3);
+    o->secs[0].data[0] = 0x48; /* mov rax, rcx */
+    o->secs[0].data[1] = 0x89;
+    o->secs[0].data[2] = 0xC8;
+    o->secs[0].size = 3;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    o->nsym = 1;
+    o->syms = (JSym*)calloc(1, sizeof(JSym));
+    strcpy(o->syms[0].name, "_");
+    o->syms[0].value = 0;
+    o->syms[0].sec = 1;
+    o->syms[0].sc = 2;
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    g->obj = obj_n - 1;
+    g->sym = 0;
+    g->defined = 1;
+}
+
+/* ---------- 内置 simple-ipc stub：_git_all_objects.py 跳过 compat/simple-ipc/ 下的 win32.c (fix 2026-08-15: ipc_server_run_async undefined) ---------- */
+static void add_builtin_ipc_stubs(void) {
+    static const char *names[] = {
+        "ipc_client_try_connect", "ipc_client_close_connection",
+        "ipc_client_send_command_to_connection", "ipc_client_send_command",
+        "ipc_server_run_async", "ipc_server_stop_async", "ipc_server_await",
+        "ipc_server_free", "ipc_server_run",
+        "ipc_get_active_state",
+        "has_non_ascii", "update_server_info"
+    };
+    int n = (int)(sizeof(names) / sizeof(names[0]));
+    int include[16]; int inc_n = 0;
+    for (int i = 0; i < n; i++) {
+        GSym *g = gsym_add(names[i]);
+        if (!g->defined) include[inc_n++] = i;
+    }
+    if (inc_n == 0) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    o->filename = "<builtin-ipc>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)malloc(inc_n ? inc_n : 1);
+    o->secs[0].size = inc_n;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    for (int j = 0; j < inc_n; j++) o->secs[0].data[j] = 0xC3; /* ret */
+    o->nsym = inc_n;
+    o->syms = (JSym*)calloc(inc_n ? inc_n : 1, sizeof(JSym));
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->nrel[0] = 0;
+    o->rels = NULL;
+    obj_n++;
+    for (int j = 0; j < inc_n; j++) {
+        GSym *g = gsym_add(names[include[j]]);
+        strcpy(o->syms[j].name, names[include[j]]);
+        o->syms[j].value = j;
+        o->syms[j].sec = 1;
+        o->syms[j].sc = 2;
+        g->obj = obj_n - 1;
+        g->sym = j;
+        g->defined = 1;
+    }
+}
+
 /* ---------- 全局符号表 ---------- */
 static GSym *gsym_add(const char *name) {
     for (int i = 0; i < gsym_n; i++) if (!strcmp(gsyms[i].name, name)) return &gsyms[i];
-    if (gsym_n >= 65536) { fprintf(stderr, "jyld: symbol overflow\n"); exit(1); }
+    if (gsym_n >= 262144) { fprintf(stderr, "jyld: symbol overflow\n"); exit(1); }
     GSym *g = &gsyms[gsym_n++];
     strncpy(g->name, name, NSYMLEN - 1); g->name[NSYMLEN - 1] = 0;
     g->obj = -1; g->sym = -1; g->defined = 0;
@@ -395,18 +570,30 @@ static const char *msvcrt_names[] = {
     "printf","fprintf","sprintf","_snprintf","scanf","fscanf","sscanf","puts","gets",
     "putchar","getchar","malloc","calloc","realloc","free","memcpy","memset",
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
-    "strrchr","strstr","strtol","strtod","atoi","atof","atol","exit","abort",
+    "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
+    "_strtoi64","_strtoui64","_putenv","_iob",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
-    "fgets","fputs","vprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
+    "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
+    "_mkdir","_open","_close","_read","_write","_lseek","_dup","_dup2",
+    "_getpid","_isatty","_fileno","_get_osfhandle", /* mingw_fstat fd→HANDLE (fix 2026-08-20): 原 prelude stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败 */
+    "_unlink","_rmdir","_chmod","_access",
+    "_fdopen","_pipe","_popen","_pclose",
+    "_stat","_fstat",
+    "_errno",
+    "strerror","_strerror","_strdup",
+    "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
+    "_findfirst","_findnext","_findclose", /* dirent 兼容: prelude_dirent.c (fix 2026-08-19) */
     "memcmp","memchr","strtok","strspn","strcspn","strpbrk","strcoll","strxfrm",
+    "_stricmp","_strnicmp",
     "toupper","tolower","isalpha","isdigit","isalnum","isspace","isupper","islower",
     "isxdigit","isprint","ispunct","iscntrl","isgraph",
     "floor","ceil","sqrt","pow","fabs","fmod","sin","cos","tan","asin","acos","atan",
     "atan2","exp","log","log10","ldexp","frexp","modf",
     "feof","ferror","clearerr","ungetc","freopen","setbuf","setvbuf","tmpfile","tmpnam",
     "signal","raise","setjmp","longjmp","div","mktime","localtime","gmtime","difftime","strftime",
-    "_mktime64","_localtime64","_gmtime64","_difftime64"
+    "_mktime64","_localtime64","_gmtime64","_difftime64",
+    "_gmtime64_s","_localtime64_s" /* fix 2026-08-22: gmtime_s/localtime_s 映射到 msvcrt 真函数 (原 compat_prelude stub 返回 0 不填充 tm) */
 };
 #define MSVCRT_MAX 192
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */
@@ -429,6 +616,7 @@ static int msvcrt_find_slot(int mi) {
     for (int s = 0; s < msvcrt_n; s++) if (msvcrt_used[s] == mi) return s;
     if (msvcrt_n >= MSVCRT_MAX) return -1;
     msvcrt_used[msvcrt_n] = mi;
+    if (getenv("JYLD_MSVCRT")) fprintf(stderr, "[MSVCRT-SLOT] slot=%d mi=%d\n", msvcrt_n, mi); /* tmp diag t48 */
     return msvcrt_n++;
 }
 static int msvcrt_is_direct_slot(int slot) {
@@ -469,10 +657,37 @@ static int resolve_one(GSym *g) {
         for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)
             if (!strcmp(msvcrt_names[k], mn)) { mi = k; break; }
         if (mi < 0) {
-            /* alias: C99 name -> msvcrt export (msvcrt.dll has no snprintf/vsnprintf) */
+            /* alias: C99/POSIX name -> msvcrt export (msvcrt.dll 只导出下划线版) */
             const char *alias = NULL;
             if (!strcmp(mn, "snprintf")) alias = "_snprintf";
             else if (!strcmp(mn, "vsnprintf")) alias = "_vsnprintf";
+            else if (!strcmp(mn, "mkdir")) alias = "_mkdir";
+            else if (!strcmp(mn, "open")) alias = "_open";
+            else if (!strcmp(mn, "close")) alias = "_close";
+            else if (!strcmp(mn, "read")) alias = "_read";
+            else if (!strcmp(mn, "write")) alias = "_write";
+            else if (!strcmp(mn, "lseek")) alias = "_lseek";
+            else if (!strcmp(mn, "dup")) alias = "_dup";
+            else if (!strcmp(mn, "dup2")) alias = "_dup2";
+            else if (!strcmp(mn, "getpid")) alias = "_getpid";
+            else if (!strcmp(mn, "isatty")) alias = "_isatty";
+            else if (!strcmp(mn, "fileno")) alias = "_fileno";
+            else if (!strcmp(mn, "unlink")) alias = "_unlink";
+            else if (!strcmp(mn, "rmdir")) alias = "_rmdir";
+            else if (!strcmp(mn, "chmod")) alias = "_chmod";
+            else if (!strcmp(mn, "access")) alias = "_access";
+            else if (!strcmp(mn, "fdopen")) alias = "_fdopen";
+            else if (!strcmp(mn, "pipe")) alias = "_pipe";
+            else if (!strcmp(mn, "popen")) alias = "_popen";
+            else if (!strcmp(mn, "pclose")) alias = "_pclose";
+            else if (!strcmp(mn, "strdup")) alias = "_strdup";
+            else if (!strcmp(mn, "umask")) alias = "_umask";
+            else if (!strcmp(mn, "getcwd")) alias = "_getcwd";
+            else if (!strcmp(mn, "chdir")) alias = "_chdir";
+            else if (!strcmp(mn, "stat")) alias = "_stat";
+            else if (!strcmp(mn, "fstat")) alias = "_fstat";
+            else if (!strcmp(mn, "putenv")) alias = "_putenv"; /* fix 2026-08-23 t49e: msvcrt exports only _putenv */
+            else if (!strcmp(mn, "lstat")) alias = "_stat";
             if (alias) {
                 for (int k = 0; k < (int)(sizeof(msvcrt_names)/sizeof(msvcrt_names[0])); k++)
                     if (!strcmp(msvcrt_names[k], alias)) { mi = k; break; }
@@ -528,6 +743,30 @@ static int resolve_all(void) {
             gm->defined = 1;
         }
     }
+    /* errno 变量: compat_prelude.h extern int errno → 提供唯一定义 (fix 2026-08-14 全量链接) */
+    {
+        GSym *ge = gsym_add("errno");
+        if (!ge->defined) {
+            add_builtin_errno();
+            ge->obj = obj_n - 1;
+            ge->sym = 0;
+            ge->defined = 1;
+        }
+    }
+    /* qcc -c 内建 malloc/calloc 共享堆计数器: 多 .o 下提供唯一定义 */
+    {
+        GSym *gh = gsym_add("__qcc_heap_counter");
+        if (!gh->defined) {
+            add_builtin_heap_counter();
+            gh->obj = obj_n - 1;
+            gh->sym = 0;
+            gh->defined = 1;
+        }
+    }
+    /* simple-ipc stubs: compat/simple-ipc/ 下的 win32.c 被 _git_all_objects.py 跳过, 链接缺 ipc_server_* 定义 (fix 2026-08-15) */
+    add_builtin_ipc_stubs();
+    add_builtin_regex_stubs();
+    add_builtin_gettext_stub();
     int progress = 1;
     while (progress) {
         progress = 0;
@@ -636,6 +875,7 @@ static void layout(void) {
             int off = (glob_off[which] + need - 1) & ~(need - 1);
             if (off > glob_off[which] && which != OUT_BSS) out_pad(which, off - glob_off[which]);
             o->secs[si].out_off = off;
+            if (oi == g_heap_obj && which == OUT_DATA) g_heap_counter_off = off;
             glob_off[which] = off + o->secs[si].size;
             if (which == OUT_BSS) {
                 total_stc_n += (o->secs[si].size + 3) / 4;
@@ -706,8 +946,8 @@ static void layout(void) {
             mhint_end += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint_end;
         int miat = (mdll + 11 + 7) & ~7; /* "msvcrt.dll\0" 后 8 对齐 (fix 2026-08-07: 原 miat=mdll+11 奇数地址, IAT 槽错位; loader 能处理但 x64 惯例应 8 对齐) */
-        int milt = miat + msvcrt_n * 8;
-        int mend = milt + msvcrt_n * 8;
+        int milt = miat + msvcrt_n * 8 + 8; /* +8: IAT 终止 0 槽 (fix 2026-08-22 t48: msvcrt IAT/ILT 缺终止符 → loader 读越界到 out_data → STATUS_ENTRYPOINT_NOT_FOUND) */
+        int mend = milt + msvcrt_n * 8 + 8; /* +8: ILT 终止 0 槽 */
         msvcrt_iat_off = miat;
         msvcrt_end = (mend + 15) & ~15;
     }
@@ -721,6 +961,15 @@ static void layout(void) {
     { int abss = max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]; /* fix 2026-08-07: .bss 128 对齐（COFF 位 0x8） */
       out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
     bss_rva_base = out_base[OUT_BSS];
+    fprintf(stderr, "[BSS!] data_rva_base=%x msvcrt_end=%x outdata=%d abss=%d -> bss=%x\n", data_rva_base, msvcrt_end, out_len[OUT_DATA], (max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]), bss_rva_base);
+    if (getenv("JYLD_DBG_HEAP")) fprintf(stderr, "[LY] data_rva_base=%x gco=%d\n", data_rva_base, g_heap_counter_off);
+    fprintf(stderr, "[LY!] data_rva_base=%x bss_rva_base=%x outdata=%d outbss=%d gco=%d gtext=%d outdataptr=%p\n", data_rva_base, bss_rva_base, out_len[OUT_DATA], out_len[OUT_BSS], g_heap_counter_off, g_text_total, (void*)out_data[OUT_DATA]);
+    if (g_heap_counter_off >= 0 && out_data[OUT_DATA]) {
+        long long heap_va = 0x400000LL + bss_rva_base + out_len[OUT_BSS] + 2560; /* fix 2026-08-15: 漏加 argv/token 区 2560 → malloc 堆起点落在 argv[0] → git_setup_gettext 的 calloc 清空 argv → cmd_main 读 argv[1]=NULL 崩溃 */
+        heap_va = (heap_va + 7) & ~7LL;
+        printf("[HV!] heap_va=%llx bss_rva_base=%x outbss=%d gco=%d outdatanull=%d\n", heap_va, bss_rva_base, out_len[OUT_BSS], g_heap_counter_off, out_data[OUT_DATA] == NULL);
+        w8_at(out_data[OUT_DATA] + g_heap_counter_off, heap_va);
+    }
     /* .pdata 异常表 RVA (fix 2026-08-07) */
     g_pdata_rva = 0; g_pdata_len = 0;
     for (int oi2 = 0; oi2 < obj_n; oi2++) {
@@ -754,6 +1003,8 @@ static void layout(void) {
             if (getenv("JYLD_DEBUG") && oi == 1)
                 fprintf(stderr, "[dbg] sym %s sec=%d sc=%d value=%d rva=%llx\n",
                         s->name, s->sec, s->sc, s->value, s->resolved_va);
+            if (getenv("JYLD_DBG_HEAP") && !strcmp(s->name, "__qcc_heap_counter"))
+                fprintf(stderr, "[HEAP] DEF oi=%d sym=%d sec=%d rva=%llx (data_rva_base=%x outoff=%d outlen=%d)\n", oi, si, s->sec, s->resolved_va, data_rva_base, o->secs[s->sec-1].out_off, o->secs[s->sec-1].size);
             if (getenv("JYLD_DEBUG") && oi == 0)
                 fprintf(stderr, "[dbg0] sec %d name %s out_off %d size %d\n",
                         si, o->secs[si].name, o->secs[si].out_off, o->secs[si].size);
@@ -768,6 +1019,8 @@ static void layout(void) {
                 GSym *g = gsym_add(s->name);
                 if (g->defined && g->obj >= 0) {
                     s->resolved_va = objs[g->obj].syms[g->sym].resolved_va;
+                    if (getenv("JYLD_DBG_HEAP") && !strcmp(s->name, "__qcc_heap_counter"))
+                        fprintf(stderr, "[HEAP] REF oi=%d -> def obj=%d sym=%d va=%llx\n", oi, g->obj, g->sym, s->resolved_va);
                 } else if (g->defined && g->obj == -2) {
                     k32_thunk_idx(g->sym); /* fix 2026-08-07: 记录需要 thunk 的 kernel32 槽 */
                     s->resolved_va = 0x400000LL + data_rva_base + 8 + 8LL * g->sym;
@@ -834,6 +1087,12 @@ static void apply_relocs(void) {
                 int site = base + r->va;
                 uint8_t *at = out_data[which] + o->secs[si].out_off + r->va;
                 int addend = (int)r4(at);
+                if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_vtable")))
+                    fprintf(stderr, "[VTB] ref to vtable: sec=%d value=0x%x resolved=0x%llx site=0x%x type=0x%x\n",
+                            o->syms[csym].sec, o->syms[csym].value, target, site, r->type);
+                if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_advance")))
+                    fprintf(stderr, "[VTDBG] %s adv: sym sec=%d value=0x%x secs_rva=0x%llx resolved=0x%llx\n",
+                            o->filename, o->syms[csym].sec, o->syms[csym].value, (long long)(o->syms[csym].sec > 0 ? o->secs[o->syms[csym].sec-1].rva : 0), target);
                 switch (r->type) {
                     case 0x0000: /* ABSOLUTE: 值 += 目标 RVA (.pdata BeginAddress/UnwindInfoAddress, fix 2026-08-07) */
                         w4_at(at, addend + (int)(target - 0x400000LL));
@@ -846,6 +1105,8 @@ static void apply_relocs(void) {
                         break;
                     case 0x0002: /* ADDR32 */
                         w4_at(at, (int)(target + addend));
+                        if (getenv("JYLD_DEBUG") && (csym >= 0 && !strcmp(o->syms[csym].name, "files_ref_iterator_advance")))
+                            fprintf(stderr, "[VTW] wrote 0x%x at out_data[%d]+0x%llx (sec %s)\n", (int)(target + addend), which, (unsigned long long)(o->secs[si].out_off + r->va), o->secs[si].name);
                         break;
                     case 0x0001: /* ADDR64 */
                         w8_at(at, target + addend);
@@ -957,8 +1218,9 @@ static int gen_crt(uint8_t *buf, int base_off, int main_va) {
     /* 完整 argv 解析（移植 qcc emit_crt_stub）：GetCommandLineA → 空格分割 → argc/argv */
     cr_mov_ri(buf, &p, 11, 0);             /* r11 = i (scan idx) */
     cr_mov_ri(buf, &p, 14, 0);             /* r14 = argc */
-    int lab[7];
-    for (int li = 0; li < 7; li++) lab[li] = -1;
+    cr_mov_ri(buf, &p, 9, 0);              /* r9 = in-quote flag (fix 2026-08-19: argv 引号支持 — 原只空格分割, git commit -m "first commit" 拆错; 用 r9 非 r15 — r15 保存 loader rsp 调用 main 前恢复) */
+    int lab[10];
+    for (int li = 0; li < 10; li++) lab[li] = -1;
     int bf[16][2]; int bf_n = 0;           /* 回填: {disp位置, label} */
     #define BF_JZ(l) { cr_jz_rel(buf, &p, 0); bf[bf_n][0] = p - 4; bf[bf_n][1] = (l); bf_n++; }
     #define BF_JMP(l) { cr_jmp_rel(buf, &p, 0); bf[bf_n][0] = p - 4; bf[bf_n][1] = (l); bf_n++; }
@@ -970,15 +1232,35 @@ static int gen_crt(uint8_t *buf, int base_off, int main_va) {
     BF_JZ(6);                              /* jz L_done */
     cr_cmp_ri8(buf, &p, 1, 0x20);          /* cmp ecx, ' ' */
     BF_JZ(5);                              /* jz L_skip */
+    cr_cmp_ri8(buf, &p, 1, 0x22);          /* cmp ecx, '"' */
+    BF_JZ(7);                              /* jz L_qstart */
     cr_mov_rr64(buf, &p, 8, 13);           /* r8 = token_start (r13) */
     lab[1] = p; /* L_copy: */
     cr_movzx_sib(buf, &p);
     cr_mov_rr32(buf, &p, 1, 0);
     cr_test_rr32(buf, &p, 1);
     BF_JZ(3);                              /* jz L_end_n */
-    cr_cmp_ri8(buf, &p, 1, 0x20);
-    BF_JZ(2);                              /* jz L_end_s */
+    cr_cmp_ri8(buf, &p, 1, 0x22);          /* cmp ecx, '"' */
+    BF_JZ(8);                              /* jz L_quote */
+    cr_cmp_ri8(buf, &p, 1, 0x20);          /* cmp ecx, ' ' */
+    BF_JZ(9);                              /* jz L_spc */
     cr_store_byte_m13_cl(buf, &p);         /* mov byte [r13], cl */
+    cr_inc_r11(buf, &p);
+    cr_inc_r13(buf, &p);
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[7] = p; /* L_qstart: 引号 token 起点 — 跳过 "，置 in-quote=1 */
+    cr_inc_r11(buf, &p);                   /* skip " */
+    cr_mov_ri(buf, &p, 9, 1);              /* in-quote = 1 */
+    cr_mov_rr64(buf, &p, 8, 13);           /* r8 = token_start */
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[8] = p; /* L_quote: 翻转引号状态 — 跳过 "，不写入 token */
+    cr_inc_r11(buf, &p);                   /* skip " */
+    buf[p++]=0x41; buf[p++]=0x83; buf[p++]=0xF1; buf[p++]=0x01; /* xor r9d, 1 */
+    BF_JMP(1);                             /* jmp L_copy */
+    lab[9] = p; /* L_spc: 引号内空格复制, 引号外结束 token */
+    cr_cmp_ri8(buf, &p, 9, 0);             /* cmp r9d, 0 */
+    BF_JZ(2);                              /* jz L_end_s */
+    cr_store_byte_m13_cl(buf, &p);         /* 引号内空格: 复制 */
     cr_inc_r11(buf, &p);
     cr_inc_r13(buf, &p);
     BF_JMP(1);                             /* jmp L_copy */
@@ -1026,6 +1308,7 @@ static void write_pe(FILE *f, int entry_rva) {
     int text_size = (text_total + 4095) & ~4095;
     if (text_size < 512) text_size = 512;
     int need = data_rva_base - text_rva;
+    if (getenv("JYLD_DBG_HEAP")) fprintf(stderr, "[WP] g_text_total=%d text_size=%x data_rva_base=%x need=%x\n", text_total, text_size, data_rva_base, need);
     if (text_size < need) text_size = need;
     int text_foff = 0x200;
     int data_rva = data_rva_base;
@@ -1109,7 +1392,7 @@ static void write_pe(FILE *f, int entry_rva) {
             mhint += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         int mdll = mhint;                     /* "msvcrt.dll" */
         int miat = (mdll + 11 + 7) & ~7;                 /* msvcrt IAT (8 对齐, fix 2026-08-07, 与 layout 一致) */
-        int milt = miat + msvcrt_n * 8;       /* msvcrt ILT */
+        int milt = miat + msvcrt_n * 8 + 8;       /* msvcrt ILT (+8: IAT 终止 0, fix 2026-08-22 t48) */
         /* msvcrt 导入描述符 (动态位置, fix 2026-08-07) */
         fseek(f, data_foff + mdesc_off, SEEK_SET);
         w4(f, data_rva_base + milt); /* OriginalFirstThunk = ILT RVA */
@@ -1136,17 +1419,34 @@ static void write_pe(FILE *f, int entry_rva) {
             w8(f, (long long)(data_rva_base + hoff));
             hoff += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         }
+        fseek(f, data_foff + miat + msvcrt_n * 8, SEEK_SET);
+        w8(f, 0); /* IAT 终止 0 (fix 2026-08-22 t48: 原缺终止 → loader 读越界到 out_data → STATUS_ENTRYPOINT_NOT_FOUND) */
         hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
             fseek(f, data_foff + milt + s * 8, SEEK_SET);
             w8(f, (long long)(data_rva_base + hoff));
             hoff += 2 + (int)strlen(msvcrt_names[msvcrt_used[s]]) + 1;
         }
+        fseek(f, data_foff + milt + msvcrt_n * 8, SEEK_SET);
+        w8(f, 0); /* ILT 终止 0 (fix 2026-08-22 t48) */
     }
     /* 可写 .data 初始化内容（导入区之后） */
     if (out_len[OUT_DATA]) {
+        if (getenv("JYLD_DEBUG")) {
+            fprintf(stderr, "[PEW] out_data[4]+0xa5288 = 0x%x (before fwrite)\n", *(unsigned int*)(out_data[OUT_DATA] + 0xa5288));
+            fprintf(stderr, "[PEW] out_data[4]+0xa5188 = 0x%x\n", *(unsigned int*)(out_data[OUT_DATA] + 0xa5188));
+            fprintf(stderr, "[PEW] out_data[4]+0xa5270.. = ");
+            for (int k = 0; k < 8; k++) fprintf(stderr, "%08x ", *(unsigned int*)(out_data[OUT_DATA] + 0xa5270 + k*4));
+            fprintf(stderr, "\n");
+        }
         fseek(f, data_foff + msvcrt_end, SEEK_SET);
         fwrite(out_data[OUT_DATA], 1, out_len[OUT_DATA], f);
+        if (getenv("JYLD_DEBUG")) {
+            fprintf(stderr, "[PEW] msvcrt_end=%d out_len=%d data_foff=0x%x fwrite_pos=0x%x data_raw=0x%x\n", msvcrt_end, out_len[OUT_DATA], data_foff, data_foff + msvcrt_end, data_raw);
+            fflush(f);
+            unsigned int v; fseek(f, data_foff + msvcrt_end + 0xa5288, SEEK_SET); fread(&v, 1, 4, f);
+            fprintf(stderr, "[PEW] after-fwrite file@vtable = 0x%x\n", v);
+        }
     }
     /* pad .data to raw size（从 .data 内容之后开始，勿覆盖） */
     fseek(f, data_foff + msvcrt_end + out_len[OUT_DATA], SEEK_SET);
@@ -1238,5 +1538,17 @@ int main(int argc, char **argv) {
     fclose(f);
     printf("jyld: %s linked (%d objs, text=%d bytes, entry=0x%X)\n", outf, obj_n,
            out_len[OUT_TEXT] + out_len[OUT_STR] + out_len[OUT_DBL], entry_rva);
+    if (getenv("JYLD_SYMS")) {
+        FILE *sf = fopen("_syms.txt", "w");
+        for (int g = 0; g < gsym_n; g++) {
+            if (1) {
+                long long va = 0;
+                if (gsyms[g].defined && gsyms[g].obj >= 0 && gsyms[g].sym >= 0)
+                    va = objs[gsyms[g].obj].syms[gsyms[g].sym].resolved_va;
+                if (sf) fprintf(sf, "[SYM] %-44s va=0x%llx obj=%d\n", gsyms[g].name, va, gsyms[g].obj);
+            }
+        }
+        if (sf) fclose(sf);
+    }
     return 0;
 }

@@ -15,19 +15,25 @@ void *_va_alloc(int n);
 int _setpos(void *f, int off, int whence);
 int _getpos(void *f);
 void _exit_proc(int c);
+unsigned int _bump_top(void);
+void _bump_set(unsigned int);
 #else
-/* qcc 自宿主: 标准头被跳过；size_t 由 qcc 自己提供 */
-typedef unsigned int size_t;
+/* qcc 自宿主: 标准头被跳过；size_t 由 qcc 自己提供 (fix 2026-08-17: Win64 size_t=8B, 原 int 4B → strbuf 布局错 → git 崩) */
+typedef unsigned long long size_t;
 #endif
 
 
 #ifndef __GNUC__ /* gcc: 用 libc 版本；qcc 自宿主: 自定义实现 */
 
-/* ---- heap: realloc = fresh malloc + copy (bump allocator never frees;
-       the over-read stays inside .data, which is fully mapped) ---- */
+/* ---- heap: realloc 原地扩展 (p == 堆顶) / fresh malloc+copy (非堆顶);
+       free 堆顶回退 (fix 2026-08-13 Phase3 根治 bump 泄漏, 替代 256MB 堆预算治标) ---- */
 void *realloc(void *p, size_t n) { /* fix M6: int->size_t 与 stdlib 一致 */
     char *q;
     if (n <= 0) n = 1;
+    if (p && p == (void*)(unsigned long)_bump_top()) {
+        _bump_set((unsigned int)((unsigned long)p + n));
+        return p;
+    }
     q = malloc(n);
     if (p && q) {
         memcpy(q, p, n);
@@ -35,7 +41,9 @@ void *realloc(void *p, size_t n) { /* fix M6: int->size_t 与 stdlib 一致 */
     return q;
 }
 
-void free(void *p) { }
+void free(void *p) {
+    if (p && p == (void*)(unsigned long)_bump_top()) _bump_set((unsigned int)(unsigned long)p);
+}
 
 /* ---- process termination ---- */
 void exit(int c) {
@@ -144,6 +152,226 @@ int isalnum(int c) {
 
 int isxdigit(int c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+int isspace(int c) { /* fix 2026-08-13: 补齐 ctype (Git 需要) */
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
+/* ---- 反向查找 (fix 2026-08-13: Phase 2 标准库补齐) ---- */
+char *strrchr(const char *s, int c) {
+    int i = 0; char *last = 0;
+    while (1) {
+        if (s[i] == c) last = (char*)(&s[i]);
+        if (s[i] == 0) break;
+        i = i + 1;
+    }
+    return last;
+}
+
+void *memchr(const void *s, int c, size_t n) {
+    int i = 0; char *b = (char*)s;
+    while (i < n) {
+        if (b[i] == c) return (void*)(b + i);
+        i = i + 1;
+    }
+    return 0;
+}
+
+void *memmove(void *d, const void *s, size_t n) {
+    int i = 0; char *dd = (char*)d; char *ss = (char*)s;
+    if (dd <= ss) {
+        while (i < n) { dd[i] = ss[i]; i = i + 1; }
+    } else {
+        i = n;
+        while (i > 0) { i = i - 1; dd[i] = ss[i]; }
+    }
+    return d;
+}
+
+/* ---- 数字转换 (fix 2026-08-13: Phase 2) ---- */
+int atoi(const char *s) {
+    int neg = 0; int r = 0;
+    while (isspace(s[0])) s = s + 1;
+    if (s[0] == '-') { neg = 1; s = s + 1; }
+    while (s[0] >= '0' && s[0] <= '9') { r = r * 10 + (s[0] - '0'); s = s + 1; }
+    if (neg) r = -r;
+    return r;
+}
+
+long atol(const char *s) {
+    long neg = 0; long r = 0;
+    while (isspace(s[0])) s = s + 1;
+    if (s[0] == '-') { neg = 1; s = s + 1; }
+    while (s[0] >= '0' && s[0] <= '9') { r = r * 10 + (s[0] - '0'); s = s + 1; }
+    if (neg) r = -r;
+    return r;
+}
+
+long strtol(const char *s, char **endptr, int base) {
+    long neg = 0; long r = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = -r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
+unsigned long strtoul(const char *s, char **endptr, int base) {
+    unsigned long r = 0; unsigned long neg = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = 0 - r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
+unsigned long long _strtoui64(const char *s, char **endptr, int base) {
+    unsigned long long r = 0; unsigned long long neg = 0;
+    const char *p = s;
+    while (isspace(p[0])) p = p + 1;
+    if (p[0] == '-') { neg = 1; p = p + 1; }
+    else if (p[0] == '+') { p = p + 1; }
+    if (base == 0) {
+        base = 10;
+        if (p[0] == '0') {
+            if (p[1] == 'x' || p[1] == 'X') { base = 16; p = p + 2; }
+            else base = 8;
+        }
+    } else if (base == 16 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p = p + 2;
+    }
+    while (1) {
+        int d;
+        if (p[0] >= '0' && p[0] <= '9') d = p[0] - '0';
+        else if (p[0] >= 'a' && p[0] <= 'z') d = p[0] - 'a' + 10;
+        else if (p[0] >= 'A' && p[0] <= 'Z') d = p[0] - 'A' + 10;
+        else break;
+        if (d >= base) break;
+        r = r * base + d;
+        p = p + 1;
+    }
+    if (neg) r = 0 - r;
+    if (endptr) *endptr = (char*)(p);
+    return r;
+}
+
+/* ---- strcspn/strspn (fix 2026-08-23 t35d: 直编未定义函数 → 恒返 0 → attr.c parse_attr_line
+       namelen=0 → "[attr]binary" 宏解析错 → "]bina" 警告; git -c 模式走 msvcrt 不受影响) ---- */
+size_t strcspn(const char *s, const char *reject) {
+    const char *p = s, *r;
+    for (; *p; p = p + 1) {
+        for (r = reject; *r; r = r + 1) {
+            if (*p == *r) return (size_t)(p - s);
+        }
+    }
+    return (size_t)(p - s);
+}
+size_t strspn(const char *s, const char *accept) {
+    const char *p = s, *a;
+    for (; *p; p = p + 1) {
+        int found = 0;
+        for (a = accept; *a; a = a + 1) {
+            if (*p == *a) { found = 1; break; }
+        }
+        if (!found) return (size_t)(p - s);
+    }
+    return (size_t)(p - s);
+}
+
+/* ---- 复制分配 (fix 2026-08-13: Phase 2, Git 硬需求 strdup/strndup) ---- */
+char *strdup(const char *s) {
+    int n = 0; char *d;
+    while (s[n] != 0) n = n + 1;
+    d = (char*)malloc(n + 1);
+    n = 0;
+    while (1) { d[n] = s[n]; if (s[n] == 0) break; n = n + 1; }
+    return d;
+}
+
+char *strndup(const char *s, size_t max) {
+    int n = 0; char *d;
+    while (n < max && s[n] != 0) n = n + 1;
+    d = (char*)malloc(n + 1);
+    n = 0;
+    while (n < max && s[n] != 0) { d[n] = s[n]; n = n + 1; }
+    d[n] = 0;
+    return d;
+}
+
+/* ---- 排序/搜索 (fix 2026-08-13: Phase 2, Git hash-table 排序需要) ---- */
+void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
+    /* 冒泡: 简单可靠, n 通常小 (Git 的 hash 表/数组) */
+    char *b0 = (char*)base;
+    int i = 0, j;
+    while (i < n) {
+        j = 0;
+        while (j < n - 1 - i) {
+            char *a = b0 + j * sz;
+            char *b = b0 + (j + 1) * sz;
+            if (cmp(a, b) > 0) {
+                int k = 0;
+                while (k < sz) { char t = a[k]; a[k] = b[k]; b[k] = t; k = k + 1; }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+}
+
+void *bsearch(const void *key, const void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
+    char *b0 = (char*)base;
+    int lo = 0, hi = (int)n;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        char *p = b0 + mid * sz;
+        int c = cmp(key, p);
+        if (c == 0) return (void*)(p);
+        if (c < 0) hi = mid; else lo = mid + 1;
+    }
+    return 0;
 }
 
 /* ---- scanf runtime (fix 2026-08-12): parse fmt, read from input buffer, write back to args[].
