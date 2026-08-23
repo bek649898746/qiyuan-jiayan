@@ -1,4 +1,9 @@
-﻿## 6D8721FF (2026-08-23)
+﻿## 09F04D7C (2026-08-23)
+**t35k: cat-file 短 SHA 三连根因根治**
+
+- t35k (09F04D7C): struct 字段数组维度改 const_expr_eval（hex_pfx[GIT_MAX_HEXSZ+1] fsz 0→65）+ typedef 1B 指针参数 esz（uint8_t* kpfx[i] ×4 修复）+ uintptr_t 减法不缩放（cb_node_of p-4 修复）→ cat-file/rev-parse 短 SHA 与 system git 全一致，log --format=%cI/%aD 等 7 个格式 SIGSEGV 恢复
+
+## 6D8721FF (2026-08-23)
 
 **t35 系列: 格式化输出家族全清 (t35e→t35j)**
 
