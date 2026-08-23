@@ -3336,6 +3336,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 铸基者 郑宇和 · 种子 828 */
             else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 自举者 郑启元 · 种子 828 */
+            else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "L") && (s[i] == '"' || s[i] == '\'')) { continue; } /* 宽字符串/宽字符 L"..." / L'x' — L 前缀跳过 (fix 2026-08-14: mingw.c normalize_ntpath L"\\??\\"; fix 2026-08-15: fsm-listen L'/' 泄漏 L undefined) */
@@ -12039,10 +12040,10 @@ int main(int argc, char **argv) {
     for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
     while (argc > argi) {
         if (strcmp(argv[argi], "--help") == 0) {
-            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
+            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
             return 0;
         }
-        if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 种子 828\n"); return 0; }
+        if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); return 0; }
         if (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; continue; }
         if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
         if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
