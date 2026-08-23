@@ -584,6 +584,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 while (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--;
                 while (_b > 0 && seg[_b] == '*') { _b--; while (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--; } /* 跳过指针返回类型 char *_(...) — 否则 gettext.h 的 static inline _ 被当宏调用展开 (fix 2026-08-15: undefined symbol '_') */
                 int _is_decl = 0;
+                if (_b > 0 && (seg[_b] == '.' || (seg[_b] == '>' && seg[_b - 1] == '-'))) _is_decl = 1; /* t35m 2026-08-24: 字段名与函数宏冲突 — iter->select(...) 的 select 是结构体字段, compat_prelude.h `#define select(n,r,w,e,t) 0` (Winsock stub) 文本展开破坏字段访问 → merge_ref_iterator_advance 缺 select 调用 → show-ref/branch/tag 死循环; 注意: 仅 `->`(前为 -) 或 `.` 才算字段访问, 裸 `>` 是比较运算符 (maximum_unsigned_value_of_type 前 (b) > 不能误伤) */
                 if (_b > 0 && (isalnum((unsigned char)seg[_b]) || seg[_b] == '_')) {
                     int _e = _b;
                     while (_e > 0 && (isalnum((unsigned char)seg[_e - 1]) || seg[_e - 1] == '_')) _e--;
@@ -4056,7 +4057,7 @@ static int prim(void) {
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                int callee = n; if (getenv("QCC_DBG_CALL")) fprintf(stderr, "[CALL2] callee_nt=%d callee='%s' tk=%d\n", nt[callee], (char*)(nn + callee), tk); tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 if (nt[callee] == 1 && fn_dbl_get_ret((char*)(nn + callee))) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0) */
                 if (nt[callee] == 1 && fn_ll_get_ret((char*)(nn + callee))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate */
             } else break;
@@ -9056,6 +9057,7 @@ static void cg(int n) {
             /* ?????????????????*/
             char *fname = (char*)(nn + fn);
             int fi = -1;
+            if (getenv("QCC_DBG_CALL")) if (nt[fn] != 1) fprintf(stderr, "[CG4] fn=%d nt=%d callee='%s'\n", fn, nt[fn], (char*)(nn + fn));
             if (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
             /* 内建 __asm_byte(v): 发射一个字节到 bin_hdr (Multiboot header/手写内核, fix 2026-08-08) */
             if (nt[fn] == 1 && !strcmp(fname, "__asm_byte") && bin_mode) {
