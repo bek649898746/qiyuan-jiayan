@@ -9088,6 +9088,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_LOAD_RIP64 17 /* a=off, b=k: mov rax,[rip+coff_static_disp(off,k)-1] */
 #define I_LEA_RIP 18    /* a=off, b=k: lea rax,[rip+coff_static_disp(off,k)-1] */
 #define I_CALL_LBL 19   /* a=label, b=add_rsp_imm: call_rel(0); patch_label; add_rsp_imm(b) */
+#define I_SUB_RSP_IMM 20 /* a=imm: sub_rsp_imm(imm) */
 static void ir_flush(void) {
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
@@ -9107,6 +9108,7 @@ static void ir_flush(void) {
             case I_LOAD_RIP64: mov_rax_rip64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_LEA_RIP: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_CALL_LBL: call_rel(0); patch_label(cp - 4, ir_a[i], 0); add_rsp_imm(ir_b[i]); break;
+            case I_SUB_RSP_IMM: sub_rsp_imm(ir_a[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9518,7 +9520,7 @@ static void cg(int n) {
             if (is_sret) {
                 if (sret_extra > 0) sub_rsp_imm(32 + 8 * sret_extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad);
             } else if (is_user && !fnptr) {
-                if (extra > 0) sub_rsp_imm(32 + 8 * extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad);
+                if (extra > 0) ir_emit(I_SUB_RSP_IMM, 32 + 8 * extra + shadow_pad, 0, 0); else ir_emit(I_SUB_RSP_IMM, 32 + shadow_pad, 0, 0); ir_flush(); /* Phase3-IR */
             }
             /* load registers + stack args from the pushed slots (offset = total_h - slot_h[k] - 8 from rsp) */
             if (is_sret) { /* rcx = &target; arg0..2 -> rdx/r8/r9 (int) or xmm0/xmm1/xmm2 (double); arg3+ -> [rsp+32+8k] */
