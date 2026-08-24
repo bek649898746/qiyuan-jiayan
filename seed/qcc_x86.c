@@ -1624,6 +1624,7 @@ static void mulsd_xmm0_xmm1(void) { asm_emit("    浮乘 xmm0, xmm1\n", (char*)(
 static void divsd_xmm0_xmm1(void) { asm_emit("    浮除 xmm0, xmm1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x5E); b(0xC1); }
 static void cvtsi2sd_xmm0_eax(void) { asm_emit("    整转浮 xmm0, eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x2A); b(0xC0); }
 static void cvttsd2si_eax_xmm0(void) { asm_emit("    浮转整 eax, xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x2C); b(0xC0); }
+static void cvttsd2si_rax_xmm0(void) { asm_emit("    浮转整64 rax, xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x48); b(0x0F); b(0x2C); b(0xC0); } /* cvttsd2si rax, xmm0 — (long long)double 64位截断 (fix 2026-08-25 bug#26: 原 32位 cvttsd2si eax → 零扩展到 LL → -5.0 得 4294967291) */
 static void push_xmm0(void) { asm_emit("    压浮 xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x81); b(0xEC); b4(8); b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 4); b(0x24); } /* sub rsp,8; movsd [rsp], xmm0 (bare sub: avoid double ASM) */
 static void pop_xmm0(void) { asm_emit("    弹浮 xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0, 0, 4); b(0x24); b(0x48); b(0x81); b(0xC4); b4(8); } /* movsd xmm0, [rsp]; add rsp,8 (bare add) */
 static void comisd_xmm0_xmm1(void) { asm_emit("    浮比较 xmm0, xmm1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x66); b(0x0F); b(0x2F); b(0xC1); } /* set flags: xmm0 vs xmm1 */
@@ -4149,6 +4150,7 @@ static int prim(void) {
                expr_is_double covers double-returning CALLS whose ndbl is set only at
                codegen (root-cause 2026-08-03: ndbl[ce] alone missed them → no-op cast). */
             if (cast_ty && !strcmp(cast_ty, "int") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; return m; } /* fix 2026-08-16: ndbl[ce] 原未守卫 ce=-1 (prim 解析失败) → ndbl[-1] 越界 */
+            if (cast_ty && !strcmp(cast_ty, "long") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; nll[m] = 1; return m; } /* fix 2026-08-25 bug#26: (long long)double 走 node19 + 64位 cvttsd2si (原只 nll[ce]=1 → 32位转换零扩展 → 负数错) */
             if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
@@ -9153,7 +9155,7 @@ static void cg(int n) {
     if (t < 0 || t > 65) { fprintf(stderr, "[CG-BADTYPE] n=%d nt=%d nc=%d\n", n, t, nc); abort(); }
     switch (nt[n]) {
         case 0: if (nll[n]) { ir_emit(I_MOV_IMM_LL, 0, nv[n], nll_hi[n]); ir_flush(); } else { ir_emit(I_MOV_IMM, 0, nv[n], 0); ir_flush(); } break;
-        case 19: cg_f(n0[n]); ir_emit(I_CVTT2SI, 0, 0, 0); ir_flush(); break; /* Phase3-IR */
+        case 19: cg_f(n0[n]); if (nll[n]) cvttsd2si_rax_xmm0(); else { ir_emit(I_CVTT2SI, 0, 0, 0); ir_flush(); } break; /* fix 2026-08-25 bug#26: (long long)double 64位 */
         case STR: { /* string literal ??placeholder, patched after codegen */
             int si = nv[n];
             str_place(si); /* ensure string is in data buffer */
