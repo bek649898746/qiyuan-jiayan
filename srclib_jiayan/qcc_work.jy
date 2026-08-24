@@ -9163,6 +9163,14 @@ __attribute__((unused))
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
 #define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
 #define I_CVTT2SI 26    /* cvttsd2si eax, xmm0: (int)double 截断 */
+/* ==== Phase 3 case15 成员访问 IR 指令 (2026-08-25) ==== */
+#define I_ADD_RAX_IMM8 27 /* a=v: add_rax_imm8(v) — 字段偏移 */
+#define I_DEREF64 28      /* mov_reg_mreg64(0,0): mov rax, [rax] */
+#define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] */
+#define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] */
+#define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] */
+#define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) */
+#define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 静 空 (*ir_pass_cb)(整 *op, 整 *a, 整 *b, 整 *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9196,6 +9204,13 @@ __attribute__((unused))
             例 I_CALL_FNPTR: mov_rr64(10, 0); asm_emit("    调 r10\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); add_rsp_imm(ir_a[i]); 断;
             例 I_ALU_EBX: alu_rr(ir_a[i], 0, 1); 断;
             例 I_CVTT2SI: cvttsd2si_eax_xmm0(); 断;
+            例 I_ADD_RAX_IMM8: add_rax_imm8(ir_a[i]); 断;
+            例 I_DEREF64: mov_reg_mreg64(0, 0); 断;
+            例 I_DEREF32: mov_reg_mreg(0, 0); 断;
+            例 I_MOVZX_RAX_BYTE: asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); 断;
+            例 I_MOVZX_RAX_WORD: asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); 断;
+            例 I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); 断;
+            例 I_LOAD_XMM0_RBP: movsd_xmm0_mbrp(ir_a[i]); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 若 (ir_a[i] == PK) addsd_xmm0_xmm1();
                 否 若 (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -11387,8 +11402,9 @@ __attribute__((unused))
             } 否 若((o>=0 || (coff_mode && var_isstatic(vn))) && s>=0){整 fo=st_off(stypes[s].name,fn);若(fo>=0){ /* fix 2026-08-17: o>=0 门控放行 coff extern 静态 (off<0 负槽) — 原排除 → the_repository->worktree 无输出 → get_git_work_tree 空函数返回垃圾 */
                 若(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
                     整 off=var_lookup(vn);
-                    若(off>=0 || (coff_mode && var_isstatic(vn))){ 若 (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); 否 若 (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); 否 mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (extern: coff 符号重定位) */
-                    若(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
+                    若(off>=0 || (coff_mode && var_isstatic(vn))){ 若 (var_isstatic(vn)) ir_emit(I_LOAD_RIP64, off, 1, 0); 否 若 (var_pesz(vn) > 0) ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); 否 ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); } /* Phase3-IR case15: rax = ptr */
+                    若(fo!=0){ ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); } /* Phase3-IR case15: rax += field offset */
+                    ir_flush(); /* Phase3-IR case15: flush ptr->field 地址序列 */
                     整 afsz = st_field_size(stypes[s].name, fn);
                     若 (cg_no_deref || st_field_is_array_idx(s, fn)) {
                         st_field_2d_setup(s, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16) */
