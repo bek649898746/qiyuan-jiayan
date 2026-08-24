@@ -9091,6 +9091,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_SUB_RSP_IMM 20 /* a=imm: sub_rsp_imm(imm) */
 #define I_LOAD_RSP_GPR 21 /* a=gpr, b=disp: mov_reg_mrsp64(0,disp); mov_rr64(gpr,0) */
 #define I_LOAD_XMM_RSP 22 /* a=idx, b=disp: movsd_xmmreg_mrsp64(idx,disp) */
+#define I_LEA_RBP_GPR 23 /* a=gpr, b=disp: lea_r_mbrp(gpr,disp) */
 static void ir_flush(void) {
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
@@ -9113,6 +9114,7 @@ static void ir_flush(void) {
             case I_SUB_RSP_IMM: sub_rsp_imm(ir_a[i]); break;
             case I_LOAD_RSP_GPR: mov_reg_mrsp64(0, ir_b[i]); mov_rr64(ir_a[i], 0); break;
             case I_LOAD_XMM_RSP: movsd_xmmreg_mrsp64(ir_a[i], ir_b[i]); break;
+            case I_LEA_RBP_GPR: lea_r_mbrp(ir_a[i], ir_b[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9522,22 +9524,23 @@ static void cg(int n) {
             else if (fnptr) shadow_pad = 8 * (((total_h / 8) + (nargs > 4 ? nargs - 4 : 0)) & 1);
             if (is_sret || (is_user && !fnptr)) argbase += shadow_pad;
             if (is_sret) {
-                if (sret_extra > 0) sub_rsp_imm(32 + 8 * sret_extra + shadow_pad); else sub_rsp_imm(32 + shadow_pad);
+                if (sret_extra > 0) ir_emit(I_SUB_RSP_IMM, 32 + 8 * sret_extra + shadow_pad, 0, 0); else ir_emit(I_SUB_RSP_IMM, 32 + shadow_pad, 0, 0); ir_flush(); /* Phase3-IR */
             } else if (is_user && !fnptr) {
                 if (extra > 0) ir_emit(I_SUB_RSP_IMM, 32 + 8 * extra + shadow_pad, 0, 0); else ir_emit(I_SUB_RSP_IMM, 32 + shadow_pad, 0, 0); ir_flush(); /* Phase3-IR */
             }
             /* load registers + stack args from the pushed slots (offset = total_h - slot_h[k] - 8 from rsp) */
-            if (is_sret) { /* rcx = &target; arg0..2 -> rdx/r8/r9 (int) or xmm0/xmm1/xmm2 (double); arg3+ -> [rsp+32+8k] */
-                lea_r_mbrp(1, cg_sret_off); /* rcx = &target */
+            if (is_sret) { /* rcx = &target; arg0..2 -> rdx/r8/r9 (int) or xmm0/xmm1/xmm2 (double); arg3+ -> [rsp+32+8k] — IR */
+                ir_emit(I_LEA_RBP_GPR, 1, cg_sret_off, 0); ir_flush(); /* rcx = &target */
                 for (int k = 0; k < nargs && k < 3; k++) {
                     int gpr;
                     if (k == 0) gpr = 2; else if (k == 1) gpr = 8; else gpr = 9;
-                    if (fn_dbl_get(fname, k)) movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8);
-                    else { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_rr64(gpr, 0); }
+                    if (fn_dbl_get(fname, k)) { ir_emit(I_LOAD_XMM_RSP, k, argbase + total_h - slot_h[k] - 8, 0); }
+                    else { ir_emit(I_LOAD_RSP_GPR, gpr, argbase + total_h - slot_h[k] - 8, 0); }
+                    ir_flush();
                 }
                 for (int k = 3; k < nargs; k++) {
-                    if (fn_dbl_get(fname, k)) { movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8); movsd_mrsp64_xmmreg(32 + 8 * (k - 3), 0); }
-                    else { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_mrsp_reg64(32 + 8 * (k - 3), 0); }
+                    if (fn_dbl_get(fname, k)) { ir_emit(I_LOAD_XMM_RSP, k, argbase + total_h - slot_h[k] - 8, 0); ir_flush(); movsd_mrsp64_xmmreg(32 + 8 * (k - 3), 0); }
+                    else { ir_emit(I_LOAD_RSP_GPR, 0, argbase + total_h - slot_h[k] - 8, 0); ir_flush(); mov_mrsp_reg64(32 + 8 * (k - 3), 0); }
                 }
             } else if (is_user && fi >= 0) {
                 /* user call with double args (Win64): position k goes in xmm[k], int in GPR[k] — IR */
@@ -9580,9 +9583,7 @@ static void cg(int n) {
             }
 
             if (is_sret) {
-                call_rel(0);
-                patch_label(cp - 4, func_tbl[fi].label, 0);
-                add_rsp_imm(argbase + total_h); /* fix 2026-08-07: argbase 已含 shadow_pad */
+                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } else if (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
                 int fp_extra = nargs > 4 ? nargs - 4 : 0;
