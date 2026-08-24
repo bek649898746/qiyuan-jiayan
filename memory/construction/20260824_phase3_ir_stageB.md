@@ -24,6 +24,11 @@
 - 职责分离：定义脚本（g3 只加指令）+ 分支脚本（g2 只改分支）避免重复插入
 - 锚点用行号法（注释特殊字符致文本锚点失败）
 
+## 已迁移 (累积, 15 种 IR 指令)
+- 控制流: if/while/ternary/break/continue/goto/label
+- 运算: 32位加减乘(无缩放/除) + LL64位PK/MK/DK(无指针缩放) + double算术(PK/MK/DK/DV)
+- 变量: 局部 int 读 (I_LOAD_RBP) + 局部 int 赋值存储 (I_STORE_RBP, case7/10)
+
 ## 下一步
 - case 10（赋值）简单路径（var=expr 标量）
 - case 4（函数调用）——最重，单独一轮
