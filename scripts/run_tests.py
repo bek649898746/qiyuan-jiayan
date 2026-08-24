@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
-"""甲言 行为断言测试运行器 (Python 版)
-用法: python scripts/run_tests.py
+"""甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
+用法:
+  python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
+  python scripts/run_tests.py --fast         快速集 30 关键用例 (~1 分钟, 修 bug 时跑)
+  python scripts/run_tests.py --parallel 4   全量并行 4 核 (~3-4 分钟)
+  python scripts/run_tests.py --only a,b,c   只跑指定测试 (逗号分隔, 相对 tests/ 路径)
 断言格式（测试 .c 头部注释）:
   // @EXPECTED exit:0           退出码 == 0
   // @EXPECTED exit:42          退出码 == 42
@@ -8,47 +12,41 @@
   // @EXPECTED out:<str>        stdout 包含该字符串 (可选)
 无 @EXPECTED 时默认 exit:0
 """
-import sys, os, subprocess, re
+import sys, os, subprocess, re, argparse
 sys.stdout.reconfigure(encoding='utf-8')
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
-os.makedirs('scratch_test', exist_ok=True)
 
-# 1. 确保编译器
-qcc = os.path.join(root, 'qcc_x86.exe')
-if not os.path.exists(qcc):
-    print('[1] 编译宿主 qcc_x86 ...')
-    r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/qcc_x86.c', '-o', qcc])
-    if r.returncode != 0:
-        print('[FAIL] 编译宿主失败'); sys.exit(1)
+# 快速集 (30 个关键用例, 覆盖类型/布局/变参/控制流/指针/字符串/数组)
+FAST_TESTS = [
+    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qcc/regress_typedef_size.c',
+    'qcc/regress_size_t_layout.c', 'qcc/regress_unsigned_cmp.c', 'qcc/regress_ll_neg.c',
+    'qcc/regress_struct_align.c', 'qcc/regress_union.c', 'qcc/regress_bitfield_key.c',
+    'qcc/regress_nested_struct_field.c', 'qcc/regress_anon_union.c',
+    'qcc/regress_variadic_call.c', 'qcc/regress_vararg_promote.c',
+    'qcc/fib0.c', 'qcc/regress_switch_fallthrough.c', 'qcc/regress_switch_case_call.c',
+    'qcc/regress_struct_ptr_arrow.c', 'qcc/regress_fnptr_call.c', 'qcc/arg5.c',
+    'qcc/regress_strlen.c', 'qcc/regress_multi_dim_arr.c', 'qcc/regress_static_structarr_init.c',
+    'qcc/regress_volatile.c', 'qcc/regress_enum.c', 'qcc/regress_preproc_ifdef.c',
+    'qcc/regress_fn_macro_nest.c', 'qcc/regress_compound_scalar.c', 'qcc/regress_utf8_bom.c',
+    'behavior/b_printf.c', 'behavior/b_struct.c',
+]
 
-# 清理 scratch_test: CI 多次 run 残留文件会被占用 -> cannot write _H1.exe (fix 2026-08-08)
-import shutil
-st_dir = os.path.join(root, 'scratch_test')
-# 先杀僵尸测试进程 (崩溃测试的 exe 进程可能残留锁住 _H1.exe, 复跑必失败 fix 2026-08-09;
-# taskkill 通配符不可靠, 用 PowerShell Get-Process + Stop-Process 实测有效)
-subprocess.run(['powershell', '-NoProfile', '-Command',
-                'Get-Process -Name "*_H1*" -ErrorAction SilentlyContinue | Stop-Process -Force'],
-               capture_output=True)
-if os.path.isdir(st_dir):
-    for f in os.listdir(st_dir):
-        try:
-            os.remove(os.path.join(st_dir, f))
-        except OSError:
-            pass
-else:
-    os.makedirs(st_dir, exist_ok=True)
+def build_tests(args):
+    if args.fast:
+        return list(FAST_TESTS)
+    if args.only:
+        return [t.strip() for t in args.only.split(',') if t.strip()]
+    tests = sorted('qcc/' + f for f in os.listdir('tests/qcc') if f.endswith('.c'))
+    tests += sorted('behavior/' + f for f in os.listdir('tests/behavior') if f.endswith('.c'))
+    return tests
 
-tests = sorted('qcc/' + f for f in os.listdir('tests/qcc') if f.endswith('.c'))
-tests += sorted('behavior/' + f for f in os.listdir('tests/behavior') if f.endswith('.c'))
-pass_n = fail_n = 0
-fails = []
 
-for name in tests:
-    print(f"[RUN] {name}", flush=True)
-    src = os.path.join('tests', name)  # name 已含 qcc/ 或 behavior/ 前缀
-    # 读断言
+def run_one_test(name):
+    """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
+    qcc = os.path.join(root, 'qcc_x86.exe')
+    src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
@@ -63,17 +61,18 @@ for name in tests:
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True
 
-    # H1 编译 (输出名用 basename, 兼容 behavior/ 子目录)
+    # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
     try:
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True, encoding='utf-8', errors='replace')
+    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
-            pass_n += 1; continue  # @EXPECTED compile_fail: 编译失败 = 通过 (fix 2026-08-12)
-        fail_n += 1; fails.append(f'{name} 编译失败'); continue
+            return (name, True, 'compile_fail(期望)')
+        return (name, False, '编译失败')
 
     # 运行
     out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
@@ -83,19 +82,18 @@ for name in tests:
     except OSError:
         pass
     try:
-        # 用 cmd /c 运行: Server 2025 上 Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005,
-        # 但 cmd 启动正常 (fix 2026-08-08, 实测 CI 诊断: cmd rc=0, subprocess rc=0xC0000005)
-        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
+        # cmd /c 启动: Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005 (fix 2026-08-08)
+        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
         rc = p.returncode
         out = (p.stdout or '').strip()
     except subprocess.TimeoutExpired as te:
-        # 超时后必须 kill: 崩溃/卡死进程残留会锁住 _H1.exe, 下次覆盖写失败 (fix 2026-08-08)
         try:
-            te.kill()  # 杀整个进程组 (包含可能的子进程)
+            te.kill()
         except Exception:
             pass
         rc = 'TIMEOUT'; out = ''
-        subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)  # fix 2026-08-24 t35v: cmd 子进程残留锁文件
+        subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)
     except Exception as e:
         rc = 'ERR'; out = str(e)
     try:
@@ -103,7 +101,6 @@ for name in tests:
     except OSError:
         pass
 
-    # 断言
     ok = False
     if expected == 'nonzero':
         ok = (rc != 0)
@@ -113,15 +110,62 @@ for name in tests:
         ok = expected_out in out
 
     if ok:
-        pass_n += 1
-    else:
-        fail_n += 1
-        fails.append(f"{name} (期望exit={expected} 实际={rc} out='{out[:40]}')")
+        return (name, True, '')
+    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}'")
 
-print(f'\n行为断言: PASS={pass_n} FAIL={fail_n}')
-if fails:
-    print('--- 失败 ---')
-    for f in fails:
-        print(f'  {f}')
-    sys.exit(1)
-print('==== 全绿 ====')
+
+def main():
+    ap = argparse.ArgumentParser(description='甲言行为断言测试')
+    ap.add_argument('--fast', action='store_true', help='快速集 30 用例 (~1 分钟)')
+    ap.add_argument('--parallel', type=int, default=0, help='并行 worker 数 (0=串行)')
+    ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
+    args = ap.parse_args()
+
+    # 确保编译器
+    qcc = os.path.join(root, 'qcc_x86.exe')
+    if not os.path.exists(qcc):
+        print('[1] 编译宿主 qcc_x86 ...')
+        r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/qcc_x86.c', '-o', qcc])
+        if r.returncode != 0:
+            print('[FAIL] 编译宿主失败'); sys.exit(1)
+
+    # 清理 scratch_test (并行/串行都只清一次)
+    import shutil
+    st_dir = os.path.join(root, 'scratch_test')
+    subprocess.run(['powershell', '-NoProfile', '-Command',
+                    'Get-Process -Name "*_H1*" -ErrorAction SilentlyContinue | Stop-Process -Force'],
+                   capture_output=True)
+    if os.path.isdir(st_dir):
+        for f in os.listdir(st_dir):
+            try:
+                os.remove(os.path.join(st_dir, f))
+            except OSError:
+                pass
+    else:
+        os.makedirs(st_dir, exist_ok=True)
+
+    tests = build_tests(args)
+    print(f'[RUN] {len(tests)} 个测试 (fast={args.fast} parallel={args.parallel})', flush=True)
+
+    if args.parallel > 1:
+        from multiprocessing import Pool
+        with Pool(args.parallel) as pool:
+            results = pool.map(run_one_test, tests, chunksize=1)
+    else:
+        results = [run_one_test(t) for t in tests]
+
+    pass_n = sum(1 for _, ok, _ in results if ok)
+    fail_n = len(results) - pass_n
+    fails = [f"{name} ({msg})" for name, ok, msg in results if not ok]
+
+    print(f'\n行为断言: PASS={pass_n} FAIL={fail_n}')
+    if fails:
+        print('--- 失败 ---')
+        for f in fails[:30]:
+            print(f'  {f}')
+        sys.exit(1)
+    print('==== 全绿 ====')
+
+
+if __name__ == '__main__':
+    main()
