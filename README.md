@@ -96,23 +96,76 @@ releases/
 
 **环境要求**：Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）——gcc 仅作"验证门卫"（重建 C 原版验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。
 
+**步骤 1：克隆**
+
 ```bash
-# 1. 克隆
 git clone https://gitee.com/zheng-yuhe-from-guangdong/qi-yuan--jia-yan.git
 cd qi-yuan--jia-yan
-
-# 2. 重建验证宿主（可选，仅验证用）
-gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-
-# 3. 自举验证（一条命令：编译宿主 → 自举五代 → 校验不动点 → 跑测试）
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v1..v5 五代 SHA256 完全相同（自举不动点 3b4002d2）
-
-# 4. 用甲言编译程序
-./qcc_x86.exe hello.jy -o hello.exe && ./hello.exe
 ```
 
-**零依赖用法**（不用 gcc）：直接用已知不动点的甲言编译器（`v1.exe`）编译自己——甲言自举链无限自我复制，纯中文工具链，无外部依赖。
+**步骤 2：完整自举验证（一条命令，全自动）**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+```
+
+这一步会自动：编译宿主 → 自举五代 → 校验不动点 → 跑 325 个测试。**看到下面三行 = 成功**：
+
+```text
+[OK] 自举 1-cycle 达成: v1==v2==v3==v4==v5 = 3b4002d2
+行为断言: PASS=325 FAIL=0
+==== 完成。甲言自己生自己，光荣。 ====
+```
+
+> 注：仓库不含编译产物，build.ps1 首次运行会自动用 C 宿主编译器自举生成种子（qcc_boot.exe），无需手动准备。
+
+**步骤 3：用甲言编译运行第一个程序**
+
+创建 `hello.jy`（**注意：源文件用 GBK 或 UTF-8 编码保存**，Windows 控制台建议 GBK）：
+
+```c
+/* hello.jy —— 和 C 一样，关键字可以是中文 */
+int main() {
+    printf("jiayan hello 123\n");
+    return 0;
+}
+```
+
+编译并运行：
+
+```bash
+./qcc_x86.exe hello.jy -o hello.exe
+./hello.exe
+# 输出: jiayan hello 123
+```
+
+**步骤 4：试试中文关键字（甲言特色）**
+
+```c
+/* 中文版 hello —— 关键字是中文 */
+整 main() {
+    输出("你好，甲言！\n");
+    返 0;
+}
+```
+
+```bash
+./qcc_x86.exe hello_zh.jy -o hello_zh.exe
+./hello_zh.exe
+```
+
+**步骤 5：零依赖用法（不用 gcc）**
+
+用已生成的甲言编译器直接编译自己（纯甲言链，无外部工具链）：
+
+```bash
+./v1.exe srclib_jiayan/qcc_work.jy -o self.exe   # 甲言编译自己
+./v1.exe hello.jy -o hello.exe                    # 甲言编译程序
+```
+
+**步骤 6：验证"落地运行 Git"（封存卖点）**
+
+甲言自举链编译原版 git-2.45.2 并落地运行（详见 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)）——完整的 git 二进制需按该文档的适配清单构建，或直接使用本项目已验证的成果（36.4 万行源码零改动编译 → 721 个 .o → 28MB 可执行 → `git version 2.45.2`）。
 
 ### 依赖
 
