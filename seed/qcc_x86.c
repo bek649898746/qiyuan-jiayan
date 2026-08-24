@@ -3706,9 +3706,17 @@ static int prim(void) {
         if (tt[tk] == OK) tk++; /* skip ( */
         if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZA] sizeof arg tok=%d name=%s sz=%d\n", tt[tk], tn[tk], tt[tk]==BK?0:0); /* tmp */
         if (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
+            int deref_n = 1; /* 解引用层级: *p=1, **p=2 (fix 2026-08-24 t35v: CALLOC_ARRAY(*info,1) 的 sizeof(*(*info)) 原只解一层 → 8 → xcalloc 只分 8B → reflog_walk_info 越界 → reflog 崩) */
             tk++; /* * */
+            while (tt[tk] == DK) { deref_n++; tk++; } /* 连续 **p — 多层解引用 (fix 2026-08-24 t35v) */
             int sz = 8;
-            if (tt[tk] == VR) { char vn[64]; strcpy(vn, tn[tk]); int si = var_stidx(vn); if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZD] sizeof(*%s) si=%d pesz=%d pbase=%d\n", vn, si, var_pesz(vn), parse_base); if (si >= 0 && (tt[tk + 1] == AR || tt[tk + 1] == DT)) {
+            if (tt[tk] == VR) { char vn[64]; strcpy(vn, tn[tk]); int si = var_stidx(vn); if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZD] sizeof(*%s) si=%d pesz=%d pbase=%d\n", vn, si, var_pesz(vn), parse_base); if (deref_n >= 2) {
+                    /* **p: 双指针 → 最深层基类型大小 (fix 2026-08-24 t35v) */
+                    int pd = var_pdepth(vn); int pin = var_pinner(vn);
+                    if (pd >= 2 && pin > 0) sz = pin;
+                    else if (si >= 0) sz = st_sz(stypes[si].name);
+                    else if (var_pesz(vn) > 0) sz = var_pesz(vn);
+                } else if (si >= 0 && (tt[tk + 1] == AR || tt[tk + 1] == DT)) {
                     /* sizeof(*base->member): deref 的是「成员」不是 base (fix 2026-08-19: git search_ref_dir 的
                        sizeof(*dir->entries) — entries 是 struct ref_entry ** 指针数组, deref 得 struct ref_entry * = 8;
                        原按 base 的 struct 大小 (ref_dir=32) → bsearch 元素步长 32 → 垃圾 entry → git status SEGV) */
@@ -3728,12 +3736,18 @@ static int prim(void) {
                 else if (si >= 0) sz = st_sz(stypes[si].name); else if (var_pesz(vn) > 0) sz = var_pesz(vn); }
             else if (tt[tk] == OK) {  /* sizeof(*(链)) — CALLOC_ARRAY(repo->config, 1) 的 sizeof(*(repo->config)): 括号内字段链 → pointee 大小 (fix 2026-08-18: 原 `*` 后非 VR → sz 落 8 → config_set 只分 8 字节 → hashmap 初始化越界写 → git init SEGV) */
                 int np = 0;
+                int deref2 = 1; /* 括号内再解引用: sizeof(*(*p)) — * 后括号内又是 * → deref2=2 (fix 2026-08-24 t35v) */
                 while (tt[tk] == OK) { np++; tk++; } /* fix 2026-08-19: 宏展开多层括号 sizeof(*((src->items))) — COPY_ARRAY 的 sizeof(*(src)) 代入实参带括号 → 原只吃一层 → 第二层 ( 当非 VR → sz=8 → st_mult 收到 8 → status 崩 */
+                while (tt[tk] == DK) { deref2++; tk++; while (tt[tk] == OK) { np++; tk++; } } /* fix 2026-08-24 t35v: sizeof(*(*p)) — 括号内再解引用 */
                 if (tt[tk] == VR) {
                     char vn2[64]; strcpy(vn2, tn[tk]);
                     int si2 = var_stidx(vn2); int sz2 = 8;
-                    
-                    if (si2 >= 0) sz2 = st_sz(stypes[si2].name);
+                    if (deref2 >= 2) { /* **p: 双指针 → 最深层基类型 (fix 2026-08-24 t35v) */
+                        int pd2 = var_pdepth(vn2); int pin2 = var_pinner(vn2);
+                        if (pd2 >= 2 && pin2 > 0) sz2 = pin2;
+                        else if (var_pesz(vn2) > 0) sz2 = var_pesz(vn2);
+                        if (si2 >= 0) sz2 = st_sz(stypes[si2].name);
+                    } else if (si2 >= 0) sz2 = st_sz(stypes[si2].name);
                     tk++;
                     while (tt[tk] == DT || tt[tk] == AR) { /* 字段链: 最终字段类型决定 pointee */
                         tk++; /* . 或 -> */
@@ -5800,6 +5814,7 @@ static int parse(const char *s) {
                                             char u2an[64]; sprintf(u2an, "__anon_%d", st_n);
                                             int u2 = st_add(u2an);
                                             tk++; /* { */
+                                                int v2t_si_persist = -1; /* fix 2026-08-24 t35v: 逗号续行 struct 字段继承类型 (struct object_id ooid, noid; — v2t_si 每次迭代重置 → 续行 noid 无类型 → 布局 36+4 错 → git reflog 无输出) */
                                             while (tk < TS && tt[tk] != UK) {
                                                 int v2k0 = tk;
                                                 int v2sz = 4, v2dbl = 0, v2ll = 0;
@@ -5818,7 +5833,7 @@ static int parse(const char *s) {
                                                 int v2t_si = -1;
                                                 if (tt[tk] == ST) { /* 嵌套 struct/union 成员 */
                                                     tk++;
-                                                    if (tt[tk] == VR) { v2t_si = st_find(tn[tk]); tk++; }
+                                                    if (tt[tk] == VR) { v2t_si = st_find(tn[tk]); tk++; if (v2t_si >= 0) v2t_si_persist = v2t_si; } /* fix 2026-08-24 t35v */
                                                     if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } /* 三层内联 body: 跳过 (尺寸近似 8) */
                                                     if (tt[tk] == DK) tk++;
                                                 }
@@ -5831,7 +5846,7 @@ static int parse(const char *s) {
                                                     char v2f[64]; strcpy(v2f, tn[tk]); tk++;
                                                     int v2bw = 0;
                                                     if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { v2bw = tv[tk]; tk++; } }
-                                                    int v2sz2 = (v2t_si >= 0) ? stypes[v2t_si].sz : v2sz;
+                                                    int v2sz2 = (v2t_si >= 0) ? stypes[v2t_si].sz : ((v2t_si_persist >= 0) ? stypes[v2t_si_persist].sz : v2sz); /* fix 2026-08-24 t35v: 逗号续行 struct 字段继承大小 */
                                                     int v2dims = 0, v2first = 1;
                                                     while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { if (v2dims == 0) v2first = cdim; v2dims++; v2sz2 *= cdim > 0 ? cdim : 1; } else { v2dims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; } /* t35k 2026-08-23: u2 嵌套内联字段数组维度整体表达式求值 */
                                                     if (v2bw > 0) v2sz2 = 4;
@@ -5890,6 +5905,7 @@ static int parse(const char *s) {
                                     int ni = inner_si < 0 ? st_add(iname) : inner_si;
                                     tk++; /* { */
                                     int ifuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
+                                        int if_sty_persist = -1; /* fix 2026-08-24 t35v: inline struct body 逗号续行 struct 字段继承类型 (struct reflog_info { struct object_id ooid, noid; ... } — 原续行 noid ifsz 落默认 4 → 布局 36+4 错 → reflog entry 步长错 → git reflog 无输出) */
                                     while (tk < TS && tt[tk] != UK) {
                                         int ifsz = 4, ifrow = 1, ifdims = 0, ifirst = 1;
                                         int ifnpel = 0, ifpel = 4, if_sty = -1; /* 指针字段 (fix 2026-08-19: 嵌套内联 struct 的指针字段原只消费 * 不设 8B → char *match 注册 1B → pathspec_item 布局错 → git add SEGV) */
@@ -5925,7 +5941,7 @@ static int parse(const char *s) {
                                                     if (tt[tk] == UK) tk++; /* } */
                                                 }
                                                 if (tt[tk] == DK) { while (tt[tk] == DK) { ifsz = 8; ifrow = 8; ifnpel++; tk++; } ifpel = (u2si >= 0 && stypes[u2si].sz > 0) ? stypes[u2si].sz : 4; } /* struct Inner *field / *prev 续行 — pointee = struct 大小 */
-                                                if (tt[tk] == VR) { if_sty = u2si; if (ifnpel == 0 && u2si >= 0 && stypes[u2si].sz > 0) { ifsz = stypes[u2si].sz; ifrow = stypes[u2si].sz; } } /* 字段名留在下一段统一处理 — 不 tk++! fix 2026-08-20: 原 tk++ 消费字段名 → tk 指向 [ → L5536 VR 检查失败 → while(LB) 维度处理被跳过 → struct eg_b g[3] 的 fsz 不乘 3 (fsz=8 实应 24) → 数组步长错 → sizeof 偏小 */
+                                                if (tt[tk] == VR) { if_sty = u2si; if (if_sty >= 0) if_sty_persist = if_sty; if (ifnpel == 0 && u2si >= 0 && stypes[u2si].sz > 0) { ifsz = stypes[u2si].sz; ifrow = stypes[u2si].sz; } } /* 字段名留在下一段统一处理 — 不 tk++! fix 2026-08-20: 原 tk++ 消费字段名 → tk 指向 [ → L5536 VR 检查失败 → while(LB) 维度处理被跳过 → struct eg_b g[3] 的 fsz 不乘 3 (fsz=8 实应 24) → 数组步长错 → sizeof 偏小 */
                                             } else if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } if (tt[tk] == DK) { while (tt[tk] == DK) { ifsz = 8; ifrow = 8; ifnpel++; tk++; } } } /* 匿名 struct {...} *field */
                                         } /* fix 2026-08-13: 三层嵌套 struct X { ... } *field; 定义 body 未消费 → 死循环 (pathspec_item.attr_match) */
                                         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char enm[64]; memcpy(enm, tn[tk], 64); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(enm, ev); ev++; } if (tt[tk] == CK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-13: 匿名 enum 字段 (内层嵌套 struct body); fix 2026-08-15: 注册常量 REV_CMD_PARENTS_ONLY undefined */
@@ -5941,6 +5957,7 @@ static int parse(const char *s) {
                                             if (tt[tk] == CL) { tk++; if (tt[tk] == NK) { ibw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: inline nested struct loop) */
                                             if (ibw > 0) { st_field_bit(ni, fn, ifsz, ifsz, ibw, ifuns); ifuns = 0; }
                                             else {
+                                            if (if_sty_persist >= 0 && ifsz == 4 && ifrow == 1 && ifdims == 0 && ifnpel == 0) { ifsz = stypes[if_sty_persist].sz; ifrow = ifsz; } /* fix 2026-08-24 t35v */
                                             while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ifdims == 0) ifirst = tv[tk]; ifdims++; ifsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc = e_lookup(tn[tk]); if (evc == 0x80000000) evc = macro_find(tn[tk]); if (evc != 0x80000000) { if (ifdims == 0) ifirst = evc; ifdims++; ifsz *= evc; } tk++; } if (tt[tk] == PK || tt[tk] == MK) { int op = tt[tk]; tk++; if (tt[tk] == NK) { if (op == PK) ifsz += tv[tk]; else ifsz -= tv[tk]; tk++; } } /* char d_name[NAME_MAX + 1]: 维度算术 +1/-1 (fix 2026-08-14: 原 + 无分支消费 → 死循环) */ if (tt[tk] == RB) tk++; }
                                             if (ifdims >= 1) ifrow = ifsz / ifirst; else ifrow = ifsz;
                                             if (sub_is_union) st_union_field(ni, fn, ifsz); /* fix 2026-08-18: 命名 union 类型 inline body (union cu { ... }; ) 字段偏移 0 — 原 st_field_sz_r 顺序放置 → union 当 struct 布局 → config_source u.buf.len/pos 偏移错 → config 解析失败 */
@@ -8520,6 +8537,7 @@ static void emit_fileio(const char *fname) {
         /* fread(ptr=rcx, size=rdx, nmemb=r8, stream=r9): ReadFile */
         mov_rr64(10, 9); /* r10 = handle */
         mov_rr64(11, 1); /* r11 = ptr */
+        mov_rr64(14, 2); /* r14 = size (rdx) — 保存用于返回值 bytes/size (fix 2026-08-24 t35v) */
         mov_rr64(0, 2);  /* rax = size */
         asm_emit("    乘64 r0, r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,1); b(0x0F); b(0xAF); modrm(3, 0, 0); /* imul rax, r8 */
         mov_rr64(8, 0);  /* r8 = count */
@@ -8533,6 +8551,10 @@ static void emit_fileio(const char *fname) {
         add_rsp_imm(48);
         mov_rr64(4, 15);
         mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes read */
+        /* fix 2026-08-24 t35v: C fread 返回元素数 = bytes/size (原返回字节数 → files-backend.c nread=fread(buf,cnt,1,f) 得 403≠1 → "cannot read 403 bytes" → rev-parse HEAD@{1} 失败) */
+        mov_rr(9, 14); /* r9d = size */
+        asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); /* xor edx, edx */
+        asm_emit("    无符号除 r9\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0xF7); modrm(3, 6, 1); /* DIV r9d */
     } else if (!strcmp(fname, "fwrite")) {
         /* fwrite(ptr=rcx, size=rdx, nmemb=r8, stream=r9): WriteFile
            stream==0 → stdout (git 的 FILE* stdout/stderr 值为 0; fix 2026-08-20:
@@ -8597,9 +8619,9 @@ static void emit_fileio(const char *fname) {
         sub_rsp_imm(48);
         mov_rr64(1, 10); /* rcx = handle */
         /* rdx = offset (参数原样) */
+        mov_rr64(9, 8); /* r9 = origin — 必须在 r8 覆盖前保存 (fix 2026-08-24 t35v: 原 r8 先被 high=NULL 覆盖 → r9=0 (FILE_BEGIN) → fseek(SEEK_END) 移到文件头 → ftell=0 → reflog 反向读取空 → rev-parse HEAD@{1} "log is empty") */
         mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
         mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = NULL (high) */
-        mov_rr64(9, 8); /* r9 = origin */
         call_iat(5); /* SetFilePointer */
         add_rsp_imm(48);
         mov_rr64(4, 15);
@@ -9852,9 +9874,34 @@ static void cg(int n) {
                 } else {
                     mov_r_imm(0, 0); /* no-op (self-host fopen HANDLE 模型) */
                 }
-            } else if (!strcmp(fname, "fseek") || !strcmp(fname, "rewind")) {
-                /* no-op, return nothing used */
-                mov_r_imm(0, 0);
+            } else if (!strcmp(fname, "fseek")) {
+                /* fseek(stream=rcx, offset=rdx, origin=r8): SetFilePointer(handle, offset, NULL, origin)
+                   (fix 2026-08-24 t35v: 原 no-op → fseek 不生效 → files_for_each_reflog_ent_reverse 用
+                   fseek/ftell 反向读 reflog 全空 → read_ref_at reccnt=0 → rev-parse HEAD@{1} "log is empty";
+                   仿 ftell 实现) */
+                mov_rr64(10, 1); /* r10 = handle */
+                mov_rr64(11, 2); /* r11 = offset (rdx 参数) */
+                mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                sub_rsp_imm(0x30); /* shadow 32 + pad 16 */
+                mov_rr64(1, 10); /* rcx = handle */
+                mov_rr64(2, 11); /* rdx = offset */
+                mov_rr64(9, 8);  /* r9 = origin (先保存, 因 r8 随后被 high 覆盖) */
+                mov_ri_ext(8, 0); /* r8 = NULL (lpDistanceToMoveHigh) */
+                call_iat(5); /* SetFilePointer */
+                add_rsp_imm(0x30);
+                mov_rr64(4, 15);
+            } else if (!strcmp(fname, "rewind")) {
+                /* rewind(stream=rcx) = fseek(stream, 0, SEEK_SET) */
+                mov_rr64(10, 1); /* r10 = handle */
+                mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+                sub_rsp_imm(0x30);
+                mov_rr64(1, 10);
+                mov_r_imm(2, 0);  /* rdx = 0 */
+                mov_ri_ext(8, 0); /* r8 = NULL (high) */
+                mov_ri_ext(9, 0); /* r9 = FILE_BEGIN (0) */
+                call_iat(5); /* SetFilePointer */
+                add_rsp_imm(0x30);
+                mov_rr64(4, 15);
             } else if (!strcmp(fname, "ftell")) {
                 /* ftell(stream=rcx): SetFilePointer((HANDLE)stream, 0, NULL, FILE_CURRENT) — 返回文件当前位置
                    (fix 2026-08-18: 原恒返回 0 → config do_event offset = 0-1 = -1 → store_aux_event
