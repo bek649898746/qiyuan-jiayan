@@ -263,12 +263,13 @@ began researching Jiayan — to tear the wall down.
 4.3 The Determinism Advantage
 
   This toolchain provides verifiability of compilation results:
-  H1==H2 dual verification makes output correctness mathematically provable.
+  H1==H2 dual verification provides strong, reproducible evidence of
+  output consistency across the C and Jiayan toolchains.
   Currently Windows x86-64 only; industrial safety-critical scenarios
   (autonomous driving / medical / finance) require additional adaptation and
   verification.
-  But the methodology itself already provides safety guarantees that
-  traditional toolchains cannot.
+  The methodology itself already provides verifiable consistency checks
+  that strengthen confidence beyond single-implementation toolchains.
 
 
 ================================================================
@@ -297,8 +298,8 @@ began researching Jiayan — to tear the wall down.
   ✅ Fully Chinese autonomous closed loop
   ✅ Linker (jyld + qcc -c + jycc, 2026-08-04)
   ✅ Self-bootstrapped compilation of Git (v1.0-gcc-parity, 2026-08-17):
-     the Jiayan bootstrap chain compiles the Git source tree 473/473 and the
-     linked 28MB executable runs, printing "git version 2.45.2" — a complete
+     the Jiayan bootstrap chain compiles the Git source tree in full and the
+     linked executable runs, printing "git version 2.45.2" — a complete
      source-to-runnable-binary loop by the self-hosting compiler alone
   ✅ LoongArch cross-compilation verification (QEMU emulation, source-level,
      2026-08-04)
