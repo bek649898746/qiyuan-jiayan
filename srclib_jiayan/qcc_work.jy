@@ -12769,6 +12769,36 @@ __attribute__((unused))
     w4f(f, sym_off);
     w4f(f, csym_n);
 }
+/* ==== Phase 3 阶段 C: IR 工程预埋区 (v1.4 §11.2 定义态 · 宏门内零占用) ====
+   语义依据: 《甲言_逆向定律库_IR工程预埋全景.md》§12 优先级 (类型宽度第一)
+   纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4) */
+#ifdef IR_PREBED_ACTIVE
+typedef 构 { 整 op; 整 ty; 整 d; 整 s1; 整 s2; 整 s3; } IR3;
+#define IR3_CAP 1000000
+静 IR3 ir3[IR3_CAP]; 静 整 ir3_n;
+
+typedef 构 { 整 start; 整 end; 整 npred; 整 nsucc; 整 preds[8]; 整 succs[8]; } BLK;
+#define BLK_CAP 100000
+静 BLK blks[BLK_CAP]; 静 整 blk_n;
+
+#define VT_CAP 1000000
+静 字 vt_lifetime[VT_CAP];
+静 整 vt_lifetime_id[VT_CAP];
+静 整 vt_tag[VT_CAP];
+静 整 vt_tyvar[VT_CAP];
+静 整 vt_trunc[VT_CAP];
+
+静 整 stypes_lo[256];
+静 整 stypes_hi[256];
+静 整 stypes_super[256];
+
+typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
+#define ANALYSIS_CAP 64
+静 IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; 静 整 analysis_n;
+静 整 analysis_store[ANALYSIS_CAP][64];
+#endif /* IR_PREBED_ACTIVE */
+
+
 
 整 main(整 argc, 字 **argv) {
     常 字 *src = "int main() { return 42; }";
