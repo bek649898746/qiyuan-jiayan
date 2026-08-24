@@ -9087,6 +9087,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_LOAD_RIP32 16 /* a=off, b=k, c=signext: mov eax,[rip+coff_static_disp(off,k)] */
 #define I_LOAD_RIP64 17 /* a=off, b=k: mov rax,[rip+coff_static_disp(off,k)-1] */
 #define I_LEA_RIP 18    /* a=off, b=k: lea rax,[rip+coff_static_disp(off,k)-1] */
+#define I_CALL_LBL 19   /* a=label, b=add_rsp_imm: call_rel(0); patch_label; add_rsp_imm(b) */
 static void ir_flush(void) {
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
@@ -9105,6 +9106,7 @@ static void ir_flush(void) {
             case I_LOAD_RIP32: mov_eax_rip(coff_static_disp(ir_a[i], ir_b[i])); if (ir_c[i]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } break;
             case I_LOAD_RIP64: mov_rax_rip64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_LEA_RIP: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
+            case I_CALL_LBL: call_rel(0); patch_label(cp - 4, ir_a[i], 0); add_rsp_imm(ir_b[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9498,9 +9500,9 @@ static void cg(int n) {
                         continue;
                     }
                     slot_h[slot_n] = total_h;
-                    if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); push_xmm0(); } /* fix 2026-08-06: 数学函数调用 int 参数转 double (pow(2.0,10)); ndbl 表达式; 记录签名 double 参数 */
-                    else if (nll[c]) { cg(c); push_r64(0); } /* long long 参数: 64 位压栈 (fix 2026-08-06: 原 push_r 只压 32 位，负 LL 高 32 位丢) */
-                    else { cg(c); push_r(0); } /* arg value -> rax */
+                    if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR */
+                    else if (nll[c]) { cg(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
+                    else { cg(c); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
                     total_h += 8;
                 }
                 slot_n++;
@@ -9589,9 +9591,7 @@ static void cg(int n) {
                 asm_emit("    调 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); /* call r10 (REX.W + REX.B) */
                 add_rsp_imm(32 + 8 * fp_extra + shadow_pad + total_h); /* fix 2026-08-07: +pad */
             } else if (is_user && fi >= 0) {
-                call_rel(0);
-                patch_label(cp - 4, func_tbl[fi].label, 0);
-                add_rsp_imm(argbase + total_h); /* fix 2026-08-07: argbase 已含 shadow_pad */
+                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } else if (!strcmp(fname, "memset")) {
                 /* dst=rcx, val=rdx, n=r8d */
                 mov_rr(10, 8); /* r10d = n */
