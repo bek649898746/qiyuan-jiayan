@@ -1,4 +1,13 @@
-﻿# 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
+# 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
+
+> ## 🏆 封存版本 v1.0（jiayan-v1.0-stable · 2026-08-24）
+>
+> **手搓自举中文编译器 · 零改动编译并落地运行 git-2.45.2**
+>
+> - **自举不动点**：`3b4002d2`（v1==v2==v3==v4==v5 五代 SHA256 全等，含 v1）
+> - **落地运行 Git**：原版 git-2.45.2（36.4 万行）→ 721 个 .o → 28MB 可执行 → `git version 2.45.2`
+> - **验证**：325/325 回归 + behavior 20/20 + git 对等回归 24/24 + H1==H2 双链合一
+> - **安装部署**：见下方 [快速开始](#快速开始)（依赖 gcc + Windows，一条命令自举验证）
 
 **让语言回到语言本身。让每一个不会英文的中国人，都能用自己的母语学会编程、用上 AI。**
 
@@ -82,6 +91,28 @@ releases/
 ```
 
 ## 快速开始
+
+### 安装部署（三分钟上手）
+
+**环境要求**：Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）——gcc 仅作"验证门卫"（重建 C 原版验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。
+
+```bash
+# 1. 克隆
+git clone https://gitee.com/zheng-yuhe-from-guangdong/qi-yuan--jia-yan.git
+cd qi-yuan--jia-yan
+
+# 2. 重建验证宿主（可选，仅验证用）
+gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
+
+# 3. 自举验证（一条命令：编译宿主 → 自举五代 → 校验不动点 → 跑测试）
+powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+# 输出: v1..v5 五代 SHA256 完全相同（自举不动点 3b4002d2）
+
+# 4. 用甲言编译程序
+./qcc_x86.exe hello.jy -o hello.exe && ./hello.exe
+```
+
+**零依赖用法**（不用 gcc）：直接用已知不动点的甲言编译器（`v1.exe`）编译自己——甲言自举链无限自我复制，纯中文工具链，无外部依赖。
 
 ### 依赖
 
