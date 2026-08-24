@@ -3956,6 +3956,7 @@ static int prim(void) {
                             while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { if (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } else { dims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; } /* t35k 2026-08-23: sizeof(匿名 struct) 数组维度整体表达式求值 (原 NK/VR/PK/MK 手写分支) */
                             if (dims >= 1) frow = fsz / first; else frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
+                            if (funs) stypes[si].fsgn[stypes[si].fn - 1] = 1; /* fix 2026-08-25 bug#33: 记录普通字段 unsigned (short 字段符号扩展判断, 原 fsgn 只给位域) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
                             if (fdbl) st_field_dbl(si, fn);
                         }
@@ -9171,6 +9172,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] — 32 位 int 字段解引用 */
 #define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] — char 字段解引用 (零扩展) */
 #define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] — short 字段解引用 (零扩展) */
+#define I_MOVSX_RAX_WORD 34 /* movsx eax, word [rax] — signed short 字段解引用 (符号扩展, fix 2026-08-25 bug#33) */
 #define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) — 64 位局部读 (指针/ll 字段) */
 #define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) — double 字段读 (movsd xmm0, [rbp+disp]) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
@@ -9211,6 +9213,7 @@ static void ir_flush(void) {
             case I_DEREF32: mov_reg_mreg(0, 0); break;
             case I_MOVZX_RAX_BYTE: asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); break;
             case I_MOVZX_RAX_WORD: asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break;
+            case I_MOVSX_RAX_WORD: asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); break;
             case I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); break;
             case I_LOAD_XMM0_RBP: movsd_xmm0_mbrp(ir_a[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
@@ -11483,7 +11486,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (fty == -2 || fty == -3 || (fty == -1 && st_field_el(s, fn) == 8)) { ir_emit(I_LOAD_RBP64, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); } /* fnptr(-2)/long long(-3)/char* 字段: 64-bit value (fix 2026-08-06; fix 2026-08-15: char* 字段 fty=-1 未 deref) */
                     else if (fsz > 8) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); st_field_2d_setup(s, fn); } /* 数组/嵌套 struct 字段 → 地址 (数组衰减 fix 2026-08-06; setup 2026-08-07) */
                     else if (fsz == 1) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: char field read */
-                else if (fsz == 2) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: short field read */
+                else if (fsz == 2) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); if (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); else ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: short field (unsigned 零扩展/signed 符号扩展, fix 2026-08-25 bug#33) */
                     else { ir_emit(I_LOAD_RBP, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: dword + bit-field */
                     ir_flush(); /* Phase3-IR case15: flush 局部成员读 */
                     }

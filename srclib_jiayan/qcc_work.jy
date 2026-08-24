@@ -3955,6 +3955,7 @@ __attribute__((unused))
                             循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } 否 { dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: sizeof(匿名 struct) 数组维度整体表达式求值 (原 NK/VR/PK/MK 手写分支) */
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
+                            若 (funs) stypes[si].fsgn[stypes[si].fn - 1] = 1; /* fix 2026-08-25 bug#33 */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
                             若 (fdbl) st_field_dbl(si, fn);
                         }
@@ -9170,6 +9171,7 @@ __attribute__((unused))
 #define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] */
 #define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] */
 #define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] */
+#define I_MOVSX_RAX_WORD 34 /* movsx eax, word [rax] — signed short 字段符号扩展 (fix 2026-08-25 bug#33) */
 #define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) */
 #define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
@@ -9210,6 +9212,7 @@ __attribute__((unused))
             例 I_DEREF32: mov_reg_mreg(0, 0); 断;
             例 I_MOVZX_RAX_BYTE: asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); 断;
             例 I_MOVZX_RAX_WORD: asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); 断;
+            例 I_MOVSX_RAX_WORD: asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); 断;
             例 I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); 断;
             例 I_LOAD_XMM0_RBP: movsd_xmm0_mbrp(ir_a[i]); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
@@ -11482,7 +11485,7 @@ __attribute__((unused))
                     否 若 (fty == -2 || fty == -3 || (fty == -1 && st_field_el(s, fn) == 8)) { ir_emit(I_LOAD_RBP64, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); } /* fnptr(-2)/long long(-3)/char* 字段: 64-bit value (fix 2026-08-06; fix 2026-08-15: char* 字段 fty=-1 未 deref) */
                     否 若 (fsz > 8) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); st_field_2d_setup(s, fn); } /* 数组/嵌套 struct 字段 → 地址 (数组衰减 fix 2026-08-06; setup 2026-08-07) */
                     否 若 (fsz == 1) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: char field read */
-                否 若 (fsz == 2) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: short field read */
+                否 若 (fsz == 2) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); 若 (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: short field (unsigned 零扩展/signed 符号扩展, fix 2026-08-25 bug#33) */
                     否 { ir_emit(I_LOAD_RBP, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: dword + bit-field */
                     ir_flush(); /* Phase3-IR case15: flush 局部成员读 */
                     }
