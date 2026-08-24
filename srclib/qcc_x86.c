@@ -9134,6 +9134,7 @@ static int node_psz(int n) {
 #define IR_MAX 2000000
 static int ir_op[IR_MAX], ir_a[IR_MAX], ir_b[IR_MAX], ir_c[IR_MAX];
 static int ir_n;
+static void graph_record_call(const char *to); /* -graph 旁路: 调用关系记录 (定义在 main 前, 前向声明供 case4 使用) */
 static void ir_emit(int op, int a, int b, int c) {
     if (ir_n >= IR_MAX) { fprintf(stderr, "[IR-OVERFLOW] ir_n=%d\n", ir_n); exit(1); }
     ir_op[ir_n] = op; ir_a[ir_n] = a; ir_b[ir_n] = b; ir_c[ir_n] = c; ir_n++;
@@ -9682,7 +9683,8 @@ static void cg(int n) {
             }
 
             if (is_sret) {
-                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
+                graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
+                    ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } else if (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
                 int fp_extra = nargs > 4 ? nargs - 4 : 0;
@@ -9698,7 +9700,8 @@ static void cg(int n) {
                 /* Phase3-IR: mov r10,rax; call r10; add_rsp 由 I_CALL_FNPTR 落码 */
                 /* (原三行删除) */
             } else if (is_user && fi >= 0) {
-                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
+                graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
+                    ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } else if (!strcmp(fname, "memset")) {
                 /* dst=rcx, val=rdx, n=r8d */
                 mov_rr(10, 8); /* r10d = n */
@@ -12828,6 +12831,51 @@ static int analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定�
 /* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
 #endif /* IR_PREBED_ACTIVE */
 
+/* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====
+   旁路: 不插桩不影响编译行为, 仅编译完成后遍历 func_tbl/stypes + 调用记录导出 JSON */
+static int graph_mode = 0; static char graph_out[512] = "";
+#define GRAPH_CALLS_CAP 20000
+static char graph_calls_from[GRAPH_CALLS_CAP][64]; static char graph_calls_to[GRAPH_CALLS_CAP][64]; static int graph_calls_n;
+static void graph_record_call(const char *to) {
+    if (!graph_mode || !cur_fn_name[0] || graph_calls_n >= GRAPH_CALLS_CAP) return;
+    for (int i = 0; i < graph_calls_n; i++) /* 去重: 同一 from→to 只记一次 (防 4000 上限被重复调用占满截断, 2026-08-25) */
+        if (!strcmp(graph_calls_from[i], cur_fn_name) && !strcmp(graph_calls_to[i], to)) return;
+    strcpy(graph_calls_from[graph_calls_n], cur_fn_name);
+    strcpy(graph_calls_to[graph_calls_n], to);
+    graph_calls_n++;
+}
+static void graph_export(void) {
+    if (!graph_mode || !graph_out[0]) return;
+    FILE *f = fopen(graph_out, "wb");
+    if (!f) { fprintf(stderr, "qcc_x86: cannot write graph %s\n", graph_out); return; }
+    int first = 1;
+    fprintf(f, "{\n\"entities\": [\n");
+    for (int i = 0; i < func_n; i++) { if (!first) { fprintf(f, ",\n"); } first = 0; fprintf(f, "{\"id\":\"fn:%s\",\"name\":\"%s\",\"kind\":\"function\",\"line\":0}", func_tbl[i].name, func_tbl[i].name); }
+    for (int i = 0; i < st_n; i++) {
+        if (!first) { fprintf(f, ",\n"); } first = 0;
+        fprintf(f, "{\"id\":\"st:%s\",\"name\":\"%s\",\"kind\":\"struct\",\"line\":0,\"fields\":[", stypes[i].name, stypes[i].name);
+        for (int j = 0; j < stypes[i].fn; j++)
+            fprintf(f, "\"%s\"%s", stypes[i].fnames[j], j + 1 < stypes[i].fn ? "," : "");
+        fprintf(f, "]}");
+    }
+    fprintf(f, "\n],\n\"relations\": [\n");
+    first = 1;
+    for (int i = 0; i < graph_calls_n; i++) { if (!first) { fprintf(f, ",\n"); } first = 0; fprintf(f, "{\"from\":\"fn:%s\",\"to\":\"fn:%s\",\"kind\":\"calls\"}", graph_calls_from[i], graph_calls_to[i]); }
+    fprintf(f, "\n],\n\"layout_sensitive\": [\n");
+    first = 1;
+    for (int i = 0; i < st_n; i++) {
+        if (!first) { fprintf(f, ",\n"); } first = 0;
+        const char *risk; /* risk 阈值 (2026-08-25 审计定): 字段≥8 或 大小≥64 = high; 字段≥4 或 大小≥32 = medium; 否则 low */
+        if (stypes[i].fn >= 8 || stypes[i].sz >= 64) risk = "high";
+        else if (stypes[i].fn >= 4 || stypes[i].sz >= 32) risk = "medium";
+        else risk = "low";
+        fprintf(f, "{\"type\":\"st:%s\",\"name\":\"%s\",\"fields\":%d,\"risk\":\"%s\"}", stypes[i].name, stypes[i].name, stypes[i].fn, risk);
+    }
+    fprintf(f, "\n]\n}\n");
+    fclose(f);
+    fprintf(stderr, "[graph] %s 导出完成 (fn:%d st:%d calls:%d)\n", graph_out, func_n, st_n, graph_calls_n);
+}
+
 int main(int argc, char **argv) {
     const char *src = "int main() { return 42; }";
     const char *outf = NULL;
@@ -12859,6 +12907,7 @@ int main(int argc, char **argv) {
             }
             argi += 2; continue;
         }
+        if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
             if (hb) {
@@ -13116,6 +13165,7 @@ int main(int argc, char **argv) {
     }
 
     if (asm_out) { fclose(asm_out); asm_out = NULL; }
+    if (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后, 2026-08-25) */
 
     if (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } else { printf("OK: %s (%d bytes code)\n", outf, cp); }
     return 0;
