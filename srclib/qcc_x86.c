@@ -11469,19 +11469,20 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 } else {
                     if (cg_no_deref) {
                         st_field_2d_setup(s, fn); /* fix 2026-08-07 */
-                        lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); /* field as ARRAY base → address */
+                        ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); /* Phase3-IR case15: field as ARRAY base → address */
                         { int afsz3 = st_field_size(stypes[s].name, fn); if (!cg_incdec_target && !cg_addr_of && afsz3 == 8 && st_field_is_ptr(s, fn)) { mov_reg_mreg64(0, 0); /* fix 2026-08-18: 非箭头 var.field 指针字段作数组基 (store.seen[i] / store.parsed[i] / store.key[i]): 原 cg_no_deref 只返回字段地址 → seen[0] 读到指针值本身 → config 写循环 j 垃圾; 对齐箭头分支 — 解引用取指针值 + 按指向元素缩放; fix 2026-08-19: 条件统一 st_field_is_ptr (原 el==8 对 char* 恒假) */ int pel3 = st_field_pel(s, fn); cg_mem_frow = pel3; cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */ cg_frows[0] = pel3; cg_frows[1] = st_field_ffin(s, fn); if (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2; if (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; } }
                     } else if (st_field_is_dbl(stypes[s].name, fn)) {
-                        movsd_xmm0_mbrp(var_sbase(vn, o) + fo - cur_frame_sz); /* double field → xmm0 */
+                        ir_emit(I_LOAD_XMM0_RBP, var_sbase(vn, o) + fo - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR case15: double field → xmm0 */
                     } else {
                     int fsz = st_field_size(stypes[s].name, fn);
                     int fty = st_field_ty_idx(stypes[s].name, fn);
-                    if (fty >= 0 && fsz <= 8) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* struct field value: 8 bytes */
-                    else if (fty == -2 || fty == -3 || (fty == -1 && st_field_el(s, fn) == 8)) mov_reg_mbrp64(0, var_sbase(vn, o) + fo - cur_frame_sz); /* fnptr(-2)/long long(-3)/char* 字段: 64-bit value (fix 2026-08-06; fix 2026-08-15: char* 字段 fty=-1 未 deref) */
-                    else if (fsz > 8) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); st_field_2d_setup(s, fn); } /* 数组/嵌套 struct 字段 → 地址 (数组衰减 fix 2026-08-06; setup 2026-08-07) */
-                    else if (fsz == 1) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* char field read: movzx byte (fix 2026-08-03: was a 4-byte read bleeding into neighbours) */
-                else if (fsz == 2) { lea_r_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx word (short field) */
-                    else { mov_reg_mbrp(0, var_sbase(vn, o) + fo - cur_frame_sz); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
+                    if (fty >= 0 && fsz <= 8) { ir_emit(I_LOAD_RBP64, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case15: struct field value 8B */
+                    else if (fty == -2 || fty == -3 || (fty == -1 && st_field_el(s, fn) == 8)) { ir_emit(I_LOAD_RBP64, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); } /* fnptr(-2)/long long(-3)/char* 字段: 64-bit value (fix 2026-08-06; fix 2026-08-15: char* 字段 fty=-1 未 deref) */
+                    else if (fsz > 8) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); st_field_2d_setup(s, fn); } /* 数组/嵌套 struct 字段 → 地址 (数组衰减 fix 2026-08-06; setup 2026-08-07) */
+                    else if (fsz == 1) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: char field read */
+                else if (fsz == 2) { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: short field read */
+                    else { ir_emit(I_LOAD_RBP, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: dword + bit-field */
+                    ir_flush(); /* Phase3-IR case15: flush 局部成员读 */
                     }
                 }
             }}
