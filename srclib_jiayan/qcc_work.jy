@@ -2482,7 +2482,23 @@ __attribute__((unused))
 /* per-function long-long-return record, keyed by NAME (fix 2026-08-21 #27:
    64-bit return values were truncated — call nodes never set nll, so ll_ext32
    signed-extended the low 32 bits (movsxd rax,eax) of e.g. parse_timestamp() */
-静 构 { 字 name[64]; 字 ret_ll; } fn_ll_sig[1024]; 静 整 fn_ll_n;
+静 构 { 字 name[64]; 字 pll[8]; 字 ret_ll; } fn_ll_sig[1024]; 静 整 fn_ll_n; /* fix 2026-08-25 bug#30: pll[8] per-param long long (int 实参→ll 形参需符号扩展) */
+静 空 fn_ll_put(常 字 *name, 整 pr, 整 ll) {
+    若 (pr < 0 || pr >= 8) 返;
+    遍 (整 i = 0; i < fn_ll_n; i++)
+        若 (!strcmp(fn_ll_sig[i].name, name)) { fn_ll_sig[i].pll[pr] = (字)ll; 返; }
+    若 (fn_ll_n >= 1024) 返;
+    strcpy(fn_ll_sig[fn_ll_n].name, name);
+    memset(fn_ll_sig[fn_ll_n].pll, 0, 8);
+    fn_ll_sig[fn_ll_n].pll[pr] = (字)ll;
+    fn_ll_n++;
+}
+静 整 fn_ll_get(常 字 *name, 整 pr) {
+    若 (pr < 0 || pr >= 8) 返 0;
+    遍 (整 i = 0; i < fn_ll_n; i++)
+        若 (!strcmp(fn_ll_sig[i].name, name)) 返 fn_ll_sig[i].pll[pr];
+    返 0;
+}
 静 空 fn_ll_set_ret(常 字 *name, 整 ll) {
     遍 (整 i = 0; i < fn_ll_n; i++)
         若 (!strcmp(fn_ll_sig[i].name, name)) { fn_ll_sig[i].ret_ll = (字)ll; 返; }
@@ -7183,6 +7199,7 @@ __attribute__((unused))
                     若 (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long param: 8-byte slot (fix 2026-08-05) */
                     若 (pis_dbl && pis_ptr) vars[vcnt - 1].p_dbl = 1; /* double* param */
                     fn_dbl_put((字*)(nn + fdef), pr, pis_dbl && !pis_ptr); /* caller routes scalar doubles to xmm */
+                    fn_ll_put((字*)(nn + fdef), pr, pis_ll && !pis_ptr); /* fix 2026-08-25 bug#30: 记录 ll 形参 (int 实参→符号扩展) */
                     tk++; pr++;
                     循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; } /* skip [N] */
                 }
@@ -9548,7 +9565,7 @@ __attribute__((unused))
                     }
                     slot_h[slot_n] = total_h;
                     若 (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR */
-                    否 若 (nll[c]) { cg(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
+                    否 若 (nll[c] || fn_ll_get(fname, slot_n)) { cg(c); 若 (!nll[c]) ll_ext32(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#30: int 实参→ll 形参符号扩展 */
                     否 { cg(c); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
                     total_h += 8;
                 }

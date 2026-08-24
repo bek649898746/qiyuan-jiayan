@@ -2483,7 +2483,23 @@ static struct { char name[64]; char pdbl[8]; char ret_dbl; } fn_dbl_sig[512]; st
 /* per-function long-long-return record, keyed by NAME (fix 2026-08-21 #27:
    64-bit return values were truncated — call nodes never set nll, so ll_ext32
    signed-extended the low 32 bits (movsxd rax,eax) of e.g. parse_timestamp() */
-static struct { char name[64]; char ret_ll; } fn_ll_sig[1024]; static int fn_ll_n;
+static struct { char name[64]; char pll[8]; char ret_ll; } fn_ll_sig[1024]; static int fn_ll_n; /* fix 2026-08-25 bug#30: pll[8] per-param long long (int 实参→ll 形参需符号扩展) */
+static void fn_ll_put(const char *name, int pr, int ll) {
+    if (pr < 0 || pr >= 8) return;
+    for (int i = 0; i < fn_ll_n; i++)
+        if (!strcmp(fn_ll_sig[i].name, name)) { fn_ll_sig[i].pll[pr] = (char)ll; return; }
+    if (fn_ll_n >= 1024) return;
+    strcpy(fn_ll_sig[fn_ll_n].name, name);
+    memset(fn_ll_sig[fn_ll_n].pll, 0, 8);
+    fn_ll_sig[fn_ll_n].pll[pr] = (char)ll;
+    fn_ll_n++;
+}
+static int fn_ll_get(const char *name, int pr) {
+    if (pr < 0 || pr >= 8) return 0;
+    for (int i = 0; i < fn_ll_n; i++)
+        if (!strcmp(fn_ll_sig[i].name, name)) return fn_ll_sig[i].pll[pr];
+    return 0;
+}
 static void fn_ll_set_ret(const char *name, int ll) {
     for (int i = 0; i < fn_ll_n; i++)
         if (!strcmp(fn_ll_sig[i].name, name)) { fn_ll_sig[i].ret_ll = (char)ll; return; }
@@ -7184,6 +7200,7 @@ static int parse(const char *s) {
                     if (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long param: 8-byte slot (fix 2026-08-05) */
                     if (pis_dbl && pis_ptr) vars[vcnt - 1].p_dbl = 1; /* double* param */
                     fn_dbl_put((char*)(nn + fdef), pr, pis_dbl && !pis_ptr); /* caller routes scalar doubles to xmm */
+                    fn_ll_put((char*)(nn + fdef), pr, pis_ll && !pis_ptr); /* fix 2026-08-25 bug#30: 记录 ll 形参 (int 实参→符号扩展) */
                     tk++; pr++;
                     while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; } /* skip [N] */
                 }
@@ -9549,7 +9566,7 @@ static void cg(int n) {
                     }
                     slot_h[slot_n] = total_h;
                     if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR */
-                    else if (nll[c]) { cg(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
+                    else if (nll[c] || fn_ll_get(fname, slot_n)) { cg(c); if (!nll[c]) ll_ext32(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#30: int 实参→ll 形参符号扩展 (add5(1,255,255,255,-5) 的 -5) */
                     else { cg(c); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
                     total_h += 8;
                 }
