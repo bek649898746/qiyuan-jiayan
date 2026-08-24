@@ -19,9 +19,19 @@ Write-Host "[2/4] ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
 if ($t -notmatch 'PASS') { Write-Host "[FAIL] ï¿½Ô¼ï¿½Ê§ï¿½ï¿½: $t" -ForegroundColor Red; exit 1 }
 
-# 3. ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ (v1==v2==v3==v4==v5 ï¿½ï¿½ï¿½È«ï¿½ï¿½; 2026-08-20: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ = qcc_boot.exe
+# 3. ï¿½Ô¾ï¿½ï¿½ï¿½ï¿? (v1==v2==v3==v4==v5 ï¿½ï¿½ï¿½È?ï¿½ï¿½; 2026-08-20: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ = qcc_boot.exe
 #    ï¿½ï¿½ï¿½Ô¾Ù²ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1, Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½C ï¿½ï¿½ï¿½ï¿½ qcc_x86.exe ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
-Write-Host "[3/4] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ qcc_boot.exe = ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1) ..." -ForegroundColor Yellow
+Write-Host "[3/4] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿? (ï¿½ï¿½ï¿½ï¿½ qcc_boot.exe = ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1) ..." -ForegroundColor Yellow
+# ´ÓÁãÂ·¾¶ (2026-08-24 ·â´æ: ²Ö¿â²»º¬±àÒë²úÎï, Ä°ÉúÈË clone ºóÐèÏÈ×Ô¾ÙÉú³ÉÖÖ×Ó)
+if (-not (Test-Path .\qcc_boot.exe)) {
+    Write-Host "  [seed] qcc_boot.exe ²»´æÔÚ, ÓÃ C ËÞÖ÷±àÒëÆ÷×Ô¾ÙÉú³ÉÖÖ×Ó..." -ForegroundColor Yellow
+    & .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o qcc_boot.exe | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path .\qcc_boot.exe)) {
+        & .\qcc_x86.exe srclib\qcc_x86.c -o qcc_boot.exe | Out-Null
+    }
+    if (-not (Test-Path .\qcc_boot.exe)) { Write-Host "[FAIL] ÎÞ·¨Éú³É qcc_boot.exe" -ForegroundColor Red; exit 1 }
+    Write-Host "  [seed] qcc_boot.exe Éú³ÉÍê³É" -ForegroundColor Green
+}
 & .\qcc_boot.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
 & .\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe | Out-Null
@@ -45,13 +55,13 @@ Write-Host "  v5: $h5"
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 $expected = '3b4002d2'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
-    Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿½: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
+    Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
     Write-Host "[WARN] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ï¿½Ö¿ï¿½ï¿½Â¼ï¿½ï¿½Í¬ï¿½ï¿½odd=$h1 even=$h2" -ForegroundColor Yellow
-    Write-Host "       ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ÐºÏ·ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Îªï¿½ÂµÄ²ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½ï¿½ï¿½ README ï¿½ï¿½Â¼ï¿½ï¿½"
+    Write-Host "       ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ÐºÏ·ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Îªï¿½ÂµÄ²ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½ï¿½ï¿? README ï¿½ï¿½Â¼ï¿½ï¿½"
 }
 
-# 4. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ @EXPECTED compile_fail ï¿½ï¿½ ï¿½Þ¸ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü²ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ NativeCommandErrorï¿½ï¿½
+# 4. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ @EXPECTED compile_fail ï¿½ï¿½ ï¿½Þ¸ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü²ï¿½ï¿½Ô´ï¿½ï¿½ï¿? NativeCommandErrorï¿½ï¿½
 Write-Host "[4/4] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ run_tests.py ..." -ForegroundColor Yellow
 python scripts/run_tests.py
 if ($LASTEXITCODE -ne 0) {
@@ -59,7 +69,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 5. ï¿½ï¿½Îªï¿½ï¿½ï¿½Ô£ï¿½fix 2026-08-09 Êµï¿½â¸´ï¿½ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½Ç°ï¿½Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½, 2 Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öªï¿½ï¿½
+# 5. ï¿½ï¿½Îªï¿½ï¿½ï¿½Ô£ï¿½fix 2026-08-09 Êµï¿½â¸´ï¿½ï¿½ï¿½ï¿½ï¿?: ï¿½ï¿½Ç°ï¿½Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½, 2 Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öªï¿½ï¿½
 Write-Host "[5/5] ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ tests/behavior ..." -ForegroundColor Yellow
 python tests/behavior/run_behavior.py
 if ($LASTEXITCODE -ne 0) {
@@ -73,4 +83,4 @@ gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
 gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
 
 Write-Host ""
-Write-Host "==== ï¿½ï¿½É¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¡ï¿½ ====" -ForegroundColor Cyan
+Write-Host "==== ï¿½ï¿½É¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¡ï¿? ====" -ForegroundColor Cyan
