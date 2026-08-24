@@ -512,6 +512,7 @@ def main():
     families = ['types', 'vararg', 'layout', 'ctrl', 'expr']
     qcc = DEFAULT_QCC
     do_minimize = False
+    only_seeds = None
     i = 3
     while i < len(args):
         if args[i] == '--family':
@@ -523,6 +524,9 @@ def main():
         elif args[i] == '--minimize':
             do_minimize = True
             i += 1
+        elif args[i] == '--only':
+            only_seeds = [int(x) for x in args[i + 1].split(',') if x.strip().isdigit()]
+            i += 2
         else:
             i += 1
     if not os.path.exists(qcc):
@@ -534,40 +538,53 @@ def main():
 
     stats = {'pass': 0, 'diff': [], 'skip': 0, 'gcc_fail_only': 0,
              'qcc_compile_fail': 0, 'run_timeout': 0}
-    total = rounds * n_seeds
+    tasks = []
+    if only_seeds:
+        # 增量模式: 重跑之前 DIFF 的 seed (从 D 盘读已保存 .c 用例, ~2-3 分钟)
+        print('[增量] 重跑 seed:', only_seeds)
+        for seed in only_seeds:
+            prefix = 't%d_' % seed
+            for f in sorted(os.listdir(OUT_DIR)):
+                if f.startswith(prefix) and f.endswith('.c'):
+                    fam = f[len(prefix):-2]
+                    tasks.append((os.path.join(OUT_DIR, f), seed, fam))
+    else:
+        for s in range(n_seeds):
+            for rnd in range(rounds):
+                seed = start_seed + s * 100000 + rnd  # 每轮唯一 seed (可复现)
+                family = random.Random(seed).choice(families)
+                rng = random.Random(seed)  # 该 seed 的确定性生成器
+                prog = Gen(rng).gen_program(family)
+                src_path = os.path.join(OUT_DIR, 't%d_%s.c' % (seed, family))
+                with open(src_path, 'w', encoding='utf-8') as f:
+                    f.write(prog)
+                tasks.append((src_path, seed, family))
+    total = len(tasks)
     done = 0
-    for s in range(n_seeds):
-        for rnd in range(rounds):
-            seed = start_seed + s * 100000 + rnd  # 每轮唯一 seed (可复现)
-            family = random.Random(seed).choice(families)
-            rng = random.Random(seed)  # 该 seed 的确定性生成器
-            prog = Gen(rng).gen_program(family)
-            src_path = os.path.join(OUT_DIR, 't%d_%s.c' % (seed, family))
-            with open(src_path, 'w', encoding='utf-8') as f:
-                f.write(prog)
-            cat, det = classify_and_test(src_path, seed, family, qcc, qcc_args)
-            done += 1
-            if cat == 'pass':
-                stats['pass'] += 1
-            elif cat == 'skip':
-                stats['skip'] += 1
-            elif cat == 'gcc_fail_only':
-                stats['gcc_fail_only'] += 1
-            elif cat == 'qcc_compile_fail':
-                stats['qcc_compile_fail'] += 1
-                print('[qcc_compile_fail] seed=%d fam=%s' % (seed, family))
-                print(prog[:400])
-            elif cat == 'run_timeout':
-                stats['run_timeout'] += 1
-            else:  # diff
-                stats['diff'].append((seed, family, det))
-                if do_minimize:
-                    minimize(src_path, seed, family, qcc, qcc_args)
-                print('[DIFF] seed=%d fam=%s %s' % (seed, family, det[:200]))
-                print('  saved: %s' % src_path)
-            if done % 50 == 0:
-                print('... %d/%d done, pass=%d diff=%d' % (
-                    done, total, stats['pass'], len(stats['diff'])), flush=True)
+    for src_path, seed, family in tasks:
+        cat, det = classify_and_test(src_path, seed, family, qcc, qcc_args)
+        done += 1
+        if cat == 'pass':
+            stats['pass'] += 1
+        elif cat == 'skip':
+            stats['skip'] += 1
+        elif cat == 'gcc_fail_only':
+            stats['gcc_fail_only'] += 1
+        elif cat == 'qcc_compile_fail':
+            stats['qcc_compile_fail'] += 1
+            print('[qcc_compile_fail] seed=%d fam=%s' % (seed, family))
+            print(prog[:400])
+        elif cat == 'run_timeout':
+            stats['run_timeout'] += 1
+        else:  # diff
+            stats['diff'].append((seed, family, det))
+            if do_minimize:
+                minimize(src_path, seed, family, qcc, qcc_args)
+            print('[DIFF] seed=%d fam=%s %s' % (seed, family, det[:200]))
+            print('  saved: %s' % src_path)
+        if done % 50 == 0:
+            print('... %d/%d done, pass=%d diff=%d' % (
+                done, total, stats['pass'], len(stats['diff'])), flush=True)
 
     print('\n=== 差异测试台 v2: %d 个程序 (%d 轮 x %d seed) 族=%s ===' % (
         total, rounds, n_seeds, ','.join(families)))

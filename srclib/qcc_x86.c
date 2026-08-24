@@ -3324,9 +3324,9 @@ static void lex(const char *s) {
             tt[ti] = NK; tv[ti] = cval; ti++; continue;
         }
         if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0;
-            long long v64 = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05) */
+            long long v64 = 0; int is_hexoct = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05); fix 2026-08-25 bug#29: hex/octal 超 INT_MAX → unsigned (C11 6.4.4.1) */
             if (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
-                i += 2;
+                i += 2; is_hexoct = 1;
                 /* hex float literal 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
                 int j = i; while (isxdigit((unsigned char)s[j])) j++;
                 int is_hexfp = 0;
@@ -3357,12 +3357,14 @@ static void lex(const char *s) {
                     ti++; continue;
                 }
                 if (s[i] == '0' && s[i + 1] >= '0' && s[i + 1] <= '7') { /* 八进制 0755 = 493 (fix 2026-08-05: was decimal → 755) */
+                    is_hexoct = 1;
                     while (s[i] >= '0' && s[i] <= '7') v64 = v64 * 8 + (s[i++] - '0');
                 } else {
                     while (isdigit(s[i])) v64 = v64 * 10 + (s[i++] - '0');
                 }
             }
             tv[ti] = (int)v64; tll_hi[ti] = (int)(v64 >> 32); /* low/high 32 (fix 2026-08-05) */
+            if (is_hexoct && (unsigned long long)v64 > 0x7FFFFFFFULL) tuns[ti] = 1; /* fix 2026-08-25 bug#29: hex/octal 字面量超 INT_MAX → unsigned int (0xFFFFFFFF > 0 应为真) */
             if (s[i] == 'u' || s[i] == 'U') { tuns[ti] = 1; i++; } /* unsigned suffix 0xFFFFFFFFu (fix 2026-08-05) */
             if (s[i] == 'l' || s[i] == 'L') { while (s[i] == 'l' || s[i] == 'L') i++; tll[ti] = 1; } /* long long suffix (fix 2026-08-05) */
             ti++; continue; }
@@ -4172,6 +4174,7 @@ static int prim(void) {
             if (cast_ty && !strcmp(cast_ty, "int") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; return m; } /* fix 2026-08-16: ndbl[ce] 原未守卫 ce=-1 (prim 解析失败) → ndbl[-1] 越界 */
             if (cast_ty && !strcmp(cast_ty, "long") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; nll[m] = 1; return m; } /* fix 2026-08-25 bug#26: (long long)double 走 node19 + 64位 cvttsd2si (原只 nll[ce]=1 → 32位转换零扩展 → 负数错) */
             if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
+    if (cast_ty && !strcmp(cast_ty, "int") && ce >= 0) nuns[ce] = 0; /* fix 2026-08-25 bug#29b: (int)cast 清除 unsigned 标记 → signed 语义 ((int)0xFFFFFFFF > 0 = 0) */
     if (cast_ull && ce >= 0) { nll[ce] = 1; if (nt[ce] == 1 && var_is_uns((char*)(nn + ce))) nuns[ce] = 1; } /* fix 2026-08-25 bug#28c: (unsigned long long)x -> 64-bit; unsigned 源 (uint32_t) 零扩展, signed 源 (int/short) 符号扩展 (t28 修正) */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
