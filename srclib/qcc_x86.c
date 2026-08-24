@@ -9061,13 +9061,75 @@ static int node_psz(int n) {
     return 0;
 }
 
+/* ==== Phase 3 IR 骨架 v3 (阶段B) ==== */
+#define IR_MAX 2000000
+static int ir_op[IR_MAX], ir_a[IR_MAX], ir_b[IR_MAX], ir_c[IR_MAX];
+static int ir_n;
+static void ir_emit(int op, int a, int b, int c) {
+    if (ir_n >= IR_MAX) { fprintf(stderr, "[IR-OVERFLOW] ir_n=%d\n", ir_n); exit(1); }
+    ir_op[ir_n] = op; ir_a[ir_n] = a; ir_b[ir_n] = b; ir_c[ir_n] = c; ir_n++;
+}
+#define I_MOV_IMM 1    /* a=reg, b=imm32 */
+#define I_MOV_IMM_LL 2 /* a=reg, b=lo, c=hi */
+#define I_JMP_LBL 3    /* a=label */
+#define I_LABEL 4      /* a=label */
+#define I_TEST_JZ 5    /* a=label: test eax,eax; jz label */
+#define I_TEST_JNZ 6   /* a=label: test eax,eax; jnz label */
+#define I_PUSH_RAX 7   /* push rax */
+#define I_ALU_RBX 8    /* a=op: pop rbx; alu_rr(op, 3, 0); mov rax, rbx (32位) */
+#define I_LOAD_RBP 9   /* a=reg, b=disp, c=signext: mov reg, [rbp+disp] (32位) (+符号扩展) */
+#define I_PUSH_R64_RAX 10 /* push_r64(0): sub rsp,8; mov [rsp],rax */
+#define I_MOV_RBX_RAX64 11 /* mov rbx, rax */
+#define I_ALU64_OP 12    /* a=op: pop_r64(0); add/sub/imul64 rax,rbx */
+#define I_STORE_RBP 13  /* a=disp: mov [rbp+disp], eax (32位存储) */
+#define I_PUSH_XMM0 14 /* push_xmm0() */
+#define I_DBL_BIN 15   /* a=op: movsd xmm1,xmm0; pop_xmm0; addsd/subsd/mulsd/divsd */
+#define I_LOAD_RIP32 16 /* a=off, b=k, c=signext: mov eax,[rip+coff_static_disp(off,k)] */
+#define I_LOAD_RIP64 17 /* a=off, b=k: mov rax,[rip+coff_static_disp(off,k)-1] */
+#define I_LEA_RIP 18    /* a=off, b=k: lea rax,[rip+coff_static_disp(off,k)-1] */
+static void ir_flush(void) {
+    for (int i = 0; i < ir_n; i++) {
+        switch (ir_op[i]) {
+            case I_MOV_IMM: mov_r_imm(ir_a[i], ir_b[i]); break;
+            case I_MOV_IMM_LL: mov_rax_imm64(((long long)(unsigned int)ir_b[i]) | (((long long)(unsigned int)ir_c[i]) << 32)); break;
+            case I_JMP_LBL: jmp_rel(-1); patch_label(cp - 4, ir_a[i], 2); break;
+            case I_LABEL: set_label(ir_a[i]); break;
+            case I_TEST_JZ: test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, ir_a[i], 1); break;
+            case I_TEST_JNZ: test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, ir_a[i], 3); break;
+            case I_PUSH_RAX: push_r(0); break;
+            case I_LOAD_RBP: mov_reg_mbrp(ir_a[i], ir_b[i]); if (ir_c[i]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } break;
+            case I_PUSH_R64_RAX: push_r64(0); break;
+            case I_MOV_RBX_RAX64: mov_rr64(3, 0); break;
+            case I_STORE_RBP: mov_mbrp_reg(ir_a[i], 0); break;
+            case I_PUSH_XMM0: push_xmm0(); break;
+            case I_LOAD_RIP32: mov_eax_rip(coff_static_disp(ir_a[i], ir_b[i])); if (ir_c[i]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } break;
+            case I_LOAD_RIP64: mov_rax_rip64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
+            case I_LEA_RIP: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
+            case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
+                if (ir_a[i] == PK) addsd_xmm0_xmm1();
+                else if (ir_a[i] == MK) subsd_xmm0_xmm1();
+                else if (ir_a[i] == DK) mulsd_xmm0_xmm1();
+                else divsd_xmm0_xmm1();
+                break;
+            case I_ALU64_OP: pop_r64(0);
+                if (ir_a[i] == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); }
+                else if (ir_a[i] == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); }
+                else { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); }
+                break;
+            case I_ALU_RBX: pop_r(3); g_uns_shift = 0; g_uns_div = 0; alu_rr(ir_a[i], 3, 0); mov_rr(0, 3); break;
+            default: fprintf(stderr, "[IR-UNKNOWN] op=%d\n", ir_op[i]); exit(1);
+        }
+    }
+    ir_n = 0;
+}
+
 static void cg(int n) {
     if (n < 0) return;
     if (n >= nc) { fprintf(stderr, "[CG-BAD] n=%d nc=%d\n", n, nc); abort(); }
     int t = nt[n];
     if (t < 0 || t > 65) { fprintf(stderr, "[CG-BADTYPE] n=%d nt=%d nc=%d\n", n, t, nc); abort(); }
     switch (nt[n]) {
-        case 0: if (nll[n]) mov_rax_imm64(((long long)(unsigned int)nv[n]) | (((long long)(unsigned int)nll_hi[n]) << 32)); else mov_r_imm(0, nv[n]); break; /* LL imm: unsigned low-32 | high-32<<32 (fix 2026-08-05: signed ext garbled 0xFFFFFFFFLL) */ /* imm → eax / rax (LL: 64-bit, fix 2026-08-05) */
+        case 0: if (nll[n]) { ir_emit(I_MOV_IMM_LL, 0, nv[n], nll_hi[n]); ir_flush(); } else { ir_emit(I_MOV_IMM, 0, nv[n], 0); ir_flush(); } break;
         case 19: cg_f(n0[n]); cvttsd2si_eax_xmm0(); break; /* (int)double: truncate xmm0 to eax */
         case STR: { /* string literal ??placeholder, patched after codegen */
             int si = nv[n];
@@ -9131,12 +9193,12 @@ static void cg(int n) {
                 }
             } else {
                 char *vn = (char*)(nn + n);
-                if (var_isstatic(vn)) { /* static: .data via RIP-relative */
-                    if (var_arrsz(vn) != 0) lea_rax_rip(coff_static_disp(off, 1) - 1); /* static ARRAY name: its address (lea is 7B, stc_disp assumes 6); -1 = extern 未定长数组 (fix 2026-08-15) */
-                    else if (var_pesz(vn) > 0) mov_rax_rip64(coff_static_disp(off, 1) - 1);
-                    else if (var_small_struct(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); /* struct value: full 8 bytes */
-                    else if (var_is_ll(vn)) { mov_rax_rip64(coff_static_disp(off, 1) - 1); nll[n] = 1; } /* long long: full 64-bit static load (fix 2026-08-05) */
-                    else { mov_eax_rip(coff_static_disp(off, 0)); if (nll[n] && !nuns[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* (long long)static int: sign-extend (fix 2026-08-06) */
+                if (var_isstatic(vn)) { /* static: .data via RIP-relative — IR */
+                    if (var_arrsz(vn) != 0) { ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); }
+                    else if (var_pesz(vn) > 0) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
+                    else if (var_small_struct(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
+                    else if (var_is_ll(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); nll[n] = 1; }
+                    else { ir_emit(I_LOAD_RIP32, off, 0, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); }
                 } else {
                     /* check if array �?LEA. MUST resolve to the SAME var var_lookup found:
                        the forward search matched any same-named array (e.g. a `char fn[64]`
@@ -9153,7 +9215,7 @@ static void cg(int n) {
                     else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     else if (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
-                    else { mov_reg_mbrp(0, off - cur_frame_sz); if (nll[n] && !nuns[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* (long long)int: sign-extend 32→64 (fix 2026-08-06: 原 mov eax 零扩展, (long long)-7 得 4294967289) */
+                    else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); } /* Phase3-IR: 局部 int 读 */
                 }
             }
         } break;
@@ -9163,12 +9225,8 @@ static void cg(int n) {
             if ((n0[n] >= 0 && ndbl[n0[n]]) || (n1[n] >= 0 && ndbl[n1[n]])) {
                 /* floating-point arithmetic / comparison (result in xmm0) */
                 if (o == PK || o == MK || o == DK || o == DV) {
-                    cg_f(n0[n]); push_xmm0();
-                    cg_f(n1[n]); movsd_xmm1_xmm0(); pop_xmm0();
-                    if (o == PK) addsd_xmm0_xmm1();
-                    else if (o == MK) subsd_xmm0_xmm1();
-                    else if (o == DK) mulsd_xmm0_xmm1();
-                    else if (o == DV) divsd_xmm0_xmm1();
+                    cg_f(n0[n]); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush();
+                    cg_f(n1[n]); ir_emit(I_DBL_BIN, o, 0, 0); ir_flush();
                     ndbl[n] = 1;
                     break;
                 }
@@ -9189,17 +9247,23 @@ static void cg(int n) {
             if ((n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
                 /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
-                    cg(n0[n]); ll_ext32(n0[n]); push_r64(0); /* save lhs; int RHS 符号扩展 (fix 2026-08-06) */
-                    cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0);       /* rbx = rhs */
-                    { int pel64 = node_psz(n0[n]); /* fix 2026-08-23 t49e: ptr+int 64-bit scale - items + nr (size_t); fix 2026-08-23 t35b: nll (long long cast) lhs 不作指针缩放 - (long long)p - before 被 imul 8 → moved 垃圾 (regress_member_ptrinc) */
-                        if (pel64 > 0 && !nll[n0[n]] && (o == PK || o == MK)) { mov_r_imm(1, pel64); asm_emit("    \xe4\xb9\x98 64 r3, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* imul rbx, rcx */
+                    { int pel64 = node_psz(n0[n]);
+                      if (pel64 <= 0 && (o == PK || o == MK || o == DK)) { /* Phase3-IR: LL 64位 PK/MK/DK 无指针缩放 */
+                        cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
+                        cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
+                        ir_emit(I_ALU64_OP, o, 0, 0); ir_flush();
+                      } else {
+                        cg(n0[n]); ll_ext32(n0[n]); push_r64(0);
+                        cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0);
+                        if (pel64 > 0 && !nll[n0[n]] && (o == PK || o == MK)) { mov_r_imm(1, pel64); asm_emit("    \xe4\xb9\x98 64 r3, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 3, 1); }
+                        pop_r64(0);
+                        if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); }
+                        else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); }
+                        else if (o == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); }
+                        else if (o == DV) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); } else { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } }
+                        else if (o == MD) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); } else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } }
+                      }
                     }
-                    pop_r64(0);                      /* rax = lhs */
-                    if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); } /* add rax, rbx (REX.R=0: rbx bit3=0) */
-                    else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); } /* sub rax, rbx */
-                    else if (o == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); } /* imul rax, rbx (IMUL r64,r/m64: reg=dest rax, r/m=src rbx) */
-                    else if (o == DV) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); } else { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } } /* xor edx,edx; div rbx (unsigned, fix 2026-08-06 M1) / cqo; idiv rbx */
-                    else if (o == MD) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); } else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } } /* unsigned remainder / cqo; idiv rbx; rax=rdx */
                     nll[n] = 1;
                     break;
                 }
@@ -9270,11 +9334,16 @@ static void cg(int n) {
                     }
                 }
             }
+            if (pscale <= 1 && psub_div <= 1 && o != T_SR && o != T_DV && o != T_MD) { /* Phase3-IR: 32位无缩放/除路径 */
+                cg(n0[n]); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush();
+                cg(n1[n]); ir_emit(I_ALU_RBX, o, 0, 0); ir_flush();
+            } else {
             cg(n0[n]); push_r(0); cg(n1[n]); pop_r(3);
             if (pscale > 1) { mov_rr(10, 0); mov_r_imm(0, pscale); asm_emit("    乘 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); } /* eax = index * row size (REX.B=1 → rm=r10; fix 2026-08-03: text said r2) */
             if (o == T_SR) g_uns_shift = expr_is_unsigned(n0[n]); /* unsigned >> → SHR (fix 2026-08-05) */
             if (o == T_DV || o == T_MD) g_uns_div = expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* fix 2026-08-06 M1 */
             alu_rr(o, 3, 0); mov_rr(0, 3);
+            }
             if (psub_div > 1) { /* eax = (p - q) / 元素大小 (idiv: edx:eax / ecx) */
                 mov_r_imm(1, psub_div);
                 asm_emit("    除 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
@@ -10187,7 +10256,7 @@ static void cg(int n) {
                 else if (var_pesz(vname) > 0) {  mov_mbrp_reg64(off - cur_frame_sz, 0); }
                 else if (var_is_ll(vname)) {  mov_mbrp_reg64(off - cur_frame_sz, 0); } /* long long: 64-bit store (fix 2026-08-05) */
                 else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
-                else mov_mbrp_reg(off - cur_frame_sz, 0); } /* close E: else of STR */
+                else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } } /* close E: else of STR */
                 } /* close D: STR branch */
                 } /* close C: else of is_dbl */
                 } /* close A: else of sret */
@@ -10235,11 +10304,11 @@ static void cg(int n) {
         case 21: /* continue �?jump to innermost loop's continue target */
             jmp_rel(-1); patch_label(cp - 4, cont_label, 2);
         break;
-        case 22: { /* ternary: cond ? t : f */
+        case 22: { /* ternary: cond ? t : f — IR */
             int lf = new_label(), ld = new_label();
-            cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lf, 1);
-            cg(n1[n]); jmp_rel(-1); patch_label(cp - 4, ld, 2);
-            set_label(lf); cg(n2[n]); set_label(ld);
+            cg(n0[n]); ir_emit(I_TEST_JZ, lf, 0, 0); ir_flush();
+            cg(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
+            cg(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
         } break;
         case 23: { /* postfix ++/-- : return old value, then mutate (simple var) */
             int is_dec = nv[n];
@@ -10946,7 +11015,7 @@ static void cg(int n) {
                             else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
                             else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0);
                             else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
-                            else mov_mbrp_reg(off - cur_frame_sz, 0);
+                            else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                         }
                     }
                 } else {
@@ -10958,7 +11027,7 @@ static void cg(int n) {
                     else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
                     else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
                     else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
-                    else mov_mbrp_reg(off - cur_frame_sz, 0);
+                    else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                 }
                 }
             }
