@@ -11323,7 +11323,7 @@ __attribute__((unused))
                     } 否 若 (!cg_no_deref && !cg_addr_of) { /* t35o 2026-08-24: 取地址链末字段保留地址 — &arr[i].field 在 cg_addr_of 下读到字段值 (status SEGV 链之一) */
                         若 (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
                         否 若 (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
-否 若 (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
+否 若 (fsz == 2) { 若 (st_field_is_uns(stypes[s2].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* fix 2026-08-25 bug#33: arr[i].field short */
                         否 { mov_reg_mreg(0, 0); }
                     }
                 }
@@ -11451,19 +11451,19 @@ __attribute__((unused))
                     若 (st_field_is_dbl(stypes[s].name, fn)) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* movsd xmm0, [rax] */
                     否 若 (fsz > 4) {
                         整 fty = st_field_ty_idx(stypes[s].name, fn);
-                        若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8) || (fty == -1 && st_field_row(stypes[s].name, fn) == 8))) { mov_reg_mreg64(0, 0); } /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B, 或 char* 字段 fty=-1): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址; fix 2026-08-15) */
+                        若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8) || (fty == -1 && st_field_row(stypes[s].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static 64 */ /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B, 或 char* 字段 fty=-1): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址; fix 2026-08-15) */
                         /* else: by-value struct (8B) / array field → address */
-                    } 否 若 (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx */
-否 若 (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
-                    否 { mov_reg_mreg(0, 0); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* dword + bit-field extract (fix 2026-08-05) */
+                    } 否 若 (fsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static char */
+否 若 (fsz == 2) { 若 (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static short (fix bug#33) */
+                    否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: static dword + bit-field */
                     }
                 } 否 若 (var_big_param(vn)) {
                     /* big-struct PARAM: slot holds a POINTER to the caller-side copy.
                        Load the pointer, deref, then +fo. */
                     st_field_2d_setup(s, fn); /* fix 2026-08-07: 数组字段元素大小 → cg_mem_frow, case-14 s.v[i] 读取宽度正确 (原缺 → int 元素被 movzbl 读 8 位 → 值错) */
-                    若 (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(o, 1) - 1);
-                    否 mov_reg_mbrp64(0, o - cur_frame_sz); /* rax = copy ptr */
-                    若 (fo != 0) add_rax_imm8(fo);
+                    若 (var_isstatic(vn)) ir_emit(I_LOAD_RIP64, o, 1, 0); 否 ir_emit(I_LOAD_RBP64, 0, o - cur_frame_sz, 0);
+                    若 (fo != 0) ir_emit(I_ADD_RAX_IMM8, fo, 0, 0);
+                    ir_flush(); /* Phase3-IR case15: big-param 地址 */
                     若 (!cg_no_deref) {
                         整 bsz = st_field_size(stypes[s].name, fn);
                         若 (bsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
