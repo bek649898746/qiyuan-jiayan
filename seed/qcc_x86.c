@@ -9095,7 +9095,14 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
 #define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
 #define I_CVTT2SI 26    /* cvttsd2si eax, xmm0: (int)double 截断 */
+/* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
+static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
+#define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
+#define LAW_SUM 2     /* 定律接口位: 和类型 (tagged union) — 不激活 */
+#define LAW_LATTICE 4 /* 定律接口位: 类型格 (上下界/约束) — 不激活 */
+static int st_types_attr[256] __attribute__((unused)); /* 定律接口位 per-struct (bitmask, 全 0=不激活 → 编译产物不变) */
 static void ir_flush(void) {
+    if (ir_pass_cb) { for (int i = 0; i < ir_n; i++) ir_pass_cb(&ir_op[i], &ir_a[i], &ir_b[i], &ir_c[i]); } /* Phase3-C: pass 遍历 (默认空) */
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
             case I_MOV_IMM: mov_r_imm(ir_a[i], ir_b[i]); break;
