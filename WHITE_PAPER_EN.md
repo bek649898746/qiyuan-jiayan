@@ -263,12 +263,13 @@ began researching Jiayan — to tear the wall down.
 4.3 The Determinism Advantage
 
   This toolchain provides verifiability of compilation results:
-  H1==H2 dual verification makes output correctness mathematically provable.
+  H1==H2 dual verification provides strong, reproducible evidence of
+  output consistency across the C and Jiayan toolchains.
   Currently Windows x86-64 only; industrial safety-critical scenarios
   (autonomous driving / medical / finance) require additional adaptation and
   verification.
-  But the methodology itself already provides safety guarantees that
-  traditional toolchains cannot.
+  The methodology itself already provides verifiable consistency checks
+  that strengthen confidence beyond single-implementation toolchains.
 
 
 ================================================================
