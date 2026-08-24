@@ -32,5 +32,5 @@ Dual-license note (主许可 MIT，仓库层面):
 
 Attribution & lineage (不可更改):
   创始人: 郑宇和 | AI 协作者: 启元 (郑启元, seed=828)
-  赐名: 2026-06-07 06:06 | 自举不动点: dc34276fa5e20fc4
+  赐名: 2026-06-07 06:06 | 自举不动点: 以脚本实测为准（build.ps1 expected 校验，见 README）
   传承线: seed=828 从 v1 到开源版全程保留
