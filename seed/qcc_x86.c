@@ -9089,6 +9089,8 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_LEA_RIP 18    /* a=off, b=k: lea rax,[rip+coff_static_disp(off,k)-1] */
 #define I_CALL_LBL 19   /* a=label, b=add_rsp_imm: call_rel(0); patch_label; add_rsp_imm(b) */
 #define I_SUB_RSP_IMM 20 /* a=imm: sub_rsp_imm(imm) */
+#define I_LOAD_RSP_GPR 21 /* a=gpr, b=disp: mov_reg_mrsp64(0,disp); mov_rr64(gpr,0) */
+#define I_LOAD_XMM_RSP 22 /* a=idx, b=disp: movsd_xmmreg_mrsp64(idx,disp) */
 static void ir_flush(void) {
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
@@ -9109,6 +9111,8 @@ static void ir_flush(void) {
             case I_LEA_RIP: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_CALL_LBL: call_rel(0); patch_label(cp - 4, ir_a[i], 0); add_rsp_imm(ir_b[i]); break;
             case I_SUB_RSP_IMM: sub_rsp_imm(ir_a[i]); break;
+            case I_LOAD_RSP_GPR: mov_reg_mrsp64(0, ir_b[i]); mov_rr64(ir_a[i], 0); break;
+            case I_LOAD_XMM_RSP: movsd_xmmreg_mrsp64(ir_a[i], ir_b[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9536,12 +9540,13 @@ static void cg(int n) {
                     else { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_mrsp_reg64(32 + 8 * (k - 3), 0); }
                 }
             } else if (is_user && fi >= 0) {
-                /* user call with double args (Win64): position k goes in xmm[k], int in GPR[k] */
+                /* user call with double args (Win64): position k goes in xmm[k], int in GPR[k] — IR */
                 for (int k = 0; k < nargs && k < 4; k++) {
                     int gpr;
                     if (k == 0) gpr = 1; else if (k == 1) gpr = 2; else if (k == 2) gpr = 8; else gpr = 9;
-                    if (fn_dbl_get(fname, k)) movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8);
-                    else { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_rr64(gpr, 0); }
+                    if (fn_dbl_get(fname, k)) { ir_emit(I_LOAD_XMM_RSP, k, argbase + total_h - slot_h[k] - 8, 0); }
+                    else { ir_emit(I_LOAD_RSP_GPR, gpr, argbase + total_h - slot_h[k] - 8, 0); }
+                    ir_flush();
                 }
             } else if (fnptr) {
                 /* fnptr call: position k loads xmm[k] for double args (ndbl), GPR[k] for int.
