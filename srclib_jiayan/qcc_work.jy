@@ -9093,6 +9093,7 @@ __attribute__((unused))
 #define I_LOAD_XMM_RSP 22 /* a=idx, b=disp: movsd_xmmreg_mrsp64(idx,disp) */
 #define I_LEA_RBP_GPR 23 /* a=gpr, b=disp: lea_r_mbrp(gpr,disp) */
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
+#define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
 静 空 ir_flush(空) {
     遍 (整 i = 0; i < ir_n; i++) {
         择 (ir_op[i]) {
@@ -9117,6 +9118,7 @@ __attribute__((unused))
             例 I_LOAD_XMM_RSP: movsd_xmmreg_mrsp64(ir_a[i], ir_b[i]); 断;
             例 I_LEA_RBP_GPR: lea_r_mbrp(ir_a[i], ir_b[i]); 断;
             例 I_CALL_FNPTR: mov_rr64(10, 0); asm_emit("    调 r10\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); add_rsp_imm(ir_a[i]); 断;
+            例 I_ALU_EBX: alu_rr(ir_a[i], 0, 1); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 若 (ir_a[i] == PK) addsd_xmm0_xmm1();
                 否 若 (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10330,17 +10332,17 @@ __attribute__((unused))
                 整 step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; }
                 若 (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
-                否 mov_reg_mbrp(0, off - cur_frame_sz);
-                push_r(0); /* save old value */
-                mov_r_imm(1, is_dec ? -step : step); /* ebx = ±step */
+                否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR */
+                ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
+                ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 若 (var_isstatic(vn)) {
                     mov_eax_rip(coff_static_disp(off, 0));
                     alu_rr(T_PK, 0, 1); /* eax += ebx */
                     mov_rip_eax(coff_static_disp(off, 0));
                 } 否 {
-                    mov_reg_mbrp(0, off - cur_frame_sz);
-                    alu_rr(T_PK, 0, 1);
-                    mov_mbrp_reg(off - cur_frame_sz, 0);
+                    ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR */
+                    ir_emit(I_ALU_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx */
+                    ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR */
                 }
                 pop_r(0); /* restore old value → eax */
             } 否 {
