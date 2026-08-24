@@ -216,6 +216,15 @@ class Gen:
         has_node = r.random() < 0.5
         has_fp = r.random() < 0.5
         has_byval = has_inner and r.random() < 0.6
+        # 大 struct (模拟 layout_sensitive 高危模式: z_stream_s 30 字段等, 2026-08-25)
+        has_big = r.random() < 0.5
+        if has_big:
+            self.big_nf = r.randrange(20, 40)
+            self.big_flds = []
+            for bi in range(self.big_nf):
+                bt = r.choice(['int', 'char', 'long long', 'int', 'unsigned', 'int', 'short'])
+                self.big_flds.append('%s f%d' % (bt, bi))
+            lines.append('struct Big { %s; };' % '; '.join(self.big_flds))
         # 嵌套 struct (2 层)
         if has_inner:
             lines.append('struct Inner { int a; char b; long long c; };')
@@ -296,6 +305,16 @@ class Gen:
             lines.append('    %s.a = %d;' % (iv, r.choice(SAFE_VAL)))
             lines.append('    %s.c = %d;' % (iv, r.choice(SAFE_VAL)))
             m.append(('    printf("%%d\\n", inner_sum(%s));' % iv, 'int'))
+        # 大 struct 定向访问 (高危布局模式)
+        if has_big:
+            bv = self.v()
+            lines.append('    struct Big %s;' % bv)
+            assigned = r.sample(range(self.big_nf), min(4, self.big_nf))
+            for bi in assigned:
+                lines.append('    %s.f%d = %d;' % (bv, bi, r.choice(SAFE_VAL)))
+            m.append(('    printf("%d\\n", (int)sizeof(struct Big));', 'int'))
+            idx = r.sample(assigned, min(3, len(assigned)))  # 从已赋值字段选 (防未初始化读取 UB, 2026-08-25)
+            m.append(('    printf("%%d\\n", %s);' % ' + '.join('%s.f%d' % (bv, i) for i in idx), 'int'))
         m.append(('    return 0;', None))
         for text, _ in m:
             lines.append(text)

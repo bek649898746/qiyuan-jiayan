@@ -9,7 +9,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 root = os.getcwd()
 os.chdir(root)
 
-BASELINE = 'B02D6749'  # 当前不动点 (IR 上主线后, 2026-08-24 683b4fa)
+BASELINE = 'BA5C8560'  # 当前不动点 (IR 上主线后, 2026-08-24 683b4fa)
 # 口径: 本脚本 = 自举回归哨兵 (当前编译器编译当前源 == 当前不动点);
 # 直译全等 (新旧编译器对同一旧源产物一致) 见施工日志 20260824_phase3_ir_mainline.md
 ir_exe = sys.argv[1] if len(sys.argv) > 1 else 'scratch_test/ir_exp.exe'
