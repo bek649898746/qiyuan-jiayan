@@ -9337,7 +9337,7 @@ __attribute__((unused))
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            若 ((n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
+            若 (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) { /* fix 2026-08-25 bug#32: (long long)cast 节点本身走 64 位 */
                 /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
                 若 (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { 整 pel64 = node_psz(n0[n]);
