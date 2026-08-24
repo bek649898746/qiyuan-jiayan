@@ -9089,6 +9089,8 @@ __attribute__((unused))
 #define I_LEA_RIP 18    /* a=off, b=k: lea rax,[rip+coff_static_disp(off,k)-1] */
 #define I_CALL_LBL 19   /* a=label, b=add_rsp_imm: call_rel(0); patch_label; add_rsp_imm(b) */
 #define I_SUB_RSP_IMM 20 /* a=imm: sub_rsp_imm(imm) */
+#define I_LOAD_RSP_GPR 21 /* a=gpr, b=disp: mov_reg_mrsp64(0,disp); mov_rr64(gpr,0) */
+#define I_LOAD_XMM_RSP 22 /* a=idx, b=disp: movsd_xmmreg_mrsp64(idx,disp) */
 静 空 ir_flush(空) {
     遍 (整 i = 0; i < ir_n; i++) {
         择 (ir_op[i]) {
@@ -9109,6 +9111,8 @@ __attribute__((unused))
             例 I_LEA_RIP: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) - 1); 断;
             例 I_CALL_LBL: call_rel(0); patch_label(cp - 4, ir_a[i], 0); add_rsp_imm(ir_b[i]); 断;
             例 I_SUB_RSP_IMM: sub_rsp_imm(ir_a[i]); 断;
+            例 I_LOAD_RSP_GPR: mov_reg_mrsp64(0, ir_b[i]); mov_rr64(ir_a[i], 0); 断;
+            例 I_LOAD_XMM_RSP: movsd_xmmreg_mrsp64(ir_a[i], ir_b[i]); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 若 (ir_a[i] == PK) addsd_xmm0_xmm1();
                 否 若 (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9536,12 +9540,13 @@ __attribute__((unused))
                     否 { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_mrsp_reg64(32 + 8 * (k - 3), 0); }
                 }
             } 否 若 (is_user && fi >= 0) {
-                /* user call with double args (Win64): position k goes in xmm[k], int in GPR[k] */
+                /* user call with double args (Win64): position k goes in xmm[k], int in GPR[k] — IR */
                 遍 (整 k = 0; k < nargs && k < 4; k++) {
                     整 gpr;
                     若 (k == 0) gpr = 1; 否 若 (k == 1) gpr = 2; 否 若 (k == 2) gpr = 8; 否 gpr = 9;
-                    若 (fn_dbl_get(fname, k)) movsd_xmmreg_mrsp64(k, argbase + total_h - slot_h[k] - 8);
-                    否 { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_rr64(gpr, 0); }
+                    若 (fn_dbl_get(fname, k)) { ir_emit(I_LOAD_XMM_RSP, k, argbase + total_h - slot_h[k] - 8, 0); }
+                    否 { ir_emit(I_LOAD_RSP_GPR, gpr, argbase + total_h - slot_h[k] - 8, 0); }
+                    ir_flush();
                 }
             } 否 若 (fnptr) {
                 /* fnptr call: position k loads xmm[k] for double args (ndbl), GPR[k] for int.
