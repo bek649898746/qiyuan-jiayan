@@ -10,7 +10,7 @@ GITDIR = r'C:\Users\Administrator\Desktop\git-2.45.2'
 PRELUDE = os.path.join(ROOT, 'compat_prelude.h')
 QCC = os.path.join(ROOT, 'v1.exe')  # 当前自举编译器
 QCC_ARGS = ['-D', '__STDC_VERSION__=199901L', '-D', '__GNUC__=5', '-D', '_WIN32=1', '-D', 'REG_STARTEND=1', '-I', PRELUDE]
-OUT_DIR = os.path.join(ROOT, 'scratch_test', 'diff')
+OUT_DIR = r'D:\qiyuan_home\diff_out'  # 2026-08-25 启元改: 输出移D盘(354GB空闲), 原C盘 scratch_test/diff 27GB 爆盘
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---- 半随机 C 程序生成器 ----

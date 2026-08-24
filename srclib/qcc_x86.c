@@ -1563,6 +1563,18 @@ static void mov_byte_mbrp_imm(int disp, int imm) {
     else { modrm(2, 0, 5); b4(disp); }
     b(imm & 0xFF);
 }
+/* 局部 char 变量存储: mov byte [rbp+disp], al (1 字节截断, fix 2026-08-25 bug#28b) */
+static void mov_byte_mbrp_al(int disp) {
+    asm_emit("    存字节 [rbp%+d], al\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0);
+    b(0x88);
+    if (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); }
+    else { modrm(2, 0, 5); b4(disp); }
+}
+/* 局部 char 变量读取: movzx eax, byte [rbp+disp] (零扩展, qcc char=unsigned 约定, fix 2026-08-25 bug#28b) */
+static void movzx_eax_mbrp(int disp) {
+    asm_emit("    零扩展字节 r0, [rbp%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0);
+    b(0x0F); b(0xB6); b(0x85); b4(disp); /* movzx eax, byte [rbp+disp] */
+}
 /* char arr[N] = "lit" (static, coff): store one string byte into [rax+disp]
    (C6 /0 MOV r/m8, imm8 — no relocation needed; rax 已由 lea_rax_rip 指向 .data 槽,
    fix 2026-08-20: mov_byte_rip_imm 的 C6 05 disp32 imm8 在 coff 模式无法生成 REL32
@@ -1992,6 +2004,13 @@ static int var_is_dbl(const char *n) {
 static int var_is_ll(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_ll;
     for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_ll; /* 全局 long long (fix 2026-08-13: 全局 LL 算术被当 32 位, b_global 6000000000→低32) */
+    return 0;
+}
+/* char var: 1-byte loads/stores (fix 2026-08-25 bug#28b: 局部 char 变量 32 位读/写 → 负值/高位非零值错 —
+   qcc char=unsigned 约定, 读用 movzx 零扩展, 存用 mov byte 截断) */
+static int var_is_char(const char *n) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_char;
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_char; /* 全局 char */
     return 0;
 }
 /* unsigned variable: >> must use SHR (logical), not SAR (fix 2026-08-05) */
@@ -2952,6 +2971,7 @@ static int expr_is_double(int n) {
     
     if (n < 0) return 0;
     if (ndbl[n]) return 1;
+    if (nt[n] == 1) return var_is_dbl((char*)(nn + n)) ? 1 : 0; /* fix 2026-08-25 bug#27: double 变量标识符 (原 ndbl 未设置 → 0-v1 走整数路径 → 负 double 全错) */
     if (nt[n] == 4) { /* function call */
         int fn = n0[n];
         if (fn < 0) return 0;
@@ -4094,9 +4114,9 @@ static int prim(void) {
         /* type cast: (type)expr — type keywords/struct/typedef then ). fix 2026-08-13 Phase3: unknown typedef (uint32_t 来自跳过 <stdint.h>) 也当 cast 类型 — var_lookup==-1 排除变量 (a) */
             if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
             char *cast_ty = 0; char *cast_ty2 = 0; char *cast_td = 0;
-            char cast_sname[64] = ""; int cast_is_struct = 0;
+            char cast_sname[64] = ""; int cast_is_struct = 0; int cast_ull = 0; /* fix 2026-08-25 bug#28c: (unsigned long long) cast 8B 标记 */
             tk++; /* ( */
-            if (tt[tk] == VK) { cast_ty = tn[tk]; tk++; if (tt[tk] == VK) { cast_ty2 = tn[tk]; tk++; } while (tt[tk] == VK) tk++; } /* first/second type kw: int/double */
+            if (tt[tk] == VK) { cast_ty = tn[tk]; tk++; if (tt[tk] == VK) { cast_ty2 = tn[tk]; tk++; if (tt[tk] == VK && !strcmp(cast_ty, "unsigned") && !strcmp(cast_ty2, "long") && !strcmp(tn[tk], "long")) cast_ull = 1; while (tt[tk] == VK) tk++; } } /* first/second type kw: int/double */
             else while (tt[tk] == VK) tk++;
             if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { strcpy(cast_sname, tn[tk]); cast_is_struct = 1; tk++; } } /* struct Tag — 保存 tag 名 (compound literal 用) */
             else if (tt[tk] == VR && td_is(tn[tk])) { cast_td = tn[tk]; tk++; }
@@ -4152,6 +4172,7 @@ static int prim(void) {
             if (cast_ty && !strcmp(cast_ty, "int") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; return m; } /* fix 2026-08-16: ndbl[ce] 原未守卫 ce=-1 (prim 解析失败) → ndbl[-1] 越界 */
             if (cast_ty && !strcmp(cast_ty, "long") && ((ce >= 0 && ndbl[ce]) || expr_is_double(ce))) { int m = Nd(19); Nc(m, ce); ndbl[m] = 0; nll[m] = 1; return m; } /* fix 2026-08-25 bug#26: (long long)double 走 node19 + 64位 cvttsd2si (原只 nll[ce]=1 → 32位转换零扩展 → 负数错) */
             if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
+    if (cast_ull && ce >= 0) { nll[ce] = 1; if (nt[ce] == 1 && var_is_uns((char*)(nn + ce))) nuns[ce] = 1; } /* fix 2026-08-25 bug#28c: (unsigned long long)x -> 64-bit; unsigned 源 (uint32_t) 零扩展, signed 源 (int/short) 符号扩展 (t28 修正) */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
                 if (tt[tk] == LB) {
@@ -5044,7 +5065,7 @@ static int blk(void) {
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
-            if (tt[tk] == VR && td_is(tn[tk])) { int tdi2b = tdef_lookup(tn[tk]);  if (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr && tdefs[tdi2b].sz == 8) { is_ll = 1; if (tdefs[tdi2b].is_uns) is_uns = 1; } } /* fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
+            if (tt[tk] == VR && td_is(tn[tk])) { int tdi2b = tdef_lookup(tn[tk]);  if (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr) { if (tdefs[tdi2b].sz == 1) { is_char = 1; if (tdefs[tdi2b].is_uns) is_uns = 1; } else if (tdefs[tdi2b].sz == 2) { is_short = 1; if (tdefs[tdi2b].is_uns) is_uns = 1; } else if (tdefs[tdi2b].sz == 4) { if (tdefs[tdi2b].is_uns) is_uns = 1; } else if (tdefs[tdi2b].sz == 8) { is_ll = 1; if (tdefs[tdi2b].is_uns) is_uns = 1; } } } /* fix 2026-08-25 bug#28a 补: typedef unsigned int (uint32_t) → is_uns (t28: 右移/比较/cast 全按 unsigned); fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
             tk++; if (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             if (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
                 tk++; /* skip { */
@@ -5074,7 +5095,7 @@ static int blk(void) {
             if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != AK && tt[tk + 1] != LB && tt[tk + 1] != CK && tt[tk + 1] != SK) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07); 变量名与 typedef 同名时 (cmp_type cmp_type = ...) 下一 token 是 =/[/,/; 不得当类型吃掉 (fix 2026-08-15: ref-filter.c cmp_type undefined) */
                 if (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
-                if (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl && tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1;
+                if (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl) { if (tdefs[tdi2v].sz == 1) { is_char = 1; } else if (tdefs[tdi2v].sz == 2) { is_short = 1; } else if (tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1; } /* fix 2026-08-25 bug#28: typedef 宽度族 2nd/3rd-token 路径 (const uint8_t v 同修); is_uns 由 5081 统一处理 */
                 else if (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t"))) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20: 未知 typedef 回退按名字识别 8B unsigned (size_t 未注册时 rd 判 int → v1≠v2 movsxd 差异) */
                 else if (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t"))) is_ll = 1;
                 if (tdi2v >= 0 && tdefs[tdi2v].is_uns) { is_uns = 1; }
@@ -9240,6 +9261,7 @@ static void cg(int n) {
                     else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     else if (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
+                    else if (var_is_char(vn)) { movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错) */
                     else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); } /* Phase3-IR: 局部 int 读 */
                 }
             }
@@ -9247,7 +9269,7 @@ static void cg(int n) {
         case 2: { /* binary op */
             int o = nv[n];
             if (o == CK) { cg(n0[n]); cg(n1[n]); break; } /* comma: evaluate left (side effects), result = right */
-            if ((n0[n] >= 0 && ndbl[n0[n]]) || (n1[n] >= 0 && ndbl[n1[n]])) {
+            if ((n0[n] >= 0 && expr_is_double(n0[n])) || (n1[n] >= 0 && expr_is_double(n1[n]))) { /* fix 2026-08-25 bug#27: 用 expr_is_double (覆盖 double 变量) 替代裸 ndbl */
                 /* floating-point arithmetic / comparison (result in xmm0) */
                 if (o == PK || o == MK || o == DK || o == DV) {
                     cg_f(n0[n]); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush();
@@ -10279,6 +10301,7 @@ static void cg(int n) {
                 else if (var_pesz(vname) > 0) {  mov_mbrp_reg64(off - cur_frame_sz, 0); }
                 else if (var_is_ll(vname)) {  mov_mbrp_reg64(off - cur_frame_sz, 0); } /* long long: 64-bit store (fix 2026-08-05) */
                 else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
+                else if (var_is_char(vname)) { mov_byte_mbrp_al(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节截断存 */
                 else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } } /* close E: else of STR */
                 } /* close D: STR branch */
                 } /* close C: else of is_dbl */
@@ -10343,7 +10366,7 @@ static void cg(int n) {
                 int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; else if (vars[vi].p_esz > 0) step = vars[vi].p_esz; break; }
                 if (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
-                else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR */
+                else if (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR */
                 ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
                 ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 if (var_isstatic(vn)) {
@@ -10351,9 +10374,9 @@ static void cg(int n) {
                     alu_rr(T_PK, 0, 1); /* eax += ebx */
                     mov_rip_eax(coff_static_disp(off, 0));
                 } else {
-                    ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR */
+                    if (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); else ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR */
                     ir_emit(I_ALU_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx */
-                    ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR */
+                    if (var_is_char(vn)) mov_byte_mbrp_al(off - cur_frame_sz); else ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR */
                 }
                 pop_r(0); /* restore old value → eax */
             } else {
@@ -11038,6 +11061,7 @@ static void cg(int n) {
                             else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
                             else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0);
                             else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
+                            else if (var_is_char(vname)) mov_byte_mbrp_al(off - cur_frame_sz);
                             else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                         }
                     }
@@ -11050,6 +11074,7 @@ static void cg(int n) {
                     else if (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
                     else if (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
                     else if (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
+                    else if (var_is_char(vname)) mov_byte_mbrp_al(off - cur_frame_sz); /* fix 2026-08-25 bug#28b: 局部 char 1 字节截断存 */
                     else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                 }
                 }
