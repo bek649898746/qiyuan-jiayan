@@ -95,7 +95,7 @@ __attribute__((unused))
 静 整 cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
 静 整 cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
 静 整 cg_mem_chain_si = -1; /* mem_addr: 嵌套链 (a->b->c) 最终字段所在结构体索引 — case-15 指针字段作数组基判定用 (fix 2026-08-18: iter->map->table[i] 嵌套链原只在简单箭头分支解引用, 嵌套链 no_deref 返回字段地址 → 索引进结构体内部, hashmap_iter_next 崩) */
-静 整 cg_nested_cnt = 0; /* case 14: 嵌套 base 递归深度 — 内层下标被外层继续索引时 >0 (fix 2026-08-22 t41b: 指针字段双指针双层下标 slab[i][j] — 内层 deref 条件 & 外层 cg_mem_ptr 判定) */
+静 整 cg_nested_cnt = 0; /* case 14: 嵌套 base 递归深度 — 内层下标被外层续索引时 >0 (fix 2026-08-22 t41b: 指针字段双指针双层下标 slab[i][j] — 内层 deref 条件 & 外层 cg_mem_ptr 判定) */
 静 整 cg_mem_ptr_need = 0; /* case 15: 指针字段作数组基解引用后 — 内层 case 14 的索引结果 &slab[i] 是槽地址, 有外层下标时需设 cg_mem_ptr 供外层解引用 (fix 2026-08-22 t41b) */
 静 整 cg_blk_end = 0;  /* codegen: upper var-index bound of the CURRENT block (0 before first function). Later sibling-block locals are excluded so `char nm[9]` in an early loop body isn't shadowed by a later `const char *nm` (fix 2026-08-16 write_coff_obj memset dest=8) */
 静 整 cg_blk_start = 0; /* codegen: lower var-index bound of the CURRENT block (fix 2026-08-19: 嵌套块变量只在块内可见 — 见 var_codegen_visible) */
@@ -256,7 +256,7 @@ __attribute__((unused))
                 循环 (val && dep < 32 && (整)strlen(val) < 4000) {
                     常 字 *v2 = obj_find(val);
                     若 (!v2 || v2 == val) 断;
-                    /* 链式: val 本身也是对象宏名 → 继续替换 */
+                    /* 链式: val 本身也是对象宏名 → 续替换 */
                     整 vn = 0; 循环 (isalnum((无 字)val[vn]) || val[vn] == '_' || ((无 字)val[vn] >= 0x80)) vn++;
                     若 (val[vn] != 0) 断; /* 值含非标识符 → 不再链式 */
                     val = v2;
@@ -4937,7 +4937,7 @@ __attribute__((unused))
                 续;
                 }
             } 否 { 整 is_ptr = 0;
-            整 struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
+            整 struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
             循环 (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* struct Tag const *name / struct Tag volatile *name — const 在指针前 (fix 2026-08-15: cwexec trie undefined) */
             循环 (tt[tk] == DK) { is_ptr = 1; tk++; 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* 多级指针 **fragp / *const *p (fix 2026-08-15: show-branch/worktree/bundle-uri b 未注册) */
             若 (si >= 0 && tt[tk] == VR) {
@@ -5156,7 +5156,7 @@ __attribute__((unused))
             整 d = Nd(7);
             整 acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             遍 (整 i = 0; i < 8; i++) adimv[i] = 0;
-            整 brace_init_blk = -1; /* struct brace init 块延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册 → undefined) */
+            整 brace_init_blk = -1; /* struct brace init 块延迟挂到声明之后, 逗号声明仍可续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册 → undefined) */
             若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer: int (*fp)(args); */
                 tk++; tk++; /* skip ( * */
                 若 (tt[tk] == VR) {
@@ -5648,7 +5648,7 @@ __attribute__((unused))
                     Nc(body,stmt());
                 }
                 若(tt[tk]==BR){tk++;若(tt[tk]==SK)tk++;had_br=1;} /* already consumed */
-                若(ft_n>0 && n0[body]>=0){ 遍(整 fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 继续等下一个非空 case) */
+                若(ft_n>0 && n0[body]>=0){ 遍(整 fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 续等下一个非空 case) */
                 若(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链 — `case OPEN: case CLOSED: break;` 中 case 1 的 break 应让 case 0 也 break, 不得共享后续 case 的 body (git refs.c ref_transaction_free: state==0/1 命中 case PREPARED 的 BUG → 'free called on a prepared reference transaction') */
                 若(ft2_n>0){ 遍(整 fi=0;fi<ft2_n;fi++){ 整 b2=n1[ft2_ifn[fi]]; 若(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
                 整 cvn=Nd(0);nv[cvn]=cv;
@@ -8058,7 +8058,7 @@ __attribute__((unused))
     mov_mbrp_reg(scratch_base - cur_frame_sz + 232, 0); /* W = eax */
     asm_emit("    自增 r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 */
     jmp_rel(-1); patch_label(cp-4, lwidth, 2);
-    set_label(lwd_nondigit); /* fix 2026-08-23 t35g: 宽度后非数字 — 长度前缀(l/h/z/I)继续, '.' 精度, 其余转换符 */
+    set_label(lwd_nondigit); /* fix 2026-08-23 t35g: 宽度后非数字 — 长度前缀(l/h/z/I)续, '.' 精度, 其余转换符 */
     mov_r_imm(0, 'l'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, ll_cnt, 1);
     mov_r_imm(0, 'h'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lflags, 1);
     mov_r_imm(0, 'z'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lz, 1);
@@ -8082,7 +8082,7 @@ __attribute__((unused))
     否 { asm_emit("    减即 r13, 8\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */ }
     mov_mbrp_reg(scratch_base - cur_frame_sz + 232, 0); /* W = arg */
     asm_emit("    零扩展 ecx, [r11]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
-    jmp_rel(-1); patch_label(cp-4, lflag, 2); /* 继续解析 (fix 2026-08-23: 返 lflag 直接检查 - lflags 会 inc r11 跳过 'I' 导致 %*I64u 的 '6''4' 被当宽度数字, ll_cnt 为失) */
+    jmp_rel(-1); patch_label(cp-4, lflag, 2); /* 续解析 (fix 2026-08-23: 返 lflag 直接检查 - lflags 会 inc r11 跳过 'I' 导致 %*I64u 的 '6''4' 被当宽度数字, ll_cnt 为失) */
     set_label(lstar); /* .* 星号精度 (fix 2026-08-18): 从参数表取 int, 参数表前移 */
     asm_emit("    自增 r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past '*') */
     mov_eax_mr13(); /* eax = [r13] = precision int */
@@ -9133,6 +9133,7 @@ __attribute__((unused))
 #define IR_MAX 2000000
 静 整 ir_op[IR_MAX], ir_a[IR_MAX], ir_b[IR_MAX], ir_c[IR_MAX];
 静 整 ir_n;
+静 空 graph_record_call(常 字 *to); /* -graph 旁路: 调用关系记录 */
 静 空 ir_emit(整 op, 整 a, 整 b, 整 c) {
     若 (ir_n >= IR_MAX) { fprintf(stderr, "[IR-OVERFLOW] ir_n=%d\n", ir_n); exit(1); }
     ir_op[ir_n] = op; ir_a[ir_n] = a; ir_b[ir_n] = b; ir_c[ir_n] = c; ir_n++;
@@ -9681,6 +9682,7 @@ __attribute__((unused))
             }
 
             若 (is_sret) {
+                graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
                 ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } 否 若 (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
@@ -9697,6 +9699,7 @@ __attribute__((unused))
                 /* Phase3-IR: mov r10,rax; call r10; add_rsp 由 I_CALL_FNPTR 落码 */
                 /* (原三行删除) */
             } 否 若 (is_user && fi >= 0) {
+                graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
                 ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } 否 若 (!strcmp(fname, "memset")) {
                 /* dst=rcx, val=rdx, n=r8d */
@@ -11531,7 +11534,7 @@ __attribute__((unused))
                 整 sv_addrof = cg_addr_of; /* t35o 2026-08-24: 取地址链中间基须解引用 — &istate->cache[pos]->oid 的 cache 指针字段受外层 & 影响 → status SEGV */
                 cg_no_deref = 1; /* nested base must yield the ADDRESS (2D array row / struct field) */
                 cg_addr_of = 0;
-                cg_nested_cnt++; /* fix 2026-08-22 t41b: 标记内层下标被外层继续索引 — 内层 deref 判定 & cg_mem_ptr 传递 */
+                cg_nested_cnt++; /* fix 2026-08-22 t41b: 标记内层下标被外层续索引 — 内层 deref 判定 & cg_mem_ptr 传递 */
                 cg(n0[n]); /* base address �?rax */
                 cg_nested_cnt--;
                 cg_no_deref = sv_noderef;
@@ -12816,6 +12819,51 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
 静 整 analysis_store[ANALYSIS_CAP][64];
 #endif /* IR_PREBED_ACTIVE */
 
+/* ==== -graph 旁路导出 (P0 工具侧闭环, 2026-08-25) ==== */
+静 整 graph_mode = 0; 静 字 graph_out[512] = "";
+#define GRAPH_CALLS_CAP 20000
+静 字 graph_calls_from[GRAPH_CALLS_CAP][64]; 静 字 graph_calls_to[GRAPH_CALLS_CAP][64]; 静 整 graph_calls_n;
+静 空 graph_record_call(常 字 *to) {
+    若 (!graph_mode || !cur_fn_name[0] || graph_calls_n >= GRAPH_CALLS_CAP) 返;
+    遍 (整 i = 0; i < graph_calls_n; i++) /* 去重: 同一 from→to 只记一次 (2026-08-25) */
+        若 (!strcmp(graph_calls_from[i], cur_fn_name) && !strcmp(graph_calls_to[i], to)) 返;
+    strcpy(graph_calls_from[graph_calls_n], cur_fn_name);
+    strcpy(graph_calls_to[graph_calls_n], to);
+    graph_calls_n++;
+}
+静 空 graph_export(空) {
+    若 (!graph_mode || !graph_out[0]) 返;
+    FILE *f = fopen(graph_out, "wb");
+    若 (!f) { fprintf(stderr, "qcc_x86: cannot write graph %s\n", graph_out); 返; }
+    整 first = 1;
+    fprintf(f, "{\n\"entities\": [\n");
+    遍 (整 i = 0; i < func_n; i++) { 若 (!first) { fprintf(f, ",\n"); } first = 0; fprintf(f, "{\"id\":\"fn:%s\",\"name\":\"%s\",\"kind\":\"function\",\"line\":0}", func_tbl[i].name, func_tbl[i].name); }
+    遍 (整 i = 0; i < st_n; i++) {
+        若 (!first) { fprintf(f, ",\n"); } first = 0;
+        fprintf(f, "{\"id\":\"st:%s\",\"name\":\"%s\",\"kind\":\"struct\",\"line\":0,\"fields\":[", stypes[i].name, stypes[i].name);
+        遍 (整 j = 0; j < stypes[i].fn; j++)
+            fprintf(f, "\"%s\"%s", stypes[i].fnames[j], j + 1 < stypes[i].fn ? "," : "");
+        fprintf(f, "]}");
+    }
+    fprintf(f, "\n],\n\"relations\": [\n");
+    first = 1;
+    遍 (整 i = 0; i < graph_calls_n; i++) { 若 (!first) { fprintf(f, ",\n"); } first = 0; fprintf(f, "{\"from\":\"fn:%s\",\"to\":\"fn:%s\",\"kind\":\"calls\"}", graph_calls_from[i], graph_calls_to[i]); }
+    fprintf(f, "\n],\n\"layout_sensitive\": [\n");
+    first = 1;
+    遍 (整 i = 0; i < st_n; i++) {
+        若 (!first) { fprintf(f, ",\n"); } first = 0;
+        常 字 *risk; /* risk 阈值 (审计定): 字段≥8 或 大小≥64 = high; 字段≥4 或 大小≥32 = medium */
+        若 (stypes[i].fn >= 8 || stypes[i].sz >= 64) risk = "high";
+        否 若 (stypes[i].fn >= 4 || stypes[i].sz >= 32) risk = "medium";
+        否 risk = "low";
+        fprintf(f, "{\"type\":\"st:%s\",\"name\":\"%s\",\"fields\":%d,\"risk\":\"%s\"}", stypes[i].name, stypes[i].name, stypes[i].fn, risk);
+    }
+    fprintf(f, "\n]\n}\n");
+    fclose(f);
+    fprintf(stderr, "[graph] %s 导出完成 (fn:%d st:%d calls:%d)\n", graph_out, func_n, st_n, graph_calls_n);
+}
+
+
 
 
 整 main(整 argc, 字 **argv) {
@@ -12849,7 +12897,8 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
             }
             argi += 2; 续;
         }
-        若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
+        若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 */
+若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
             若 (hb) {
                 整 hl = (整)strlen(hb);
@@ -13106,6 +13155,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     }
 
     若 (asm_out) { fclose(asm_out); asm_out = NULL; }
+    若 (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后) */
 
     若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
     返 0;
