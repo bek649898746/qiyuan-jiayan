@@ -46,6 +46,7 @@ pass_n = fail_n = 0
 fails = []
 
 for name in tests:
+    print(f"[RUN] {name}", flush=True)
     src = os.path.join('tests', name)  # name 已含 qcc/ 或 behavior/ 前缀
     # 读断言
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
@@ -94,6 +95,7 @@ for name in tests:
         except Exception:
             pass
         rc = 'TIMEOUT'; out = ''
+        subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)  # fix 2026-08-24 t35v: cmd 子进程残留锁文件
     except Exception as e:
         rc = 'ERR'; out = str(e)
     try:
