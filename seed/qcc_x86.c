@@ -9094,6 +9094,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_LEA_RBP_GPR 23 /* a=gpr, b=disp: lea_r_mbrp(gpr,disp) */
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
 #define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
+#define I_CVTT2SI 26    /* cvttsd2si eax, xmm0: (int)double 截断 */
 static void ir_flush(void) {
     for (int i = 0; i < ir_n; i++) {
         switch (ir_op[i]) {
@@ -9119,6 +9120,7 @@ static void ir_flush(void) {
             case I_LEA_RBP_GPR: lea_r_mbrp(ir_a[i], ir_b[i]); break;
             case I_CALL_FNPTR: mov_rr64(10, 0); asm_emit("    调 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); add_rsp_imm(ir_a[i]); break;
             case I_ALU_EBX: alu_rr(ir_a[i], 0, 1); break;
+            case I_CVTT2SI: cvttsd2si_eax_xmm0(); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9144,7 +9146,7 @@ static void cg(int n) {
     if (t < 0 || t > 65) { fprintf(stderr, "[CG-BADTYPE] n=%d nt=%d nc=%d\n", n, t, nc); abort(); }
     switch (nt[n]) {
         case 0: if (nll[n]) { ir_emit(I_MOV_IMM_LL, 0, nv[n], nll_hi[n]); ir_flush(); } else { ir_emit(I_MOV_IMM, 0, nv[n], 0); ir_flush(); } break;
-        case 19: cg_f(n0[n]); cvttsd2si_eax_xmm0(); break; /* (int)double: truncate xmm0 to eax */
+        case 19: cg_f(n0[n]); ir_emit(I_CVTT2SI, 0, 0, 0); ir_flush(); break; /* Phase3-IR */
         case STR: { /* string literal ??placeholder, patched after codegen */
             int si = nv[n];
             str_place(si); /* ensure string is in data buffer */
