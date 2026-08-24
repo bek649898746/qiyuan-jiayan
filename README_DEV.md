@@ -1,4 +1,4 @@
-# README_DEV — 开发者快速上手
+﻿# README_DEV — 开发者快速上手
 
 > 面向想要修改/扩展甲言编译器的人。**先读这条**：本项目是**双版镜像 + 自举不动点**架构，改代码前必须理解下面的铁律。
 
@@ -19,21 +19,23 @@ v1 再编译生成 v2，v2 再编译生成 v3，v3 再编译生成 v4，v4 再�
 1. **改 C 必改甲言**：`qcc_x86.c` 的任何改动，必须同步到 `qcc_work.jy`（同逻辑，中文关键字版）。
 2. **甲言文件用 Python 写**：绝对不用 PowerShell Set-Content（UTF-8/GBK 编码损坏历史教训）。
 3. **改完必验证**：跑完整闭环（见下）。
-4. **不动点不能动**：任何合理改动产生**新** SHA 是正常的，但三代必须一致 + H1==H2 逐字节一致。
+4. **不动点不能动**：任何合理改动产生**新** SHA 是正常的，但五代必须一致（**含 v1**）+ H1==H2 逐字节一致。
 
 ## 3. 验证闭环（改前改后各跑）
 
 ```powershell
-# 一键验证：编译宿主 → 自举三代 → 校验不动点 → 171 测试
+# 一键验证：编译宿主 → 自举五代(1-cycle) → 校验不动点 → 325 测试
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v2/v3/v4 SHA 一致，等于 README 记录的不动点
+# 输出: v1==v2==v3==v4==v5 SHA 一致（含 v1），等于 README 记录的不动点
 
-# 手工自举三代
+# 手工自举五代
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o v1.exe
-.1.exe srclib_jiayan\qcc_work.jy -o v2.exe
-.2.exe srclib_jiayan\qcc_work.jy -o v3.exe
-# v2/v3/v4 SHA256 必须一致（Get-FileHash v2.exe,v3.exe,v4.exe -Algorithm SHA256）
+.\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe
+.\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe
+.\v3.exe srclib_jiayan\qcc_work.jy -o v4.exe
+.\v4.exe srclib_jiayan\qcc_work.jy -o v5.exe
+# v1..v5 SHA256 必须一致（含 v1！Get-FileHash v1.exe,v2.exe,v3.exe,v4.exe,v5.exe -Algorithm SHA256）
 
 # asm_zh 指令单元测试（110 条中文助记符 → 机器码逐字节断言）
 python tests/unit/test_asm_zh.py   # 通过 110, 失败 0

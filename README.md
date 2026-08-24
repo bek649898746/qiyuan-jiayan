@@ -165,7 +165,9 @@ int main() {
 
 **步骤 6：验证"落地运行 Git"（封存卖点）**
 
-甲言自举链编译原版 git-2.45.2 并落地运行（详见 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)）——完整的 git 二进制需按该文档的适配清单构建，或直接使用本项目已验证的成果（36.4 万行源码零改动编译 → 721 个 .o → 28MB 可执行 → `git version 2.45.2`）。
+甲言自举链编译原版 git-2.45.2 并落地运行（详见 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)）。
+
+> **复现性说明（重要，2026-08-24 补）**：本仓库**不含 git-2.45.2 源码**（第三方版权，不随仓库分发）与**适配文件本体**（`prelude_mmap.c` 等，属 Git 源码 compat 层修改，同样不随仓库分发）。"编译 Git 落地运行"是**已验证成果**（17 处适配 + 对等回归 24/24），**按文档复现需自行获取 git-2.45.2 源码，并按 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md) 的 17 处适配清单构建——第 17 处（/dev/null→nul）必须补上，缺它 git 启动即崩**。完整缺口清单见该文档「四、分发与复现说明」。
 
 ### 依赖
 
