@@ -506,13 +506,17 @@ def main():
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     args = sys.argv[1:]
+    only_seeds = None
+    if '--only' in args:
+        oi = args.index('--only')
+        only_seeds = [int(x) for x in args[oi + 1].split(',') if x.strip().isdigit()]
+        args = args[:oi] + args[oi + 2:]  # 移除 --only 与值, 兼容任意位置
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
     families = ['types', 'vararg', 'layout', 'ctrl', 'expr']
     qcc = DEFAULT_QCC
     do_minimize = False
-    only_seeds = None
     i = 3
     while i < len(args):
         if args[i] == '--family':
@@ -524,9 +528,6 @@ def main():
         elif args[i] == '--minimize':
             do_minimize = True
             i += 1
-        elif args[i] == '--only':
-            only_seeds = [int(x) for x in args[i + 1].split(',') if x.strip().isdigit()]
-            i += 2
         else:
             i += 1
     if not os.path.exists(qcc):
