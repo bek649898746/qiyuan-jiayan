@@ -1,4 +1,15 @@
-﻿## 09F04D7C (2026-08-23)
+## 3B4002D2 (2026-08-24)
+
+**t35v: reflog 崩溃根治 + 封存收尾 (拔桩 + seed 刷新) — 功能全链路打通**
+
+- **reflog 崩溃根治（四大 qcc bug 链式）**: ①sizeof 双层解引用只解析一层(→CALLOC_ARRAY 只分 8B → reflog_walk_info 越界 SEGV) ②逗号续行 struct 字段大小不继承(→布局 36+4 错 → parse_object 全 NULL) ③fseek 分派 no-op(→反向读 reflog 空 → rev-parse 'log is empty') ④fread 返回字节数非元素数(→files-backend nread!=1 → 'cannot read 403 bytes')
+- **拔桩**: getenv(n)=0 宏禁用全部 QCC_DBG/QCC_STAGE/QCC_DUMP 调试输出（72 处，保留源码结构）
+- **seed 刷新**: 同步 seed/ 快照（qcc_x86.c/qcc.jy/qcc_rt.c/asm_zh.c/jyld.c 至拔桩版）
+- **read_file 上限 1MB→2MB**（qcc_x86.c 自身 1.05MB 超限）
+- **验证**: 自举 v1==v5=3B4002D2 1-cycle + 325/325 + behavior 20/20 + git 回归 24/24 + reflog/rev-parse HEAD@{N}/log -g 对照原生一致
+- **封存状态**: 功能全链路 ✅（init/add/commit×2/log/status/diff/branch/show-ref/ls-files/cat-file/reflog 全通）+ 拔桩 ✅ + seed ✅
+
+## 09F04D7C (2026-08-23)
 **t35k: cat-file 短 SHA 三连根因根治**
 
 - t35k (09F04D7C): struct 字段数组维度改 const_expr_eval（hex_pfx[GIT_MAX_HEXSZ+1] fsz 0→65）+ typedef 1B 指针参数 esz（uint8_t* kpfx[i] ×4 修复）+ uintptr_t 减法不缩放（cb_node_of p-4 修复）→ cat-file/rev-parse 短 SHA 与 system git 全一致，log --format=%cI/%aD 等 7 个格式 SIGSEGV 恢复
