@@ -12782,15 +12782,16 @@ typedef 构 { 整 start; 整 end; 整 npred; 整 nsucc; 整 preds[8]; 整 succs[
 静 BLK blks[BLK_CAP]; 静 整 blk_n;
 
 #define VT_CAP 1000000
-静 字 vt_lifetime[VT_CAP];
+静 整 vt_lifetime[VT_CAP];
 静 整 vt_lifetime_id[VT_CAP];
 静 整 vt_tag[VT_CAP];
 静 整 vt_tyvar[VT_CAP];
 静 整 vt_trunc[VT_CAP];
 
-静 整 stypes_lo[256];
-静 整 stypes_hi[256];
-静 整 stypes_super[256];
+#define STYPES_CAP 256
+静 整 stypes_lo[STYPES_CAP];
+静 整 stypes_hi[STYPES_CAP];
+静 整 stypes_super[STYPES_CAP];
 
 typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
 #define ANALYSIS_CAP 64
