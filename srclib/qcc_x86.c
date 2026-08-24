@@ -9338,8 +9338,8 @@ static void cg(int n) {
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            if ((n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
-                /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
+            if (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
+                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负) */
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { int pel64 = node_psz(n0[n]);
                       if (pel64 <= 0 && (o == PK || o == MK || o == DK)) { /* Phase3-IR: LL 64位 PK/MK/DK 无指针缩放 */
