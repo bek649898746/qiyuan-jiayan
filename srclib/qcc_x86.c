@@ -9164,6 +9164,14 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
 #define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
 #define I_CVTT2SI 26    /* cvttsd2si eax, xmm0: (int)double 截断 */
+/* ==== Phase 3 case15 成员访问 IR 指令 (2026-08-25, 直译全等字节级一致) ==== */
+#define I_ADD_RAX_IMM8 27 /* a=v: add_rax_imm8(v) — 字段偏移 (imm8/imm32 自动) */
+#define I_DEREF64 28      /* mov_reg_mreg64(0,0): mov rax, [rax] — 64 位指针/ll 字段解引用 */
+#define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] — 32 位 int 字段解引用 */
+#define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] — char 字段解引用 (零扩展) */
+#define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] — short 字段解引用 (零扩展) */
+#define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) — 64 位局部读 (指针/ll 字段) */
+#define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) — double 字段读 (movsd xmm0, [rbp+disp]) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9197,6 +9205,13 @@ static void ir_flush(void) {
             case I_CALL_FNPTR: mov_rr64(10, 0); asm_emit("    调 r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 2, 2); add_rsp_imm(ir_a[i]); break;
             case I_ALU_EBX: alu_rr(ir_a[i], 0, 1); break;
             case I_CVTT2SI: cvttsd2si_eax_xmm0(); break;
+            case I_ADD_RAX_IMM8: add_rax_imm8(ir_a[i]); break;
+            case I_DEREF64: mov_reg_mreg64(0, 0); break;
+            case I_DEREF32: mov_reg_mreg(0, 0); break;
+            case I_MOVZX_RAX_BYTE: asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); break;
+            case I_MOVZX_RAX_WORD: asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break;
+            case I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); break;
+            case I_LOAD_XMM0_RBP: movsd_xmm0_mbrp(ir_a[i]); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -11388,8 +11403,9 @@ else if (fsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
             } else if((o>=0 || (coff_mode && var_isstatic(vn))) && s>=0){int fo=st_off(stypes[s].name,fn);if(fo>=0){ /* fix 2026-08-17: o>=0 门控放行 coff extern 静态 (off<0 负槽) — 原排除 → the_repository->worktree 无输出 → get_git_work_tree 空函数返回垃圾 */
                 if(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
                     int off=var_lookup(vn);
-                    if(off>=0 || (coff_mode && var_isstatic(vn))){ if (var_isstatic(vn)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vn) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (extern: coff 符号重定位) */
-                    if(fo!=0){add_rax_imm8(fo);} /* rax += field offset */
+                    if(off>=0 || (coff_mode && var_isstatic(vn))){ if (var_isstatic(vn)) ir_emit(I_LOAD_RIP64, off, 1, 0); else if (var_pesz(vn) > 0) ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); else ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); } /* Phase3-IR case15: rax = ptr (extern: coff 符号重定位) */
+                    if(fo!=0){ ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); } /* Phase3-IR case15: rax += field offset */
+                    ir_flush(); /* Phase3-IR case15: flush ptr->field 地址序列 */
                     int afsz = st_field_size(stypes[s].name, fn);
                     if (cg_no_deref || st_field_is_array_idx(s, fn)) {
                         st_field_2d_setup(s, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16) */
