@@ -12813,23 +12813,25 @@ int main(int argc, char **argv) {
             data_rva_base = nb;
             gen_code();
         }
-        gen_final = 1;
-        gen_code();
-        gen_final = 0;
-        /* fix 2026-08-06: gen_final=1 最终代与稳定循环的代可有细微状态差异 (call 帧分配
-           push/sub 变体、RIP 位移编码切换, 实测可 +11 字节) → cp 越过 data_rva_base →
-           .text 与 .data 重叠 → 生成无效 PE (WinError 193). 越界则提高基址重稳定,
-           并截断重发最终代 (asm 文本必须只留一份). */
-        for (int it = 0; it < 8; it++) {
-            int nb = (0x1000 + cp + 4095) & ~4095;
-            if (nb < 0x2000) nb = 0x2000;
-            if (nb == data_rva_base) break;
-            data_rva_base = nb;
-            gen_code(); /* 静默重稳定 (gen_final=0, 不写 asm 文本) */
+        if (asm_name[0]) { /* fix 2026-08-24 Phase2: -S 模式需要 final (写 asm 文本) — gen_final=1 时 asm_emit 才写 */
             gen_final = 1;
-            if (asm_name[0]) { if (asm_out) fclose(asm_out); asm_out = fopen(asm_name, "wb"); } /* 截断: 只留最终一份 -S 文本 */
             gen_code();
             gen_final = 0;
+            for (int it = 0; it < 8; it++) {
+                int nb = (0x1000 + cp + 4095) & ~4095;
+                if (nb < 0x2000) nb = 0x2000;
+                if (nb == data_rva_base) break;
+                data_rva_base = nb;
+                gen_code();
+                gen_final = 1;
+                if (asm_out) { fclose(asm_out); asm_out = fopen(asm_name, "wb"); }
+                gen_code();
+                gen_final = 0;
+            }
+        } else {
+            /* fix 2026-08-24 Phase2 (飞轮提速): 非 -S 模式跳过 final — pass2 稳定代即可写 exe,
+               gen_final 仅影响 -S 文本, 不影响机器码正确性. 省 1/3 gen_code 时间.
+               实验: 跳过 final 产物能自举, 自举不动点收敛到同一值. */
         }
         asm_pass = 0;
     }
