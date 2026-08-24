@@ -1,3 +1,12 @@
+## 2026-08-24: /dev/null→nul 映射修复（git 交付物 P0，GIT_RUN_ADAPTATIONS 第 17 处）
+
+- **外部验证者反推指控 + 启元实测确认**：交付的 `git_jiayan_v1*.exe` 连 `git version` 都跑不起（`fatal: could not open '/dev/null'`，exit 128）——封存 1.0 交付物级缺陷
+- **根因链**：①Windows 无 /dev/null 设备 ②`compat_mingw.o` 被链接脚本 `_git_link_t49d.py` 排除 → mingw_open 的 /dev/null→nul 映射不生效 ③甲言替换版 `open()`（compat/prelude_mmap.c）未补映射 → `sanitize_stdfds` 的 `xopen("/dev/null",O_RDWR)` 无条件失败（KNOWN_ISSUES P0-1 "--version 崩溃"即此根因）
+- **修复**：`open()` 加 6 行 /dev/null→nul 映射 → 甲言编译器重编 `compat_prelude_mmap.o` → jyld 重链 455 对象 → `git_jiayan_v1_fixed.exe`
+- **验证（决定性实验）**：`git version 2.45.2` ✅ + init/add/commit/log/status/diff/rev-parse 全链路 ✅ + 回归 **24/24** ✅（与系统 git 逐字节一致）
+- **交付**：`git_jiayan_v1.exe` 正式替换为修复版（坏版备份 `.broken_devnull`）
+- **教训（焊死）**：改 git 适配层后必须重跑运行冒烟（git version 起步）——"编过了"≠"能跑"；编译器自举不动点 650993A2 不受影响，Phase 3 IR 重构不阻塞
+
 ## B44E2DF8 (2026-08-24)
 
 **Phase2: 汇编器提速优化1 — 非-S模式跳过final gen_code (飞轮第一齿轮)**
