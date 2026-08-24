@@ -11097,7 +11097,7 @@ static void cg(int n) {
                         { int esz=vars[vi].arr_esz?vars[vi].arr_esz:4; off -= vars[vi].arr_sz * esz; is_arr=1; break; }
                     if (!is_arr && var_pesz(vname) == 0) { int si = var_stidx(vname); if (si >= 0) off -= stypes[si].sz; } /* struct: off is END; 指针变量 (struct T *p) 槽位即值存储 — 不减 struct 大小 (fix 2026-08-18: &values 对 struct 指针变量原减 sizeof(struct) → 地址错位 24 → get_multi 写入错槽 → values 仍 NULL → git_configset_get_value SEGV) */
                     if (var_big_param(vname)) mov_reg_mbrp64(0, off - cur_frame_sz); /* fix 2026-08-21 #25b: &大结构值参数 — slot 存调用者副本指针, 必须 mov 取指针而非 lea 槽址 (show_ident_date(struct date_mode mode) 的 &mode) */
-                    else lea_r_mbrp(0, off - cur_frame_sz);
+                    else { ir_emit(I_LEA_RBP_GPR, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR: &局部变量 */
                 }
             } else if (coff_mode && off < -1 && var_isstatic(vname)) {
                 lea_rax_rip(coff_static_disp(off, 1) - 1); /* extern global: &var -> lea rip + REL32 (jyld resolves) */
