@@ -3895,6 +3895,7 @@ static int prim(void) {
             else if (is_dbl || long_cnt >= 2) tsz = 8;
             else if (long_cnt == 1) tsz = 4;
             if (tt[tk] == DK) { tsz = 8; tk++; while (tt[tk] == DK) tk++; } /* sizeof(int*) → 8; 多级指针 sizeof(void**)/int** 原只消费一个 * -> 残留影响后续解析 (fix 2026-08-23) */
+            if (tt[tk] == LB) { int dims = 0; while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { tsz *= cdim > 0 ? cdim : 1; dims++; } if (tt[tk] == RB) tk++; } if (dims == 0) tsz = 4; } /* fix 2026-08-25 bug#31: sizeof(int[5]) → 20 (原 [5] 残留 → 解析错乱崩 0xC0000005) */
             if (tt[tk] == KK) tk++;
             int n = Nd(0); nv[n] = tsz; return n;
         }

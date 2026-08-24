@@ -3894,6 +3894,7 @@ __attribute__((unused))
             否 若 (is_dbl || long_cnt >= 2) tsz = 8;
             否 若 (long_cnt == 1) tsz = 4;
             若 (tt[tk] == DK) { tsz = 8; tk++; 循环 (tt[tk] == DK) tk++; } /* sizeof(int*) → 8; 多级指针 sizeof(void**)/int** 原只消费一个 * -> 残留影响后续解析 (fix 2026-08-23) */
+            若 (tt[tk] == LB) { 整 dims = 0; 循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { tsz *= cdim > 0 ? cdim : 1; dims++; } 若 (tt[tk] == RB) tk++; } 若 (dims == 0) tsz = 4; } /* fix 2026-08-25 bug#31: sizeof(int[5]) → 20 (原 [5] 残留 → 解析错乱崩 0xC0000005) */
             若 (tt[tk] == KK) tk++;
             整 n = Nd(0); nv[n] = tsz; 返 n;
         }
