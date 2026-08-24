@@ -136,3 +136,19 @@ scripts/_git_smoke.ps1
 _tmp_archive/
 *.bak
 *.bak_*
+
+# 探针/调试文件（2026-08-24 封存前补充, 本地保留不上传）
+_*.c
+_*.asm
+_*.s
+_*.cmd
+_*.gdb
+_*_min.c
+_*_test.c
+_*_diag.c
+_*_repro/
+_*_final/
+_sha_repro/
+_nullsha_repro/
+scripts/_git_regression_*.ps1
+_sha_repro2/
