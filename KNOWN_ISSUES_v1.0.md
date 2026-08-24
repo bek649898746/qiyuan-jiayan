@@ -10,7 +10,7 @@
 - **现象**：静态初始化数据落盘错位（如 char arr[8]={1..8} 变成每值 4 字节）
 - **影响**：--help 崩溃、--version 退出崩溃大概率与它同源
 - **线索**：qcc 编译自身时 uint8_t 被当 int（unknown typedef 不追踪底层类型），char 数组/指针索引 ×4
-- **状态**：stdint 宏展开（47b6f14）已缓解部分，但根因可能未除尽
+- **状态**：stdint 宏展开（47b6f14）已缓解部分，但根因可能未除尽。**2026-08-24 重大进展：外部验证者反推 + 启元实测确认 --version/--help 崩溃根因 = /dev/null→nul 映射缺失**（Windows 无 /dev/null；compat_mingw.o 被链接排除 → mingw_open 映射不生效；prelude_mmap.c 替换版 open() 未补映射 → sanitize_stdfds 的 xopen("/dev/null") 失败，**连 git version 都跑不起**）。**已加 6 行补丁修复**：git_jiayan_v1_fixed.exe 实测 git version/init/add/commit/log/status 全链路通过。待办：正式交付物重命名 + 全量回归。**教训：改 git 适配层后必须重跑运行冒烟（git version 起步），"编过了"≠"能跑"**
 
 ### 2. sizeof + struct 数组立即数 bug
 - **现象**：sizeof(结构体数组) 或 struct 数组立即数初始化异常

@@ -1,7 +1,7 @@
 # 甲言落地运行 Git 2.45.2 —— 编译/运行适配报告
 
 > 本文档记录甲言（qcc 自举编译器）在"零改动编译 + 落地运行"git-2.45.2 过程中，
-> 定位并解决的 16 处**编译器 × 源码交互问题**（每个都有精确根因与修复）。
+> 定位并解决的 17 处**编译器 × 源码交互问题**（每个都有精确根因与修复）。
 > 这不是"Git 有 bug 被我们发现"——Git 在主流编译器（gcc/clang）下没有问题；
 > 这是甲言编译器在打磨过程中暴露出的**编译/运行缺口**，以及**深入 Git 内部到宏级/调用级**的定位能力证明。
 
@@ -15,15 +15,15 @@
 | 编译方式 | 甲言 qcc 编译器零改动编译（原版源码直接过） |
 | 编译产物 | 721 个 .o 对象 |
 | 链接 | jyld 链接为 28MB 可执行文件 |
-| 运行 | `git version 2.45.2` 落地运行 |
+| 运行 | `git version 2.45.2` 落地运行（2026-08-24 修复 /dev/null→nul 映射后实测，见第 17 处） |
 | 对等验证 | git diff/log/status/ls-files 等与系统 git 逐字节一致 |
 
 **关键澄清**：编译阶段**零改动**（原版源码直接编过）；落地运行阶段为跑对 Git，
-定位并解决了 **16 处编译器×源码交互问题**（qcc 的编译缺口在运行期暴露，需在源码层规避）。
+定位并解决了 **17 处编译器×源码交互问题**（qcc 的编译缺口在运行期暴露，需在源码层规避）。
 
 ---
 
-## 二、16 处适配问题清单（全部有精确根因）
+## 二、17 处适配问题清单（全部有精确根因）
 
 ### Bug 族 1：qcc 嵌套调用/复合表达式参数 miscompile（7 处）
 
@@ -71,6 +71,7 @@ check-attr.c / check-ignore.c / count-objects.c / fast-export.c / sparse-checkou
 | 文件 | 问题现象 | 根因 | 修复 |
 |---|---|---|---|
 | dir.c | add 的 dir->nr=0 → blob/index 不写 | qcc 运行时状态导致原无条件 break 早退 | read_directory_recursive 改守卫 + 回退正常收集 |
+| compat/prelude_mmap.c | **git 启动即 fatal "could not open '/dev/null'"（version/init/一切命令 exit 128）** | Windows 无 /dev/null 设备；compat_mingw.o 被链接脚本排除 → mingw_open 的 /dev/null→nul 映射不生效；甲言替换版 open()（prelude_mmap.c）未补映射 → common-main.c sanitize_stdfds 的 xopen("/dev/null",O_RDWR) 无条件失败 | open() 加 /dev/null→nul 映射（6 行），甲言编译器重编 compat_prelude_mmap.o + jyld 重链 455 对象 → git version 2.45.2 正常，init/add/commit/log/status/diff/rev-parse 全链路冒烟通过（2026-08-24 外部验证者定位根因 + 启元决定性实验复验） |
 
 ---
 
@@ -86,7 +87,7 @@ check-attr.c / check-ignore.c / count-objects.c / fast-export.c / sparse-checkou
 
 ## 四、为什么这值得记录
 
-1. **"能汇编出" ≠ "能落地运行"**：编译 36.4 万行通过只是第一步；跑对需要解决 16 处交互问题。
+1. **"能汇编出" ≠ "能落地运行"**：编译 36.4 万行通过只是第一步；跑对需要解决 17 处交互问题。
 2. **深入 Git 内部到宏级/调用级**：每个适配都精确到具体函数、具体宏、具体调用场景。
 3. **诚实可验证**：全部修复带中文注释（源码内 `fix 2026-08-xx`），全部可精确复现/定位/解释。
 4. **与系统 git 逐字节一致**：diff/log/status/ls-files 对等验证通过。
