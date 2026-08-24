@@ -12771,6 +12771,45 @@ static void write_coff_obj(FILE *f) {
     w4f(f, csym_n);
 }
 
+/* ==== Phase 3 阶段 C: IR 工程预埋区 (v1.4 §11.2 定义态 · 宏门内零占用) ====
+   语义依据: 《甲言_逆向定律库_IR工程预埋全景.md》§12 优先级 (类型宽度第一)
+   纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4)
+   激活: Phase 7 打开宏 + 引用 → 必须过预埋尺 (v1.4 §7.2) + 差异测试双闸 */
+#ifdef IR_PREBED_ACTIVE
+/* 1. IR3 三地址码 (v1.4 §2.1, LLVM 值模型定律 §6) — 类型宽度第一优先 */
+typedef struct { int op; int ty; int d; int s1; int s2; int s3; } IR3;
+/* ty 编码: 低 8 位类型 (i8=1 i16=2 i32=3 i64=4 u8=5 u16=6 u32=7 u64=8 f32=9 f64=10 ptr=11),
+   高 8 位值级属性位 (LAW_LINEAR/SUM/LATTICE) */
+#define IR3_CAP 1000000  /* 按编译 Git 全量最坏规模实测校准 */
+static IR3 ir3[IR3_CAP]; static int ir3_n;
+
+/* 2. 块表/CFG (v1.4 §3, LLVM CFG 定律 §7) — 只存 succ 反向算 pred (LLVM 定律 2) */
+typedef struct { int start; int end; int npred; int nsucc; int preds[8]; int succs[8]; } BLK;
+#define BLK_CAP 100000  /* 按 Git 全量函数数 × 最坏基本块数实测校准 */
+static BLK blks[BLK_CAP]; static int blk_n;
+
+/* 3. 值级 side-tables (v1.4 §10.1, 逆向定律库 §1-3/§5) */
+#define VT_CAP 1000000
+static char vt_lifetime[VT_CAP];     /* 所有权状态机: 0=普通 1=move后 2=不可变借用 3=可变借用 */
+static int vt_lifetime_id[VT_CAP];   /* lifetime 域编号: 0=函数级 1..N=显式 'a 域 */
+static int vt_tag[VT_CAP];           /* 和类型判别式: 0..N-1 */
+static int vt_tyvar[VT_CAP];         /* 类型变量编号: 0=非泛型 >0=第 N 个 */
+static int vt_trunc[VT_CAP];         /* 截断标记: 0=无 1=赋值截断 2=cast 截断 3=扩展 */
+
+/* 4. 类型级 side-tables (逆向定律库 §4, 不内联 stypes — §11.1 冻结) */
+static int stypes_lo[256];           /* 范围下界 (-1=无界) */
+static int stypes_hi[256];           /* 范围上界 (-1=无界) */
+static int stypes_super[256];        /* 父类型 id (-1=无) */
+
+/* 5. 分析结果缓存 (逆向定律库 §8, LLVM NewPM 定律 2) — 任意变换后全失效 (实战定) */
+typedef struct { int id; int *result; int result_n; int invalidated; } IR_ANALYSIS;
+#define ANALYSIS_CAP 64
+static IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; static int analysis_n;
+static int analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定容量, 无 malloc) */
+
+/* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
+#endif /* IR_PREBED_ACTIVE */
+
 int main(int argc, char **argv) {
     const char *src = "int main() { return 42; }";
     const char *outf = NULL;
