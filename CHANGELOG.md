@@ -1,3 +1,14 @@
+## 650993A2 (2026-08-24)
+
+**Phase3: IR 重构上主线 — IR 骨架进编译器 + 部分 case 迁移（重构版本本地提交，不推远端）**
+
+- **IR 骨架**（ir_emit/ir_flush + 18 种指令）进入 srclib/qcc_x86.c（seed/ + srclib_jiayan/ 镜像同步）
+- **迁移 case**：控制流（if/while/ternary/break/continue/goto/label）+ 32位/LL64/double 运算 + 局部变量读写 + static 读
+- **直译 SHA 全等**：新旧编译器编译同一份源码产物一致（qcc_work.jy + 5 个 git 文件 diff/sequencer/reflog-walk/revision/dir）
+- **不动点演进**：编译器源码加 IR 骨架 → 编译器二进制变 → 自举不动点 b44e2df8 → **650993a2**（直译全等 ≠ 编译器二进制全等：IR 化保 codegen 产物全等，编译器自身含 IR 代码）
+- **验证**：自举五代全等 650993a2 + H1==H2 + 325/325 + 20/20 + git 612/612 + 冒烟全通
+- **下一步**：case 4（函数调用，最重）/ case 15（成员访问）/ case 10（struct/指针赋值）→ 阶段 C: pass 框架 + 定律接口位预埋
+
 ## 2026-08-24: /dev/null→nul 映射修复（git 交付物 P0，GIT_RUN_ADAPTATIONS 第 17 处）
 
 - **外部验证者反推指控 + 启元实测确认**：交付的 `git_jiayan_v1*.exe` 连 `git version` 都跑不起（`fatal: could not open '/dev/null'`，exit 128）——封存 1.0 交付物级缺陷
