@@ -24,6 +24,8 @@ tests = {
     'arrowfall_global.c': '#include <stdio.h>\nstruct G { int a; long long b; };\nstruct G *gp;\nint main(void) { struct G g; g.a = 5; g.b = 99; gp = &g; printf("%d %lld\\n", gp->a, gp->b); return 0; }\n',
     'arr_assign_double.c': '#include <stdio.h>\nstruct D { double d; int n; };\nint main(void) { struct D a[2]; a[0].d = 3.5; a[1].d = 7.25; printf("%d %d\\n", (int)(a[0].d * 2), (int)(a[1].d * 4)); return 0; }\n',
     'arr_assign_big.c': '#include <stdio.h>\nstruct Inner { int x[4]; };\nstruct Outer { struct Inner in; int tag; };\nint main(void) { struct Outer a[2]; struct Inner s; s.x[0] = 1; s.x[1] = 2; s.x[2] = 3; s.x[3] = 4; a[0].in = s; a[1].in.x[2] = 9; printf("%d %d %d %d | %d\\n", a[0].in.x[0], a[0].in.x[1], a[0].in.x[2], a[0].in.x[3], a[1].in.x[2]); return 0; }\n',
+    'nested_assign.c': '#include <stdio.h>\nstruct A { int x; char c; };\nstruct B { struct A in; long long ll; };\nint main(void) { struct B b; b.in.x = 1; b.in.c = 65; b.ll = 100; b.in.x = 9; printf("%d %d %lld\\n", b.in.x, b.in.c, b.ll); return 0; }\n',
+    'ptr_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid f(struct S *p) { p->a = 5; p->b = 66; p->c = 777; }\nint main(void) { struct S s; f(&s); printf("%d %d %lld\\n", s.a, s.b, s.c); return 0; }\n',
 }
 fails = 0
 for name, prog in tests.items():

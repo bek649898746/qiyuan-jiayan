@@ -1499,7 +1499,7 @@ static void alu_rr(int op, int dst, int src) {
 /* ADD/SUB reg32, imm8/imm32 (fix 2026-08-03: imm8-only sign-extended offsets
    >127 to NEGATIVE (128 → 0x80 → -128) → e->field stores at offset≥128 wrote
    BEHIND the struct. imm32 form (81 /0 id) when the value doesn't fit imm8.) */
-static void alu_ri(int op, int reg, int imm) {
+static void __attribute__((unused)) alu_ri(int op, int reg, int imm) {
     asm_emit("    运即 r%d, %d\n", (char*)(long long)(reg), (char*)(long long)(imm), (char*)(long long)0);
     rex(0, 0, 0, reg & 8);
     if (op == T_PK) {
@@ -9190,6 +9190,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_STORE_RAX32 37    /* MOV [rax], ebx — int 字段存储 (rex; b(0x89); modrm(0,3,0)) */
 #define I_STORE_RAX64 38    /* MOV [rax], rbx — LL/指针字段存储 (rex(1); b(0x89); modrm(0,3,0)) */
 #define I_STORE_XMM0_RAX 39 /* movsd [rax], xmm0 — double 字段存储 (b(0xF2); b(0x0F); b(0x11); modrm(0,0,0)) */
+#define I_ADD_EAX_IMM8 40  /* alu_ri(T_PK,0,v): add eax, imm (32位, 无 REX.W) — 嵌套链赋值偏移 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9236,6 +9237,7 @@ static void ir_flush(void) {
             case I_STORE_RAX32: rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); break;
             case I_STORE_RAX64: rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); break;
             case I_STORE_XMM0_RAX: b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 0); break;
+            case I_ADD_EAX_IMM8: rex(0, 0, 0, 0); if (ir_a[i] >= -128 && ir_a[i] <= 127) { b(0x83); modrm(3, 0, 0); b(ir_a[i]); } else { b(0x81); modrm(3, 0, 0); b4(ir_a[i]); } break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10645,7 +10647,7 @@ static void cg(int n) {
                         if (nt[n1[n]] == 1) {
                             char *_srn4 = (char*)(nn + n1[n]);
                             int _sro4 = var_lookup(_srn4);
-                            if (_sro4 >= 0) { if (var_isstatic(_srn4)) lea_rax_rip(coff_static_disp(_sro4, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn4, _sro4) - cur_frame_sz); }
+                            if (_sro4 >= 0) { if (var_isstatic(_srn4)) { ir_emit(I_LEA_RIP, _sro4, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn4, _sro4) - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: 嵌套链大结构 RHS 取址 */
                             else mov_r_imm(0, 0);
                         } else {
                             int _rfsz4 = 0, _rsi4 = -1;
@@ -10658,10 +10660,10 @@ static void cg(int n) {
                         if (mem_addr(mc, &fsz, &si_out) == 0) { /* rax = &chain */
                             pop_r(3); /* ebx = rhs */
                             if (si_out >= 0 && bf_store(stypes[si_out].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                            else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
-                else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
-                            else if (fsz == 8) { rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx (64-bit ptr/struct field) */
-                            else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
+                            else if (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 char */
+                else if (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 short */
+                            else if (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 64 */
+                            else { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 32 */
                             mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         }
                     }
@@ -10686,16 +10688,16 @@ static void cg(int n) {
                                 }
                             }
                             if (_fok2) {
-                                if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
-                                else if (coff_mode && var_isstatic(vname)) { mov_rax_rip64(coff_static_disp(off, 1) - 1); }
+                                if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush(); } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: ptr->field 大结构 dst */
+                                else if (coff_mode && var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } /* Phase3-IR case10 */
                                 else if (off < 0) { load_param_val(vname); } /* param ptr in register/stack (fix 2026-08-22 #34b: 参数指针 arrow 赋值原 rax=0 → 拷贝垃圾) */
                                 else { mov_r_imm(0, 0); }
-                                if(foff!=0)alu_ri(T_PK,0,foff); /* rax = &p->dm */
+                                if(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 大结构 dst 偏移 */
                                 push_r(0); /* &dst */
                                 if (nt[n1[n]] == 1) {
                                     char *_srn = (char*)(nn + n1[n]);
                                     int _sro = var_lookup(_srn);
-                                    if (_sro >= 0) { if (var_big_param(_srn)) mov_reg_mbrp64(0, _sro - cur_frame_sz); else if (var_isstatic(_srn)) lea_rax_rip(coff_static_disp(_sro, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn, _sro) - cur_frame_sz); }
+                                    if (_sro >= 0) { if (var_big_param(_srn)) { ir_emit(I_LOAD_RBP64, 0, _sro - cur_frame_sz, 0); ir_flush(); } else if (var_isstatic(_srn)) { ir_emit(I_LEA_RIP, _sro, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn, _sro) - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: 大结构 RHS 取址 */
                                     else mov_r_imm(0, 0);
                                 } else {
                                     int _rfsz2 = 0, _rsi2 = -1;
@@ -10705,23 +10707,23 @@ static void cg(int n) {
                                 cg_struct_copy(_fcs2);
                             } else if (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); push_xmm0(); /* save rhs (xmm0 slot) */
-                                if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (fix 2026-08-17: coff extern 全局指针 off<0 — 原 else ptr=0 → the_repository->worktree=val 写 [0] 丢) */
+if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
-                                if(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
+                                if(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
                                 pop_xmm0(); /* xmm0 = rhs */
-                                asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
+                                ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR case10: ptr->field 存 double */
                         } else {
 
                                 cg(n1[n]); if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196) */
-                                if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else mov_reg_mbrp(0, off - cur_frame_sz); } /* rax = ptr (fix 2026-08-17: coff extern 全局指针 off<0 — 原 else ptr=0 → the_repository->worktree=val 写 [0] 丢) */
+if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
-                                if(foff!=0)alu_ri(T_PK,0,foff); /* eax += offset */
+                                if(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
                                 pop_r(3); /* ebx = rhs */
                                 if (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                                else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [rax],rbx */
-                                else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x88); modrm(0,3,0); } /* MOV [rax],bl */
-                else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
-                                else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,0); b(0x89); modrm(0,3,0); } /* MOV [eax],ebx */
+                                else if (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 64 */
+                                else if (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 char */
+                else if (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 short */
+                                else { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 32 */
                             mov_rr(0, 3); /* eax = stored value (chained assignments) */
                             }
                         } else if (var_isstatic(vname)) {
