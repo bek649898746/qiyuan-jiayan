@@ -780,7 +780,38 @@ static int pp_eval(const char *e) {
             return pp_eval(inner);
         }
     }
-    if (e[0] == '!') return pp_eval(e + 1) ? 0 : 1;
+    /* ! 只作用于紧邻操作数 (fix step28: 原 `!A || B` 被算成 !(A||B) — `!` 吃了整个剩余表达式;
+       现: 数前缀 ! 个数 → 解析紧邻操作数 (括号组/defined()/标识符) → 求值取反 → 剩余尾部拼回重求值;
+       操作数无法解析 (如 `!-5`) 回退旧行为, 兼容病理输入) */
+    {
+        int nneg = 0; int i = 0;
+        while (e[i] == '!') { nneg++; i++; }
+        if (i > 0) {
+            while (e[i] == ' ' || e[i] == '\t') i++;
+            int end = i;
+            if (e[i] == '(') {
+                int d = 1; end++;
+                while (e[end] && d > 0) { if (e[end] == '(') d++; else if (e[end] == ')') d--; end++; }
+                if (e[end] == ')') end++;
+            } else if (!strncmp(e + i, "defined", 7) && e[i + 7] == '(') {
+                int d = 1; end = i + 8;
+                while (e[end] && d > 0) { if (e[end] == '(') d++; else if (e[end] == ')') d--; end++; }
+                if (e[end] == ')') end++;
+            } else {
+                while (e[end] && (isalnum((unsigned char)e[end]) || e[end] == '_' || ((unsigned char)e[end] >= 0x80))) end++;
+            }
+            if (end > i) {
+                char opd[512]; int ol = end - i; if (ol > 510) ol = 510; memcpy(opd, e + i, ol); opd[ol] = 0;
+                int ov = pp_eval(opd);
+                int v = (nneg & 1) ? (ov ? 0 : 1) : ov;
+                if (e[end] == 0) return v;
+                char full[512];
+                sprintf(full, "%d %s", v, e + end);
+                return pp_eval(full);
+            }
+            return pp_eval(e + 1) ? 0 : 1; /* 操作数无法解析: 回退旧行为 */
+        }
+    }
     /* split on || (lowest precedence), then &&, then ==/!=/< <= > >= — paren-aware (fix 2026-08-06 M7: 原在括号内错拆，(A||B)&&C 拆错) */
     for (int i = 0, dp = 0; e[i]; i++) {
         if (e[i] == '(') dp++;
