@@ -7561,6 +7561,15 @@ static void cg_f(int n) {
         }
     }
     if (ndbl[n]) { cg(n); return; } /* double node (array elem/var/field/call): cg leaves result in xmm0 */
+    if (t == 22) { /* double 三元 (fix 2026-08-25 step14): 分支求值到 xmm0 — 原 fallback cg(n)+cvtsi2sd 用 eax (比较标志) 覆盖 xmm0 */
+        int lf2 = new_label(), ld2 = new_label();
+        cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lf2, 1); /* 条件假 → lf2 */
+        cg_f(n1[n]); jmp_rel(-1); patch_label(cp - 4, ld2, 2);
+        set_label(lf2);
+        cg_f(n2[n]);
+        set_label(ld2);
+        return;
+    }
     cg(n); cvtsi2sd_xmm0_eax(); /* fallback */
 }
 
@@ -11178,11 +11187,16 @@ static void cg(int n) {
         case 21: /* continue �?jump to innermost loop's continue target */
             jmp_rel(-1); patch_label(cp - 4, cont_label, 2);
         break;
-        case 22: { /* ternary: cond ? t : f — IR */
+        case 22: { /* ternary: cond ? t : f — IR (double 分支 → cg_f xmm0, fix 2026-08-25 step14) */
             int lf = new_label(), ld = new_label();
             cg(n0[n]); ir_emit(I_TEST_JZ, lf, 0, 0); ir_flush();
-            cg(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
-            cg(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
+            if ((n1[n] >= 0 && nt[n1[n]] == FP) || (n2[n] >= 0 && nt[n2[n]] == FP) || expr_is_double(n1[n]) || expr_is_double(n2[n])) {
+                cg_f(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
+                cg_f(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
+            } else {
+                cg(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
+                cg(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
+            }
         } break;
         case 23: { /* postfix ++/-- : return old value, then mutate (simple var) */
             int is_dec = nv[n];
