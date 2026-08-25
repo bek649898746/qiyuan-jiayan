@@ -28,6 +28,8 @@ tests = {
     'ptr_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid f(struct S *p) { p->a = 5; p->b = 66; p->c = 777; }\nint main(void) { struct S s; f(&s); printf("%d %d %lld\\n", s.a, s.b, s.c); return 0; }\n',
     'static_assign.c': '#include <stdio.h>\nstruct G { int a; char b; long long c; };\nstatic struct G g;\nint main(void) { g.a = 5; g.b = 66; g.c = 999; printf("%d %d %lld\\n", g.a, g.b, g.c); return 0; }\n',
     'bigparam_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid set(struct S s) { s.a = 1; s.b = 2; s.c = 3; printf("%d %d %lld\\n", s.a, s.b, s.c); }\nint main(void) { struct S v; v.a = 9; v.b = 9; v.c = 9; set(v); return 0; }\n',
+    'arr_short_assign.c': '#include <stdio.h>\nshort sa[4]; int main(void) { sa[0] = 100; sa[1] = 200; sa[2] = 300; sa[3] = 400; printf("%d %d %d %d\\n", sa[0], sa[1], sa[2], sa[3]); return 0; }\n',
+    'arr_struct_assign.c': '#include <stdio.h>\nstruct E { int x; int y; };\nint main(void) { struct E a[3]; a[0].x = 1; a[0].y = 2; a[1] = a[0]; a[2] = a[1]; printf("%d %d %d %d\\n", a[1].x, a[1].y, a[2].x, a[2].y); return 0; }\n',
 }
 fails = 0
 for name, prog in tests.items():
