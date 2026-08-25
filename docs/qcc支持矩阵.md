@@ -7,6 +7,7 @@
 > v2.2（step2）：`_Noreturn` 已支持（C11 函数修饰符，前向声明/static/定义全通）。
 > v2.3（step3）：math 库 16→21（+cosh/sinh/tanh/copysign/hypot）；修 math 调用返回值丢失 pre-existing bug；PE 导入表布局扩展（IAT2 17→22 槽）。
 > v2.4（step4）：math 21→24（+frexp/ldexp/modf 混合 ABI）；修混合参数压栈 bug（int/指针参数被强制 double 压栈）；PE 布局再扩（IAT2 25 槽）。
+> v2.5（step5）：time 全系 9 函数（time/difftime/localtime/gmtime/mktime/strftime/clock/asctime/ctime，64 位变体映射）；通用外部函数机制；**TEB 栈边界根治**（自切栈与 msvcrt 栈探测冲突）；PE 布局再扩（IAT2 34 槽）。
 
 ## 一、类型系统
 
@@ -81,10 +82,11 @@
 - **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr
   - `%e`/`%E`：科学计数法（1 位整数 + N 位小数 + e±XX，指数至少 2 位）
   - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
-- **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64
+- **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64、qsort/bsearch
+- **time**（msvcrt 导入）：time/_time64、difftime（double 返回）、localtime/_localtime64、gmtime/_gmtime64、mktime/_mktime64、strftime、clock、asctime、ctime（struct tm 需自行定义，compat_prelude 未含）
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn
 - **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个全；copysign/hypot 映射 msvcrt `_copysign/_hypot`；frexp/ldexp/modf 走混合 ABI 专用 emit 分支：xmm0+rdx）
-- **其他**：qsort/bsearch、isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
+- **其他**：isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
 
 ## 六、已知限制（记录在案，勿当 bug 报）
 

@@ -16,7 +16,7 @@
    堆/栈/未初始化 statics 全由 loader 按 VirtualSize 清零 (BSS 语义) — exe 从 454MB→3.2MB.
    SizeOfRawData 固定一页 (0x1000) 覆盖导入表; VirtualSize 不变 (兼容所有虚拟地址). */
 #define DATA_RAW_SZ 0x1000
-#define DATA_RVA_OFF 0x400 /* statics 起点后移：给扩展导入区（IAT 23+ILT 23+desc+names 至 ~0x32C）让位（fix 2026-08-06 BUG-1; 2026-08-25 math21 扩 msvcrt 导入 17→22 槽） */
+#define DATA_RVA_OFF 0x600 /* statics 起点后移：给扩展导入区（IAT 35+ILT 35+desc+names 至 ~0x4AC）让位（fix 2026-08-06 BUG-1; 2026-08-25 math21 0x300→0x400; step5 time 0x400→0x600） */
 #define STACK_PAD_SIZE 0x300000
 #define CODE_BUF_CAP 0x400000
 #include <stdio.h>
@@ -2239,6 +2239,20 @@ static int fn_math_iat(const char *n) {
     for (int i = 0; i < 24; i++) if (!strcmp(maths[i], n)) return 8 + i;
     return -1;
 }
+/* 外部库函数注册表 (fix 2026-08-25 step5 time 全系): 非 builtin 非 math 的 msvcrt IAT 函数,
+   参数全 int/指针 (Win64 GPR 传参), 返回类型各异。
+   ret: 0=int/ptr(rax 8B) 1=ll(rax 64B) 2=double(xmm0)
+   slot 33-41 对应 mnames[25..33] (64 位变体映射标准名: time→_time64 等) */
+static const char *ext_fn_names[9] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime" };
+static int ext_fn_slot(const char *n) {
+    for (int i = 0; i < 9; i++) if (!strcmp(ext_fn_names[i], n)) return 33 + i;
+    return -1;
+}
+static int ext_fn_ret(const char *n) {
+    static const char extr[9] = { 1, 2, 0, 0, 1, 0, 0, 0, 0 };
+    for (int i = 0; i < 9; i++) if (!strcmp(ext_fn_names[i], n)) return extr[i];
+    return -1;
+}
 static int scratch_base = 0; /* frame scratch area for printf (set in main) */
 /* r12/r13 are high registers: [r13] needs mod=01+disp8, [r12] needs SIB 0x24 */
 static void mov_eax_mr13(void) { asm_emit("    取参 eax, [r13]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x41); b(0x8B); b(0x45); b(0); }      /* mov eax, [r13] */
@@ -4230,8 +4244,8 @@ static int prim(void) {
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
                 int callee = n; if (getenv("QCC_DBG_CALL")) fprintf(stderr, "[CALL2] callee_nt=%d callee='%s' tk=%d\n", nt[callee], (char*)(nn + callee), tk); tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
-                if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 (pow 等) 无函数体 fn_dbl_get_ret=0 → 调用节点未标 double → 作参数时 push rax 而非 xmm0 → %f 读垃圾 (修: fn_math_iat 匹配即 double 返回) */
-                if (nt[callee] == 1 && fn_ll_get_ret((char*)(nn + callee))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate */
+                if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
+                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
             } else break;
         }
         return n; }
@@ -4352,8 +4366,8 @@ static int prim(void) {
                 int ar = (tt[tk] == AR); tk++;
                 if (tt[tk] == VR) { int m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 64); tk++; n = m; } else break;
             } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c;
-                if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); 2026-08-25 math21: 同 L4233 外部 math 函数 double 返回 */
-                if (nt[callee] == 1 && fn_ll_get_ret((char*)(nn + callee))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
+                if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); math21/step5 time 同 L4233 */
+                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
             } else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
                 int is_dec = (tt[tk] == MM); tk++;
                 int m = Nd(23); nv[m] = is_dec;
@@ -10756,6 +10770,23 @@ static void cg(int n) {
                     add_rsp_imm(total_h);
                     math_done = 1;
                 }
+            } else if (ext_fn_slot(fname) >= 0) {
+                /* 外部库函数 (fix 2026-08-25 step5 time 全系): 参数全 int/指针 → Win64 GPR (rcx/rdx/r8/r9) 传参,
+                   IAT 调用; 返回 int/ptr=rax, ll=rax 64 (nll 标记), double=xmm0 (ndbl 标记) */
+                int eslot = ext_fn_slot(fname);
+                if (nargs >= 1) { mov_reg_mrsp64(0, argbase + total_h - slot_h[0] - 8); mov_rr64(1, 0); }
+                if (nargs >= 2) { mov_reg_mrsp64(0, argbase + total_h - slot_h[1] - 8); mov_rr64(2, 0); }
+                if (nargs >= 3) { mov_reg_mrsp64(0, argbase + total_h - slot_h[2] - 8); mov_rr64(8, 0); }
+                if (nargs >= 4) { mov_reg_mrsp64(0, argbase + total_h - slot_h[3] - 8); mov_rr64(9, 0); }
+                for (int k = 4; k < nargs; k++) { mov_reg_mrsp64(0, argbase + total_h - slot_h[k] - 8); mov_mrsp_reg64(32 + 8 * (k - 4), 0); }
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                sub_rsp_imm(32);
+                call_iat(eslot);
+                add_rsp_imm(32);
+                mov_rr64(4, 15); pop_r(15);
+                add_rsp_imm(total_h);
+                math_done = 1;
             } else {
                 int mslot = fn_math_iat(fname);
                 if (mslot >= 0) { /* 外部数学函数：Win64 ABI 传参（double→xmm，签名固定全 double）+ IAT 调用（fix 2026-08-06 BUG-1） */
@@ -12375,7 +12406,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x238); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8; 2026-08-25 math21: 0x1B8→0x208; math24: 0x208→0x238) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
+    w4(f, data_rva_base + 0x2C8); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8; 2026-08-25 math21: 0x208; math24: 0x238; step5 time: 0x2C8) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -12415,43 +12446,43 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* .data section: write heap counter, then import table
        布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
-       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (25 msvcrt + term=208B)
-       ILT1@+0x120 (9*8B=72B) ILT2@+0x168 (26*8B=208B) desc@+0x238 (3*20=60B) names@+0x280
-       (fix 2026-08-19: IAT2 扩 16→17 加 _write; 2026-08-25 math21: 17→22; math24: 22→25 加 frexp/ldexp/modf, 全偏移右移; ILT thunk 8B 按 PE64 计) */
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (34 msvcrt + term=280B)
+       ILT1@+0x168 (9*8B=72B) ILT2@+0x1B0 (35*8B=280B) desc@+0x2C8 (3*20=60B) names@+0x320
+       (fix 2026-08-19: IAT2 扩 16→17; math21: 17→22; math24: 22→25; step5 time: 25→34 加 _time64/difftime/_localtime64/_gmtime64/_mktime64/strftime/clock/asctime/ctime, 全偏移右移; ILT thunk 8B 按 PE64 计) */
     fseek(f, data_foff, SEEK_SET);
     int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
-    static const char *mnames[25] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write" };
-    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x120, ilt2 = 0x168, desc_off = 0x238, name_off = 0x280; /* math24: IAT2 22→25 槽 (26*8=208B→0x120); ILT thunk 8B: ILT1@0x120 (72B→0x168), ILT2@0x168 (208B→0x238), desc@0x238 (60B→0x274), names@0x280 (至 ~0x380 < DATA_RVA_OFF 0x400) */
-    int n_off[33];
+    static const char *mnames[34] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime" };
+    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x168, ilt2 = 0x1B0, desc_off = 0x2C8, name_off = 0x320; /* step5 time: IAT2 25→34 槽 (35*8=280B→0x168); ILT1@0x168 (72B→0x1B0), ILT2@0x1B0 (280B→0x2C8), desc@0x2C8 (60B→0x304), names@0x320 (至 ~0x4AC < DATA_RVA_OFF 0x600) */
+    int n_off[42];
     /* IAT/ILT 占位 */
     fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 26; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 35; i++) w8(f, 0);
     fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 26; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 35; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
     for (int i = 0; i < 8; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    for (int i = 0; i < 25; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    for (int i = 0; i < 34; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
     /* 回填 IAT1（8 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* 回填 IAT2（25 + term） */
+    /* 回填 IAT2（34 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    for (int i = 0; i < 25; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 34; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    for (int i = 0; i < 25; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 34; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
@@ -12489,7 +12520,14 @@ static void emit_crt_stub(void) {
        且高�?heap 终点（~48MB）；被编译程序没�?__stack 静态，不能用静态末尾�?*/
     int stk_top = IMAGE_BASE + data_rva_base + data_extent(); /* fix 2026-08-12 自举收敛根因: 栈顶必须在 bump 堆终点之上 — 旧 max(cp*84,8MB) 自举时落进 tll_hi → 栈帧写穿 token 数组 → 2-cycle. 实测 v1g: stk_top=0x52B15D8=heap_start+33.6MB, tll_hi 在 +33.2..+35.2MB. data_extent = statics_end + 堆44MB + 栈8MB */
     mov_rr64(3, 4);         /* rbx = rsp (保存 loader 栈 — fix 2026-08-17 CI 根因: Server 2025 ntdll LdrShutdownProcess 清理路径 _chkstk 按 TEB 栈探测, 自切栈 rsp 脱离 TEB → SIGSEGV; 退出前切回 loader 栈) */
-    mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32�?imm，零扩展) */
+    mov_ri_ext(4, stk_top);     /* mov rsp, stk_top (32位 imm，零扩展) */
+    /* fix 2026-08-25 step5: TEB 栈边界改为自切栈 — msvcrt _tzset/_setjmpex/_chkstk 按 TEB 栈探测,
+       自切栈 rsp 脱离 loader 栈 → localtime/gmtime SEGV (_setjmpex: test %r11b,(%r11)).
+       x64 TEB 基址=gs:0, StackBase=TEB+0x08 (高地址), StackLimit=TEB+0x10 (低地址) */
+    mov_ri_ext(0, stk_top);     /* rax = stk_top */
+    asm_emit("    改 TEB 栈基\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x65); b(0x48); b(0x89); b(0x04); b(0x25); b4(0x08); /* mov gs:[0x08], rax */
+    mov_ri_ext(0, stk_top - 0x1000000); /* rax = stk_top - 16MB (栈向下预算) */
+    asm_emit("    改 TEB 栈限\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x65); b(0x48); b(0x89); b(0x04); b(0x25); b4(0x10); /* mov gs:[0x10], rax */
     mov_ri_ext(12, argv_va);          /* r12 = &argv[0] */
     mov_ri_ext(13, argv_va + 512);    /* r13 = token area start */
     /* GetCommandLineA() */
