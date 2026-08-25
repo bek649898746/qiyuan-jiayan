@@ -8,6 +8,7 @@
 > v2.3（step3）：math 库 16→21（+cosh/sinh/tanh/copysign/hypot）；修 math 调用返回值丢失 pre-existing bug；PE 导入表布局扩展（IAT2 17→22 槽）。
 > v2.4（step4）：math 21→24（+frexp/ldexp/modf 混合 ABI）；修混合参数压栈 bug（int/指针参数被强制 double 压栈）；PE 布局再扩（IAT2 25 槽）。
 > v2.5（step5）：time 全系 9 函数（time/difftime/localtime/gmtime/mktime/strftime/clock/asctime/ctime，64 位变体映射）；通用外部函数机制；**TEB 栈边界根治**（自切栈与 msvcrt 栈探测冲突）；PE 布局再扩（IAT2 34 槽）。
+> v2.6（step6）：`_Generic` 已支持（C11 泛型选择，控制表达式类型判定 + 关联列表匹配 + default；与 gcc 逐行一致验证）。
 
 ## 一、类型系统
 
@@ -31,6 +32,7 @@
 | `_Static_assert`/`static_assert` | ✅ | 编译期断言，表达式为假报错（含比较运算符求值）|
 | `_Alignof` | ✅ | C11 对齐查询（基本类型/指针=8/数组=元素对齐/struct=最大成员对齐 stypes.algn/typedef；常量求值可用，如 `_Static_assert(_Alignof(double)==8)`）|
 | `_Noreturn` | ✅ | C11 函数修饰符（前向声明/static/定义均可；函数定义 VK 循环自然跳过）|
+| `_Generic` | ✅ | C11 泛型选择（控制表达式类型判定：基本类型/指针/struct/call 返回；关联列表 + default；控制表达式不求值；与 gcc 逐行一致验证）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
 
 ## 二、语句

@@ -2629,7 +2629,7 @@ __attribute__((unused))
     lbl_tbl[lbl_n].id = new_label();
     返 lbl_tbl[lbl_n++].id;
 }
-枚 { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
+枚 { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 静 整 *tt, *tv; 字 (*tn)[64]; 字 (*nn)[64]; 整 ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
@@ -3264,6 +3264,7 @@ __attribute__((unused))
     若 (!strcmp(s, "sizeof")) 返 BK;
     若 (!strcmp(s, "_Alignof")) 返 AL; /* C11 对齐查询 (fix 2026-08-25 支持矩阵补全 step1) */
     若 (!strcmp(s, "_Noreturn")) 返 VK; /* C11 函数修饰符 (fix 2026-08-25 支持矩阵补全 step2: 函数定义 VK 循环自然跳过) */
+    若 (!strcmp(s, "_Generic")) 返 GN; /* C11 泛型选择 (fix 2026-08-25 支持矩阵补全 step6) */
     返 NK;
 }
 
@@ -3309,6 +3310,77 @@ __attribute__((unused))
         若 (tt[tk] == RB) tk++;
     }
     返 al;
+}
+
+/* _Generic 控制表达式类型判定 (fix 2026-08-25 step6): 0=int 1=char 2=short 3=ll 4=double 5=uns 6=ptr 7=struct 8=other */
+静 整 expr_type_of(整 n) {
+    若 (n < 0) 返 8;
+    整 t = nt[n];
+    若 (t == FP) 返 4; /* double literal */
+    若 (t == 0) { 若 (tll[n]) 返 3; 若 (nuns[n]) 返 5; 返 0; } /* int literal */
+    若 (t == 1) {
+        字 *vn = (字*)(nn + n);
+        若 (var_is_dbl(vn)) 返 4;
+        若 (var_is_ll(vn)) 返 3;
+        若 (var_is_uns(vn)) 返 5;
+        若 (var_is_char(vn)) 返 1;
+        若 (var_is_short(vn)) 返 2;
+        若 (var_pesz(vn) > 0) 返 6;   /* pointer */
+        若 (var_stidx(vn) >= 0) 返 7; /* struct var */
+        返 0;
+    }
+    若 (t == 4) { /* call: callee 节点 n0 是函数名 */
+        整 cal = n0[n]; 若 (cal < 0) 返 8;
+        字 *fn = (字*)(nn + cal);
+        若 (fn_dbl_get_ret(fn) || fn_math_iat(fn) >= 0 || ext_fn_ret(fn) == 2) 返 4;
+        若 (fn_ll_get_ret(fn) || ext_fn_ret(fn) == 1) 返 3;
+        返 0;
+    }
+    若 (t == 19) { 若 (nll[n]) 返 3; 若 (nuns[n]) 返 5; 返 0; } /* cast */
+    若 (t == 10) 返 expr_type_of(n0[n]); /* assign: lhs 类型 */
+    若 (t == 14) 返 expr_type_of(n0[n]); /* arr[i]: 元素类型 (近似) */
+    若 (t == 2) { /* binop 结果类型 */
+        整 op = nv[n];
+        若 (op == LA || op == LO || op == T_QK || op == T_XK || op == T_LK || op == T_GK || op == T_HK || op == T_YK) 返 0; /* 比较/逻辑 → int */
+        若 (op == T_SR || op == T_SH) 返 expr_type_of(n0[n]); /* 移位: 左操作数 */
+        整 r1 = expr_type_of(n0[n]), r2 = expr_type_of(n1[n]);
+        若 (r1 == 4 || r2 == 4) 返 4;
+        若 (r1 == 3 || r2 == 3) 返 3;
+        若 (r1 == 5 || r2 == 5) 返 5;
+        若 (r1 == 6 || r2 == 6) 返 6;
+        返 0;
+    }
+    返 8;
+}
+/* _Generic 关联类型解析 → 同上 id; -1 解析失败 */
+静 整 gen_type_id(空) {
+    若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } /* 指针 */
+    若 (tt[tk] == VK) {
+        若 (!strcmp(tn[tk], "int")) { tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 0; }
+        若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 1; }
+        若 (!strcmp(tn[tk], "short")) { tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 2; }
+        若 (!strcmp(tn[tk], "double")) { tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 4; }
+        若 (!strcmp(tn[tk], "long")) { tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 3; }
+        若 (!strcmp(tn[tk], "unsigned")) { tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; 若 (tt[tk] == DK) { 循环 (tt[tk] == DK) tk++; 返 6; } 返 5; }
+        若 (!strcmp(tn[tk], "void")) { tk++; 返 8; }
+        若 (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile") || !strcmp(tn[tk], "restrict")) { tk++; 返 gen_type_id(); } /* 限定符跳过 */
+        tk++; 返 8; /* 其他 VK */
+    }
+    若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) tk++; 返 7; } /* struct */
+    若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 返 0; } /* enum → int */
+    若 (tt[tk] == VR) { /* typedef */
+        整 tdi = tdef_lookup(tn[tk]);
+        若 (tdi >= 0) {
+            若 (tdefs[tdi].is_struct) { tk++; 返 7; }
+            若 (tdefs[tdi].is_dbl) { tk++; 返 4; }
+            若 (tdefs[tdi].sz == 8) { tk++; 返 3; }
+            若 (tdefs[tdi].sz == 1) { tk++; 返 1; }
+            若 (tdefs[tdi].sz == 2) { tk++; 返 2; }
+        }
+        tk++;
+        返 8;
+    }
+    返 -1;
 }
 
 静 空 lex(常 字 *s) {
@@ -3850,7 +3922,33 @@ __attribute__((unused))
 静 整 expr(空);
 
 静 整 prim(空) {
-        若 (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
+        若 (tt[tk] == GN) { /* _Generic(ctrl, type: expr, ..., default: expr) — C11 泛型选择 (fix 2026-08-25 step6) */
+        tk++; /* _Generic */
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 ctrl = expr(); /* 控制表达式: 不求值, 只建 AST 判定类型 (expr 不含逗号 — 逗号仅在括号/参数内消费) */
+        整 cid = expr_type_of(ctrl);
+        整 sel = -1;
+        循环 (tt[tk] == CK) tk++; /* 首逗号 */
+        遍 (;;) {
+            整 is_def = (tt[tk] == DF); /* default 是关键字 token DF (L3239), 非 VR */
+            整 tid = -1;
+            若 (is_def) { tk++; 若 (tt[tk] == CL) tk++; } /* default: */
+            否 {
+                tid = gen_type_id(); /* 解析关联类型 → id */
+                若 (tid < 0) 断;
+                若 (tt[tk] == CL) tk++; /* : */
+            }
+            整 e = expr(); /* 关联表达式 (未选中也解析, 丢弃 AST) */
+            若 (is_def) { 若 (sel < 0) sel = e; 断; } /* default 必须在最后 */
+            若 (sel < 0 && tid == cid) sel = e;
+            若 (tt[tk] == CK) { tk++; 续; }
+            断;
+        }
+        若 (tt[tk] == KK) tk++; /* ) */
+        若 (sel < 0) { 整 n0d = Nd(0); nv[n0d] = 0; 返 n0d; } /* 无匹配且无 default: 宽松返回 0 */
+        返 sel;
+    }
+    若 (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
         若 (getenv("QCC_DBG_NS")) fprintf(stderr, "[PRIM] PREFIX INC/DEC tok=%d '%s' tk=%d\n", tt[tk], tn[tk], tk); /* tmp diag */
         整 is_dec = (tt[tk] == MM); tk++;
         整 v = prim();
