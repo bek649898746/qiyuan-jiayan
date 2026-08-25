@@ -11,6 +11,7 @@
 > v2.6（step6）：`_Generic` 已支持（C11 泛型选择，控制表达式类型判定 + 关联列表匹配 + default；与 gcc 逐行一致验证）。
 > v2.7（step7）：`_Alignas` 语法接受（lexer 吞掉 `_Alignas(...)`，对齐语义未实现，记录为已知限制）；**C11 新增特性语法层全绿**。
 > v2.8（step8）：库层补全（strtok/strrchr/strnlen/strpbrk/memcmp/toupper/isalnum/isxdigit/isspace/rand/srand/abs）；ext_fn 机制 9→21；PE 布局再扩（IAT2 46 槽）。
+> v2.9（step9）：ctype 收尾 + labs + atof（ext_fn 21→29，atof 验证 double 返回路径；isblank 不在 msvcrt 导出故不加）；PE 布局再扩（IAT2 54 槽）。
 
 ## 一、类型系统
 
@@ -87,10 +88,10 @@
 - **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr
   - `%e`/`%E`：科学计数法（1 位整数 + N 位小数 + e±XX，指数至少 2 位）
   - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
-- **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64、qsort/bsearch
 - **time**（msvcrt 导入）：time/_time64、difftime（double 返回）、localtime/_localtime64、gmtime/_gmtime64、mktime/_mktime64、strftime、clock、asctime、ctime（struct tm 需自行定义，compat_prelude 未含）
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn + strtok/strrchr/strnlen/strpbrk/memcmp（builtin + ext_fn）
-- **ctype**：isdigit/isalpha/tolower + isalnum/isxdigit/isspace（注意：qcc 调 msvcrt 函数返回 1，mingw 宏查表返回 2/128/8，均非零真值）
+- **ctype**：isdigit/isalpha/tolower + isalnum/isxdigit/isspace + islower/isupper/iscntrl/isgraph/isprint/ispunct（`isblank` 不在传统 msvcrt.dll 导出，未支持）
+- **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64、qsort/bsearch、rand/srand/abs/labs、atof（double 返回）
 - **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个全；copysign/hypot 映射 msvcrt `_copysign/_hypot`；frexp/ldexp/modf 走混合 ABI 专用 emit 分支：xmm0+rdx）
 - **其他**：isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
 

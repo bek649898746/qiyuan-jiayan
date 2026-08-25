@@ -16,7 +16,7 @@
    堆/栈/未初始化 statics 全由 loader 按 VirtualSize 清零 (BSS 语义) — exe 从 454MB→3.2MB.
    SizeOfRawData 固定一页 (0x1000) 覆盖导入表; VirtualSize 不变 (兼容所有虚拟地址). */
 #define DATA_RAW_SZ 0x1000
-#define DATA_RVA_OFF 0x600 /* statics 起点后移：给扩展导入区（IAT 35+ILT 35+desc+names 至 ~0x4AC）让位（fix 2026-08-06 BUG-1; 2026-08-25 math21 0x300→0x400; step5 time 0x400→0x600） */
+#define DATA_RVA_OFF 0x800 /* statics 起点后移：给扩展导入区（IAT 56+ILT 56+desc+names 至 ~0x680）让位（fix 2026-08-06 BUG-1; 2026-08-25 math21 0x300→0x400; step5 0x400→0x600; step9 0x600→0x800） */
 #define STACK_PAD_SIZE 0x300000
 #define CODE_BUF_CAP 0x400000
 #include <stdio.h>
@@ -2243,14 +2243,14 @@ static int fn_math_iat(const char *n) {
    参数全 int/指针 (Win64 GPR 传参), 返回类型各异。
    ret: 0=int/ptr(rax 8B) 1=ll(rax 64B) 2=double(xmm0)
    slot 33-41 对应 mnames[25..33] (64 位变体映射标准名: time→_time64 等) */
-static const char *ext_fn_names[21] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs" };
+static const char *ext_fn_names[29] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs","islower","isupper","iscntrl","isgraph","isprint","ispunct","labs","atof" }; /* isblank 不在 msvcrt.dll 导出 (C99 后加), 勿入表 */
 static int ext_fn_slot(const char *n) {
-    for (int i = 0; i < 21; i++) if (!strcmp(ext_fn_names[i], n)) return 33 + i;
+    for (int i = 0; i < 29; i++) if (!strcmp(ext_fn_names[i], n)) return 33 + i;
     return -1;
 }
 static int ext_fn_ret(const char *n) {
-    static const char extr[21] = { 1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; /* time=ll, difftime=double, mktime=ll, 其余 int/ptr (step8: 新 12 全 int/ptr) */
-    for (int i = 0; i < 21; i++) if (!strcmp(ext_fn_names[i], n)) return extr[i];
+    static const char extr[29] = { 1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 }; /* time=ll, difftime/atof=double, mktime=ll, 其余 int/ptr (step9: atof double 返回) */
+    for (int i = 0; i < 29; i++) if (!strcmp(ext_fn_names[i], n)) return extr[i];
     return -1;
 }
 static int scratch_base = 0; /* frame scratch area for printf (set in main) */
@@ -12509,7 +12509,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x388); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8; step5 time: 0x2C8; step8: 0x388) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
+    w4(f, data_rva_base + 0x428); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; step8: 0x388; step9: 0x428) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -12549,43 +12549,43 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* .data section: write heap counter, then import table
        布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
-       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (46 msvcrt + term=376B)
-       ILT1@+0x1C8 (9*8B=72B) ILT2@+0x210 (47*8B=376B) desc@+0x388 (3*20=60B) names@+0x3D0
-       (fix 2026-08-19: IAT2 16→17; math21: 17→22; math24: 22→25; step5 time: 25→34; step8: 34→46 加 strtok/strrchr/strnlen/strpbrk/memcmp/toupper/isalnum/isxdigit/isspace/rand/srand/abs; ILT thunk 8B 按 PE64 计) */
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (54 msvcrt + term=440B)
+       ILT1@+0x208 (9*8B=72B) ILT2@+0x250 (55*8B=440B) desc@+0x428 (3*20=60B) names@+0x480
+       (fix 2026-08-19: IAT2 16→17; math21: 17→22; math24: 22→25; step5: 25→34; step8: 34→46; step9: 46→54 加 islower/isupper/iscntrl/isgraph/isprint/ispunct/labs/atof, isblank 不在 msvcrt 导出故不加; ILT thunk 8B 按 PE64 计) */
     fseek(f, data_foff, SEEK_SET);
     int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
-    static const char *mnames[46] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime", "strtok", "strrchr", "strnlen", "strpbrk", "memcmp", "toupper", "isalnum", "isxdigit", "isspace", "rand", "srand", "abs" };
-    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x1C8, ilt2 = 0x210, desc_off = 0x388, name_off = 0x3D0; /* step8: IAT2 34→46 槽 (47*8=376B→0x1C8); ILT1@0x1C8 (72B→0x210), ILT2@0x210 (376B→0x388), desc@0x388 (60B→0x3C4), names@0x3D0 (至 ~0x5B0 < DATA_RVA_OFF 0x600) */
-    int n_off[54];
+    static const char *mnames[54] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime", "strtok", "strrchr", "strnlen", "strpbrk", "memcmp", "toupper", "isalnum", "isxdigit", "isspace", "rand", "srand", "abs", "islower", "isupper", "iscntrl", "isgraph", "isprint", "ispunct", "labs", "atof" };
+    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x208, ilt2 = 0x250, desc_off = 0x428, name_off = 0x480; /* step9: IAT2 46→54 槽 (55*8=440B→0x208; isblank 不在 msvcrt 导出故不加); ILT1@0x208 (72B→0x250), ILT2@0x250 (440B→0x428), desc@0x428 (60B→0x464), names@0x480 (至 ~0x6B0 < DATA_RVA_OFF 0x800) */
+    int n_off[62];
     /* IAT/ILT 占位 */
     fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 47; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 55; i++) w8(f, 0);
     fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 47; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 55; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
     for (int i = 0; i < 8; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    for (int i = 0; i < 46; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    for (int i = 0; i < 54; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
     /* 回填 IAT1（8 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* 回填 IAT2（46 + term） */
+    /* 回填 IAT2（54 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    for (int i = 0; i < 46; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 54; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    for (int i = 0; i < 46; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 54; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
