@@ -3249,6 +3249,7 @@ static int kw(const char *s) {
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "sizeof")) return BK;
     if (!strcmp(s, "_Alignof")) return AL; /* C11 对齐查询 (fix 2026-08-25 支持矩阵补全 step1) */
+    if (!strcmp(s, "_Noreturn")) return VK; /* C11 函数修饰符 (fix 2026-08-25 支持矩阵补全 step2: 函数定义 VK 循环自然跳过) */
     return NK;
 }
 
