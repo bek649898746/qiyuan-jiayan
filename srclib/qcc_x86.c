@@ -9745,6 +9745,7 @@ static int node_psz(int n) {
     }
     if (pesz[n] < 0) return 0; /* t35k 2026-08-23: 非指针整数 cast (uintptr_t/size_t) 哨兵 → 指针算术不缩放 (原 (uintptr_t)p-1 按 node_psz=4 缩放 → cb_node_of p-4 → cbtree 崩) */
     if (pesz[n] > 0) return pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) */
+    if (nt[n] == 10) return node_psz(n0[n]); /* 复合赋值 (p += N): 返回左操作数元素大小 (fix 2026-08-25 step17: ((p+=8)-8) 减法 lpsz 原=0 无缩放 → int 指针/double 指针差错位; char 指针碰巧对) */
     if (nt[n] == 1) { /* 变量名: 数组名→元素宽, T** 指针→arr_esz(8), T*→p_esz */
         char *vn = (char*)(nn + n);
         for (int vi = vs_n() - 1; vi >= 0; vi--)
