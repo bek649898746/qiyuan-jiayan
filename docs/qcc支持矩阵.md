@@ -17,6 +17,7 @@
 > v2.12（step12）：`fscanf` 已支持（FILE*→ReadFile 4096→_scanf_rt；无缓冲限制：多次 fscanf 同 FILE* 不续读）；**stdio 全系补齐**。
 > v2.13（step13）：C99 math 内置 10 函数（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim，qcc_rt 内实现调 msvcrt log/pow/floor/ceil）；发现 return 三元 codegen pre-existing bug（绕过，待修核心）。
 > v2.14（step14）：**return 三元 double codegen 修复**（cg_f/cg case 22 加 double 分支→xmm0；int 三元保持原路径）；种子纪律修正（每步封存种子）。
+> v2.15（step15）：GNU `case 1...5:` 范围支持（生成 >= && <= 条件）；变参 double 已最小化定位（double 元素赋值×指针差交互，待专门攻坚）。
 
 ## 一、类型系统
 
@@ -43,6 +44,7 @@
 | `_Alignas` | ⚠️ | 语法接受（lexer 吞掉 `_Alignas(...)`）；对齐语义未实现（变量/字段按 qcc 既有布局；`struct{_Alignas(4) short}` qcc sizeof=2 vs gcc=4，待 2.0 类型系统）|
 | `_Generic` | ✅ | C11 泛型选择（控制表达式类型判定：基本类型/指针/struct/call 返回；关联列表 + default；控制表达式不求值；与 gcc 逐行一致验证）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
+| GNU `case 1...5:` 范围 | ✅ | `case A ... B:` 生成 `sw_var >= A && sw_var <= B` 条件（负值范围支持）|
 
 ## 二、语句
 
