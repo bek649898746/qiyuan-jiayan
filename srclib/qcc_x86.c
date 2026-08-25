@@ -1102,6 +1102,7 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
 static void st_pend_backfill(int new_si); /* fwd: 前向声明 struct Tag *field 的类型回填 (fix 2026-08-18) */
 static int st_cur_struct_align = 1; /* fix 2026-08-19: struct 类型成员的对齐暂存 — 注册处设, st_field_sz_r 消费 (FILETIME=4 → WIN32_FIND_DATAW 布局对齐 Windows SDK) */
 static int alignas_pending = 0; /* fix 2026-08-25 step21: _Alignas(N) 显式对齐暂存 — parser 在 AG token 处设, st_field_sz_r 消费 (字段级对齐, 并抬升 struct 最大对齐) */
+static int ag_struct = 0; /* fix 2026-08-25 step25: _Alignas(N) struct 前 — 修饰 struct 变量 (gcc: `_Alignas(16) struct S v;` 对齐 v, 不修饰类型/字段); var_struct 消费 */
 static int st_add(const char *n) {
     if (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
@@ -2105,7 +2106,20 @@ static int var_double(const char *n) {
     vars[vcnt].is_dbl = 1;
     return vars[vcnt++].rsp_off;
 }
+/* _Alignas(N) 变量级存储对齐 (fix 2026-08-25 step25): 全局对齐 stc_n (.data 4 字节槽, N 任意 — 基址页对齐);
+   返回 pending 值供调用方调整局部槽 (var_offset 标量 8 字节槽 → 地址自动 8/16 对齐). 
+   无条件消费 alignas_pending 防污染后续变量. */
+static int var_align(void) {
+    int pa = alignas_pending;
+    alignas_pending = 0;
+    if (pa > 4) {
+        stc_n = (stc_n + pa / 4 - 1) & ~(pa / 4 - 1);
+    }
+    return pa;
+}
 static int var_offset(const char *n) {
+    int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
+    int _psz = (_pa > 4) ? 8 : 4; /* _Alignas(>=8) int → 8B 槽 → rsp_off ≡ 8 mod 16 → 地址 ≡ 0 mod 16 */
     
     /* do NOT reuse a same-named ARRAY entry: a `char fn[64]` field-local from another
        function must not shadow/absorb a plain `int fn` here (it would turn the int
@@ -2115,8 +2129,8 @@ static int var_offset(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 (blk_end=-1) — 同一槽被多块声明 (qcc_vsnprintf 两个块各 int r) 时 blk 作用域判定不得把条目限死在首个声明块 */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
-    rsp_used += 4; rsp_used = (rsp_used + 15) & ~15;
-    vars[vcnt].rsp_off = rsp_used - 4; /* point to start, not aligned end */
+    rsp_used += _psz; rsp_used = (rsp_used + 15) & ~15;
+    vars[vcnt].rsp_off = rsp_used - _psz; /* point to start, not aligned end */
     vars[vcnt].is_param = 0;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
@@ -2125,6 +2139,7 @@ static int var_offset(const char *n) {
     return vars[vcnt++].rsp_off;
 }
 static int var_offset_ptr(const char *n, int pesz) {
+    var_align(); /* fix step25: _Alignas 变量级 */
     
     /* 8-byte slot so full 64-bit pointer fits.
        REUSE only when the existing same-name var is the SAME pointer type (same element
@@ -2151,6 +2166,7 @@ static int var_offset_ptr(const char *n, int pesz) {
 static int var_last_idx = -1; /* var_static 最近处理的条目索引 (fix 2026-08-21: 匹配旧条目时 vcnt 不变 → 调用者 vars[vcnt-1] 误写中间变量 — iterator.c current_ref_iter 全局声明把 prefix_ref_iterator_begin 的 _sz st_idx 写成 57 → xcalloc 参数 bigsz 误判 56B → hash-object/commit SEGV) */
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 static int var_static(const char *n, int pesz) {
+    var_align(); /* fix step25: _Alignas 变量级 */
     
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } var_last_idx = i; return vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
     if (vcnt >= 16000 || stc_n >= 0x4000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
@@ -2186,6 +2202,7 @@ static int var_isstatic(const char *n) {
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
 static int var_static_arr(const char *n, int pesz, int esz, int count) {
+    var_align(); /* fix step25: _Alignas 变量级 */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vsa '%s' HIT i=%d rsp=%d pesz=%d esz=%d count=%d\n", n, i, vars[i].rsp_off, pesz, esz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } var_last_idx = i; return vars[i].rsp_off; }
     int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
     if (esz > 4) slots = (count * esz + 3) / 4;
@@ -2202,6 +2219,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
 }
 /* static struct: contiguous slots sized to the struct (count = array elements), records st_idx */
 static int var_static_struct(const char *n, int si, int count) {
+    var_align(); /* fix step25: _Alignas 变量级 */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vss '%s' HIT i=%d rsp=%d si=%d sz=%d count=%d\n", n, i, vars[i].rsp_off, si, stypes[si].sz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl3 = (stypes[si].sz + 3) / 4; if (sl3 < 1) sl3 = 1; int ct = count > 0 ? count : 1; stc_n += sl3 * ct; vars[i].st_sz = sl3 * 4; vars[i].arr_sz = (count > 1) ? count : 0; vars[i].arr_esz = stypes[si].sz; vars[i].st_idx = si; } var_last_idx = i; return vars[i].rsp_off; }
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
@@ -2265,12 +2283,16 @@ static void mov_rax_mr13(void) { asm_emit("    取参64 rax, [r13]\n", (char*)(l
 static void mov_r12_cl(void) { asm_emit("    写字节 [r12], cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,1,4); b(0x24); } /* mov [r12], cl */
 static void mov_r12_al(void) { asm_emit("    写字符 [r12], al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0,0,0,1); b(0x88); modrm(0,0,4); b(0x24); } /* mov [r12], al */
 static int var_struct(const char *n, int si) {
-    
+    int _pa = var_align(); /* fix step25: _Alignas(N) 变量级 */
+    if (ag_struct > _pa) _pa = ag_struct; /* fix step25: struct 前 _Alignas 修饰变量 (gcc 语义) */
+    ag_struct = 0;
     /* always allocate �?may shadow parameter with same name */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
+    if (getenv("QCC_DBG_ALIGN")) fprintf(stderr, "[ALIGN] var_struct '%s' _pa=%d sz=%d rsp=%d\n", n, _pa, sz, rsp_used);
+    if (_pa >= 16) rsp_used += 8; /* fix step25: rsp_off ≡ 8 mod 16 → struct 地址 16 对齐 */
     vars[vcnt].rsp_off = rsp_used;
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = si; vars[vcnt].st_sz = sz; vars[vcnt].arr_sz = 0;
@@ -2280,11 +2302,13 @@ static int var_struct(const char *n, int si) {
 }
 __attribute__((unused))
 static int var_array(const char *n, int count, int esz) {
+    int _pa = var_align(); /* fix step25: _Alignas(N) 变量级 */
     /* always allocate */
     if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = count * esz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
+    if (_pa >= 16) rsp_used += 8; /* fix step25: rsp_off ≡ 8 mod 16 → 数组地址 = rbp-(frame-rsp_off) ≡ 0 mod 16 (rbp%16=8) */
     vars[vcnt].rsp_off = rsp_used;
     vars[vcnt].is_param = 0;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = count; vars[vcnt].arr_esz = esz;
@@ -4780,8 +4804,8 @@ static int blk(void) {
     int b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     
     while (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
-        alignas_pending = 0; /* fix 2026-08-25 step21: 每块语句清残留 — 变量前 _Alignas 不消费也不毒害后续声明 */
-        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 块级 _Alignas(N) — 局部 struct 定义前 gcc 忽略, 局部变量前不应用 (下一轮清理) */
+        alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每块语句清残留 — 变量前 _Alignas 不消费也不毒害后续声明; step25: ag_struct 同步清 */
+        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 块级 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
         if (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[BLK] ref stmt: next_tt=%d next='%s' td_is=%d\n", tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-", td_is("ref"));
         if (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
                                (cg case 5 recurses into nested blocks). main()'s body
@@ -6074,8 +6098,8 @@ static int parse(const char *s) {
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
     
     while (tk < TS && tt[tk] != EK) {
-        alignas_pending = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct */
-        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct tag 前无对象 gcc 忽略 (useless empty decl), 变量前不应用 (下一轮清理) */
+        alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct; step25: ag_struct 同步清 */
+        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
         if (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "xstrfmt")) fprintf(stderr, "[TOK] xstrfmt at tk=%d tt_next=%d\n", tk, tt[tk+1]);
         if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 顶层内联汇编 (__attribute__ 误解析致函数体落到顶层): 跳过 */
             tk++;

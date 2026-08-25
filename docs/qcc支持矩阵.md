@@ -27,6 +27,7 @@
 > v2.22（step22）：**GNU case 范围边界 bug 修复**（switch 降级原用严格比较 T_GK/T_LK → `case 1...3` 对边界值 1/3 不匹配全落 default；改用 T_YK(>=)/T_HK(<=)，负值范围与 gcc 逐行一致）；**diff_gate 差异测试台扩展 alignas 族**（覆盖 step14-21 新特性，300 轮 0 差异）。
 > v2.23（step23）：**fscanf 无缓冲续读修复**（`_scanf_rt` 新增 consumed 报告 + emit_fscanf SetFilePointer 回退未消费部分——多次 fscanf 同 FILE* 连续解析，跨行/EOF 与 gcc 一致）；**`_scanf_rt` 返回值语义对齐 gcc**（转换失败不写参不计数 `sscanf("abc","%d")`=0；输入耗尽返回 -1 `fscanf@EOF`；stdio 全系闭环）。
 > v2.24（step24）：**C99 math 扩展二：erf/erfc/lgamma/tgamma 已支持**（qcc_rt 内置——erf/erfc 级数+连分式 ~1e-12，lgamma Stirling+反射，tgamma 递推+反射；41 项全区间扫描与 gcc %.9g 逐行一致；C99 math 待办清零）。
+> v2.25（step25）：**`_Alignas` 变量级存储对齐已支持**（全局任意 N 可靠——.data 槽对齐；局部 ≤16——8 字节槽/pad 使 rsp_off≡8 mod 16 补偿 rbp%16=8；`_Alignas(N) struct S v;` 修饰变量；局部 >16 受固定 rbp 帧限制记录）。
 
 ## 一、类型系统
 
@@ -50,7 +51,7 @@
 | `_Static_assert`/`static_assert` | ✅ | 编译期断言，表达式为假报错（含比较运算符求值）|
 | `_Alignof` | ✅ | C11 对齐查询（基本类型/指针=8/数组=元素对齐/struct=最大成员对齐 stypes.algn/typedef；常量求值可用，如 `_Static_assert(_Alignof(double)==8)`）|
 | `_Noreturn` | ✅ | C11 函数修饰符（前向声明/static/定义均可；函数定义 VK 循环自然跳过）|
-| `_Alignas` | ✅ 字段级/struct 级对齐语义已实现（st_field_sz_r 单点 max(自然对齐, N) 消费并抬升 struct 最大对齐；`struct{_Alignas(4) short}` sizeof=4 与 gcc 一致；`_Alignas(N)` 在 struct tag 前无对象时按 gcc 忽略；变量级存储对齐未实现，记录为限制）|
+| `_Alignas` | ✅ 字段级/struct 级/变量级对齐语义已实现（字段：st_field_sz_r 单点 max(自然,N) 消费并抬升 struct 最大对齐；变量：全局任意 N 可靠（.data 槽对齐），局部 ≤16 可靠（8 字节槽/pad 补偿 rbp%16=8），局部 >16 受固定 rbp 帧限制记录；`_Alignas(N)` 在 struct tag 前修饰变量而非类型，就地定义无变量时按 gcc 忽略）|
 | `_Generic` | ✅ | C11 泛型选择（控制表达式类型判定：基本类型/指针/struct/call 返回；关联列表 + default；控制表达式不求值；与 gcc 逐行一致验证）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
 | GNU `case 1...5:` 范围 | ✅ | `case A ... B:` 生成 `sw_var >= A && sw_var <= B` 条件（T_YK/HK，负值范围支持；step22 修边界值 bug——原严格比较边界值落 default）|
