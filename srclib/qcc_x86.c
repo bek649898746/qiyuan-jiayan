@@ -4880,10 +4880,16 @@ static int blk(void) {
                         }
                         if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct Tag a[] = { {..}, .. } 未定长: 推断元素数 (fix 2026-08-18: fsck.c fsck_describe_object bufs[] — 原 scnt=1 → 只分配 1 元素槽 → bufs[1..3] 越界写坏邻 .data 槽) */
                             int save_u = tk; int n = 1, d0 = 0; tk += 1; /* 落外层 { (镜像具名分支推断) */
-                            while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
-                                if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                                else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
-                                else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++;
+                            while (tk < TS) {
+                                if (tt[tk] == FK) { /* 跳过内层初始化器 { ... } — struct 元素内部逗号不算分隔 (fix step25: 原把 {1,0} 内逗号数进 → SA[] 推断 2 而非 3 → 槽分配少 → 邻变量重叠) */
+                                    int sd = 1; tk++;
+                                    while (tk < TS && sd > 0) { if (tt[tk] == FK) sd++; else if (tt[tk] == UK) { sd--; if (sd <= 0) { tk++; break; } } tk++; }
+                                    continue;
+                                }
+                                if (tt[tk] == OK || tt[tk] == LB) d0++;
+                                else if (tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } }
+                                else if (tt[tk] == UK && d0 == 0) { tk++; break; } /* 外层 } 结束 */
+                                else if (tt[tk] == CK && d0 == 0 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 */
                                 tk++;
                             }
                             tk = save_u;
@@ -5136,10 +5142,16 @@ static int blk(void) {
                     }
                     if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct {..} a[] = { {..}, .. } 未定长: 推断元素数 (fix 2026-08-14) */
                         int save_u = tk; int n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
-                        while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
-                            if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                                else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
-                            else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
+                        while (tk < TS) {
+                            if (tt[tk] == FK) { /* 跳过内层初始化器 (fix step25: struct 元素内部逗号不算分隔) */
+                                int sd = 1; tk++;
+                                while (tk < TS && sd > 0) { if (tt[tk] == FK) sd++; else if (tt[tk] == UK) { sd--; if (sd <= 0) { tk++; break; } } tk++; }
+                                continue;
+                            }
+                            if (tt[tk] == OK || tt[tk] == LB) d0++;
+                                else if (tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
+                            else if (tt[tk] == UK && d0 == 0) { tk++; break; } /* 外层 } 结束 */
+                            else if (tt[tk] == CK && d0 == 0 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                             tk++;
                         }
                         tk = save_u;
@@ -5216,10 +5228,16 @@ static int blk(void) {
                 }
                 if (unsized && tt[tk] == AK && tt[tk + 1] == FK) { /* struct P a[] = { {.x=..}, ... } 未定长: 推断元素数 (fix 2026-08-14: 原 scnt=1 → 标量 struct → brace_fields 遇内层 { 崩溃) */
                     int save_u = tk; int n = 1, d0 = 0; tk += 1; /* 落外层 { (fix 2026-08-17: 原 tk+=2 落在首元素 → 数不到顶层逗号) */
-                    while (tk < TS && !(tt[tk] == UK && d0 == 0)) {
-                        if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++;
-                                else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
-                        else if (tt[tk] == CK && d0 == 1 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
+                    while (tk < TS) {
+                        if (tt[tk] == FK) { /* 跳过内层初始化器 (fix step25: struct 元素内部逗号不算分隔) */
+                            int sd = 1; tk++;
+                            while (tk < TS && sd > 0) { if (tt[tk] == FK) sd++; else if (tt[tk] == UK) { sd--; if (sd <= 0) { tk++; break; } } tk++; }
+                            continue;
+                        }
+                        if (tt[tk] == OK || tt[tk] == LB) d0++;
+                                else if (tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 == 0) { tk++; break; } } /* fix 2026-08-22 #32: 布置阻止在数组 } 关闭后, 否则把后续语句逗号也数进去 (builtin_formats scnt 9->13) */
+                        else if (tt[tk] == UK && d0 == 0) { tk++; break; } /* 外层 } 结束 */
+                        else if (tt[tk] == CK && d0 == 0 && tt[tk + 1] != UK) n++; /* 顶层元素逗号, 尾逗号不计 (fix 2026-08-17) */
                         tk++;
                     }
                     tk = save_u;
@@ -6451,7 +6469,7 @@ static int parse(const char *s) {
                         if (st_static) var_file_static[vcnt - 1] = 1;
                         tk++;
                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) tk++; else if (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ if (tt[tk] == RB) tk++; }
-                        if (tt[tk] == AK && tt[tk + 1] == FK) { int n = 1, d0 = 0; tk += 2; while (tk < TS && !(tt[tk] == UK && d0 == 0)) { if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 < 0) { tk++; break; } } /* fix 2026-08-22 #35: 全局具名 struct 数组推断数组 } 后 d0 变负立即 break, 否则后续数组逗号被数进元素数 */ else if (tt[tk] == CK && d0 == 0) n++; tk++; } if (cnt == 1 && n > 1) vars[vcnt - 1].arr_sz = n; if (tt[tk] == UK) tk++; }
+                        if (tt[tk] == AK && tt[tk + 1] == FK) { int n = 1, d0 = 0; tk += 2; while (tk < TS && !(tt[tk] == UK && d0 == 0)) { if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; if (d0 < 0) { tk++; break; } } /* fix 2026-08-22 #35: 全局具名 struct 数组推断数组 } 后 d0 变负立即 break, 否则后续数组逗号被数进元素数 */ else if (tt[tk] == CK && d0 == 0) n++; tk++; } if (cnt == 1 && n > 1) { if (getenv("QCC_DBG_SLOT")) fprintf(stderr, "[SLOT] unsized struct arr '%s' n=%d cnt=%d stc_n=%d sz=%d\n", tn[tk], n, cnt, stc_n, stypes[si].sz); vars[vcnt - 1].arr_sz = n; int slp = (stypes[si].sz + 3) / 4; if (slp < 1) slp = 1; stc_n += (n - 1) * slp; } /* fix step26: 未定长顶层 struct 数组推断后补分配槽 — 原只改 arr_sz, 槽不足 → 数组越界写邻 .data 变量 (SA[]={3元素} 槽停在 2 → 覆盖 ZB0) */ if (tt[tk] == UK) tk++; }
                         else tk = skip_global_init(tk); /* = expr 初始化器 (fix 2026-08-15) */
                     }
                     while (tt[tk] == CK) { tk++; int ip2 = 0; while (tt[tk] == DK) { ip2 = 1; tk++; } if (tt[tk] == VR) { if (ip2) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = 8; vars[var_last_idx].p_depth = 1; } else var_static_struct(tn[tk], si, 1); if (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
@@ -7269,16 +7287,16 @@ static int parse(const char *s) {
                     if (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                         int save = tk;
                         tk += 2; /* skip '=' '{' */
-                        int n = 1, depth = 0, last_comma = 0, max_des = -1, in_des = 0;
+                        int n = 1, depth = 0, prev_comma = 0, max_des = -1, in_des = 0;
                         while (tk < TS && !(tt[tk] == UK && depth == 0)) {
+                            prev_comma = 0;
                             if (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) { depth++; if (tt[tk] == LB) in_des = 1; }
                             else if (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { depth--; if (tt[tk] == RB && in_des) in_des = 0; }
-                            else if (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
+                            else if (tt[tk] == CK && depth == 0) { n++; prev_comma = 1; }
                             else if (tt[tk] == NK && in_des && depth >= 1) { if (tv[tk] > max_des) max_des = tv[tk]; }
-                            else if (depth == 0) last_comma = 0;
                             tk++;
                         }
-                        if (last_comma) n--; /* C99 trailing comma */
+                        if (prev_comma) n--; /* C99 trailing comma — 只当最后一个 token 是逗号才减 (fix step26: 原 last_comma 被 {7,8} 的 } 残留 → 无尾逗号也 n-- → SA[] 推断 2 非 3 → 槽不足覆盖邻变量) */
                         if (max_des >= 0) n = max_des + 1; /* sparse designated init: size = max_index+1 (C99) */
                         gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n;
                         if (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d max_des=%d\n", gname, n, max_des);

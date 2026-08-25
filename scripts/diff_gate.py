@@ -31,7 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---------------- 生成器 (按 bug 族分层) ----------------
 
-FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas']
+FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit']
 
 # 非零分母保护: 除法/取模右操作数用 "lit" (安全字面量) 或 "(x)+lit"
 SAFE_INT = [1, 2, 3, 5, 7, 11, 100]
@@ -524,6 +524,79 @@ class Gen:
             out.append(ln)
         return '\n'.join(out)
 
+    # ---- ginit 族: 静态数组初始化普检 (step25: 覆盖 ginit 路径 — step24 曾现 9 元素 static const double 崩溃) ----
+    def gen_ginit(self):
+        r = self.r
+        lines = ['#include <stdio.h>']
+        m = []
+        def arr_vals(ty, n):
+            if ty == 'double':
+                if r.random() < 0.5:
+                    return ', '.join('%d.5' % (i + 1) for i in range(n))
+                return ', '.join('%d.%dE-%d' % (i + 1, (i * 7) % 10, (i % 5) + 1) for i in range(n))
+            if ty == 'char':
+                return ', '.join(str(i % 127) for i in range(n))
+            if ty == 'long long':
+                return ', '.join('%dLL' % ((i + 1) * 1000) for i in range(n))
+            if ty == 'short':
+                return ', '.join(str((i + 1) * 3) for i in range(n))
+            return ', '.join(str((i + 1) * 7) for i in range(n))
+        # 全局静态数组: const/非 const × 各类型 × 大小 1..250 (跨 arr_chain 块链 200 阈值)
+        gnames = []
+        for k in range(r.randrange(1, 4)):
+            n = r.randrange(1, 250)
+            ty = r.choice(['int', 'double', 'char', 'long long', 'short'])
+            const = r.choice(['', 'const '])
+            nm = 'GA%d' % k
+            gnames.append((nm, ty, n))
+            lines.append('static %s%s %s[] = { %s };' % (const, ty, nm, arr_vals(ty, n)))
+        # struct 数组 (brace_fields 初始化)
+        if r.random() < 0.7:
+            lines.append('struct GS { int a; int b; };')
+            n = r.randrange(1, 20)
+            vals = ', '.join('{%d, %d}' % (i + 1, i * 3) for i in range(n))
+            lines.append('static struct GS SA[] = { %s };' % vals)
+            gnames.append(('SA', 'struct', n))
+        # 零初始化全局数组
+        for k in range(r.randrange(0, 3)):
+            n = r.randrange(1, 12)
+            ty = r.choice(['int', 'double', 'char'])
+            lines.append('static %s ZB%d[%d];' % (ty, k, n))
+            gnames.append(('ZB%d' % k, ty, n))
+        # 函数内 static 数组
+        fn_names = []
+        if r.random() < 0.8:
+            lines.append('double gfn(int i) {')
+            for k in range(r.randrange(1, 3)):
+                n = r.randrange(1, 16)
+                ty = 'double'
+                lines.append('    static const double F%d[] = { %s };' % (k, arr_vals(ty, n)))
+            lines.append('    return F0[i % 4];')
+            lines.append('}')
+        # main: 读数组元素验证 (含数组间无污染检查)
+        lines.append('int main(void) {')
+        for nm, ty, n in gnames:
+            idx = r.randrange(0, n)
+            if ty == 'struct':
+                m.append(('    printf("%%d\\n", %s[%d].a + %s[%d].b);' % (nm, idx, nm, idx), 'int'))
+            elif ty == 'double':
+                m.append(('    printf("%%.9g\\n", %s[%d]);' % (nm, idx), 'dbl'))
+            elif ty == 'long long':
+                m.append(('    printf("%%lld\\n", %s[%d]);' % (nm, idx), 'll'))
+            elif ty == 'char':
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+            elif ty == 'short':
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+            else:
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+        if 'gfn' in lines[-1] and r.random() < 0.7:
+            m.append(('    printf("%%.9g\\n", gfn(2));', 'dbl'))
+        m.append(('    return 0;', None))
+        for text, _ in m:
+            lines.append(text)
+        lines.append('}')
+        return '\n'.join(lines)
+
     def gen_program(self, family):
         if family == 'types':
             return self.gen_types()
@@ -537,6 +610,8 @@ class Gen:
             return self.gen_expr()
         if family == 'alignas':
             return self.gen_alignas()
+        if family == 'ginit':
+            return self.gen_ginit()
         raise ValueError('unknown family: %s' % family)
 
 
@@ -630,7 +705,7 @@ def main():
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
-    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas']
+    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit']
     qcc = DEFAULT_QCC
     do_minimize = False
     i = 3
