@@ -15,6 +15,7 @@
 > v2.10（step10）：string 收尾（strcoll/strxfrm/strncat/strncpy/strtod）；ext_fn 29→34；PE 布局再扩（IAT2 59 槽）；msvcrt string 基本导入完。
 > v2.11（step11）：`sscanf` 已支持（复用 _scanf_rt，buf=arg0/fmt=arg1，%d/%x/%c/%s/%%）；fscanf 仍缺（需 fread 路径）。
 > v2.12（step12）：`fscanf` 已支持（FILE*→ReadFile 4096→_scanf_rt；无缓冲限制：多次 fscanf 同 FILE* 不续读）；**stdio 全系补齐**。
+> v2.13（step13）：C99 math 内置 10 函数（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim，qcc_rt 内实现调 msvcrt log/pow/floor/ceil）；发现 return 三元 codegen pre-existing bug（绕过，待修核心）。
 
 ## 一、类型系统
 
@@ -95,7 +96,7 @@
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn + strtok/strrchr/strnlen/strpbrk/memcmp + strcoll/strxfrm/strncat/strncpy（builtin + ext_fn；`strcasecmp/strrev/strtoll` 等传统 msvcrt 无导出，未支持）
 - **ctype**：isdigit/isalpha/tolower + isalnum/isxdigit/isspace + islower/isupper/iscntrl/isgraph/isprint/ispunct（`isblank` 不在传统 msvcrt.dll 导出，未支持）
 - **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64、qsort/bsearch、rand/srand/abs/labs、atof（double 返回）
-- **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个全；copysign/hypot 映射 msvcrt `_copysign/_hypot`；frexp/ldexp/modf 走混合 ABI 专用 emit 分支：xmm0+rdx）
+- **math**（msvcrt 导入 + qcc_rt 内置）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个 msvcrt；copysign/hypot 映射 `_copysign/_hypot`；frexp/ldexp/modf 混合 ABI）+ C99 内置 10 个（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim，qcc_rt 内实现，调 msvcrt log/pow/floor/ceil）
 - **其他**：isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
 
 ## 六、已知限制（记录在案，勿当 bug 报）
