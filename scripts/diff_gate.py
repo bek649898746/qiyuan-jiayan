@@ -31,7 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---------------- 生成器 (按 bug 族分层) ----------------
 
-FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit']
+FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib']
 
 # 非零分母保护: 除法/取模右操作数用 "lit" (安全字面量) 或 "(x)+lit"
 SAFE_INT = [1, 2, 3, 5, 7, 11, 100]
@@ -634,6 +634,66 @@ class Gen:
         lines.append('}')
         return '\n'.join(lines)
 
+    # ---- strlib 族: 字符串库函数普检 (string 30+ 函数 — diff_gate 此前未覆盖) ----
+    def gen_strlib(self):
+        r = self.r
+        lines = ['#include <stdio.h>', '#include <string.h>']
+        m = []
+        pool = ['"hello world"', '"abc"', '"xyz"', '""', '"a"', '"hello"', '"world"', '"hell"', '"heaven"', '"HELLO"', '"ababab"', '"  spaced  "']
+        s1 = r.choice(pool)
+        s2 = r.choice(pool)
+        ch = r.choice(['a', 'l', 'o', 'x', 'h', 'e', ' '])
+        n = r.randrange(0, 12)
+        lines.append('char BUF[64];')
+        lines.append('char BUF2[64];')
+        lines.append('int main(void) {')
+        lines.append('    const char *s1 = %s;' % s1)
+        lines.append('    const char *s2 = %s;' % s2)
+        # strlen
+        m.append(('    printf("%d\\n", (int)strlen(s1));', 'int'))
+        # strcpy + strlen
+        lines.append('    strcpy(BUF, s1);')
+        m.append(('    printf("%s|%d\\n", BUF, (int)strlen(BUF));', 'str'))
+        # strncpy (手动 NUL) + strncat
+        lines.append('    strncpy(BUF, s2, %d); BUF[%d] = 0;' % (n, n))
+        m.append(('    printf("%s\\n", BUF);', 'str'))
+        lines.append('    strcpy(BUF, s1);')
+        lines.append('    strncat(BUF, s2, %d);' % n)
+        m.append(('    printf("%s\\n", BUF);', 'str'))
+        # strcat
+        lines.append('    strcpy(BUF, s1);')
+        lines.append('    strcat(BUF, s2);')
+        m.append(('    printf("%s\\n", BUF);', 'str'))
+        # strcmp / strncmp 三元比较
+        m.append(('    printf("%d\\n", strcmp(s1, s2) > 0 ? 1 : (strcmp(s1, s2) < 0 ? -1 : 0));', 'int'))
+        m.append(('    printf("%%d\\n", strncmp(s1, s2, %d) > 0 ? 1 : (strncmp(s1, s2, %d) < 0 ? -1 : 0));' % (n, n), 'int'))
+        # strchr / strrchr (偏移或 -1)
+        m.append(('    printf("%%d\\n", strchr(s1, \'%c\') ? (int)(strchr(s1, \'%c\') - s1) : -1);' % (ch, ch), 'int'))
+        m.append(('    printf("%%d\\n", strrchr(s1, \'%c\') ? (int)(strrchr(s1, \'%c\') - s1) : -1);' % (ch, ch), 'int'))
+        # strstr / strcspn / strspn
+        m.append(('    printf("%d\\n", strstr(s1, s2) ? (int)(strstr(s1, s2) - s1) : -1);', 'int'))
+        m.append(('    printf("%d\\n", (int)strcspn(s1, s2));', 'int'))
+        m.append(('    printf("%d\\n", (int)strspn(s1, "aeiou h"));', 'int'))
+        # strtok (每次重置缓冲)
+        lines.append('    strcpy(BUF, s1);')
+        m.append(('    printf("%s\\n", strtok(BUF, " ,"));', 'str'))
+        # memcpy / memmove / memchr / memset
+        lines.append('    memcpy(BUF, s1, strlen(s1) + 1);')
+        m.append(('    printf("%d\\n", (int)strlen(BUF));', 'int'))
+        lines.append('    memmove(BUF + 1, BUF, strlen(BUF) + 1);')
+        m.append(('    printf("%d\\n", (int)strlen(BUF));', 'int'))
+        m.append(('    printf("%%d\\n", memchr(s1, \'%c\', strlen(s1)) ? (int)((char*)memchr(s1, \'%c\', strlen(s1)) - s1) : -1);' % (ch, ch), 'int'))
+        lines.append('    memset(BUF, %d, 6); BUF[6] = 0;' % r.randrange(65, 90))
+        m.append(('    printf("%s\\n", BUF);', 'str'))
+        # strdup (mingw 无 strndup, 只用 strdup)
+        lines.append('    char *dup = strdup(s1);')
+        m.append(('    printf("%s\\n", dup);', 'str'))
+        m.append(('    return 0;', None))
+        for text, _ in m:
+            lines.append(text)
+        lines.append('}')
+        return '\n'.join(lines)
+
     def gen_program(self, family):
         if family == 'types':
             return self.gen_types()
@@ -649,6 +709,8 @@ class Gen:
             return self.gen_alignas()
         if family == 'ginit':
             return self.gen_ginit()
+        if family == 'strlib':
+            return self.gen_strlib()
         raise ValueError('unknown family: %s' % family)
 
 
@@ -742,7 +804,7 @@ def main():
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
-    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit']
+    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib']
     qcc = DEFAULT_QCC
     do_minimize = False
     i = 3
