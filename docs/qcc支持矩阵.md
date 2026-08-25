@@ -24,6 +24,7 @@
 > v2.19（step19）：**GNU 语句表达式 `({ ... })` 已支持**（复用 blk() 解析块 + 逗号节点降级：先执行块语句再求值最后表达式；与 gcc 逐行一致；`#define MAX(a,b) ({...})` 宏场景正常）。
 > v2.20（step20）：**`&arr[i]-&arr[j]` 指针差已支持**（node_psz 取址分支：仅当下标操作数时返回基数组元素大小；32/64 位指针差除法路径统一受益）；**`*(p+1)` 指针算术解引用宽度修复**（case 12 原无 binop 分支→字节加载，现按元素大小加载，double 指针算术解引用同步正确）；支持矩阵已知限制指针差一项清零。
 > v2.21（step21）：**`_Alignas` 对齐语义已实现**（字段级显式对齐：st_field_sz_r 单点 max(natural, N) 消费，自动抬升 struct 最大对齐；`{_Alignas(4) short}` sizeof 4、`{char,_Alignas(8) int}` i@8 sizeof 16 等与 gcc 一致；多 _Alignas/数组字段/嵌套全通；变量级存储对齐未实现，记录为限制）。
+> v2.22（step22）：**GNU case 范围边界 bug 修复**（switch 降级原用严格比较 T_GK/T_LK → `case 1...3` 对边界值 1/3 不匹配全落 default；改用 T_YK(>=)/T_HK(<=)，负值范围与 gcc 逐行一致）；**diff_gate 差异测试台扩展 alignas 族**（覆盖 step14-21 新特性，300 轮 0 差异）。
 
 ## 一、类型系统
 
@@ -50,7 +51,7 @@
 | `_Alignas` | ✅ 字段级/struct 级对齐语义已实现（st_field_sz_r 单点 max(自然对齐, N) 消费并抬升 struct 最大对齐；`struct{_Alignas(4) short}` sizeof=4 与 gcc 一致；`_Alignas(N)` 在 struct tag 前无对象时按 gcc 忽略；变量级存储对齐未实现，记录为限制）|
 | `_Generic` | ✅ | C11 泛型选择（控制表达式类型判定：基本类型/指针/struct/call 返回；关联列表 + default；控制表达式不求值；与 gcc 逐行一致验证）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
-| GNU `case 1...5:` 范围 | ✅ | `case A ... B:` 生成 `sw_var >= A && sw_var <= B` 条件（负值范围支持）|
+| GNU `case 1...5:` 范围 | ✅ | `case A ... B:` 生成 `sw_var >= A && sw_var <= B` 条件（T_YK/HK，负值范围支持；step22 修边界值 bug——原严格比较边界值落 default）|
 
 ## 二、语句
 
