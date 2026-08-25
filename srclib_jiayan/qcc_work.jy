@@ -3249,6 +3249,7 @@ __attribute__((unused))
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "sizeof")) 返 BK;
     若 (!strcmp(s, "_Alignof")) 返 AL; /* C11 对齐查询 (fix 2026-08-25 支持矩阵补全 step1) */
+    若 (!strcmp(s, "_Noreturn")) 返 VK; /* C11 函数修饰符 (fix 2026-08-25 支持矩阵补全 step2: 函数定义 VK 循环自然跳过) */
     返 NK;
 }
 
