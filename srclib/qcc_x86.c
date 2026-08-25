@@ -7889,6 +7889,41 @@ static void emit_scanf(int nargs) {
     mov_rr64(4, 15); /* rsp = r15 (restore pre-alignment) */
 }
 
+/* sscanf(str, fmt, &a, ...): buf=arg0, fmt=arg1, args=arg2.. — 复用 _scanf_rt(fmt,args,buf,len) (fix 2026-08-25 step11) */
+static void emit_sscanf(int nargs) {
+    int ffi = func_find("_scanf_rt");
+    int abase = 8 * (nargs - 1); /* arg0 槽偏移 (rsp 相对): 参数从栈深向浅 arg0=[rsp+abase], arg1=[rsp+abase-8], arg2+k=[rsp+abase-16-8k] */
+    mov_rr64(15, 4); /* r15 = pre-alignment rsp */
+    mov_reg_mrsp64(8, abase);      /* r8 = arg0 (str/buf) */
+    /* r9 = strlen(str): r8 扫描到 \0 */
+    mov_rr64(11, 8); /* r11 = buf 保存 */
+    mov_r_imm(0, 0); /* eax = 0 (len) */
+    int ls2 = new_label(), ld2 = new_label();
+    set_label(ls2);
+    asm_emit("    零扩展 ecx, [r8]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xB6); modrm(0, 1, 0); /* movzx ecx, byte [r8] */
+    test_rr(1, 1); jz_rel(-1); patch_label(cp-4, ld2, 1);
+    asm_emit("    自增 r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 1); b(0xFF); modrm(3, 0, 0); /* inc r8 */
+    asm_emit("    自增 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xC0); /* inc eax */
+    jmp_rel(-1); patch_label(cp-4, ls2, 2);
+    set_label(ld2);
+    mov_rr64(9, 0);  /* r9 = len */
+    mov_rr64(8, 11); /* r8 = buf (恢复) */
+    mov_reg_mrsp64(1, abase - 8);  /* rcx = arg1 (fmt) */
+    /* args 数组: arg2+k = [rsp+abase-16-8k] → [rbp+aoff+8k] */
+    { int aoff = -(272 + 8 * (nargs - 2));
+      for (int k = 0; k < nargs - 2; k++) {
+          mov_reg_mrsp64(0, abase - 16 - 8 * k); /* rax = arg2+k */
+          asm_emit("    存64 [rbp%+d], r0\n", (char*)(long long)(aoff + 8 * k), (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x89); modrm(2, 0, 5); b4(aoff + 8 * k); /* mov [rbp+aoff+8k], rax */
+      }
+      lea_r_mbrp(2, aoff); /* rdx = args */
+    }
+    asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+    sub_rsp_imm(32);
+    if (ffi >= 0) { call_rel(0); patch_label(cp - 4, func_tbl[ffi].label, 0); }
+    add_rsp_imm(32);
+    mov_rr64(4, 15); /* rsp = r15 */
+}
+
 /* shared %d/%s/%c/%% format loop: r11=fmt r12=out(advancing) r13=next-arg ptr.
    Returns the ldone label the caller must set_label() after the loop. */
 /* shared decimal-digit emitter: prints |ebx| (with '-' sign) into the r12 buffer,
@@ -10836,6 +10871,8 @@ static void cg(int n) {
                 emit_print(fname, nargs);
             } else if (!strcmp(fname, "scanf")) { /* fix 2026-08-12: 变参输入 builtin */
                 emit_scanf(nargs);
+            } else if (!strcmp(fname, "sscanf")) { /* fix 2026-08-25 step11: 内存输入变体 — buf=arg0, fmt=arg1, 复用 _scanf_rt */
+                emit_sscanf(nargs);
             } else if (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc") || !strcmp(fname, "fseek") || !strcmp(fname, "ftell") || !strcmp(fname, "feof") || !strcmp(fname, "fflush") || !strcmp(fname, "fclose") || !strcmp(fname, "ferror") || !strcmp(fname, "rewind") || !strcmp(fname, "fgets")) {
                 emit_fileio(fname);
             } else if (!strcmp(fname, "sprintf")) {
