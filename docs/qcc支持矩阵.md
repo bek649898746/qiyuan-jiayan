@@ -29,6 +29,7 @@
 > v2.24（step24）：**C99 math 扩展二：erf/erfc/lgamma/tgamma 已支持**（qcc_rt 内置——erf/erfc 级数+连分式 ~1e-12，lgamma Stirling+反射，tgamma 递推+反射；41 项全区间扫描与 gcc %.9g 逐行一致；C99 math 待办清零）。
 > v2.25（step25）：**`_Alignas` 变量级存储对齐已支持**（全局任意 N 可靠——.data 槽对齐；局部 ≤16——8 字节槽/pad 使 rsp_off≡8 mod 16 补偿 rbp%16=8；`_Alignas(N) struct S v;` 修饰变量；局部 >16 受固定 rbp 帧限制记录）。
 > v2.26（step26）：**未定长全局 struct 数组槽分配修复**（`SA[] = {...}` 推断元素数后补分配槽——原 last_comma 误判 n-- 把元素数减一 → 槽不足 → 数组越界写相邻 .data 变量；连带 3 处元素数推断跳过内层初始化器只数顶层逗号；diff_gate 新增 ginit 族普检静态数组初始化，全 7 族 300 轮 0 差异）。
+> v2.27（step26b）：**全局数组三连修复**（ginit 族扩展多维/指针/字符串数组形态后连抓 3 bug：①全局指针数组 p_inner 缺失 → `GN[i][j]` 嵌套读错；②2D int 数组 `arr_esz==8` 行大小误判指针数组 → cg_mem_ptr 误触发 → `M2D[i][j]` 写地址=4 崩；③未定长二维 `CHARR[][4]` 推断丢第二维 → 错位；全 7 族 400 轮 0 差异）。
 
 ## 一、类型系统
 

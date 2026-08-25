@@ -7243,6 +7243,7 @@ __attribute__((unused))
                     整 gcnt = 0; /* array element count (0 = not array) */
                     整 gfirst = 0; /* first dimension (row count) */
                     整 had_br = 0; /* saw any [..] brackets (empty [] unsized array vs scalar struct var) */
+                    整 g_first_unsized = 0; /* fix step26: 第一维为空 (char CHARR[][4]) — 未定长推断不能被后续维度 gcnt≠0 跳过 */
                     整 gdims[8]; 遍 (整 gdi = 0; gdi < 8; gdi++) gdims[gdi] = 0; 整 gdim_n = 0; /* per-dim sizes → frows (fix 2026-08-05: global 3D arrays had no frows → nested scale fell back to scalar) */
                     循环 (tt[tk] == LB) {
                         tk++;
@@ -7275,6 +7276,7 @@ __attribute__((unused))
                                     若 (gdim_n < 8) { gdims[gdim_n] = cval2; gdim_n++; }
                                 } 否 tk++;
                             } 否 {
+                                若 (gdim_n == 0 && tt[tk] == RB) g_first_unsized = 1; /* fix step26: 第一维空 (char CHARR[][4]) */
                                 tk++;
                             }
                         }
@@ -7284,8 +7286,9 @@ __attribute__((unused))
                        `char *names[] = {...}` → infer count from the brace init list
                        (was: gcnt=0 → registered as scalar, `= {` fell into expr()
                        which can't eat '{' → parse() aborted → no main → entry crash). */
-                    若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
+                    若 (had_br && (gcnt == 0 || g_first_unsized) && tt[tk] == AK && tt[tk + 1] == FK) {
                         整 save = tk;
+                        整 dim2 = gcnt; /* 第二维及以后乘积 — 未定长第一维需保留 (fix step26: char CHARR[][4] = {"ab","cd"} → gcnt 原本=4(第二维), 原推断条件 gcnt==0 跳过 → 当一维 4 元素 → 布局/访问全错) */
                         tk += 2; /* skip '=' '{' */
                         整 n = 1, depth = 0, prev_comma = 0, max_des = -1, in_des = 0;
                         循环 (tk < TS && !(tt[tk] == UK && depth == 0)) {
@@ -7298,8 +7301,10 @@ __attribute__((unused))
                         }
                         若 (prev_comma) n--; /* C99 trailing comma — 只当最后一个 token 是逗号才减 (fix step26: 原 last_comma 被 {7,8} 的 } 残留 → 无尾逗号也 n-- → SA[] 推断 2 非 3 → 槽不足覆盖邻变量) */
                         若 (max_des >= 0) n = max_des + 1; /* sparse designated init: size = max_index+1 (C99) */
-                        gcnt = n; gfirst = n; gdim_n = 1; gdims[0] = n;
-                        若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d max_des=%d\n", gname, n, max_des);
+                        若 (g_first_unsized && gdim_n > 0) { 遍 (整 gi = gdim_n; gi >= 1; gi--) gdims[gi] = gdims[gi - 1]; gdims[0] = n; gdim_n++; } /* fix step26: 保留第二维 (char CHARR[][4] → gdims=[3,4], gdim_n=2 — 原只设 [3] → brace_arr_init 按一维 3 元素初始化错位) */
+                        否 { gdim_n = 1; gdims[0] = n; }
+                        gcnt = (dim2 > 0) ? n * dim2 : n; gfirst = n; /* fix step26: 保留第二维 (CHARR 3×4=12) */
+                        若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d dim2=%d gcnt=%d gdim_n=%d\n", gname, n, dim2, gcnt, gdim_n);
                         tk = save; /* rewind to '=' */
                     }
                     若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
@@ -7337,6 +7342,7 @@ __attribute__((unused))
                             若 (ptrd > 0) g_esz = 8; /* pointer-typed array (char *names[3]): 8-byte elements */
                             var_static_arr(gname, pesz, g_esz, gcnt);
                             vars[vcnt - 1].p_esz = g_esz; /* element byte size for outer [j] scale / 64-bit load */
+                            若 (ptrd > 0) vars[vcnt - 1].p_inner = pesz; /* fix step26: 全局指针数组指向元素大小 (char *arr[] → 1, int * → 4, char** → 8) — t35j 只修了局部 var_array, 全局缺失 → GN[i][j] 嵌套外层按 fallback 4 缩放读错 (const char *GN[] = {"aa",..}; GN[0][0] 垃圾) */
                             若 (g_is_ll) vars[vcnt - 1].is_ll = 1; /* fix 2026-08-06: 全局 ll 数组标记 → 元素读写 64 位 + int RHS 符号扩展 */
                             若 (gfirst > 0 && gcnt > gfirst && ptrd <= 0) vars[vcnt - 1].arr_esz = gcnt / gfirst * g_esz; /* 2D+: ROW byte size */
                             若 (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = g_esz; 遍 (整 fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
@@ -12528,7 +12534,7 @@ __attribute__((unused))
                                arr_esz > element size (char buf[4][8]: esz=8, elem=1).
                                8-byte POINTER arrays (char *names[3]: esz=8, elem=8) load 64-bit. */
                             若 (esz > 4 && (vars[vi].st_idx >= 0 || esz > 8 || vars[vi].arr_esz > vars[vi].p_esz || vars[vi].p_esz == 0)) is_struct_elem = 1;
-                            若 (cg_no_deref && vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) cg_mem_ptr = 1; /* 静态指针数组元素 (int *nx[8]): 嵌套 base 返回槽地址, 外层 [j] 先加载指针 (fix 2026-08-18: 原缺 → 第二维索引进指针数组槽本身, 自举 CG-BAD) */
+                            若 (cg_no_deref && vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0 && !is_row) cg_mem_ptr = 1; /* 静态指针数组元素 (int *nx[8]): 嵌套 base 返回槽地址, 外层 [j] 先加载指针 (fix 2026-08-18: 原缺 → 第二维索引进指针数组槽本身, 自举 CG-BAD; fix step26: !is_row — int M2D[2][2] 的 arr_esz=8 是行大小非指针数组, 原误判 → 外层 mov (%rax),%rax 读行内容当指针 → 2D 数组写地址=4 崩) */
                             cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* static double array base → outer [i] movsd */
                             cg_fdepth = 1; 遍 (整 fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows: static arrays too (fix 2026-08-05: leftover fdepth/frows polluted nested field-array scale) */
                             cg_fdepth_max = 1; 遍 (整 fk = 0; fk < 4; fk++) 若 (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
