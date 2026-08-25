@@ -5,6 +5,7 @@
 > v2 变更：`%e/%E/%g/%G` 已实现（与 gcc 输出逐行一致验证）；`restrict/_Atomic/static_assert` 已支持；变参 double 限制如实记录。
 > v2.1（step1）：`_Alignof` 已支持（C11 对齐查询，基本类型/指针/数组/struct/typedef，常量求值可用）。
 > v2.2（step2）：`_Noreturn` 已支持（C11 函数修饰符，前向声明/static/定义全通）。
+> v2.3（step3）：math 库 16→21（+cosh/sinh/tanh/copysign/hypot）；修 math 调用返回值丢失 pre-existing bug；PE 导入表布局扩展（IAT2 17→22 槽）。
 
 ## 一、类型系统
 
@@ -81,7 +82,7 @@
   - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
 - **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn
-- **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs
+- **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot（21 个；copysign/hypot 映射 msvcrt `_copysign/_hypot`）
 - **其他**：qsort/bsearch、isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
 
 ## 六、已知限制（记录在案，勿当 bug 报）
@@ -92,6 +93,8 @@
 | `volatile`/`_Atomic` | 语法接受，按普通类型处理（无内存屏障/无原子语义；单线程下行为正确）|
 | `&arr[i] - &arr[j]` 指针差 | node_psz(取址) 不识别 → 返回字节差（尝试修复破坏自举，已实证后放弃；变量指针差 `p-q` 已修，`&arr[i]` 差值为已知缺口）|
 | 变参 `va_list` | 支持（va_start/va_arg/va_end）；**int/指针等 8 字节内类型正常，double 变参取值错误**（XMM 区路径缺陷，va_test 实证 qcc 3.00 vs gcc 2.33，记录待攻）|
+| `frexp/ldexp/modf` | ❌ 混合 ABI 暂缓（第二参 int*/double* 走不了全 double 的 fn_math_iat 路径；msvcrt 有导出，待专用 emit 分支）|
+| C99 math 扩展（`log2/round/trunc/erf/lgamma` 等）| ❌ 传统 msvcrt.dll 无导出（在 UCRT/libmingwex），需 qcc 内置实现（待办）|
 | 系统头文件 | `<stdarg.h>` 等部分 stub 化（compat_prelude.h 补齐）|
 | 多线程/同步 | 无（volatile 无语义，无锁）|
 
