@@ -12982,6 +12982,43 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     fprintf(stderr, "[graph] %s 导出完成 (fn:%d st:%d calls:%d)\n", graph_out, func_n, st_n, graph_calls_n);
 }
 
+/* ==== Phase 4 哈希审判: SHA-256 自举自证 (编译器编译完自动算产物哈希对账不动点, fail-closed; 补记13 法官上岗) ==== */
+静 无 整 sha256_k[64] = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
+静 无 整 sha256_rotr(无 整 x, 整 n) { 返 (x >> n) | (x << (32 - n)); }
+静 空 sha256_block(无 整 h[8], 常 无 字 *p) {
+    无 整 w[64], a, b, c, d, e, f, g, hh, i, t1, t2;
+    遍 (i = 0; i < 16; i++) w[i] = ((无 整)p[i*4] << 24) | ((无 整)p[i*4+1] << 16) | ((无 整)p[i*4+2] << 8) | p[i*4+3];
+    遍 (i = 16; i < 64; i++) w[i] = w[i-16] + (sha256_rotr(w[i-15], 7) ^ sha256_rotr(w[i-15], 18) ^ (w[i-15] >> 3)) + w[i-7] + (sha256_rotr(w[i-2], 17) ^ sha256_rotr(w[i-2], 19) ^ (w[i-2] >> 10));
+    a = h[0]; b = h[1]; c = h[2]; d = h[3]; e = h[4]; f = h[5]; g = h[6]; hh = h[7];
+    遍 (i = 0; i < 64; i++) {
+        t1 = hh + (sha256_rotr(e, 6) ^ sha256_rotr(e, 11) ^ sha256_rotr(e, 25)) + ((e & f) ^ (~e & g)) + sha256_k[i] + w[i];
+        t2 = (sha256_rotr(a, 2) ^ sha256_rotr(a, 13) ^ sha256_rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+        hh = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+}
+静 空 sha256_file(常 字 *path, 字 out[65]) {
+    无 整 h[8]; 无 字 buf[64], pad[128]; 整 i, j, n, pn;
+    无 长 长 total = 0, bits; FILE *f = fopen(path, "rb");
+    h[0]=0x6a09e667; h[1]=0xbb67ae85; h[2]=0x3c6ef372; h[3]=0xa54ff53a; h[4]=0x510e527f; h[5]=0x9b05688c; h[6]=0x1f83d9ab; h[7]=0x5be0cd19;
+    若 (!f) { out[0] = 0; 返; }
+    循环 ((n = (整)fread(buf, 1, 64, f)) == 64) { sha256_block(h, buf); total += 64; }
+    memcpy(pad, buf, n); pn = n; pad[pn++] = 0x80;
+    循环 ((pn & 63) != 56) pad[pn++] = 0;
+    bits = (total + (无 长 长)n) * 8;
+    遍 (i = 0; i < 8; i++) pad[pn++] = (无 字)(bits >> (56 - 8 * i));
+    遍 (i = 0; i < pn; i += 64) sha256_block(h, pad + i);
+    fclose(f);
+    遍 (i = 0; i < 8; i++) 遍 (j = 0; j < 4; j++) {
+        无 整 b8 = (h[i] >> (24 - 8 * j)) & 0xFF;
+        out[i * 8 + j * 2] = "0123456789abcdef"[b8 >> 4];
+        out[i * 8 + j * 2 + 1] = "0123456789abcdef"[b8 & 15];
+    }
+    out[64] = 0;
+}
+静 字 selfcheck_sha[65] = "";
+
+
 整 main(整 argc, 字 **argv) {
     常 字 *src = "int main() { return 42; }";
     常 字 *outf = NULL;
@@ -13013,7 +13050,8 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
             }
             argi += 2; 续;
         }
-        若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
+        若 (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; 续; }
+若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
         若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
             若 (hb) {
@@ -13274,5 +13312,13 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     若 (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后, 2026-08-25) */
 
     若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
+    若 (selfcheck_sha[0]) { /* Phase4 哈希审判: 编译产物 SHA256 对账不动点, fail-closed */
+        字 sh[65]; sha256_file(outf, sh);
+        若 (strcmp(sh, selfcheck_sha) != 0) {
+            fprintf(stderr, "[SELFCHECK] FAIL: %s != %s (不动点对账失败, 哈希审判 fail-closed)\n", sh, selfcheck_sha);
+            返 1;
+        }
+        fprintf(stderr, "[SELFCHECK] OK: %s\n", sh);
+    }
     返 0;
 }

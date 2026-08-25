@@ -12982,6 +12982,43 @@ static void graph_export(void) {
     fprintf(stderr, "[graph] %s 导出完成 (fn:%d st:%d calls:%d)\n", graph_out, func_n, st_n, graph_calls_n);
 }
 
+/* ==== Phase 4 哈希审判: SHA-256 自举自证 (编译器编译完自动算产物哈希对账不动点, fail-closed; 补记13 法官上岗) ==== */
+static unsigned int sha256_k[64] = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
+static unsigned int sha256_rotr(unsigned int x, int n) { return (x >> n) | (x << (32 - n)); }
+static void sha256_block(unsigned int h[8], const unsigned char *p) {
+    unsigned int w[64], a, b, c, d, e, f, g, hh, i, t1, t2;
+    for (i = 0; i < 16; i++) w[i] = ((unsigned int)p[i*4] << 24) | ((unsigned int)p[i*4+1] << 16) | ((unsigned int)p[i*4+2] << 8) | p[i*4+3];
+    for (i = 16; i < 64; i++) w[i] = w[i-16] + (sha256_rotr(w[i-15], 7) ^ sha256_rotr(w[i-15], 18) ^ (w[i-15] >> 3)) + w[i-7] + (sha256_rotr(w[i-2], 17) ^ sha256_rotr(w[i-2], 19) ^ (w[i-2] >> 10));
+    a = h[0]; b = h[1]; c = h[2]; d = h[3]; e = h[4]; f = h[5]; g = h[6]; hh = h[7];
+    for (i = 0; i < 64; i++) {
+        t1 = hh + (sha256_rotr(e, 6) ^ sha256_rotr(e, 11) ^ sha256_rotr(e, 25)) + ((e & f) ^ (~e & g)) + sha256_k[i] + w[i];
+        t2 = (sha256_rotr(a, 2) ^ sha256_rotr(a, 13) ^ sha256_rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+        hh = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+}
+static void sha256_file(const char *path, char out[65]) {
+    unsigned int h[8]; unsigned char buf[64], pad[128]; int i, j, n, pn;
+    unsigned long long total = 0, bits; FILE *f = fopen(path, "rb");
+    h[0]=0x6a09e667; h[1]=0xbb67ae85; h[2]=0x3c6ef372; h[3]=0xa54ff53a; h[4]=0x510e527f; h[5]=0x9b05688c; h[6]=0x1f83d9ab; h[7]=0x5be0cd19;
+    if (!f) { out[0] = 0; return; }
+    while ((n = (int)fread(buf, 1, 64, f)) == 64) { sha256_block(h, buf); total += 64; }
+    memcpy(pad, buf, n); pn = n; pad[pn++] = 0x80;
+    while ((pn & 63) != 56) pad[pn++] = 0;
+    bits = (total + (unsigned long long)n) * 8;
+    for (i = 0; i < 8; i++) pad[pn++] = (unsigned char)(bits >> (56 - 8 * i));
+    for (i = 0; i < pn; i += 64) sha256_block(h, pad + i);
+    fclose(f);
+    for (i = 0; i < 8; i++) for (j = 0; j < 4; j++) {
+        unsigned int b8 = (h[i] >> (24 - 8 * j)) & 0xFF;
+        out[i * 8 + j * 2] = "0123456789abcdef"[b8 >> 4];
+        out[i * 8 + j * 2 + 1] = "0123456789abcdef"[b8 & 15];
+    }
+    out[64] = 0;
+}
+static char selfcheck_sha[65] = "";
+
+
 int main(int argc, char **argv) {
     const char *src = "int main() { return 42; }";
     const char *outf = NULL;
@@ -13013,7 +13050,8 @@ int main(int argc, char **argv) {
             }
             argi += 2; continue;
         }
-        if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
+        if (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; continue; }
+if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
             if (hb) {
@@ -13274,5 +13312,13 @@ int main(int argc, char **argv) {
     if (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后, 2026-08-25) */
 
     if (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } else { printf("OK: %s (%d bytes code)\n", outf, cp); }
+    if (selfcheck_sha[0]) { /* Phase4 哈希审判: 编译产物 SHA256 对账不动点, fail-closed */
+        char sh[65]; sha256_file(outf, sh);
+        if (strcmp(sh, selfcheck_sha) != 0) {
+            fprintf(stderr, "[SELFCHECK] FAIL: %s != %s (不动点对账失败, 哈希审判 fail-closed)\n", sh, selfcheck_sha);
+            return 1;
+        }
+        fprintf(stderr, "[SELFCHECK] OK: %s\n", sh);
+    }
     return 0;
 }
