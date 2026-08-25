@@ -418,5 +418,35 @@ int _scanf_rt(const char *fmt, char **args, const char *buf, int len) {
     }
     return argi;
 }
+
+/* C99 math 内置 (fix 2026-08-25 step13): 传统 msvcrt.dll 无导出 (在 UCRT/libmingwex),
+   由 qcc_rt 内实现 — log/pow/floor/ceil 走 msvcrt 导入 (fn_math_iat), 编译进生成 exe.
+   注意: 用 if+return 而非 return 三元 — qcc 的 return 三元 (nt==22) 走整数路径 cvtsi2sd 覆盖 xmm0 (pre-existing bug, 记录) */
+double log2(double x) { return log(x) / 0.69314718055994530941723212145818; }
+double round(double x) {
+    if (x >= 0.0) return floor(x + 0.5);
+    return ceil(x - 0.5);
+}
+double trunc(double x) { return (double)(long long)x; } /* 向零截断 (|x|<2^63, 超出限制记录) */
+double fmax(double a, double b) {
+    if (a > b) return a;
+    return b;
+}
+double fmin(double a, double b) {
+    if (a < b) return a;
+    return b;
+}
+double exp2(double x) { return pow(2.0, x); }
+double log1p(double x) { return log(1.0 + x); }
+double expm1(double x) { return exp(x) - 1.0; }
+double cbrt(double x) {
+    double r = pow(x, 1.0 / 3.0);
+    if (x < 0.0) r = -r;
+    return r;
+}
+double fdim(double a, double b) {
+    if (a > b) return a - b;
+    return 0.0;
+}
 #endif
 
