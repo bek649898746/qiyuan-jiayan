@@ -36,7 +36,7 @@
 /* 拔桩 (2026-08-24 t35u): 禁用所有 QCC_DBG 系列 + QCC_STAGE + QCC_DUMP 运行时调试输出。
    全部 getenv 仅用于调试开关（共 72 处: QCC_DBG 系 63 + QCC_STAGE 3 + QCC_DUMP 3 + 注释），
    宏替换为常量 0 使所有 if(getenv(...)) 恒假 — 保留源码结构, 行为等价于删桩. */
-#define getenv(n) (0)
+/* #define getenv(n) (0) */  /* 临时恢复调试桩 2026-08-25 sqlite 压测诊断 */
 
 /* The 64MB AST node table (n0..n255, ASZ*4 each) must NOT live in the .data
    bump heap: the self-cut stack sits INSIDE the .data virtual range (stk_top
@@ -152,7 +152,7 @@ static void macro_add(const char *n, int v) { macro_add_full(n, v, 0, 0, 0); }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
 static struct { char name[64]; char val[4096]; } obj_macros[8192]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
-static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } }
+static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 8192) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } } /* fix 2026-08-25 sqlite: 上限 2048→8192 与数组一致 (1714ab9 只扩了数组忘了改守卫) — sqlite3.c 3029 个对象宏, 2048 后静默丢弃 → SQLITE_WSD 等宏未展开 → parse 断链 */
 static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
 static void obj_del(const char *n) { /* fix 2026-08-21: #undef 删除对象宏 — git-compat-util.h `#define rmdir lstat_cache_aware_rmdir` + symlinks.c `#undef rmdir` 失效 → lstat_cache_aware_rmdir 内 rmdir() 展开成自身 → call 自身无限递归 (commit 栈溢出) */
     for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) {
@@ -191,10 +191,11 @@ static char *obj_macro_expand(const char *s) {
                     nm[ni] = 0;
                     int def = pp_guard_exists(nm) || macro_exists(nm) || obj_find(nm) != 0; /* 顺序表 + 数值/字符串/函数表 + 当前对象宏表 */
                     cond = is_ifdef ? def : !def;
+                    if (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_OMIT_WSD") || !strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_AMALGAMATION"))) fprintf(stderr, "[COND] %s '%s' at i=%d def=%d cond=%d cx_skip=%d cx_n=%d obj_wd=%d\n", is_ifdef?"ifdef":(is_ifndef?"ifndef":"??"), nm, i, def, cond, cx_skip, cx_n, obj_find("SQLITE_WSD")?1:0); /* 临时诊断 2026-08-25 sqlite */
                 } else if (is_if || is_elif) {
                     char expr[512]; int ei = 0; int q3 = q2 + (is_if ? 2 : 4);
                     while (s[q3] == ' ' || s[q3] == '\t') q3++;
-                    while (s[q3] && s[q3] != '\n' && ei < 510) expr[ei++] = s[q3++];
+                    while (s[q3] && ei < 510) { if (s[q3] == '\\' && s[q3+1] == '\n') { q3 += 2; expr[ei++] = ' '; continue; } if (s[q3] == '\n') break; expr[ei++] = s[q3++]; } /* fix 2026-08-25 sqlite: #if 表达式反斜杠续行 (#if defined(A) \\\n + defined(B)>1) — 原只读到首个 \n → 尾反斜杠进 expr → pp_eval 误判 → 条件栈错 */
                     while (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
                     expr[ei] = 0;
                     cond = pp_eval(expr);
@@ -236,7 +237,12 @@ static char *obj_macro_expand(const char *s) {
                 }
             }
             if (s[q2] == 'd' || s[q2] == 'u' || s[q2] == 'i' || s[q2] == 'e' || s[q2] == 'l' || s[q2] == 'p' || s[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开; fix 2026-08-13 Phase3: # 后空白 (缩进 #  define 原被展开) */
-                while (s[i] && s[i] != '\n') out[o++] = s[i++];
+                while (1) {
+                    while (s[i] && s[i] != '\n') out[o++] = s[i++];
+                    int cont = (i > 0 && s[i] == '\n' && s[i - 1] == '\\'); /* fix 2026-08-25 sqlite: 反斜杠续行 (# error "..." 多行字符串) — 原只拷首个物理行 → 续行内容的字符串引号漏到 code 态 → 幽灵字符串吞注释/宏 → SQLITE_PRIVATE 未展开 + 产物空 */
+                    if (s[i]) out[o++] = s[i++];
+                    if (!cont) break;
+                }
                 continue;
             } }
         if (s[i] == '"') { out[o++] = s[i++]; while (s[i] && (s[i] != '"' || quote_escaped(s, i))) out[o++] = s[i++]; if (s[i]) out[o++] = s[i++]; continue; } /* fix 2026-08-14: "\\" 两反斜杠后 " 应结束 — 原把 \\" 的 " 当转义吞后续 */
@@ -254,8 +260,10 @@ static char *obj_macro_expand(const char *s) {
             int next_ok = (isalnum((unsigned char)s[j]) || s[j] == '_' || ((unsigned char)s[j] >= 0x80));
             char nm[64]; int nl = j - i;
             if (nl < 63) { memcpy(nm, s + i, nl); nm[nl] = 0; } else nl = 0; /* fix 2026-08-15: 32→64, FIND_BISECTION_FIRST_PARENT_ONLY (32 字符) 原 nl>=31 被丢弃不展开 → undefined */
+            if (getenv("QCC_DBG_OBJ") && !strcmp(nm, "SQLITE_PRIVATE") && (prev_ok || next_ok)) fprintf(stderr, "[OBJ-NOBOUND] 'SQLITE_PRIVATE' i=%d prev=%d(%c) next=%d(%c) prev_ok=%d next_ok=%d\n", i, i>0?s[i-1]:0, i>0&&s[i-1]>=32&&s[i-1]<127?s[i-1]:'.', s[j]>=0?s[j]:0, s[j]>=32&&s[j]<127?s[j]:'.', prev_ok, next_ok); /* 临时诊断 2026-08-25 sqlite */
             if (!prev_ok && !next_ok && nl > 0) {
                 const char *val = obj_find(nm);
+                if (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_PRIVATE") || !strcmp(nm, "SQLITE_API"))) fprintf(stderr, "[OBJ] '%s' at i=%d prev=%d(%c) next=%d(%c) found=%s depth=%d\n", nm, i, s[i-1]>=0?s[i-1]:0, s[i-1]>=32&&s[i-1]<127?s[i-1]:'.', s[j]>=0?s[j]:0, s[j]>=32&&s[j]<127?s[j]:'.', val?val:"(null)", cx_skip); /* 临时诊断 2026-08-25 sqlite */
                 int dep = 0;
                 while (val && dep < 32 && (int)strlen(val) < 4000) {
                     const char *v2 = obj_find(val);
@@ -354,6 +362,7 @@ static void obj_macro_collect(const char *s) {
         if (s[i] == '\'') { i++; while (s[i] && s[i] != '\'') { if (s[i] == '\\') i++; i++; } continue; }
         if (s[i] == '#') {
             int dj = i + 1; while (s[dj] == ' ' || s[dj] == '\t') dj++; /* fix 2026-08-13 Phase3: 跳过 # 后空白 — glibc 缩进指令 #  define */
+            if (getenv("QCC_DBG_OBJ") && i > 15000 && i < 30000) fprintf(stderr, "[HASH2] i=%d dir='%.30s'\n", i, s + dj); /* 临时诊断 2026-08-25 sqlite */
             int is_ifdef = !strncmp(s + dj, "ifdef", 5) && (s[dj + 5] == 0 || s[dj + 5] == ' ' || s[dj + 5] == '\t' || s[dj + 5] == '\r' || s[dj + 5] == '\n');
             int is_ifndef = !strncmp(s + dj, "ifndef", 6) && (s[dj + 6] == 0 || s[dj + 6] == ' ' || s[dj + 6] == '\t' || s[dj + 6] == '\r' || s[dj + 6] == '\n');
             int is_if = !strncmp(s + dj, "if", 2) && !is_ifdef && !is_ifndef && (s[dj + 2] == 0 || s[dj + 2] == ' ' || s[dj + 2] == '\t' || s[dj + 2] == '\r' || s[dj + 2] == '\n');
@@ -370,6 +379,7 @@ static void obj_macro_collect(const char *s) {
                     while (isalnum((unsigned char)s[q]) || s[q] == '_' || ((unsigned char)s[q] >= 0x80)) { if (ni < 63) nm[ni++] = s[q]; q++; }
                     nm[ni] = 0;
                     cond = is_ifdef ? pp_guard_exists(nm) : !pp_guard_exists(nm);
+                    if (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_OMIT_WSD") || !strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_AMALGAMATION"))) fprintf(stderr, "[CLCOND] %s '%s' at i=%d pge=%d cond=%d cl_if_skip=%d cl_if_n=%d\n", is_ifdef?"ifdef":(is_ifndef?"ifndef":"??"), nm, i, pp_guard_exists(nm), cond, cl_if_skip, cl_if_n); /* 临时诊断 2026-08-25 sqlite */
                 } else if (is_if || is_elif) {
                     char expr[512]; int ei = 0; int q = dj + (is_if ? 2 : 4);
                     while (s[q] == ' ' || s[q] == '\t') q++;
@@ -411,6 +421,7 @@ static void obj_macro_collect(const char *s) {
                 char nm[64]; int ni = 0;
                 while (isalnum((unsigned char)s[p]) || s[p] == '_' || ((unsigned char)s[p] >= 0x80)) { if (ni < 63) nm[ni++] = s[p]; p++; }
                 nm[ni] = 0;
+                if (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_PRIVATE") || !strcmp(nm, "SQLITE_API"))) fprintf(stderr, "[COLLECT] #define '%s' at i=%d cl_if_skip=%d cl_if_n=%d obj_n=%d\n", nm, i, cl_if_skip, cl_if_n, obj_macro_n); /* 临时诊断 2026-08-25 sqlite */
                 if (nm[0] && s[p] != '(') { /* 非函数宏 → 对象宏候选; fix 2026-08-13 Phase3: ( 必须紧贴名字才算函数宏 */
                     while (s[p] == ' ' || s[p] == '\t') p++;
                     if (s[p] != '"') { /* fix 2026-08-13 Phase3: 字符串宏不收 (值以 " 开头) — 否则 TAG "A"/"C" 被当对象宏展开覆盖 lexer 的字符串宏 */
@@ -2604,7 +2615,7 @@ static int lbl_reg(const char *n) {
     lbl_tbl[lbl_n].id = new_label();
     return lbl_tbl[lbl_n++].id;
 }
-enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66 }; /* MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
+enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 static int *tt, *tv; char (*tn)[64]; char (*nn)[64]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
@@ -3237,7 +3248,52 @@ static int kw(const char *s) {
     if (!strcmp(s, "short")) return VK; /* fix 2026-08-06: short 缺词法分类 → struct 字段被当标识符注册成幻影字段, 布局错乱 (回归测试 regress_struct_align 暴露) */
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "sizeof")) return BK;
+    if (!strcmp(s, "_Alignof")) return AL; /* C11 对齐查询 (fix 2026-08-25 支持矩阵补全 step1) */
     return NK;
+}
+
+/* C11 _Alignof: 解析 (类型) 返回对齐值 — 与 sizeof 同族但语义不同 (fix 2026-08-25 支持矩阵补全 step1) */
+static int alignof_type(void) {
+    int al = 4; /* default: int 对齐 */
+    if (tt[tk] == VK) { /* 基本类型 (含 unsigned/signed/long 修饰符链) */
+        int lc = 0;
+        for (;;) {
+            if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { al = 1; tk++; }
+            else if (!strcmp(tn[tk], "short")) { al = 2; tk++; }
+            else if (!strcmp(tn[tk], "long")) { lc++; al = (lc >= 2) ? 8 : 4; tk++; }
+            else if (!strcmp(tn[tk], "double")) { al = 8; tk++; }
+            else if (!strcmp(tn[tk], "unsigned") || !strcmp(tn[tk], "signed") || !strcmp(tn[tk], "int") || !strcmp(tn[tk], "void")) { tk++; }
+            else break;
+        }
+        while (tt[tk] == DK) { al = 8; tk++; } /* 指针 → 8 */
+    } else if (tt[tk] == ST) { /* struct/union: 用 st_field_sz_r 维护的最大对齐 algn */
+        tk++;
+        if (tt[tk] == VR) {
+            int si = st_find(tn[tk]);
+            if (si >= 0 && (stypes[si].fn > 0 || stypes[si].sz > 0)) al = stypes[si].algn; /* 已定义结构体用最大对齐 (全 char 结构 algn=1 也是真值); 前向声明保持默认 */
+            tk++;
+        }
+    } else if (tt[tk] == EN) { /* enum → int 对齐 4 */
+        tk++; if (tt[tk] == VR) tk++;
+    } else if (tt[tk] == VR) { /* typedef 名 */
+        int tdi = tdef_lookup(tn[tk]);
+        if (tdi >= 0) {
+            if (tdefs[tdi].is_struct) {
+                int si = st_find(tdefs[tdi].st_name);
+                if (si >= 0 && (stypes[si].fn > 0 || stypes[si].sz > 0)) al = stypes[si].algn;
+            } else {
+                int tsz = tdefs[tdi].sz;
+                if (tsz >= 8) al = 8; else if (tsz >= 4) al = 4; else if (tsz >= 2) al = 2; else al = 1;
+            }
+        }
+        tk++;
+    }
+    while (tt[tk] == LB) { /* 数组 T[N]: 对齐=元素对齐(已算), 消费 [N] */
+        tk++;
+        if (tt[tk] == NK || tt[tk] == VR) tk++;
+        if (tt[tk] == RB) tk++;
+    }
+    return al;
 }
 
 static void lex(const char *s) {
@@ -3785,6 +3841,14 @@ static int prim(void) {
         int v = prim();
         int m = Nd(26); nv[m] = is_dec; Nc(m, v);
         return m;
+    }
+    if (tt[tk] == AL) { /* _Alignof(T) — C11 对齐查询 (fix 2026-08-25 支持矩阵补全 step1) */
+        tk++;
+        int al_had_paren = (tt[tk] == OK);
+        if (al_had_paren) tk++;
+        int al = alignof_type();
+        if (al_had_paren && tt[tk] == KK) tk++;
+        int n = Nd(0); nv[n] = al; return n;
     }
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
@@ -5734,6 +5798,12 @@ static int stmt(void) {
 static int const_expr_eval(int *val); /* fwd */
 static int const_expr_prim(int *val) {
     if (tt[tk] == NK) { *val = tv[tk]; tk++; return 1; }
+    if (tt[tk] == AL) { /* _Alignof 常量求值 (fix 2026-08-25 支持矩阵补全 step1) */
+        tk++; if (tt[tk] == OK) tk++;
+        *val = alignof_type();
+        if (tt[tk] == KK) tk++;
+        return 1;
+    }
     if (tt[tk] == BK) { /* sizeof 常量维度: char tmp[sizeof "..."] (fix 2026-08-15: inet_ntop.c tp 未注册 undefined) */
         tk++; if (tt[tk] == OK) tk++; /* sizeof( */
         int sz = 4;
@@ -5809,6 +5879,7 @@ static int parse(const char *s) {
     memset(tt, 0, TS * 4);
     char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
     if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] include expand done len=%d\n", (int)strlen(exp_src));
+    if (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("precollect_dump.txt", "wb"); if (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote precollect %d bytes\n", (int)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
     obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
     if (fn_macro_n > 0) {
@@ -5816,6 +5887,7 @@ static int parse(const char *s) {
         if (msrc && msrc[0]) { free(exp_src); exp_src = msrc; }
     }
     if (obj_macro_n > 0) { /* fix 2026-08-13: 对象宏文本层展开 (lex 前) */
+        if (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("preobj_dump.txt", "wb"); if (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote preobj %d bytes\n", (int)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
         char *osrc = obj_macro_expand(exp_src);
         if (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
@@ -5825,6 +5897,7 @@ static int parse(const char *s) {
     }
     pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
     if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] macro expand done, lexing...\n");
+    if (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("prelex_dump.txt", "wb"); if (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote prelex %d bytes\n", (int)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
     lex(exp_src);
     if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] lex done ti=%d\n", ti);
     free(exp_src);
@@ -7300,7 +7373,7 @@ static int parse(const char *s) {
             parse_base = 0; /* back to file scope for the next top-level item */
             Nc(p, fdef);
             if (fdef_n < 1024) fdef_list[fdef_n++] = fdef; /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢) */
-        } else { break; }
+        } else { if (getenv("QCC_DBG_OBJ")) fprintf(stderr, "[PARSE-BREAK] tk=%d tt=%d tn='%s' next_tt=%d next='%s'\n", tk, tt[tk], tn[tk], tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-"); break; } /* 临时诊断 2026-08-25 sqlite */
     }
     return p;
 }
