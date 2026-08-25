@@ -7382,6 +7382,10 @@ __attribute__((unused))
    r10=handle r11=fmt r12=buf(advancing) r14=buf(start) r13=next-format-arg ptr.
    No calls until the final WriteFile, so volatile registers are safe throughout. */
 静 整 emit_fmt_loop(整 bound_disp);
+/* fix 2026-08-25 支持矩阵补全: %e/%E/%g/%G 科学/通用浮点格式化 (letter 在 sc+236, is_g 在 sc+24
+   由 emit_fmt_loop 分发存根在运行时设置; 每 printf 调用只发射一份核心). 64-bit scale/fracN 支持 %.16g. */
+静 空 emit_fmt_float(整 tail);
+静 空 emit_u64_digits(整 temp_end, 整 tail);
 /* fix 2026-08-23 t35e: vsnprintf walks its va_list UP (ap, ap+8, ...); printf/sprintf walk
    the pushed arg table DOWN. emit_vsnprintf sets this so the fmt_loop advances r13 by +8. */
 静 整 fmt_va_forward = 0;
@@ -7975,6 +7979,8 @@ __attribute__((unused))
 静 整 emit_fmt_loop(整 bound_disp) {
     整 ld = new_label(), ls = new_label(), lch = new_label(), lpct = new_label(), lcp = new_label(), lfmt = new_label(), ldone = new_label(), lf = new_label(), lx = new_label();
     整 lfnum = new_label(), lfrac = new_label(), lfrac2 = new_label(), lfsgn = new_label();
+    整 le = new_label(), lE = new_label(), lg = new_label(), lG = new_label(); /* %e/%E/%g/%G (fix 2026-08-25 支持矩阵补全) */
+    整 lfgt = new_label(); /* 共享浮点格式化核心入口 (fix 2026-08-25: 每个 printf 调用只发射一份, 4 分发存根跳入) */
     /* specifier-prefix parse + %f precision (root-cause 2026-08-03) */
     整 lflag = new_label(), lflags = new_label(), lwidth = new_label(), lprec = new_label();
     整 lplus = new_label(); /* fix 2026-08-23 t35g: %+d / %+05d 恒显正号 */
@@ -8139,6 +8145,10 @@ __attribute__((unused))
     mov_r_imm(0, 's'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, ls, 1);
     mov_r_imm(0, 'c'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lch, 1);
     mov_r_imm(0, 'f'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lf, 1);
+    mov_r_imm(0, 'e'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, le, 1); /* %e 科学计数法 (fix 2026-08-25 支持矩阵补全) */
+    mov_r_imm(0, 'E'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lE, 1); /* %E 大写科学计数法 */
+    mov_r_imm(0, 'g'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lg, 1); /* %g 通用浮点 (fix 2026-08-25 支持矩阵补全) */
+    mov_r_imm(0, 'G'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lG, 1); /* %G 大写通用浮点 */
     mov_r_imm(0, 'x'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lx, 1); /* %x hex (fix 2026-08-05) */
     mov_r_imm(0, 'X'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lxU, 1); /* %X uppercase hex (fix 2026-08-06) */
     mov_r_imm(0, 'u'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lu, 1); /* %u unsigned decimal (fix 2026-08-05) */
@@ -8479,8 +8489,324 @@ __attribute__((unused))
         set_label(ldigd);
         jmp_rel(-1); patch_label(cp - 4, lfmt, 2);
     }
+    /* %e/%E/%g/%G: 科学/通用浮点 — 分发存根设 letter(sc+236)+is_g(sc+24)+跳共享核心 (fix 2026-08-25
+       支持矩阵补全; 必须每 printf 只发射一份核心, 4 个 call site 各自发射会标签爆炸 LABEL-OVERFLOW) */
+    set_label(le);
+    mov_r_imm(0, 'e'); mov_mbrp_reg(scratch_base - cur_frame_sz + 236, 0); /* letter */
+    mov_r_imm(0, 0); mov_mbrp_reg(scratch_base - cur_frame_sz + 24, 0);    /* is_g = 0 */
+    jmp_rel(-1); patch_label(cp - 4, lfgt, 2);
+    set_label(lE);
+    mov_r_imm(0, 'E'); mov_mbrp_reg(scratch_base - cur_frame_sz + 236, 0);
+    mov_r_imm(0, 0); mov_mbrp_reg(scratch_base - cur_frame_sz + 24, 0);
+    jmp_rel(-1); patch_label(cp - 4, lfgt, 2);
+    set_label(lg);
+    mov_r_imm(0, 'e'); mov_mbrp_reg(scratch_base - cur_frame_sz + 236, 0);
+    mov_r_imm(0, 1); mov_mbrp_reg(scratch_base - cur_frame_sz + 24, 0);    /* is_g = 1 */
+    jmp_rel(-1); patch_label(cp - 4, lfgt, 2);
+    set_label(lG);
+    mov_r_imm(0, 'E'); mov_mbrp_reg(scratch_base - cur_frame_sz + 236, 0);
+    mov_r_imm(0, 1); mov_mbrp_reg(scratch_base - cur_frame_sz + 24, 0);
+    jmp_rel(-1); patch_label(cp - 4, lfgt, 2);
+    set_label(lfgt);
+    emit_fmt_float(lfmt);
 /* %d->lfmt, %f->fractional path */
     返 ldone;
+}
+
+/* %e/%E/%g/%G: scientific / general float formatting (fix 2026-08-25 支持矩阵补全).
+   is_g(sc+24) 与 letter(sc+236) 由 emit_fmt_loop 分发存根在运行时设置.
+   Emitted machine code shares the %f sign/rounding patterns but adds decimal-exponent
+   normalization. scale/fracN use 64-bit arithmetic so %.16g/%.17g (SQLite) work.
+   Precision N from sc+224 (default 6). Width/zero-pad ignored for float formats.
+   Slot map (all inside the printf scratch area, sc = scratch_base - cur_frame_sz):
+     sc+8:   scale (int64)          sc+192: |v| (double)
+     sc+16:  strip counter (int32)  sc+200: mantissa/frac (double)
+     sc+20:  style flag (0=f-style 1=e-style)   sc+208: fracN (int64)
+     sc+24:  is_g (0=%e/%E 1=%g/%G)  sc+216: 0.5 (double)
+     sc+224: N_frac (int32)         sc+228: exp (int32)
+     sc+236: exponent letter        sc+240: 10.0 (double, 8字节 sc+240..247 — 勿与其他槽重叠)
+   Register discipline: r11=fmt r12=dest r13=args; r8/r9 scratch; emit_u64_digits
+   digit temp spans ~sc+242..259 (downward from [rbp+sc+260]), so nothing below
+   sc+240 may be live across a call to it (style flag at sc+20 / is_g at sc+24 因此安全). */
+静 空 emit_fmt_float(整 tail) {
+    整 l_sgn = new_label(), l_zero = new_label(), l_big = new_label();
+    整 l_sml = new_label(), l_sml2 = new_label(), l_norm = new_label();
+    整 l_efmt = new_label(), l_nfok = new_label();
+    整 l_scale = new_label(), l_scale_l = new_label(), l_scdone = new_label();
+    整 l_carry_e = new_label(), l_carry_done = new_label(), l_nocarry = new_label();
+    整 l_num = new_label(), l_dot = new_label(), l_digl = new_label(), l_digd = new_label();
+    整 l_print_e = new_label();
+    整 l_exp = new_label(), l_pl = new_label(), l_expdig = new_label(), l_expcopy = new_label();
+    整 l_g_ok = new_label(), l_nfadj = new_label(), l_strip_skip = new_label();
+    整 l_strip_l = new_label(), l_strip_div = new_label(), l_strip_d = new_label(), l_strip_done = new_label();
+    整 l_sstrip = new_label();
+    整 sc = scratch_base - cur_frame_sz;
+
+    /* consume the double arg */
+    asm_emit("    自增 r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past spec char) */
+    movsd_xmm0_mr13();
+    若 (fmt_va_forward) { asm_emit("    增即 r13, 8\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x83); modrm(3, 0, 5); b(8); }
+    否 { asm_emit("    减即 r13, 8\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); }
+
+    /* ---- sign (same pattern as %f: IEEE sign bit) ---- */
+    movsd_mbrp_xmm0(sc + 192);       /* save v */
+    movsd_xmm0_mbrp(sc + 192);
+    asm_emit("    取浮标 r0, xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x66); b(0x48); b(0x0F); b(0x7E); b(0xC0); /* movq rax, xmm0 */
+    asm_emit("    测试位 r0, 63\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,0,0,0); b(0x0F); b(0xBA); b(0xE0); b(0x3F); /* bt rax, 63 */
+    b(0x0F); b(0x83); b4(0); patch_label(cp - 4, l_sgn, 7); /* jae l_sgn: sign clear, keep */
+    mov_r_imm(0, '-'); mov_r12_al(); /* mov [r12], '-' */
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    movsd_xmm1_mbrp(sc + 192);       /* xmm1 = v */
+    mov_r_imm(0, 0); cvtsi2sd_xmm0_eax(); /* xmm0 = 0.0 */
+    subsd_xmm0_xmm1();               /* xmm0 = 0.0 - v = -v */
+    movsd_mbrp_xmm0(sc + 192);       /* save |v| */
+    set_label(l_sgn);
+
+    /* exp = 0 */
+    mov_r_imm(0, 0); mov_mbrp_reg(sc + 228, 0);
+
+    /* zero check (normalization would loop forever on 0) */
+    mov_r_imm(0, 0); cvtsi2sd_xmm1_eax(); /* xmm1 = 0.0 */
+    comisd_xmm0_xmm1();
+    b(0x0F); b(0x84); b4(0); patch_label(cp - 4, l_zero, 1); /* je l_zero: v == 0 */
+
+    /* ---- normalize |v| to [1,10): exp counts powers of 10 ---- */
+    mov_r_imm(0, 10); cvtsi2sd_xmm1_eax();  /* xmm1 = 10.0 */
+    movsd_xmm0_xmm1(); movsd_mbrp_xmm0(sc + 240); /* [sc+240] = 10.0 (8字节 sc+240..247 — is_g 在 sc+24 不重叠) */
+    movsd_xmm0_mbrp(sc + 192);          /* restore xmm0 = v (movsd_xmm0_xmm1 clobbered it) */
+    set_label(l_big);
+    comisd_xmm0_xmm1();                 /* CF = (v < 10) */
+    b(0x0F); b(0x82); b4(0); patch_label(cp - 4, l_sml, 8); /* jb l_sml: v < 10 */
+    divsd_xmm0_xmm1();                  /* v /= 10 */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 1); alu_rr(T_PK, 0, 1); mov_mbrp_reg(sc + 228, 0); /* exp++ */
+    jmp_rel(-1); patch_label(cp - 4, l_big, 2);
+    set_label(l_sml);
+    set_label(l_sml2);
+    mov_r_imm(0, 1); cvtsi2sd_xmm1_eax();  /* xmm1 = 1.0 (reload each iteration — mulsd clobbers it with 10.0) */
+    comisd_xmm0_xmm1();                 /* CF = (v < 1) */
+    b(0x0F); b(0x83); b4(0); patch_label(cp - 4, l_norm, 7); /* jae l_norm: v >= 1 */
+    movsd_xmm1_mbrp(sc + 240);          /* xmm1 = 10.0 */
+    mulsd_xmm0_xmm1();                  /* v *= 10 */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 1); alu_rr(T_MK, 0, 1); mov_mbrp_reg(sc + 228, 0); /* exp-- */
+    jmp_rel(-1); patch_label(cp - 4, l_sml2, 2);
+    set_label(l_norm);
+    /* xmm0 = mantissa in [1,10), exp at sc+228, |v| at sc+192 — 运行时 is_g(sc+24) 分支 */
+    mov_reg_mbrp(0, sc + 24); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, l_efmt, 3); /* is_g==0 → 直接 e-style */
+    /* %g: precision 0 -> 1 (C standard: zero precision treated as one) */
+    mov_reg_mbrp(0, sc + 224); test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, l_g_ok, 3);
+    mov_r_imm(0, 1); mov_mbrp_reg(sc + 224, 0);
+    set_label(l_g_ok);
+    /* %g style decision: e-style iff exp < -4 or exp >= N (default N=6) */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, -4); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8C); b4(0); patch_label(cp - 4, l_efmt, 10); /* cmp eax,-4; jl l_efmt */
+    mov_reg_mbrp(1, sc + 224); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8D); b4(0); patch_label(cp - 4, l_efmt, 5); /* cmp eax,ecx; jge l_efmt */
+    /* ---- f-style ---- */
+    mov_reg_mbrp(0, sc + 224);
+    mov_r_imm(1, 1); alu_rr(T_MK, 0, 1);           /* eax = N-1 */
+    mov_reg_mbrp(1, sc + 228); alu_rr(T_MK, 0, 1); /* eax = N-1-exp */
+    mov_mbrp_reg(sc + 224, 0);                     /* N_frac */
+    mov_r_imm(0, 0); mov_mbrp_reg(sc + 20, 0);     /* style = 0 (f-style) */
+    movsd_xmm0_mbrp(sc + 192);                     /* xmm0 = v */
+    cvttsd2si_rax_xmm0();                          /* rax = (int64)v */
+    mov_rr64(3, 0);                                /* rbx = int part */
+    mov_rr64(0, 3); b(0xF2); b(0x48); b(0x0F); b(0x2A); b(0xC0); /* cvtsi2sd xmm0, rax */
+    movsd_xmm1_xmm0();                             /* xmm1 = (double)int */
+    movsd_xmm0_mbrp(sc + 192);
+    subsd_xmm0_xmm1();                             /* xmm0 = v - int */
+    movsd_mbrp_xmm0(sc + 200);                     /* frac */
+    jmp_rel(-1); patch_label(cp - 4, l_scale, 2);
+    set_label(l_zero);
+    /* v == 0: exp stays 0, mantissa = 0 — jump back through the %g style decision
+       (exp=0 -> f-style -> "0"/"-0"; %e/%E is_g==0 jumps straight to l_efmt anyway) */
+    jmp_rel(-1); patch_label(cp - 4, l_norm, 2);
+    set_label(l_efmt);
+    /* ---- e-style ---- */
+    movsd_mbrp_xmm0(sc + 200);                         /* save mantissa (0 or [1,10)) */
+    /* 运行时 is_g: %g e-style 用 N-1 位小数 (%e 保持 N) */
+    mov_reg_mbrp(0, sc + 24); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, l_nfadj, 3);
+    mov_reg_mbrp(0, sc + 224); mov_r_imm(1, 1); alu_rr(T_MK, 0, 1); mov_mbrp_reg(sc + 224, 0); /* N_frac = N-1 */
+    set_label(l_nfadj);
+    /* guard N_frac >= 0 */
+    mov_reg_mbrp(0, sc + 224); mov_r_imm(1, 0); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8D); b4(0); patch_label(cp - 4, l_nfok, 5); /* cmp eax,0; jge l_nfok */
+    mov_r_imm(0, 0); mov_mbrp_reg(sc + 224, 0);
+    set_label(l_nfok);
+    /* mantissa int digit (0-9) */
+    movsd_xmm0_mbrp(sc + 200);
+    cvttsd2si_eax_xmm0();
+    mov_rr(3, 0);                                      /* ebx = digit */
+    mov_rr(0, 3); cvtsi2sd_xmm0_eax();                 /* xmm0 = (double)digit */
+    movsd_xmm1_xmm0();
+    movsd_xmm0_mbrp(sc + 200);
+    subsd_xmm0_xmm1();                                 /* xmm0 = mantissa - digit */
+    movsd_mbrp_xmm0(sc + 200);                         /* frac */
+    mov_r_imm(0, 1); mov_mbrp_reg(sc + 20, 0);         /* style = 1 (e-style) */
+    set_label(l_scale);
+    /* ---- shared: scale = 10^N_frac (64-bit) ---- */
+    mov_r_imm(0, 1); mov_mbrp_reg64(sc + 8, 0);        /* scale = 1 */
+    mov_reg_mbrp(9, sc + 224);                         /* r9d = N_frac */
+    set_label(l_scale_l);
+    test_rr(9, 9); jz_rel(-1); patch_label(cp - 4, l_scdone, 1);
+    mov_reg_mbrp64(0, sc + 8);                         /* rax = scale */
+    mov_r_imm(1, 10);                                  /* ecx = 10 */
+    b(0x48); b(0xF7); b(0xE1);                         /* mul rcx: rdx:rax = scale*10 */
+    mov_mbrp_reg64(sc + 8, 0);                         /* scale = rax */
+    asm_emit("    自减 r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9d */
+    jmp_rel(-1); patch_label(cp - 4, l_scale_l, 2);
+    set_label(l_scdone);
+    /* ---- shared: fracN = trunc(frac * scale + 0.5) ---- */
+    mov_r_imm(0, 1); cvtsi2sd_xmm0_eax();              /* xmm0 = 1.0 */
+    mov_r_imm(0, 2); cvtsi2sd_xmm1_eax();              /* xmm1 = 2.0 */
+    divsd_xmm0_xmm1();                                 /* xmm0 = 0.5 (1.0/2.0) */
+    movsd_mbrp_xmm0(sc + 216);                         /* save 0.5 */
+    mov_reg_mbrp64(0, sc + 8);                         /* rax = scale */
+    b(0xF2); b(0x48); b(0x0F); b(0x2A); b(0xC8);       /* cvtsi2sd xmm1, rax (scale) */
+    movsd_xmm0_mbrp(sc + 200);                         /* xmm0 = frac */
+    mulsd_xmm0_xmm1();                                 /* xmm0 = frac*scale */
+    movsd_xmm1_mbrp(sc + 216);                         /* xmm1 = 0.5 */
+    addsd_xmm0_xmm1();                                 /* xmm0 = frac*scale + 0.5 */
+    cvttsd2si_rax_xmm0();                              /* rax = fracN */
+    /* carry: fracN >= scale -> fracN = 0, adjust mantissa/int */
+    mov_reg_mbrp64(1, sc + 8);                         /* rcx = scale */
+    b(0x48); b(0x39); modrm(3, 1, 0);                  /* cmp rax, rcx */
+    b(0x0F); b(0x82); b4(0); patch_label(cp - 4, l_nocarry, 8); /* jb l_nocarry: fracN < scale */
+    mov_reg_mbrp(0, sc + 20); test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, l_carry_e, 3); /* style 0? */
+    b(0xFF); b(0xC3);                                  /* inc ebx (f-style int part) */
+    jmp_rel(-1); patch_label(cp - 4, l_carry_done, 2);
+    set_label(l_carry_e);
+    b(0xFF); b(0xC3);                                  /* inc ebx (mantissa digit) */
+    mov_r_imm(1, 10); alu_rr(T_QK, 3, 1);              /* cmp ebx, 10 */
+    b(0x0F); b(0x8C); b4(0); patch_label(cp - 4, l_carry_done, 10); /* jl l_carry_done: digit < 10 */
+    mov_r_imm(3, 1);                                   /* ebx = 1 */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 1); alu_rr(T_PK, 0, 1); mov_mbrp_reg(sc + 228, 0); /* exp++ */
+    set_label(l_carry_done);
+    mov_r_imm(0, 0);                                   /* fracN = 0 */
+    set_label(l_nocarry);
+    mov_mbrp_reg64(sc + 208, 0);                       /* save fracN */
+    /* ---- strip trailing zeros (only %g; 运行时 is_g 判断) ---- */
+    mov_reg_mbrp(0, sc + 24); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, l_strip_skip, 3);
+    {
+        mov_r_imm(0, 0); mov_mbrp_reg(sc + 16, 0);     /* strip = 0 */
+        set_label(l_strip_l);
+        mov_reg_mbrp64(0, sc + 208);                   /* rax = fracN */
+        b(0x48); b(0x85); b(0xC0);                     /* test rax, rax */
+        jnz_rel(-1); patch_label(cp - 4, l_strip_div, 3);
+        mov_r_imm(0, 0); mov_mbrp_reg(sc + 224, 0);    /* N_eff = 0 */
+        jmp_rel(-1); patch_label(cp - 4, l_strip_done, 2);
+        set_label(l_strip_div);
+        mov_r_imm(1, 10); asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+        b(0x48); b(0xF7); modrm(3, 6, 1);              /* div rcx: rax=fracN/10, rdx=rem */
+        test_rr(2, 2); jnz_rel(-1); patch_label(cp - 4, l_strip_d, 3); /* rem != 0 -> done */
+        mov_mbrp_reg64(sc + 208, 0);                   /* fracN /= 10 */
+        mov_reg_mbrp(0, sc + 16); mov_r_imm(1, 1); alu_rr(T_PK, 0, 1); mov_mbrp_reg(sc + 16, 0); /* strip++ */
+        jmp_rel(-1); patch_label(cp - 4, l_strip_l, 2);
+        set_label(l_strip_d);
+        /* N_eff = N - strip */
+        mov_reg_mbrp(0, sc + 16); mov_reg_mbrp(1, sc + 224); alu_rr(T_MK, 1, 0); mov_mbrp_reg(sc + 224, 1);
+        /* scale_eff = scale / 10^strip (64-bit) */
+        mov_reg_mbrp64(0, sc + 8); mov_reg_mbrp(1, sc + 16); /* rax=scale, ecx=strip */
+        set_label(l_sstrip);
+        test_rr(1, 1); jz_rel(-1); patch_label(cp - 4, l_strip_done, 1);
+        mov_r_imm(2, 10); mov_rr(8, 2);                /* r8 = 10 (divisor — 不能放 scale 自身, 会 scale/scale=1) */
+        asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+        b(0x49); b(0xF7); b(0xF0);                     /* div r8: rax = scale/10 */
+        mov_mbrp_reg64(sc + 8, 0);                     /* scale /= 10 */
+        mov_reg_mbrp(1, sc + 16); b(0xFF); b(0xC9); mov_mbrp_reg(sc + 16, 1); /* strip-- */
+        jmp_rel(-1); patch_label(cp - 4, l_sstrip, 2);
+        set_label(l_strip_done);
+    }
+    set_label(l_strip_skip);  /* is_g==0: 跳过 strip, fracN/N/scale 原样 */
+    /* ---- print mantissa/int part (style flag sc+20 运行时分支) ---- */
+    mov_reg_mbrp(0, sc + 20); test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, l_print_e, 3);
+    emit_u64_digits(sc + 260, l_num);              /* f-style: print rbx (int), jmp l_num */
+    set_label(l_print_e);
+    /* e-style: single mantissa digit (0-9) */
+    mov_rr(0, 3);
+    asm_emit("    加字节 r0, 0x30\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x80); b(0xC0); b(0x30); /* add al, '0' */
+    mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    jmp_rel(-1); patch_label(cp - 4, l_num, 2);
+    /* ---- fraction digits: '.' + N_eff digits of fracN, divisor = scale/10 ---- */
+    set_label(l_num);
+    mov_reg_mbrp(0, sc + 224); test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, l_dot, 1); /* N==0: skip '.' */
+    mov_r_imm(0, '.'); mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    set_label(l_dot);
+    mov_reg_mbrp64(0, sc + 8);                         /* rax = scale */
+    mov_r_imm(1, 10); asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+    b(0x48); b(0xF7); modrm(3, 6, 1);                  /* div rcx: rax = scale/10 */
+    mov_rr64(8, 0);                                    /* r8 = divisor */
+    mov_reg_mbrp(9, sc + 224);                         /* r9d = N (digit count) */
+    set_label(l_digl);
+    test_rr(9, 9); jz_rel(-1); patch_label(cp - 4, l_digd, 1);
+    mov_reg_mbrp64(0, sc + 208);                       /* rax = fracN */
+    asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+    b(0x49); b(0xF7); b(0xF0);                         /* div r8: rax=digit, rdx=rem */
+    asm_emit("    加字节 r0, 0x30\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x80); b(0xC0); b(0x30); /* add al, '0' */
+    mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    mov_mbrp_reg64(sc + 208, 2);                       /* fracN = rdx */
+    mov_rr64(0, 8);                                    /* rax = divisor */
+    mov_r_imm(1, 10); asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+    b(0x48); b(0xF7); modrm(3, 6, 1);                  /* div rcx: rax = divisor/10 */
+    mov_rr64(8, 0);                                    /* r8 = divisor/10 */
+    asm_emit("    自减 r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9d */
+    jmp_rel(-1); patch_label(cp - 4, l_digl, 2);
+    set_label(l_digd);
+    /* exit: style 0 -> tail, style 1 -> l_exp (exponent print) */
+    mov_reg_mbrp(0, sc + 20); test_rr(0, 0); jnz_rel(-1); patch_label(cp - 4, l_exp, 3);
+    jmp_rel(-1); patch_label(cp - 4, tail, 2);
+    /* ---- exponent: letter(sc+236) + sign + at least 2 digits ---- */
+    set_label(l_exp);
+    mov_reg_mbrp(0, sc + 236); mov_r12_al();           /* letter */
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 0); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8D); b4(0); patch_label(cp - 4, l_pl, 5); /* cmp eax,0; jge l_pl */
+    mov_r_imm(0, '-'); mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 0); alu_rr(T_MK, 1, 0); mov_mbrp_reg(sc + 228, 1); /* exp = 0 - exp */
+    jmp_rel(-1); patch_label(cp - 4, l_expdig, 2);
+    set_label(l_pl);
+    mov_r_imm(0, '+'); mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    set_label(l_expdig);
+    mov_reg_mbrp(0, sc + 228); mov_r_imm(1, 10); alu_rr(T_QK, 0, 1); b(0x0F); b(0x8D); b4(0); patch_label(cp - 4, l_expcopy, 5); /* cmp eax,10; jge l_expcopy */
+    mov_r_imm(0, '0'); mov_r12_al();                   /* pad '0' */
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    mov_reg_mbrp(0, sc + 228);
+    asm_emit("    加字节 r0, 0x30\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x80); b(0xC0); b(0x30); /* add al, '0' */
+    mov_r12_al();
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    jmp_rel(-1); patch_label(cp - 4, tail, 2);
+    set_label(l_expcopy);
+    /* multi-digit exponent (>= 2 digits): rbx = |exp| */
+    mov_reg_mbrp(0, sc + 228); mov_rr64(3, 0);
+    emit_u64_digits(sc + 260, tail);
+}
+
+/* print rbx (unsigned 64-bit) as decimal to [r12], then jmp tail.
+   digit temp buffer at [rbp+temp_end-12 .. temp_end] (12 bytes, plenty for 64-bit).
+   fix 2026-08-25 支持矩阵补全: shared by emit_fmt_float (int part + exponent). */
+静 空 emit_u64_digits(整 temp_end, 整 tail) {
+    整 ldig = new_label(), lcpd = new_label();
+    lea_r_mbrp(8, temp_end);               /* r8 = temp end */
+    mov_rr64(9, 8);                        /* r9 = temp end (advancing) */
+    set_label(ldig);
+    mov_rr64(0, 3);                        /* rax = value */
+    asm_emit("    清零 r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x31); b(0xD2); /* xor edx, edx */
+    mov_r_imm(1, 10);
+    b(0x48); b(0xF7); modrm(3, 6, 1);      /* div rcx: rax=quot, rdx=rem */
+    mov_rr64(3, 0);                        /* rbx = quot */
+    asm_emit("    加字节 r2, 0x30\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x80); b(0xC2); b(0x30); /* add dl, '0' */
+    asm_emit("    自减 r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 1, 1); /* dec r9 */
+    asm_emit("    写字节 [r9], r2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x88); modrm(0, 2, 1); /* mov [r9], dl */
+    b(0x48); b(0x85); modrm(3, 3, 3);      /* test rbx, rbx */
+    jnz_rel(-1); patch_label(cp - 4, ldig, 3);
+    set_label(lcpd);
+    asm_emit("    读字节 r0, [r9]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x8A); modrm(0, 0, 1); /* mov al, [r9] */
+    mov_r12_al();
+    asm_emit("    自增 r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 1); /* inc r9 */
+    asm_emit("    自增 r12\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 4); /* inc r12 */
+    asm_emit("    比较64 r9, r8\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,1); b(0x39); modrm(3, 0, 1); /* cmp r9, r8 */
+    jnz_rel(-1); patch_label(cp - 4, lcpd, 3);
+    jmp_rel(-1); patch_label(cp - 4, tail, 2);
 }
 
 /* sprintf(dest=rcx, fmt=rdx, args...): format into dest buffer, return chars written.
