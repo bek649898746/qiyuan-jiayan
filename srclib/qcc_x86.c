@@ -2233,10 +2233,10 @@ static void call_iat(int slot) {
     }
     b4(iat_disp_at(at, slot));
 }
-/* 外部数学函数 → IAT slot 8-28（非 coff 模式；fix 2026-08-06 BUG-1; 2026-08-25 math21 扩 16→21 纯 double 系; frexp/ldexp/modf 混合 ABI 暂缓） */
+/* 外部数学函数 → IAT slot 8-31（非 coff 模式；fix 2026-08-06 BUG-1; 2026-08-25 math24: 16→24, frexp/ldexp/modf 走混合 ABI 专用分支） */
 static int fn_math_iat(const char *n) {
-    static const char *maths[21] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs","cosh","sinh","tanh","copysign","hypot" };
-    for (int i = 0; i < 21; i++) if (!strcmp(maths[i], n)) return 8 + i;
+    static const char *maths[24] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs","cosh","sinh","tanh","copysign","hypot","frexp","ldexp","modf" };
+    for (int i = 0; i < 24; i++) if (!strcmp(maths[i], n)) return 8 + i;
     return -1;
 }
 static int scratch_base = 0; /* frame scratch area for printf (set in main) */
@@ -7631,7 +7631,7 @@ static void emit_print(const char *fname, int nargs) {
             b(0xE8); b4(0); /* call rel32 - jyld resolves _write -> msvcrt import */
             coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0);
         } else {
-            call_iat(29); /* _write IAT slot (msvcrt, math21 后移: 16 math→21 math, _write 24→29) */
+            call_iat(32); /* _write IAT slot (msvcrt, math24: 24 math + _write, _write 29→32) */
         }
         add_rsp_imm(32);
         jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
@@ -7713,7 +7713,7 @@ static void emit_vfprintf(int nargs) {
     mov_rr64(1, 10); /* rcx = fd */
     mov_rr64(2, 14); /* rdx = buf */
     if (coff_mode) { b(0xE8); b4(0); coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0); }
-    else call_iat(29); /* _write (math21: 24→29) */
+    else call_iat(32); /* _write (math24: 29→32) */
     add_rsp_imm(32);
     jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
     set_label(lwf);
@@ -10072,6 +10072,7 @@ static void cg(int n) {
                (their slot holds a pointer to the copy — Win64 >16B convention). Record
                each arg's slot height (from the top) so the loader can find it. */
             int slot_h[20]; int slot_n = 0; int total_h = 0;
+            int is_math_mixed = (!strcmp(fname, "frexp") || !strcmp(fname, "ldexp") || !strcmp(fname, "modf")); /* 混合 ABI: 第二参是 int/指针, 不能强制 double 压栈 (fix 2026-08-25 step4) */
             for (int i = 0; i < 20; i++) {
                 int c = kids[i];
                 if (c == fn || c < 0) { continue; }
@@ -10143,7 +10144,7 @@ static void cg(int n) {
                         continue;
                     }
                     slot_h[slot_n] = total_h;
-                    if (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR */
+                    if (ndbl[c] || fn_dbl_get(fname, slot_n) || (fn_math_iat(fname) >= 0 && !(is_math_mixed && slot_n >= 1))) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 step4: frexp/ldexp/modf 第二参非 double, 按 int/指针压栈 */
                     else if (nll[c] || fn_ll_get(fname, slot_n)) { cg(c); if (!nll[c]) ll_ext32(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#30: int 实参→ll 形参符号扩展 (add5(1,255,255,255,-5) 的 -5) */
                     else { cg(c); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
                     total_h += 8;
@@ -10738,6 +10739,23 @@ static void cg(int n) {
             } else if (!strcmp(fname, "__qcc_va_start")) {
                 if (cur_va_home >= 0) lea_r_mbrp(0, cur_va_home); /* rax = &first vararg slot (home area) */
                 else mov_r_imm(0, 0); /* 非变参函数: 返回 NULL (fix 2026-08-18: 未设置时 rax 残留垃圾 → va_list 错) */
+            } else if (!strcmp(fname, "frexp") || !strcmp(fname, "ldexp") || !strcmp(fname, "modf")) {
+                /* 混合 ABI (fix 2026-08-25 step4): arg0 double 进 xmm0, arg1 (int 值或指针) 进 rdx; 返回 double 在 xmm0。
+                   frexp/ldexp/modf 第二参非 double, 不走全 double 的 fn_math_iat 传参路径 */
+                int mslot = fn_math_iat(fname);
+                if (mslot >= 0) {
+                    movsd_xmmreg_mrsp64(0, argbase + total_h - slot_h[0] - 8); /* xmm0 = arg0 (double) */
+                    mov_reg_mrsp64(0, argbase + total_h - slot_h[1] - 8);      /* rax = arg1 (int 值或指针) */
+                    mov_rr64(2, 0);                                            /* rdx = arg1 (Win64 整数第 2 参) */
+                    push_r(15); mov_rr64(15, 4);
+                    asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                    sub_rsp_imm(32);
+                    call_iat(mslot);
+                    add_rsp_imm(32);
+                    mov_rr64(4, 15); pop_r(15);
+                    add_rsp_imm(total_h);
+                    math_done = 1;
+                }
             } else {
                 int mslot = fn_math_iat(fname);
                 if (mslot >= 0) { /* 外部数学函数：Win64 ABI 传参（double→xmm，签名固定全 double）+ IAT 调用（fix 2026-08-06 BUG-1） */
@@ -12357,7 +12375,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x208); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8; 2026-08-25 math21: desc 0x1B8→0x208) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
+    w4(f, data_rva_base + 0x238); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; 2026-08-19: _write slot -> desc 0x1B8; 2026-08-25 math21: 0x1B8→0x208; math24: 0x208→0x238) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -12397,43 +12415,43 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* .data section: write heap counter, then import table
        布局（fix 2026-08-06 BUG-1）：每个 DLL 的 IAT/ILT 独立且以 0 终止
-       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (22 msvcrt + term=184B)
-       ILT1@+0x108 (9*8B=72B) ILT2@+0x150 (23*8B=184B) desc@+0x208 (3*20=60B) names@+0x250
-       (fix 2026-08-19: IAT2 扩 16→17 加 _write; 2026-08-25 math21: IAT2 扩 17→22 加 cosh/sinh/tanh/_copysign/_hypot, 全偏移右移; ILT thunk 8B 按 PE64 计) */
+       IAT1@+0x08 (8 kernel32 + term=72B) IAT2@+0x50 (25 msvcrt + term=208B)
+       ILT1@+0x120 (9*8B=72B) ILT2@+0x168 (26*8B=208B) desc@+0x238 (3*20=60B) names@+0x280
+       (fix 2026-08-19: IAT2 扩 16→17 加 _write; 2026-08-25 math21: 17→22; math24: 22→25 加 frexp/ldexp/modf, 全偏移右移; ILT thunk 8B 按 PE64 计) */
     fseek(f, data_foff, SEEK_SET);
     int heap_start = IMAGE_BASE + data_rva + DATA_RVA_OFF + 4 * stc_n + 2560; /* argv[64]+tokens then heap */
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
     static const char *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
-    static const char *mnames[22] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "_write" };
-    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x108, ilt2 = 0x150, desc_off = 0x208, name_off = 0x250; /* math21: IAT2 17→22 槽 (23*8=184B→0x108); ILT thunk 8B (PE64): ILT1@0x108 (9*8=72B→0x150), ILT2@0x150 (23*8=184B→0x208), desc@0x208 (60B→0x244), names@0x250 (至 ~0x37C < DATA_RVA_OFF 0x400) */
-    int n_off[30];
+    static const char *mnames[25] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write" };
+    int iat1 = 0x08, iat2 = 0x50, ilt1 = 0x120, ilt2 = 0x168, desc_off = 0x238, name_off = 0x280; /* math24: IAT2 22→25 槽 (26*8=208B→0x120); ILT thunk 8B: ILT1@0x120 (72B→0x168), ILT2@0x168 (208B→0x238), desc@0x238 (60B→0x274), names@0x280 (至 ~0x380 < DATA_RVA_OFF 0x400) */
+    int n_off[33];
     /* IAT/ILT 占位 */
     fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 23; i++) w8(f, 0);
+    fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 26; i++) w8(f, 0);
     fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 9; i++) w8(f, 0);
-    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 23; i++) w8(f, 0);
+    fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 26; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
     for (int i = 0; i < 8; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    for (int i = 0; i < 22; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    for (int i = 0; i < 25; i++) { n_off[8 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
     /* 回填 IAT1（8 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
-    /* 回填 IAT2（22 + term） */
+    /* 回填 IAT2（25 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    for (int i = 0; i < 22; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 25; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
     for (int i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    for (int i = 0; i < 22; i++) w8(f, data_rva_base + n_off[8 + i]);
+    for (int i = 0; i < 25; i++) w8(f, data_rva_base + n_off[8 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
