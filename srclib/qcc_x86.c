@@ -3057,7 +3057,11 @@ static int expr_is_double(int n) {
     
     if (n < 0) return 0;
     if (ndbl[n]) return 1;
-    if (nt[n] == 1) return var_is_dbl((char*)(nn + n)) ? 1 : 0; /* fix 2026-08-25 bug#27: double 变量标识符 (原 ndbl 未设置 → 0-v1 走整数路径 → 负 double 全错) */
+    if (nt[n] == 1) {
+        char *vn2 = (char*)(nn + n);
+        if (var_arrsz(vn2) != 0) return 0; /* 数组名衰减为地址, 不是 double 值 (fix 2026-08-25 step15: double 数组名 var_is_dbl=true → (char*)arr+n 走浮点加法 → 基址丢失; 同 L4319 ndbl 守卫) */
+        return var_is_dbl(vn2) ? 1 : 0;
+    } /* fix 2026-08-25 bug#27: double 变量标识符 (原 ndbl 未设置 → 0-v1 走整数路径 → 负 double 全错) */
     if (nt[n] == 4) { /* function call */
         int fn = n0[n];
         if (fn < 0) return 0;

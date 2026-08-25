@@ -18,6 +18,7 @@
 > v2.13（step13）：C99 math 内置 10 函数（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim，qcc_rt 内实现调 msvcrt log/pow/floor/ceil）；发现 return 三元 codegen pre-existing bug（绕过，待修核心）。
 > v2.14（step14）：**return 三元 double codegen 修复**（cg_f/cg case 22 加 double 分支→xmm0；int 三元保持原路径）；种子纪律修正（每步封存种子）。
 > v2.15（step15）：GNU `case 1...5:` 范围支持（生成 >= && <= 条件）；变参 double 已最小化定位（double 元素赋值×指针差交互，待专门攻坚）。
+> v2.16（step16）：**expr_is_double 数组名误判修复**（double 数组名衰减为地址非 double 值 → `(char*)arr+n` 基址不再丢失）；变参 double 进一步定位（va_start ap 槽存储缺失）。
 
 ## 一、类型系统
 
