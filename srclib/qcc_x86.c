@@ -1101,6 +1101,7 @@ static void st_finalize(int si) { /* fix 2026-08-06: struct 总大小按最大�
 }
 static void st_pend_backfill(int new_si); /* fwd: 前向声明 struct Tag *field 的类型回填 (fix 2026-08-18) */
 static int st_cur_struct_align = 1; /* fix 2026-08-19: struct 类型成员的对齐暂存 — 注册处设, st_field_sz_r 消费 (FILETIME=4 → WIN32_FIND_DATAW 布局对齐 Windows SDK) */
+static int alignas_pending = 0; /* fix 2026-08-25 step21: _Alignas(N) 显式对齐暂存 — parser 在 AG token 处设, st_field_sz_r 消费 (字段级对齐, 并抬升 struct 最大对齐) */
 static int st_add(const char *n) {
     if (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
@@ -1130,6 +1131,10 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
     else if (frow >= 8 || fsz >= 8) align = 8;
     else if (frow >= 4 || fsz >= 4) align = 4;
     else if (frow >= 2 || fsz >= 2) align = 2;
+    if (alignas_pending > 0) { /* fix 2026-08-25 step21: _Alignas(N) 显式对齐覆盖自然对齐 (只增不减); 消费后清零 — struct A1 {_Alignas(8) char} → sizeof 8, A4 {char,_Alignas(8) int} → i@8 sizeof 16 */
+        if (alignas_pending > align) align = alignas_pending;
+        alignas_pending = 0;
+    }
     if (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -2629,7 +2634,7 @@ static int lbl_reg(const char *n) {
     lbl_tbl[lbl_n].id = new_label();
     return lbl_tbl[lbl_n++].id;
 }
-enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
+enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68, AG=69 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); AG=_Alignas (fix step21: 携带对齐值, parser 消费); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 static int *tt, *tv; char (*tn)[64]; char (*nn)[64]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
@@ -3632,10 +3637,17 @@ static void lex(const char *s) {
                 continue; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
             }
             else if (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { continue; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
-            else if (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step7: C11 对齐声明 — lexer 吞掉 _Alignas(...) (同 __attribute__ 模式), 语法接受, 对齐语义未实现 (qcc 布局按既有规则; 记录为已知限制) */
+            else if (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step21: C11 对齐声明 — 吐 AG token 携带对齐值 (原吞掉无语义; 语义在 st_field_sz_r 消费: 字段/struct 级显式对齐) */
+                int av = 0;
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
-                if (s[aj] == '(') { i = aj; int ad = 0; while (s[i]) { if (s[i] == '(') ad++; else if (s[i] == ')') { ad--; if (ad <= 0) { i++; break; } } i++; } }
-                continue;
+                if (s[aj] == '(') {
+                    int al = aj + 1;
+                    while (s[al] == ' ' || s[al] == '\t' || s[al] == '\r' || s[al] == '\n') al++;
+                    while (s[al] >= '0' && s[al] <= '9') { av = av * 10 + (s[al] - '0'); al++; }
+                    int ad = 0;
+                    while (s[aj]) { if (s[aj] == '(') ad++; else if (s[aj] == ')') { ad--; if (ad <= 0) { aj++; break; } } aj++; }
+                }
+                tt[ti] = AG; tv[ti] = av; ti++; i = aj; continue;
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 8190) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
@@ -4768,7 +4780,8 @@ static int blk(void) {
     int b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     
     while (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
-        
+        alignas_pending = 0; /* fix 2026-08-25 step21: 每块语句清残留 — 变量前 _Alignas 不消费也不毒害后续声明 */
+        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 块级 _Alignas(N) — 局部 struct 定义前 gcc 忽略, 局部变量前不应用 (下一轮清理) */
         if (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[BLK] ref stmt: next_tt=%d next='%s' td_is=%d\n", tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-", td_is("ref"));
         if (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
                                (cg case 5 recurses into nested blocks). main()'s body
@@ -6061,6 +6074,8 @@ static int parse(const char *s) {
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
     
     while (tk < TS && tt[tk] != EK) {
+        alignas_pending = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct */
+        if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct tag 前无对象 gcc 忽略 (useless empty decl), 变量前不应用 (下一轮清理) */
         if (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "xstrfmt")) fprintf(stderr, "[TOK] xstrfmt at tk=%d tt_next=%d\n", tk, tt[tk+1]);
         if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 顶层内联汇编 (__attribute__ 误解析致函数体落到顶层): 跳过 */
             tk++;
@@ -6098,6 +6113,7 @@ static int parse(const char *s) {
                     int funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     int fsz = 4; int frow = 1; int fdbl = 0; int fll = 0; int ffnptr = 0; int fpel_persist = 4; int sty_persist = -1; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 的后续字段必须继承类型 (原每次迭代重置 fsz=4 → char 字段算成 int → vars 结构 136 算成 152 → 变量表步长错位 → Git 大文件崩); fpel_persist: 逗号继承的指针指向元素大小 (fix 2026-08-17); sty_persist: 逗号续行 struct 字段继承类型索引 (fix 2026-08-18: struct list_head *next, *prev — 续行 *prev 原缺 st_field_ty → st_field_ty_idx=-1 → mem_addr 链 head.prev->next 失败 → 存储丢弃+无配对 push → git init list_add_tail 崩) */
                     while (tk < TS && tt[tk] != UK) {
+                        if (tt[tk] == AG) { alignas_pending = tv[tk]; tk++; continue; } /* fix 2026-08-25 step21: 字段 _Alignas(N) → st_field_sz_r 消费 */
                         if (getenv("QCC_DBG_NS")) if (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS]  body-tok %d tt=%d '%s'\n", tk, tt[tk], tn[tk]);
                         int tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
                         int dims = 0; int first = 1; /* dims/first 数组维度每次迭代独立 */
@@ -6532,6 +6548,7 @@ static int parse(const char *s) {
                     int si = st_find(tag); if (si < 0) si = st_add(tag); e_stidx = si; /* fix 2026-08-18: 原无条件 st_add → extern struct X *p 每次新建空 struct 副本 → e_stidx 指空壳 → extern 指针变量 st_idx=空壳 → mem_addr 嵌套链 (the_repository->hash_algo->null_oid) st_off(空壳) 失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩; 已定义的类型必须 st_find 命中真实条目 */
                     if (tt[tk] == FK) { tk++; /* { */
                         while (tk < TS && tt[tk] != UK) {
+                            if (tt[tk] == AG) { alignas_pending = tv[tk]; tk++; continue; } /* fix 2026-08-25 step21: extern struct body 字段 _Alignas */
                             int tk0 = tk; int fsz = 4, frow = 1;
                             if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fsz = 1; else if (!strcmp(tn[tk], "double")) fsz = 8; tk++; }
                             while (tt[tk] == DK) { fsz = 8; tk++; }

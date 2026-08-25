@@ -1101,6 +1101,7 @@ __attribute__((unused))
 }
 静 空 st_pend_backfill(整 new_si); /* fwd: 前向声明 struct Tag *field 的类型回填 (fix 2026-08-18) */
 静 整 st_cur_struct_align = 1; /* fix 2026-08-19: struct 类型成员的对齐暂存 — 注册处设, st_field_sz_r 消费 (FILETIME=4 → WIN32_FIND_DATAW 布局对齐 Windows SDK) */
+静 整 alignas_pending = 0; /* fix 2026-08-25 step21: _Alignas(N) 显式对齐暂存 — parser 在 AG token 处设, st_field_sz_r 消费 (字段级对齐, 并抬升 struct 最大对齐) */
 静 整 st_add(常 字 *n) {
     若 (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
@@ -1130,6 +1131,10 @@ __attribute__((unused))
     否 若 (frow >= 8 || fsz >= 8) align = 8;
     否 若 (frow >= 4 || fsz >= 4) align = 4;
     否 若 (frow >= 2 || fsz >= 2) align = 2;
+    若 (alignas_pending > 0) { /* fix 2026-08-25 step21: _Alignas(N) 显式对齐覆盖自然对齐 (只增不减); 消费后清零 — struct A1 {_Alignas(8) char} → sizeof 8, A4 {char,_Alignas(8) int} → i@8 sizeof 16 */
+        若 (alignas_pending > align) align = alignas_pending;
+        alignas_pending = 0;
+    }
     若 (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -2629,7 +2634,7 @@ __attribute__((unused))
     lbl_tbl[lbl_n].id = new_label();
     返 lbl_tbl[lbl_n++].id;
 }
-枚 { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
+枚 { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68, AG=69 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); AG=_Alignas (fix step21: 携带对齐值, parser 消费); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 静 整 *tt, *tv; 字 (*tn)[64]; 字 (*nn)[64]; 整 ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
@@ -3632,10 +3637,17 @@ __attribute__((unused))
                 续; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
             }
             否 若 (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { 续; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
-            否 若 (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step7: C11 对齐声明 — lexer 吞掉 _Alignas(...) (同 __attribute__ 模式), 语法接受, 对齐语义未实现 (qcc 布局按既有规则; 记录为已知限制) */
+            否 若 (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step21: C11 对齐声明 — 吐 AG token 携带对齐值 (原吞掉无语义; 语义在 st_field_sz_r 消费: 字段/struct 级显式对齐) */
+                整 av = 0;
                 整 aj = i; 循环 (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
-                若 (s[aj] == '(') { i = aj; 整 ad = 0; 循环 (s[i]) { 若 (s[i] == '(') ad++; 否 若 (s[i] == ')') { ad--; 若 (ad <= 0) { i++; 断; } } i++; } }
-                续;
+                若 (s[aj] == '(') {
+                    整 al = aj + 1;
+                    循环 (s[al] == ' ' || s[al] == '\t' || s[al] == '\r' || s[al] == '\n') al++;
+                    循环 (s[al] >= '0' && s[al] <= '9') { av = av * 10 + (s[al] - '0'); al++; }
+                    整 ad = 0;
+                    循环 (s[aj]) { 若 (s[aj] == '(') ad++; 否 若 (s[aj] == ')') { ad--; 若 (ad <= 0) { aj++; 断; } } aj++; }
+                }
+                tt[ti] = AG; tv[ti] = av; ti++; i = aj; 续;
             }
             否 若 (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             整 k = kw(tn[ti]);            若 (k == NK) { 字 *sm = str_macro_find(tn[ti]); 若 (sm) { 若 (str_cnt >= 2048) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 整 k2 = 0; 循环 (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } 若 (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; 若 (ti > 0 && tt[ti - 1] == STR) { 整 pj = (整)strlen(str_tbl[tv[ti - 1]]); 若 (pj + k2 < 8190) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); 续; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } 整 found_num = 0, nvv = 0, found_mi = -1; 遍 (整 mi = 0; mi < macro_n; mi++) 若 (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; 断; } 若 (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; 续; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } 否 tt[ti] = k; ti++; 续; }
@@ -4768,7 +4780,8 @@ __attribute__((unused))
     整 b_cnt = 0;   /* children attached to current block (keep 256-slot headroom) */
     
     循环 (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
-        
+        alignas_pending = 0; /* fix 2026-08-25 step21: 每块语句清残留 — 变量前 _Alignas 不消费也不毒害后续声明 */
+        若 (tt[tk] == AG) { 整 agv = tv[tk]; tk++; 若 (tt[tk] == ST) { alignas_pending = 0; } 否 alignas_pending = agv; } /* fix 2026-08-25 step21: 块级 _Alignas(N) — 局部 struct 定义前 gcc 忽略, 局部变量前不应用 (下一轮清理) */
         若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[BLK] ref stmt: next_tt=%d next='%s' td_is=%d\n", tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-", td_is("ref"));
         若 (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
                                (cg case 5 recurses into nested blocks). main()'s body
@@ -6061,6 +6074,8 @@ __attribute__((unused))
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
     
     循环 (tk < TS && tt[tk] != EK) {
+        alignas_pending = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct */
+        若 (tt[tk] == AG) { 整 agv = tv[tk]; tk++; 若 (tt[tk] == ST) { alignas_pending = 0; } 否 alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct tag 前无对象 gcc 忽略 (useless empty decl), 变量前不应用 (下一轮清理) */
         若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "xstrfmt")) fprintf(stderr, "[TOK] xstrfmt at tk=%d tt_next=%d\n", tk, tt[tk+1]);
         若 (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 顶层内联汇编 (__attribute__ 误解析致函数体落到顶层): 跳过 */
             tk++;
@@ -6098,6 +6113,7 @@ __attribute__((unused))
                     整 funs = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                     整 fsz = 4; 整 frow = 1; 整 fdbl = 0; 整 fll = 0; 整 ffnptr = 0; 整 fpel_persist = 4; 整 sty_persist = -1; /* fix 2026-08-16 根因E: 字段类型状态提循环外 — 逗号声明 `char p_dbl, is_char, is_uns, is_ll;` 的后续字段必须继承类型 (原每次迭代重置 fsz=4 → char 字段算成 int → vars 结构 136 算成 152 → 变量表步长错位 → Git 大文件崩); fpel_persist: 逗号继承的指针指向元素大小 (fix 2026-08-17); sty_persist: 逗号续行 struct 字段继承类型索引 (fix 2026-08-18: struct list_head *next, *prev — 续行 *prev 原缺 st_field_ty → st_field_ty_idx=-1 → mem_addr 链 head.prev->next 失败 → 存储丢弃+无配对 push → git init list_add_tail 崩) */
                     循环 (tk < TS && tt[tk] != UK) {
+                        若 (tt[tk] == AG) { alignas_pending = tv[tk]; tk++; 续; } /* fix 2026-08-25 step21: 字段 _Alignas(N) → st_field_sz_r 消费 */
                         若 (getenv("QCC_DBG_NS")) 若 (stypes[si].name[0] == 0 || strstr(stypes[si].name, "ref_namespace")) fprintf(stderr, "[NS]  body-tok %d tt=%d '%s'\n", tk, tt[tk], tn[tk]);
                         整 tk0 = tk; /* 安全前进守卫: 未识别字段类型时强制 +1, 防死循环 (fix 2026-08-13) */
                         整 dims = 0; 整 first = 1; /* dims/first 数组维度每次迭代独立 */
@@ -6532,6 +6548,7 @@ __attribute__((unused))
                     整 si = st_find(tag); 若 (si < 0) si = st_add(tag); e_stidx = si; /* fix 2026-08-18: 原无条件 st_add → extern struct X *p 每次新建空 struct 副本 → e_stidx 指空壳 → extern 指针变量 st_idx=空壳 → mem_addr 嵌套链 (the_repository->hash_algo->null_oid) st_off(空壳) 失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩; 已定义的类型必须 st_find 命中真实条目 */
                     若 (tt[tk] == FK) { tk++; /* { */
                         循环 (tk < TS && tt[tk] != UK) {
+                            若 (tt[tk] == AG) { alignas_pending = tv[tk]; tk++; 续; } /* fix 2026-08-25 step21: extern struct body 字段 _Alignas */
                             整 tk0 = tk; 整 fsz = 4, frow = 1;
                             若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fsz = 1; 否 若 (!strcmp(tn[tk], "double")) fsz = 8; tk++; }
                             循环 (tt[tk] == DK) { fsz = 8; tk++; }
