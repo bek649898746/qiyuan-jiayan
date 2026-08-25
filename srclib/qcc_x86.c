@@ -5302,7 +5302,7 @@ static int blk(void) {
             else if (is_ptr) {
                 
                 if (is_double) { var_offset_ptr(vn, 8); vars[vcnt - 1].p_dbl = 1; vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = 8; } /* double*: 8-byte element + p_dbl (p_depth/p_inner fix 2026-08-18) */
-                else { var_offset_ptr(vn, is_char ? 1 : (is_short ? 2 : (is_void ? 1 : 4))); if (ptr_depth >= 2) vars[vcnt - 1].arr_esz = 8; vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = ltd_si >= 0 ? stypes[ltd_si].sz : (is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); } /* fix 2026-08-08: short* 2-byte element (step + named deref width); fix 2026-08-18: T** 及以上局部 元素=指针 8B — char **addr 原 p_esz=1 → *addr 字节加载/addr[i] 步长1 → 解引用垃圾地址崩 (同 fnptr 用 arr_esz 覆盖宽度); p_depth/p_inner 记录指针层级与基类型 (fix 2026-08-18); t35o: void* 元素=1 字节 */
+                else { var_offset_ptr(vn, is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); if (ptr_depth >= 2) vars[vcnt - 1].arr_esz = 8; vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = ltd_si >= 0 ? stypes[ltd_si].sz : (is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); } /* fix 2026-08-08: short* 2-byte element (step + named deref width); fix 2026-08-18: T** 及以上局部 元素=指针 8B — char **addr 原 p_esz=1 → *addr 字节加载/addr[i] 步长1 → 解引用垃圾地址崩 (同 fnptr 用 arr_esz 覆盖宽度); p_depth/p_inner 记录指针层级与基类型 (fix 2026-08-18); t35o: void* 元素=1 字节 */
                 if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; } /* typedef struct pointer (fix 2026-08-03) */
             else if (ltd_si >= 0) {  var_struct(vn, ltd_si); } /* typedef struct var (fix 2026-08-03: was var_offset → int, field offsets 0) */
             else if (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
@@ -9215,6 +9215,7 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_IMUL32_SCALE 74    /* a=pscale: mov r10d,eax; mov eax,imm; imul eax,r10 — 32位指针缩放 */
 #define I_ALU_RBX_RES 75     /* a=op, b=uns: g_uns设置; alu_rr(op,3,0); mov_rr(0,3) — 缩放/除/移位后 */
 #define I_PSUB_DIV 76        /* a=psub_div: mov ecx,imm; cdq; idiv ecx — 指针差除元素大小 */
+#define I_PSUB_DIV64 77      /* a=psub64: mov rcx,imm; cqo; idiv rcx — 64位指针差除元素大小 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9329,6 +9330,7 @@ static void ir_flush(void) {
                 alu_rr(ir_a[i], 3, 0); mov_rr(0, 3);
                 break;
             case I_PSUB_DIV: mov_r_imm(1, ir_a[i]); asm_emit("    除 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x99); b(0xF7); modrm(3, 7, 1); break;
+            case I_PSUB_DIV64: mov_r_imm(1, ir_a[i]); asm_emit("    除64 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x99); rex(1, 0, 0, 0); b(0xF7); modrm(3, 7, 1); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9467,7 +9469,9 @@ static void cg(int n) {
                 /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负) */
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { int pel64 = node_psz(n0[n]);
-                      if (pel64 <= 0 && (o == PK || o == MK || o == DK)) { /* Phase3-IR: LL 64位 PK/MK/DK 无指针缩放 */
+                      int psub64 = 0; /* fix 2026-08-25: (long)(p-q) cast 走 64 位路径但缺指针差除法 → p-a 返回字节差 */
+                      if (pel64 > 0 && o == T_MK) { int rpsz64 = node_psz(n1[n]); if (rpsz64 == pel64) { psub64 = pel64; pel64 = 0; } }
+                      if (pel64 <= 0 && psub64 <= 0 && (o == PK || o == MK || o == DK)) { /* Phase3-IR: LL 64位 PK/MK/DK 无指针缩放 */
                         cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
                         cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
                         ir_emit(I_ALU64_OP, o, 0, 0); ir_flush();
@@ -9476,6 +9480,7 @@ static void cg(int n) {
                         cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
                         if (pel64 > 0 && !nll[n0[n]] && (o == PK || o == MK)) { ir_emit(I_MOV_IMM, 1, pel64, 0); ir_emit(I_IMUL64_RBX_RCX, 0, 0, 0); ir_flush(); }
                         ir_emit(I_ALU64_FULL, o, (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) ? 1 : 0, 0); ir_flush();
+                        if (psub64 > 1) { ir_emit(I_PSUB_DIV64, psub64, 0, 0); ir_flush(); } /* 64位指针差除元素大小 */
                       }
                     }
                     nll[n] = 1;
