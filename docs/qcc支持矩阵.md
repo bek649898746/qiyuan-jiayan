@@ -23,6 +23,7 @@
 > v2.18（step18）：**变参 double（va_arg double）完整修复**（deref 解引用 double 标记，配合 expr_is_double + node_psz 三修复叠加；T\*\* 指针解引用精确区分）。
 > v2.19（step19）：**GNU 语句表达式 `({ ... })` 已支持**（复用 blk() 解析块 + 逗号节点降级：先执行块语句再求值最后表达式；与 gcc 逐行一致；`#define MAX(a,b) ({...})` 宏场景正常）。
 > v2.20（step20）：**`&arr[i]-&arr[j]` 指针差已支持**（node_psz 取址分支：仅当下标操作数时返回基数组元素大小；32/64 位指针差除法路径统一受益）；**`*(p+1)` 指针算术解引用宽度修复**（case 12 原无 binop 分支→字节加载，现按元素大小加载，double 指针算术解引用同步正确）；支持矩阵已知限制指针差一项清零。
+> v2.21（step21）：**`_Alignas` 对齐语义已实现**（字段级显式对齐：st_field_sz_r 单点 max(natural, N) 消费，自动抬升 struct 最大对齐；`{_Alignas(4) short}` sizeof 4、`{char,_Alignas(8) int}` i@8 sizeof 16 等与 gcc 一致；多 _Alignas/数组字段/嵌套全通；变量级存储对齐未实现，记录为限制）。
 
 ## 一、类型系统
 
@@ -46,7 +47,7 @@
 | `_Static_assert`/`static_assert` | ✅ | 编译期断言，表达式为假报错（含比较运算符求值）|
 | `_Alignof` | ✅ | C11 对齐查询（基本类型/指针=8/数组=元素对齐/struct=最大成员对齐 stypes.algn/typedef；常量求值可用，如 `_Static_assert(_Alignof(double)==8)`）|
 | `_Noreturn` | ✅ | C11 函数修饰符（前向声明/static/定义均可；函数定义 VK 循环自然跳过）|
-| `_Alignas` | ⚠️ | 语法接受（lexer 吞掉 `_Alignas(...)`）；对齐语义未实现（变量/字段按 qcc 既有布局；`struct{_Alignas(4) short}` qcc sizeof=2 vs gcc=4，待 2.0 类型系统）|
+| `_Alignas` | ✅ 字段级/struct 级对齐语义已实现（st_field_sz_r 单点 max(自然对齐, N) 消费并抬升 struct 最大对齐；`struct{_Alignas(4) short}` sizeof=4 与 gcc 一致；`_Alignas(N)` 在 struct tag 前无对象时按 gcc 忽略；变量级存储对齐未实现，记录为限制）|
 | `_Generic` | ✅ | C11 泛型选择（控制表达式类型判定：基本类型/指针/struct/call 返回；关联列表 + default；控制表达式不求值；与 gcc 逐行一致验证）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
 | GNU `case 1...5:` 范围 | ✅ | `case A ... B:` 生成 `sw_var >= A && sw_var <= B` 条件（负值范围支持）|
