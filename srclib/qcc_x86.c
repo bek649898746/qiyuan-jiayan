@@ -9211,6 +9211,10 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_ALU64_BIT 70       /* a=op(25/46=and,47=or,48=xor): pop r64; and/or/xor rax, rbx */
 #define I_IMUL64_RBX_RCX 71  /* imul rbx, rcx (rex1;0F AF;modrm(3,3,1)) — LL 指针缩放 */
 #define I_ALU64_FULL 72      /* a=op, b=uns: pop r64; add/sub/imul/div/mod rax, rbx (含除/取模) */
+#define I_POP_RBX 73         /* pop_r(3): rbx = [rsp] — 32位指针缩放路径 */
+#define I_IMUL32_SCALE 74    /* a=pscale: mov r10d,eax; mov eax,imm; imul eax,r10 — 32位指针缩放 */
+#define I_ALU_RBX_RES 75     /* a=op, b=uns: g_uns设置; alu_rr(op,3,0); mov_rr(0,3) — 缩放/除/移位后 */
+#define I_PSUB_DIV 76        /* a=psub_div: mov ecx,imm; cdq; idiv ecx — 指针差除元素大小 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9317,6 +9321,14 @@ static void ir_flush(void) {
                     else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); }
                 }
                 break;
+            case I_POP_RBX: pop_r(3); break;
+            case I_IMUL32_SCALE: mov_rr(10, 0); mov_r_imm(0, ir_a[i]); asm_emit("    乘 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); break;
+            case I_ALU_RBX_RES:
+                if (ir_a[i] == T_SR) g_uns_shift = ir_b[i];
+                else if (ir_a[i] == T_DV || ir_a[i] == T_MD) g_uns_div = ir_b[i];
+                alu_rr(ir_a[i], 3, 0); mov_rr(0, 3);
+                break;
+            case I_PSUB_DIV: mov_r_imm(1, ir_a[i]); asm_emit("    除 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x99); b(0xF7); modrm(3, 7, 1); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9545,9 +9557,7 @@ static void cg(int n) {
             alu_rr(o, 3, 0); mov_rr(0, 3);
             }
             if (psub_div > 1) { /* eax = (p - q) / 元素大小 (idiv: edx:eax / ecx) */
-                mov_r_imm(1, psub_div);
-                asm_emit("    除 r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
-                b(0x99); b(0xF7); modrm(3, 7, 1); /* cdq; idiv ecx */
+                ir_emit(I_PSUB_DIV, psub_div, 0, 0); ir_flush();
             }
         } break;
         case 3: for (int i = 0; i < 256; i++) { int c = child_i(n, i); if (c > 0) cg(c); } break;
