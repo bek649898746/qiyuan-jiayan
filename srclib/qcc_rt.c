@@ -451,5 +451,77 @@ double fdim(double a, double b) {
     if (a > b) return a - b;
     return 0.0;
 }
+
+/* C99 math 扩展二 (fix 2026-08-25 step24): erf/erfc/lgamma/tgamma — 传统 msvcrt 无导出 (在 UCRT/libmingwex),
+   由 qcc_rt 内置实现。erf/erfc: 级数 (|x|<=3, 递推项) + 连分式 (|x|>3, 交替 x/2x 分母), ~1e-12;
+   lgamma: Stirling 级数 (x>=7) + 反射公式 (x<=0); tgamma: 递推归位到 (1,2] + lgamma/exp + 反射。
+   log/fabs/exp/sin 走 msvcrt 导入 (fn_math_iat). 注意: 不用 return 三元 (pre-existing bug). */
+double erfc(double x) {
+    double ax = x;
+    double z, e;
+    if (ax < 0.0) ax = -ax;
+    e = exp(-(ax * ax));
+    if (ax <= 3.0) { /* 级数: erf(x) = 2/sqrt(pi) * sum (-1)^n x^(2n+1)/(n!(2n+1)), 递推项; erfc = 1 - erf */
+        double s = 0.0;
+        double term = ax;
+        double x2 = ax * ax;
+        int n = 0;
+        while (n < 80) {
+            s += term;
+            term = -term * x2 * (2.0 * n + 1.0) / ((n + 1.0) * (2.0 * n + 3.0));
+            n++;
+            if (term < 1e-18 && term > -1e-18) break;
+        }
+        z = 1.0 - 1.12837916709551257390 * s; /* erfc(ax) */
+    } else { /* 连分式: erfc(x) = exp(-x^2)/sqrt(pi) * 1/(x + 1/(2x + 2/(x + 3/(2x + ...)))) */
+        double C = 0.0;
+        int k;
+        for (k = 40; k >= 1; k--) {
+            double bk = (k % 2 == 1) ? ax : 2.0 * ax; /* 交替 x, 2x */
+            double ak = (k <= 2) ? 1.0 : (double)(k - 1); /* a: 1,1,2,3,4,... */
+            C = ak / (bk + C);
+        }
+        z = e / 1.77245385090551602730 * C; /* erfc(ax) = exp(-x^2)/sqrt(pi) * R(x) */
+    }
+    if (x < 0.0) return 2.0 - z; /* erfc(-a) = 2 - erfc(a) */
+    return z;
+}
+double erf(double x) {
+    if (x >= 0.0) return 1.0 - erfc(x);
+    return erfc(-x) - 1.0;
+}
+double lgamma(double x) {
+    if (x == 1.0 || x == 2.0) return 0.0; /* Γ(1)=Γ(2)=1, ln1=0 精确 (fix step24: 大数相消给 ~5e-15) */
+    if (x <= 0.0) {
+        double s = sin(3.14159265358979323846 * x);
+        if (s == 0.0) return 1.7976931348623157E308; /* 极点 (gcc: +inf) */
+        return 1.14472988584940017414 - log(fabs(s)) - lgamma(1.0 - x); /* ln(pi) (fix step24: 原误用 lgamma(0.5)=0.57236 → 负半整数全错) */
+    }
+    {
+        double r = 0.0;
+        double y = x;
+        while (y < 7.0) { r -= log(y); y += 1.0; }
+        {
+            double inv = 1.0 / y;
+            double inv2 = inv * inv;
+            double s = inv * (1.0/12.0 - inv2 * (1.0/360.0 - inv2 * (1.0/1260.0 - inv2 * (1.0/1680.0 - inv2 * (1.0/1188.0 - inv2 * (691.0/360360.0 - inv2 * (1.0/156.0))))))); /* B14 项: +1/(156 z^13) (fix step24: 原截断 ~6.6e-14 → lgamma(1/2)=-6e-14 非 0) */
+            return r + (y - 0.5) * log(y) - y + 0.91893853320467274178 + s;
+        }
+    }
+}
+double tgamma(double x) {
+    if (x > 0.0) {
+        double p = 1.0;
+        double y = x;
+        while (y > 2.0) { p *= (y - 1.0); y -= 1.0; }
+        while (y < 1.0) { p /= y; y += 1.0; }
+        return exp(lgamma(y)) * p;
+    }
+    {
+        double s = sin(3.14159265358979323846 * x);
+        if (s == 0.0) return 1.7976931348623157E308; /* 极点 */
+        return 3.14159265358979323846 / (s * tgamma(1.0 - x));
+    }
+}
 #endif
 
