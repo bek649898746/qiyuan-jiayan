@@ -7940,11 +7940,12 @@ static void emit_scanf(int nargs) {
       lea_r_mbrp(2, aoff); /* rdx = args 数组 */
     }
     mov_rr64(8, 12); /* r8 = buf */
-    if (ffi >= 0) { /* _scanf_rt(fmt=rcx, args=rdx, buf=r8, len=r9) */
-        sub_rsp_imm(32); /* shadow */
+    if (ffi >= 0) { /* _scanf_rt(fmt=rcx, args=rdx, buf=r8, len=r9, consumed=NULL) */
+        sub_rsp_imm(48); /* shadow 32 + 5th arg 8 + pad 8 */
+        mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = NULL (consumed 不需要 — scanf 无续读) */
         call_rel(0);
         patch_label(cp - 4, func_tbl[ffi].label, 0);
-        add_rsp_imm(32);
+        add_rsp_imm(48);
     }
     mov_rr64(4, 15); /* rsp = r15 (restore pre-alignment) */
 }
@@ -7978,19 +7979,21 @@ static void emit_sscanf(int nargs) {
       lea_r_mbrp(2, aoff); /* rdx = args */
     }
     asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
-    sub_rsp_imm(32);
+    sub_rsp_imm(48);
+    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = NULL (consumed — sscanf 无续读) */
     if (ffi >= 0) { call_rel(0); patch_label(cp - 4, func_tbl[ffi].label, 0); }
-    add_rsp_imm(32);
+    add_rsp_imm(48);
     mov_rr64(4, 15); /* rsp = r15 */
 }
 
 /* fscanf(fp, fmt, &a, ...): 从 FILE*(HANDLE) 读 4096 字节到 buf, 复用 _scanf_rt (fix 2026-08-25 step12)
-   限制: 无缓冲 — 每次 ReadFile 推进文件位置, 剩余未消费数据不保留 (多次 fscanf 同 FILE* 会丢) */
+   续读 (fix step23): _scanf_rt 报告 consumed, 未消费部分 SetFilePointer 回退 — 多次 fscanf 同 FILE* 连续解析 */
 static void emit_fscanf(int nargs) {
     int ffi = func_find("_scanf_rt");
     int abase = 8 * (nargs - 1); /* arg0 = fp, arg1 = fmt, arg2+k = args (rsp 相对) */
     mov_reg_mrsp64(0, abase); /* rax = arg0 (fp/handle) */
     mov_rr64(10, 0);          /* r10 = handle */
+    mov_mbrp_reg64(scratch_base + 260 - cur_frame_sz, 10); /* 保存 handle 到 scratch (8B, 独立槽 — 原 252 与 consumed@256 重叠高32位被污染) */
     lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf */
     lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz);   /* r9 = &read */
     mov_rr64(15, 4);
@@ -8003,6 +8006,7 @@ static void emit_fscanf(int nargs) {
     add_rsp_imm(48);
     mov_rr64(4, 15);
     mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes read */
+    asm_emit("    存32 [rbp%+d], eax\n", (char*)(long long)(scratch_base + 248 - cur_frame_sz), (char*)(long long)0, (char*)(long long)0); b(0x89); modrm(2, 0, 5); b4(scratch_base + 248 - cur_frame_sz); /* 存 bytes_read 供回退计算 (fix step23; modrm rm=5=rbp 非 rax) */
     mov_rr64(9, 0);  /* r9 = len */
     mov_rr64(8, 12); /* r8 = buf */
     mov_reg_mrsp64(1, abase - 8);  /* rcx = fmt (arg1) */
@@ -8014,9 +8018,31 @@ static void emit_fscanf(int nargs) {
       lea_r_mbrp(2, aoff); /* rdx = args */
     }
     asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
-    sub_rsp_imm(32);
+    sub_rsp_imm(48);
+    lea_r_mbrp(0, scratch_base + 256 - cur_frame_sz); mov_mrsp_reg64(32, 0); /* [rsp+32] = &consumed (5th arg, fix step23) */
     if (ffi >= 0) { call_rel(0); patch_label(cp - 4, func_tbl[ffi].label, 0); }
-    add_rsp_imm(32);
+    add_rsp_imm(48);
+    /* 保存 fscanf 返回值 (eax=argi) — 后续回退计算会破坏 eax (fix step23: 原 n=0 / SetFilePointer 返回值覆盖) */
+    asm_emit("    存32 [rbp%+d], eax\n", (char*)(long long)(scratch_base + 244 - cur_frame_sz), (char*)(long long)0, (char*)(long long)0); b(0x89); modrm(2, 0, 5); b4(scratch_base + 244 - cur_frame_sz);
+    /* 续读回退: leftover = bytes_read - consumed; leftover>0 时 SetFilePointer(handle, -leftover, NULL, FILE_CURRENT=1) — 未消费字节下次 fscanf 重新读到 (fix step23) */
+    mov_reg_mbrp64(0, scratch_base + 260 - cur_frame_sz); mov_rr64(10, 0); /* r10 = handle (从独立槽重载 — r10 易失且对齐后栈槽偏移) */
+    mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes_read */
+    mov_reg_mbrp(1, scratch_base + 256 - cur_frame_sz); /* ecx = consumed */
+    asm_emit("    减 r0, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x29); modrm(3, 1, 0); /* sub eax, ecx → leftover */
+    { int lskip = new_label();
+      test_rr(0, 0); jz_rel(-1); patch_label(cp - 4, lskip, 1); /* leftover==0 → 跳过回退 */
+      asm_emit("    取反 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF7); b(0xD8); /* neg eax → -leftover */
+      mov_rr64(1, 10);  /* rcx = handle */
+      mov_rr64(2, 0);   /* rdx = -leftover (回退距离) */
+      mov_ri_ext(8, 0); /* r8 = NULL (lpDistanceToMoveHigh) */
+      mov_ri_ext(9, 1); /* r9 = FILE_CURRENT */
+      asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+      sub_rsp_imm(32);
+      call_iat(5); /* SetFilePointer */
+      add_rsp_imm(32);
+      set_label(lskip);
+    }
+    mov_reg_mbrp(0, scratch_base + 244 - cur_frame_sz); /* eax = 恢复 fscanf 返回值 (fix step23) */
     mov_rr64(4, 15); /* rsp = r15 */
 }
 

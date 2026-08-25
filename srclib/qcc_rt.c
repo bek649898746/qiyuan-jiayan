@@ -377,37 +377,37 @@ void *bsearch(const void *key, const void *base, size_t n, size_t sz, int (*cmp)
 /* ---- scanf runtime (fix 2026-08-12): parse fmt, read from input buffer, write back to args[].
    args[i] are POINTERS to the target variables (&a, &b, ...). emit_scanf reads stdin
    into a buffer then calls this. Returns count of successfully converted items. ---- */
-int _scanf_rt(const char *fmt, char **args, const char *buf, int len) {
+int _scanf_rt(const char *fmt, char **args, const char *buf, int len, int *consumed) {
     int argi = 0; int i = 0; int j = 0;
     while (fmt[i] && j < len) {
         if (fmt[i] == '%') {
             i++;
             if (fmt[i] == 'd') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
-                int neg = 0; long long v = 0;
+                int neg = 0; long long v = 0; int got = 0;
                 if (j < len && (buf[j] == '-' || buf[j] == '+')) { if (buf[j] == '-') neg = 1; j++; }
-                while (j < len && buf[j] >= '0' && buf[j] <= '9') { v = v * 10 + (buf[j] - '0'); j++; }
-                if (neg) v = -v;
-                *((int*)(args[argi])) = (int)v; argi++;
+                while (j < len && buf[j] >= '0' && buf[j] <= '9') { v = v * 10 + (buf[j] - '0'); j++; got = 1; }
+                if (got) { if (neg) v = -v; *((int*)(args[argi])) = (int)v; argi++; } /* fix step23: 无数字不写参不计数 (匹配失败) */
             } else if (fmt[i] == 'x') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
-                long long v = 0;
+                long long v = 0; int got = 0;
                 while (j < len) {
                     char c = buf[j]; int d;
                     if (c >= '0' && c <= '9') d = c - '0';
                     else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
                     else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
                     else break;
-                    v = v * 16 + d; j++;
+                    v = v * 16 + d; j++; got = 1;
                 }
-                *((int*)(args[argi])) = (int)v; argi++;
+                if (got) { *((int*)(args[argi])) = (int)v; argi++; }
             } else if (fmt[i] == 'c') {
-                *((char*)(args[argi])) = buf[j]; j++; argi++;
+                if (j < len) { *((char*)(args[argi])) = buf[j]; j++; argi++; } /* fix step23: 越界不写 (匹配失败) */
             } else if (fmt[i] == 's') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
                 char *dst = (char*)(args[argi]);
-                while (j < len && buf[j] != ' ' && buf[j] != 9 && buf[j] != 10) { *dst = buf[j]; dst++; j++; }
-                *dst = 0; argi++;
+                int got = 0;
+                while (j < len && buf[j] != ' ' && buf[j] != 9 && buf[j] != 10) { *dst = buf[j]; dst++; j++; got = 1; }
+                if (got) { *dst = 0; argi++; } /* fix step23: 无字符不写 */
             } else if (fmt[i] == '%') {
             }
             i++;
@@ -416,7 +416,10 @@ int _scanf_rt(const char *fmt, char **args, const char *buf, int len) {
             i++;
         }
     }
-    return argi;
+    if (consumed) *consumed = j; /* fix 2026-08-25 step23: fscanf 续读 — 报告已消费字节数, emit_fscanf 据此 SetFilePointer 回退未消费部分 */
+    if (argi > 0) return argi; /* 正常: 转换数 */
+    if (j >= len) return -1; /* EOF/输入耗尽 — gcc 语义: sscanf("",%d)=-1, sscanf("  ",%d)=-1, fscanf@EOF=-1 (fix step23) */
+    return 0; /* 匹配失败但输入未耗尽: sscanf("abc",%d)=0 */
 }
 
 /* C99 math 内置 (fix 2026-08-25 step13): 传统 msvcrt.dll 无导出 (在 UCRT/libmingwex),
