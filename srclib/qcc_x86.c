@@ -11467,9 +11467,9 @@ else if (fsz == 2) { if (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RA
                     ir_flush(); /* Phase3-IR case15: big-param 地址 */
                     if (!cg_no_deref) {
                         int bsz = st_field_size(stypes[s].name, fn);
-                        if (bsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                        if (bsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param char */
 else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
-                        else if (bsz == 8) { mov_reg_mreg64(0, 0); }
+                        else if (bsz == 8) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param 64 */
                         else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* bit-field extract (fix 2026-08-05) */
                     }
                 } else {
