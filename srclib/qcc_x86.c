@@ -12,6 +12,10 @@
 /* PE 魔数（工程化：语义等价 #define，不动点 SHA 不变；fix 2026-08-05） */
 #define FILE_ALIGNMENT 0x200
 #define IMAGE_BASE 0x400000
+/* BSS 分离 (fix 2026-08-25): .data 文件只需写导入表+heap counter (~0x2B0), 
+   堆/栈/未初始化 statics 全由 loader 按 VirtualSize 清零 (BSS 语义) — exe 从 454MB→3.2MB.
+   SizeOfRawData 固定一页 (0x1000) 覆盖导入表; VirtualSize 不变 (兼容所有虚拟地址). */
+#define DATA_RAW_SZ 0x1000
 #define DATA_RVA_OFF 0x300 /* statics 起点后移：给扩展导入区（IAT 24+ILT 24+desc+names 至 0x2B0）让位（fix 2026-08-06 BUG-1） */
 #define STACK_PAD_SIZE 0x300000
 #define CODE_BUF_CAP 0x400000
@@ -11950,7 +11954,7 @@ static void write_pe(FILE *f, int entry_rva) {
     fwrite(".data", 1, 5, f); pad(f, 3); /* ".data\0\0\0" — split write (see .text note) */
     w4(f, data_vsize);  /* VirtualSize �?80MB: statics + bump heap */
     w4(f, data_rva);    /* VirtualAddress */
-    w4(f, data_extent() + 0x3000);  /* SizeOfRawData 覆盖自切栈顶 (fix 2026-08-12: data_extent = statics+堆+栈; 旧 cp*84 自举时 83.7MB < 88MB 堆终点 → 栈落进堆) */ /* fix 2026-08-08: Server 2025 按 SizeOfRawData 保留虚拟区 */
+    w4(f, DATA_RAW_SZ);  /* SizeOfRawData — BSS分离: 只写导入表+heap counter, 堆/栈由 loader 清零 (fix 2026-08-25) */
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
@@ -12021,7 +12025,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* pad .data to raw size */
     fseek(f, data_foff + DATA_RVA_OFF, SEEK_SET);
     pos = (int)ftell(f);
-    int data_end = data_foff + data_extent() + 0x3000; /* fix 2026-08-12: data_extent 覆盖 statics+堆+栈 (旧 cp*84 不够) */
+    int data_end = data_foff + DATA_RAW_SZ; /* BSS分离: 只写导入表+heap counter (fix 2026-08-25) */
     pad_zero(f, data_end - pos); /* fix 2026-08-12: 原逐字节 fputc, 自宿主 52MB 填充 85s → 分块 fwrite */
 }
 
@@ -12435,7 +12439,7 @@ void gen_code(void) {
     /* fix 2026-08-12 H2 对等: 告诉 asm_zh 直发的 .data 段尺寸 (data_extent 修复后 vsize/raw 是动态的,
        asm_zh 旧写死 0x5000000/0x4000 → H2 产物 .data 段 ≠ 直发 → H2 对等失败) */
     { int lvsize = (data_extent() + 0x100000 + 4095) & ~4095; if (lvsize < 0x6000000) lvsize = 0x6000000; /* 96MB 地板 (write_pe 同) */
-      asm_emit(".段 data_vsize=0x%X data_raw=0x%X\n", (char*)(long long)lvsize, (char*)(long long)(data_extent() + 0x3000), (char*)(long long)0); }
+      asm_emit(".段 data_vsize=0x%X data_raw=0x%X\n", (char*)(long long)lvsize, (char*)(long long)(DATA_RAW_SZ), (char*)(long long)0); }
 
     /* ??main ???????? �?mini-CRT stub is the real entry (it calls main) */
     int entry_rva = 0x1000 + crt_entry_off;
