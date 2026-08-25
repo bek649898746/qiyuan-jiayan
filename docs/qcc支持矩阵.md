@@ -14,6 +14,7 @@
 > v2.9（step9）：ctype 收尾 + labs + atof（ext_fn 21→29，atof 验证 double 返回路径；isblank 不在 msvcrt 导出故不加）；PE 布局再扩（IAT2 54 槽）。
 > v2.10（step10）：string 收尾（strcoll/strxfrm/strncat/strncpy/strtod）；ext_fn 29→34；PE 布局再扩（IAT2 59 槽）；msvcrt string 基本导入完。
 > v2.11（step11）：`sscanf` 已支持（复用 _scanf_rt，buf=arg0/fmt=arg1，%d/%x/%c/%s/%%）；fscanf 仍缺（需 fread 路径）。
+> v2.12（step12）：`fscanf` 已支持（FILE*→ReadFile 4096→_scanf_rt；无缓冲限制：多次 fscanf 同 FILE* 不续读）；**stdio 全系补齐**。
 
 ## 一、类型系统
 
@@ -87,8 +88,7 @@
 
 ## 五、库函数（builtin + msvcrt 导入）
 
-- **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr、scanf（stdin 变参输入）、sscanf（内存输入，%d/%x/%c/%s/%%）
-  - `fscanf` ❌（从 FILE* 读，需 fread 路径，待办）
+- **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr、scanf（stdin）、sscanf（内存）、fscanf（文件，无缓冲限制：多次调用同 FILE* 不续读，重开或一次读全）
   - `%e`/`%E`：科学计数法（1 位整数 + N 位小数 + e±XX，指数至少 2 位）
   - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
 - **time**（msvcrt 导入）：time/_time64、difftime（double 返回）、localtime/_localtime64、gmtime/_gmtime64、mktime/_mktime64、strftime、clock、asctime、ctime（struct tm 需自行定义，compat_prelude 未含）

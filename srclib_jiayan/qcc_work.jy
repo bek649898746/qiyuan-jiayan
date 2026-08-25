@@ -7924,6 +7924,42 @@ __attribute__((unused))
     mov_rr64(4, 15); /* rsp = r15 */
 }
 
+/* fscanf(fp, fmt, &a, ...): 从 FILE*(HANDLE) 读 4096 字节到 buf, 复用 _scanf_rt (fix 2026-08-25 step12)
+   限制: 无缓冲 — 每次 ReadFile 推进文件位置, 剩余未消费数据不保留 (多次 fscanf 同 FILE* 会丢) */
+静 空 emit_fscanf(整 nargs) {
+    整 ffi = func_find("_scanf_rt");
+    整 abase = 8 * (nargs - 1); /* arg0 = fp, arg1 = fmt, arg2+k = args (rsp 相对) */
+    mov_reg_mrsp64(0, abase); /* rax = arg0 (fp/handle) */
+    mov_rr64(10, 0);          /* r10 = handle */
+    lea_r_mbrp(12, scratch_base - cur_frame_sz - 4096); /* r12 = buf */
+    lea_r_mbrp(9, scratch_base + 240 - cur_frame_sz);   /* r9 = &read */
+    mov_rr64(15, 4);
+    asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+    sub_rsp_imm(48); /* shadow 32 + 1 stack arg 8 + pad 8 */
+    mov_rr64(1, 10); mov_rr64(2, 12);
+    mov_ri_ext(8, 4096);
+    mov_r_imm(0, 0); mov_mrsp_reg64(32, 0); /* [rsp+32] = NULL (overlapped) */
+    call_iat(3); /* ReadFile */
+    add_rsp_imm(48);
+    mov_rr64(4, 15);
+    mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes read */
+    mov_rr64(9, 0);  /* r9 = len */
+    mov_rr64(8, 12); /* r8 = buf */
+    mov_reg_mrsp64(1, abase - 8);  /* rcx = fmt (arg1) */
+    { 整 aoff = -(272 + 8 * (nargs - 2));
+      遍 (整 k = 0; k < nargs - 2; k++) {
+          mov_reg_mrsp64(0, abase - 16 - 8 * k); /* rax = arg2+k */
+          asm_emit("    存64 [rbp%+d], r0\n", (字*)(长 长)(aoff + 8 * k), (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x89); modrm(2, 0, 5); b4(aoff + 8 * k); /* mov [rbp+aoff+8k], rax */
+      }
+      lea_r_mbrp(2, aoff); /* rdx = args */
+    }
+    asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+    sub_rsp_imm(32);
+    若 (ffi >= 0) { call_rel(0); patch_label(cp - 4, func_tbl[ffi].label, 0); }
+    add_rsp_imm(32);
+    mov_rr64(4, 15); /* rsp = r15 */
+}
+
 /* shared %d/%s/%c/%% format loop: r11=fmt r12=out(advancing) r13=next-arg ptr.
    Returns the ldone label the caller must set_label() after the loop. */
 /* shared decimal-digit emitter: prints |ebx| (with '-' sign) into the r12 buffer,
@@ -10873,6 +10909,8 @@ __attribute__((unused))
                 emit_scanf(nargs);
             } 否 若 (!strcmp(fname, "sscanf")) { /* fix 2026-08-25 step11: 内存输入变体 — buf=arg0, fmt=arg1, 复用 _scanf_rt */
                 emit_sscanf(nargs);
+            } 否 若 (!strcmp(fname, "fscanf")) { /* fix 2026-08-25 step12: 文件输入变体 — fp=arg0, fmt=arg1, 读 4096 到 buf 再解析 */
+                emit_fscanf(nargs);
             } 否 若 (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc") || !strcmp(fname, "fseek") || !strcmp(fname, "ftell") || !strcmp(fname, "feof") || !strcmp(fname, "fflush") || !strcmp(fname, "fclose") || !strcmp(fname, "ferror") || !strcmp(fname, "rewind") || !strcmp(fname, "fgets")) {
                 emit_fileio(fname);
             } 否 若 (!strcmp(fname, "sprintf")) {
