@@ -151,7 +151,7 @@ static void macro_add_full(const char *n, int v, int uns, int ll, int ll_hi) { i
 static void macro_add(const char *n, int v) { macro_add_full(n, v, 0, 0, 0); }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
-static struct { char name[64]; char val[4096]; } obj_macros[2048]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
+static struct { char name[64]; char val[4096]; } obj_macros[8192]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
 static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 2048) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } }
 static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
 static void obj_del(const char *n) { /* fix 2026-08-21: #undef 删除对象宏 — git-compat-util.h `#define rmdir lstat_cache_aware_rmdir` + symlinks.c `#undef rmdir` 失效 → lstat_cache_aware_rmdir 内 rmdir() 展开成自身 → call 自身无限递归 (commit 栈溢出) */
@@ -865,7 +865,7 @@ static char *pp_read_file(const char *path) {
     if (!f) return 0;
     fseek(f, 0, 2); long sz = ftell(f); fseek(f, 0, 0); /* SEEK 宏定义在本函数之后，自宿主不处理真实 <stdio.h>；用字面量 0/1/2 避开先使用后定义 (fix 2026-08-16 自举回归) */
     if (sz < 0) { fclose(f); return 0; }
-    if (sz > 4 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 4MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
+    if (sz > 16 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 4MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
     char *buf = malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return 0; }
     size_t rd = fread(buf, 1, (size_t)sz, f);
@@ -2606,7 +2606,7 @@ static int lbl_reg(const char *n) {
 }
 enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66 }; /* MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
 
-#define TS 524288 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
+#define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 static int *tt, *tv; char (*tn)[64]; char (*nn)[64]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
 static int *tuns; /* per-token unsigned-suffix flag (0xFFFFFFFFu) — fix 2026-08-05 */
 static int *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-08-05 */
@@ -12483,7 +12483,7 @@ static char *read_file(const char *path) {
         sz = ftell(f);
         rewind(f);
         if (sz < 0) { fclose(f); return NULL; } /* fix 2026-08-09 BUG-12: ftell 失败(-1L 非 seekable)显式检查 */
-        if (sz > 0 && sz <= 2097152) { /* fix 2026-08-24 t35u: 1048576→2097152 — qcc_x86.c 自身 t35u 后 1.05MB 超 1MB 上限 → H1 链自举编译自身 "cannot open" */
+        if (sz > 0 && sz <= 16777216) { /* fix 2026-08-24 t35u: 1048576→2097152 — qcc_x86.c 自身 t35u 后 1.05MB 超 1MB 上限 → H1 链自举编译自身 "cannot open" */
             b = malloc((sz + 4) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — unaligned bump sizes misalign tt..tll -> tll[tk] garbage -> spurious nll=1 -> 2-cycle */
             fread(b, 1, sz, f);
             b[sz] = 0;
