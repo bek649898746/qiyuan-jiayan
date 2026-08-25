@@ -9206,6 +9206,11 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_CMP_SETCC32 65     /* pop rbx; cmp ebx,eax; setcc/setcc_u; movzx eax,al — 32位比较 */
 #define I_CMP64_SETCC 66     /* pop r64; cmp rax,rbx; setcc/setcc_u; movzx eax,al — 64位比较 */
 #define I_DBL_CMP_SETCC 67   /* movsd xmm1,xmm0; pop xmm0; comisd; setcc(浮点cc); movzx — double 比较 */
+#define I_MOV_ECX_EAX 68     /* mov_rr(1, 0): ecx = eax — 移位计数 */
+#define I_SHIFT64 69         /* a=kind(0=shl,1=sar,2=shr): pop r64; shl/sar/shr rax, cl */
+#define I_ALU64_BIT 70       /* a=op(25/46=and,47=or,48=xor): pop r64; and/or/xor rax, rbx */
+#define I_IMUL64_RBX_RCX 71  /* imul rbx, rcx (rex1;0F AF;modrm(3,3,1)) — LL 指针缩放 */
+#define I_ALU64_FULL 72      /* a=op, b=uns: pop r64; add/sub/imul/div/mod rax, rbx (含除/取模) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9286,6 +9291,31 @@ static void ir_flush(void) {
                 else if (ir_a[i] == T_XK) { asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x95); modrm(3, 0, 0); movzx_eax_al(); } /* setne */
                 else if (ir_a[i] == T_HK) { asm_emit("    置低等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x96); modrm(3, 0, 0); movzx_eax_al(); } /* setbe */
                 else { asm_emit("    置高等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x93); modrm(3, 0, 0); movzx_eax_al(); }                /* setae: >= */
+                break;
+            case I_MOV_ECX_EAX: mov_rr(1, 0); break;
+            case I_SHIFT64: pop_r64(0);
+                if (ir_a[i] == 2) { asm_emit("    逻辑右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 5, 0); }
+                else if (ir_a[i] == 1) { asm_emit("    算术右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 7, 0); }
+                else { asm_emit("    左移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 4, 0); }
+                break;
+            case I_ALU64_BIT: pop_r64(0);
+                if (ir_a[i] == 25 || ir_a[i] == 46) { asm_emit("    与64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x21); modrm(3, 3, 0); }
+                else if (ir_a[i] == 47) { asm_emit("    或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 3, 0); }
+                else { asm_emit("    异或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x31); modrm(3, 3, 0); }
+                break;
+            case I_IMUL64_RBX_RCX: rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 3, 1); break;
+            case I_ALU64_FULL: pop_r64(0);
+                if (ir_a[i] == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); }
+                else if (ir_a[i] == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); }
+                else if (ir_a[i] == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); }
+                else if (ir_a[i] == DV) {
+                    if (ir_b[i]) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); }
+                    else { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); }
+                }
+                else { /* MD */
+                    if (ir_b[i]) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); }
+                    else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); }
+                }
                 break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
@@ -9430,36 +9460,28 @@ static void cg(int n) {
                         cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
                         ir_emit(I_ALU64_OP, o, 0, 0); ir_flush();
                       } else {
-                        cg(n0[n]); ll_ext32(n0[n]); push_r64(0);
-                        cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0);
-                        if (pel64 > 0 && !nll[n0[n]] && (o == PK || o == MK)) { mov_r_imm(1, pel64); asm_emit("    \xe4\xb9\x98 64 r3, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 3, 1); }
-                        pop_r64(0);
-                        if (o == PK) { asm_emit("    加64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x01); modrm(3, 3, 0); }
-                        else if (o == MK) { asm_emit("    减64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x29); modrm(3, 3, 0); }
-                        else if (o == DK) { asm_emit("    乘64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x0F); b(0xAF); modrm(3, 0, 3); }
-                        else if (o == DV) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); } else { asm_emit("    除64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); } }
-                        else if (o == MD) { if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) { asm_emit("    清零 r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x31); b(0xD2); asm_emit("    无符号除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xF7); modrm(3, 6, 3); mov_rr64(0, 2); } else { asm_emit("    除余64 r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x99); b(0x48); b(0xF7); modrm(3, 7, 3); mov_rr64(0, 2); } }
+                        cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
+                        cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
+                        if (pel64 > 0 && !nll[n0[n]] && (o == PK || o == MK)) { ir_emit(I_MOV_IMM, 1, pel64, 0); ir_emit(I_IMUL64_RBX_RCX, 0, 0, 0); ir_flush(); }
+                        ir_emit(I_ALU64_FULL, o, (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) ? 1 : 0, 0); ir_flush();
                       }
                     }
                     nll[n] = 1;
                     break;
                 }
                 if (o == T_SH || o == T_SR) { /* 64-bit shift: shl/sar/shr r64, cl (fix 2026-08-05) */
-                    cg(n0[n]); ll_ext32(n0[n]); push_r64(0); /* save lhs; 移位只扩 LHS (fix 2026-08-06) */
-                    cg(n1[n]); mov_rr(1, 0); /* ecx = shift count (cl = low 8) */
-                    pop_r64(0); /* rax = lhs */
-                    if (o == T_SR) { int use_shr = expr_is_unsigned(n0[n]); if (use_shr) { asm_emit("    逻辑右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 5, 0); } else { asm_emit("    算术右移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 7, 0); } }
-                    else { asm_emit("    左移64 r0, cl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xD3); modrm(3, 4, 0); }
+                    int sh_kind = 0;
+                    cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
+                    cg(n1[n]); ir_emit(I_MOV_ECX_EAX, 0, 0, 0); ir_flush();
+                    if (o == T_SR) sh_kind = expr_is_unsigned(n0[n]) ? 2 : 1; /* 逻辑右移 / 算术右移 */
+                    ir_emit(I_SHIFT64, sh_kind, 0, 0); ir_flush();
                     nll[n] = 1;
                     break;
                 }
                 if (o == 25 || o == 46 || o == 47 || o == 48) { /* 64-bit bitwise & | ^ (fix 2026-08-05) */
-                    cg(n0[n]); ll_ext32(n0[n]); push_r64(0);
-                    cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0); /* rbx = rhs */
-                    pop_r64(0); /* rax = lhs */
-                    if (o == 25 || o == 46) { asm_emit("    与64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x21); modrm(3, 3, 0); } /* and rax, rbx */
-                    else if (o == 47) { asm_emit("    或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 3, 0); } /* or rax, rbx */
-                    else { asm_emit("    异或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x31); modrm(3, 3, 0); } /* xor rax, rbx */
+                    cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
+                    cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
+                    ir_emit(I_ALU64_BIT, o, 0, 0); ir_flush();
                     nll[n] = 1;
                     break;
                 }
