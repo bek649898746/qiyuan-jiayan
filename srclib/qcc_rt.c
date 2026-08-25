@@ -6,7 +6,9 @@
    memcpy()/memset()/strcmp()/strlen()/sprintf() inline builtins.
    The heap is the .data bump allocator (counter at .data+0, bumped after the
    statics) — 80MB virtual, plenty for the compiler's AST arrays. */
-#ifdef __GNUC__
+/* 修复 2026-08-25: 预置 rt 时即便 __GNUC__ 已定义 (diff_gate -D __GNUC__=5) 也要走自宿主实现。
+   原 #ifdef __GNUC__ 把全部实现剃光 → strchr/strstr/strncmp/strcspn/strspn/strdup 全变未定义恒返 0。 */
+#if defined(__GNUC__) && !defined(QCC_RT_PREPENDED)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +25,9 @@ typedef unsigned long long size_t;
 #endif
 
 
-#ifndef __GNUC__ /* gcc: 用 libc 版本；qcc 自宿主: 自定义实现 */
+/* gcc: 用 libc 版本；qcc 自宿主 (含 diff_gate -D __GNUC__ 场景): 自定义实现。
+   注意: 正判定 defined() 放前面 — qcc pp_eval 的 ! 会把 `!A || B` 误算成 !(A||B), 前置短路避开。 */
+#if defined(QCC_RT_PREPENDED) || !defined(__GNUC__)
 
 /* ---- heap: realloc 原地扩展 (p == 堆顶) / fresh malloc+copy (非堆顶);
        free 堆顶回退 (fix 2026-08-13 Phase3 根治 bump 泄漏, 替代 256MB 堆预算治标) ---- */
