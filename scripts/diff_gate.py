@@ -31,7 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---------------- 生成器 (按 bug 族分层) ----------------
 
-FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr']
+FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas']
 
 # 非零分母保护: 除法/取模右操作数用 "lit" (安全字面量) 或 "(x)+lit"
 SAFE_INT = [1, 2, 3, 5, 7, 11, 100]
@@ -431,6 +431,99 @@ class Gen:
         lines.append('}')
         return '\n'.join(lines)
 
+    # ---- alignas 族: step14-21 新特性普检 ----
+    # _Alignas 对齐语义 (step21) / &arr[i]-&arr[j] 指针差 + *(p+1) 解引用宽度 (step20)
+    # 语句表达式 (step19) / GNU case 范围 (step15) / return 三元 double (step14)
+    def gen_alignas(self):
+        r = self.r
+        lines = ['#include <stdio.h>', '#include <stddef.h>']
+        m = []
+        # ---- _Alignas 字段对齐 (step21): N 只增不减, 避免 gcc "cannot reduce" 约束违规 ----
+        a1 = r.choice([4, 8, 16])
+        lines.append('struct AG1 { _Alignas(%d) char c; int i; };' % a1)
+        m.append(('    printf("%d\\n", (int)sizeof(struct AG1));', 'int'))
+        m.append(('    printf("%d\\n", (int)((char*)&((struct AG1*)0)->i - (char*)0));', 'int'))
+        a2 = r.choice([4, 8])
+        lines.append('struct AG2 { char c; _Alignas(%d) short s; };' % a2)
+        m.append(('    printf("%d\\n", (int)sizeof(struct AG2));', 'int'))
+        m.append(('    printf("%d\\n", (int)((char*)&((struct AG2*)0)->s - (char*)0));', 'int'))
+        lines.append('struct AG3 { _Alignas(8) char a; _Alignas(4) short b; char c; };')
+        m.append(('    printf("%d\\n", (int)sizeof(struct AG3));', 'int'))
+        m.append(('    printf("%d\\n", (int)((char*)&((struct AG3*)0)->b - (char*)0));', 'int'))
+        # 对齐 struct 实例读写 (验证字段偏移正确不崩)
+        g1 = self.v()
+        pre_defs = []  # 函数定义收集 — 必须在 main 之前 (fix 2026-08-25: 原 rtdbl append 进 main 体内 → C 无嵌套函数 → qcc 空输出)
+        lines.append('int main(void) {')
+        lines.append('    struct AG1 %s;' % g1)
+        lines.append('    %s.c = 5; %s.i = %d;' % (g1, g1, r.choice(SAFE_VAL)))
+        m.append(('    printf("%%d\\n", %s.c + %s.i);' % (g1, g1), 'int'))
+        # 多 _Alignas struct 数组步长 (sizeof round-up 一致性)
+        aga = self.v()
+        lines.append('    struct AG2 %s[3];' % aga)
+        lines.append('    %s[0].s = 7; %s[2].s = 9;' % (aga, aga))
+        m.append(('    printf("%%d\\n", %s[0].s + %s[2].s);' % (aga, aga), 'int'))
+        # ---- &arr[i]-&arr[j] 指针差 (step20): int/double/struct 元素 ----
+        ia = self.v(); da = self.v()
+        lines.append('    int %s[8];' % ia)
+        lines.append('    double %s[6];' % da)
+        for k in range(4):
+            lines.append('    %s[%d] = %d;' % (ia, k, r.choice(SAFE_VAL)))
+            lines.append('    %s[%d] = %d.5;' % (da, k, r.choice(SAFE_VAL)))
+        m.append(('    printf("%%d\\n", (int)(&%s[5] - &%s[2]));' % (ia, ia), 'int'))
+        m.append(('    printf("%%d\\n", (int)(&%s[5] - &%s[0]));' % (ia, ia), 'int'))
+        m.append(('    printf("%%d\\n", (int)(&%s[2] - &%s[5]));' % (ia, ia), 'int'))
+        m.append(('    printf("%%d\\n", (int)(&%s[5] - &%s[2]));' % (da, da), 'int'))
+        m.append(('    printf("%%d\\n", (int)(&%s[5] - &%s[4]));' % (da, da), 'int'))
+        # 变量索引 + 混合变量指针差
+        ip = self.v()
+        lines.append('    int *%s = &%s[2];' % (ip, ia))
+        m.append(('    printf("%%d\\n", (int)(%s - &%s[0]));' % (ip, ia), 'int'))
+        m.append(('    printf("%%d\\n", (int)(&%s[5] - %s));' % (ia, ip), 'int'))
+        # ---- *(p+1) 指针算术解引用宽度 (step20) ----
+        lines.append('    %s[3] = 123;' % ia)
+        lines.append('    %s[4] = 456;' % da)
+        m.append(('    printf("%%d\\n", *(%s + 1));' % ip, 'int'))
+        m.append(('    printf("%%d\\n", *(&%s[2] + 1));' % ia, 'int'))
+        m.append(('    printf("%%d\\n", *(int*)((char*)&%s[2] + 4));' % ia, 'int'))
+        # 64 位指针差路径
+        m.append(('    printf("%%lld\\n", (long long)(&%s[5] - &%s[2]));' % (ia, ia), 'll'))
+        m.append(('    printf("%%lld\\n", (long long)(&%s[5] - &%s[1]));' % (da, da), 'll'))
+        # ---- 语句表达式 (step19) ----
+        if r.random() < 0.8:
+            sx = self.v()
+            lines.append('    int %s = 3;' % sx)
+            m.append(('    printf("%%d\\n", ({ int t = %s * 2; t + 1; }));' % sx, 'int'))
+            m.append(('    printf("%d\\n", ({ int u = 7; int v = 9; u > v ? u : v; }));', 'int'))
+            m.append(('    printf("%%d\\n", ({ int t = %s; t; }) * 3);' % sx, 'int'))
+        # ---- GNU case 范围 (step15) ----
+        if r.random() < 0.7:
+            cv = self.v()
+            lines.append('    int %s = %d;' % (cv, r.choice([1, 3, 5, 9])))
+            lines.append('    int %s_r = 0;' % cv)
+            lines.append('    switch (%s) {' % cv)
+            lines.append('    case 1 ... 3: %s_r = 10; break;' % cv)
+            lines.append('    case 5 ... 8: %s_r = 20; break;' % cv)
+            lines.append('    default: %s_r = 30; break;' % cv)
+            lines.append('    }')
+            m.append(('    printf("%%d\\n", %s_r);' % cv, 'int'))
+        # ---- return 三元 double (step14) ----
+        if r.random() < 0.8:
+            pre_defs.append('double rtdbl(int x) { return x > 0 ? 1.5 : -1.5; }')
+            rv = self.v()
+            lines.append('    int %s = %d;' % (rv, r.choice([-1, 2, 0])))
+            m.append(('    printf("%%.1f\\n", rtdbl(%s));' % rv, 'dbl'))
+        m.append(('    return 0;', None))
+        for text, _ in m:
+            lines.append(text)
+        lines.append('}')
+        # pre_defs 插到 main 之前 (rtdbl 等辅助函数定义)
+        out = []
+        for ln in lines:
+            if ln == 'int main(void) {':
+                out.extend(pre_defs)
+            out.append(ln)
+        return '\n'.join(out)
+
     def gen_program(self, family):
         if family == 'types':
             return self.gen_types()
@@ -442,6 +535,8 @@ class Gen:
             return self.gen_ctrl()
         if family == 'expr':
             return self.gen_expr()
+        if family == 'alignas':
+            return self.gen_alignas()
         raise ValueError('unknown family: %s' % family)
 
 
@@ -535,7 +630,7 @@ def main():
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
-    families = ['types', 'vararg', 'layout', 'ctrl', 'expr']
+    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas']
     qcc = DEFAULT_QCC
     do_minimize = False
     i = 3

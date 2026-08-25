@@ -5897,11 +5897,11 @@ static int stmt(void) {
                 if(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链 — `case OPEN: case CLOSED: break;` 中 case 1 的 break 应让 case 0 也 break, 不得共享后续 case 的 body (git refs.c ref_transaction_free: state==0/1 命中 case PREPARED 的 BUG → 'free called on a prepared reference transaction') */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
                 int ifn;
-                if (is_range) { /* 范围 case: if (sw_var >= cv && sw_var <= cv2) body (fix 2026-08-25 step15) */
+                if (is_range) { /* 范围 case: if (sw_var >= cv && sw_var <= cv2) body (fix 2026-08-25 step15; fix step22: 原用 T_GK/T_LK 严格比较 → 边界值 case 1...3 对 1/3 不匹配 → 全落 default — 应为 T_YK(>=)/T_HK(<=)) */
                     int cvn=Nd(0);nv[cvn]=cv;
-                    int ge=Nd(2);nv[ge]=T_GK;Nc(ge,sw_var);Nc(ge,cvn);
+                    int ge=Nd(2);nv[ge]=T_YK;Nc(ge,sw_var);Nc(ge,cvn);
                     int cvn2=Nd(0);nv[cvn2]=cv2;
-                    int le=Nd(2);nv[le]=T_LK;Nc(le,sw_var);Nc(le,cvn2);
+                    int le=Nd(2);nv[le]=T_HK;Nc(le,sw_var);Nc(le,cvn2);
                     int andn=Nd(2);nv[andn]=LA;Nc(andn,ge);Nc(andn,le);
                     ifn=Nd(8);Nc(ifn,andn);Nc(ifn,body);
                 } else {
