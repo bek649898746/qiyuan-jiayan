@@ -11310,22 +11310,22 @@ else if (var_is_short(vname)) mov_word_mbrp_ax(off - cur_frame_sz); /* fix 2026-
                     cg(n0[n]); /* rax = &arr[i] (case 14 struct array → address) */
                     cg_no_deref = 0;
                     if (is_arrow) { /* arr[i]->field: 元素是指针 (struct T *arr[]), 先解引用取指针值 (fix 2026-08-17: 原按结构体元素取址 → arr[0]->x 打印地址) */
-                        mov_reg_mreg64(0, 0); /* t35o 2026-08-24: arr[i]->field 的 arr[i] 必是指针元素 8 字节 — 原 pel2=var_esz(字段名)=4 → 4 字节读高 32 位清零 → &cache[pos]->oid 地址错 → status SEGV */
+                        ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* Phase3-IR case15: arr[i]->field 取指针值 (t35o: 指针元素 8 字节) */
                     }
-                    if (fo != 0) add_rax_imm8(fo);
+                    if (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field 偏移 */
                     int fsz = st_field_size(stypes[s2].name, fn);
                     st_field_2d_setup(s2, fn); /* fix 2026-08-07 */
                     if (st_field_is_ptr(s2, fn)) { int _pel_mb = st_field_pel(s2, fn); cg_mem_frow = _pel_mb; cg_frows[0] = _pel_mb; cg_frows[1] = st_field_ffin(s2, fn); } /* fix 2026-08-22 t44: arr[i].ptrfield[j] — 指针字段作数组基 (mb[i].ptr[k]) st_field_2d_setup 用 fels(字段自身 8) 非 pel(指向元素 char=1) → 按 8 缩放 → xdiff_outf mb[i].ptr[size-1] SEGV; 镜像嵌套链分支 (10216 cg_mem_chain_si) 的 pel 修正 */
                     if (fsz > 4 || fsz == 0) { /* fsz==0: flex/空数组字段 char name[0] → 取地址 (fix 2026-08-20) */
                         int fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { mov_reg_mreg64(0, 0); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
+                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field 64 */ /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
                                  fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
                         /* else: struct/array field -> address (no deref) */
                     } else if (!cg_no_deref && !cg_addr_of) { /* t35o 2026-08-24: 取地址链末字段保留地址 — &arr[i].field 在 cg_addr_of 下读到字段值 (status SEGV 链之一) */
-                        if (st_field_bitw(stypes[s2].name, fn) > 0) { mov_reg_mreg(0, 0); bf_extract(stypes[s2].name, fn); } /* bit-field: dword slot + extract (fix 2026-08-05) */
-                        else if (fsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                        if (st_field_bitw(stypes[s2].name, fn) > 0) { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); bf_extract(stypes[s2].name, fn); } /* Phase3-IR case15: arr[i].field bit-field (deref 先回放再 extract) */
+                        else if (fsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field char */
 else if (fsz == 2) { if (st_field_is_uns(stypes[s2].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); else ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* fix 2026-08-25 bug#33: arr[i].field short */
-                        else { mov_reg_mreg(0, 0); }
+                        else { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field dword */
                     }
                 }
             } else if (nt[n0[n]] == 12 || nt[n0[n]] == 13 || nt[n0[n]] == 15) {
