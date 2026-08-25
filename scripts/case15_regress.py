@@ -26,6 +26,8 @@ tests = {
     'arr_assign_big.c': '#include <stdio.h>\nstruct Inner { int x[4]; };\nstruct Outer { struct Inner in; int tag; };\nint main(void) { struct Outer a[2]; struct Inner s; s.x[0] = 1; s.x[1] = 2; s.x[2] = 3; s.x[3] = 4; a[0].in = s; a[1].in.x[2] = 9; printf("%d %d %d %d | %d\\n", a[0].in.x[0], a[0].in.x[1], a[0].in.x[2], a[0].in.x[3], a[1].in.x[2]); return 0; }\n',
     'nested_assign.c': '#include <stdio.h>\nstruct A { int x; char c; };\nstruct B { struct A in; long long ll; };\nint main(void) { struct B b; b.in.x = 1; b.in.c = 65; b.ll = 100; b.in.x = 9; printf("%d %d %lld\\n", b.in.x, b.in.c, b.ll); return 0; }\n',
     'ptr_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid f(struct S *p) { p->a = 5; p->b = 66; p->c = 777; }\nint main(void) { struct S s; f(&s); printf("%d %d %lld\\n", s.a, s.b, s.c); return 0; }\n',
+    'static_assign.c': '#include <stdio.h>\nstruct G { int a; char b; long long c; };\nstatic struct G g;\nint main(void) { g.a = 5; g.b = 66; g.c = 999; printf("%d %d %lld\\n", g.a, g.b, g.c); return 0; }\n',
+    'bigparam_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid set(struct S s) { s.a = 1; s.b = 2; s.c = 3; printf("%d %d %lld\\n", s.a, s.b, s.c); }\nint main(void) { struct S v; v.a = 9; v.b = 9; v.c = 9; set(v); return 0; }\n',
 }
 fails = 0
 for name, prog in tests.items():
