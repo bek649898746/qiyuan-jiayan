@@ -53,12 +53,13 @@ Write-Host "  v5: $h5"
 #            Ë«Ö¸ï¿½ï¿½ï¿½Ö¶Î»ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ frow/mem_addr deref fsz/static struct ï¿½Ö¶Î¸ï¿½Öµ/ï¿½ï¿½ï¿½ï¿½ struct typedef ï¿½Ö¶ï¿½;
 #            ï¿½ï¿½ï¿½ï¿½ QCC_DBG_VA varargs ï¿½ï¿½ï¿½Ô²ï¿½×® ï¿½ï¿½ -Wall -Werror ï¿½ã¾¯ï¿½ï¿½):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
-$expected = '66176a78'
+$expected = '115e15d5'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ï¿½Ö¿ï¿½ï¿½Â¼ï¿½ï¿½Í¬ï¿½ï¿½odd=$h1 even=$h2" -ForegroundColor Yellow
-    Write-Host "       ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ÐºÏ·ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Îªï¿½ÂµÄ²ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½ï¿½ï¿? README ï¿½ï¿½Â¼ï¿½ï¿½"
+    Write-Host "[FAIL] ¹þÏ£¶ÔÕËÊ§°Ü: expected=$expected Êµ¼ÊSHA256=$($h1.Substring(0,8)) (²»¶¯µã/expectedÒ»ÂÉSHA256, ¼û_BOOT.md L74)" -ForegroundColor Red
+    Write-Host "       ¶Ô²»ÉÏ=²»ÐíÍ¨¹ý! ÅÜÍêÕûÁ´ÖØÐÂ¶ÔÕË»òÐÞÕýexpected" -ForegroundColor Red
+    exit 1
 }
 
 # 4. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ @EXPECTED compile_fail ï¿½ï¿½ ï¿½Þ¸ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü²ï¿½ï¿½Ô´ï¿½ï¿½ï¿? NativeCommandErrorï¿½ï¿½
