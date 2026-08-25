@@ -11416,7 +11416,7 @@ else if (fsz == 2) { if (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD
                     if (cg_no_deref || st_field_is_array_idx(s, fn)) {
                         st_field_2d_setup(s, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16) */
                         if (!st_field_is_array_idx(s, fn) && !cg_incdec_target && !cg_addr_of && afsz == 8 && st_field_is_ptr(s, fn)) { /* 指针字段作数组基 p->buf[i]: 解引用取指针值 + 按指向元素缩放; ++/目标 (sb->len++) 保留地址 (fix 2026-08-18): 原保留字段地址+字段大小(8)缩放 → ((char**)p)[i] → 越界读崩, git setup.c dir->buf[offset]; 标量指针 (char星号, fty==-1) 用 el==8, struct 指针字段 (struct X 星号, fty>=0) 用 fptrs 标记 — struct hashmap_entry 星号星号 table 原漏判 → table[i] 返回字段地址 → hashmap_iter_next 崩; &p->i 保持取址); fix 2026-08-19: 条件统一 st_field_is_ptr — 原 el==8 对 char* (fels=1) 恒假 → s->next_out[i] 不解引用+按 frow(8) 缩放 → qcc_deflate_emit 写坏 z_stream */
-                            mov_reg_mreg64(0, 0); /* rax = [rax] = 指针值 */
+                            ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* Phase3-IR case15: ptr->field 指针字段作数组基 — rax = [rax] = 指针值 */
                             int pel = st_field_pel(s, fn);
                             cg_mem_frow = pel;
                             cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
@@ -11426,10 +11426,10 @@ else if (fsz == 2) { if (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD
                             if (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; /* 仅双指针字段 (fix 2026-08-22 t41b) */
                         }
                     }
-                    else if (afsz > 4) { int afy = st_field_ty_idx(stypes[s].name, fn); if (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { mov_reg_mreg64(0, 0); if (st_field_is_ptr(s, fn)) { int pel = st_field_pel(s, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; } } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址; fix 2026-08-19: 指针字段解引用后设 cg_mem_frow=pel — is_array_idx 排除指针字段后值读取路径需给 case-14 提供元素大小 → s->next_out[i] 按 1 缩放 (原残留 frow=8 → 8 字节步长写坏结构体) */ }
-                    else if (afsz == 1) { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
-else if (afsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
-                    else { mov_reg_mreg(0,0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* eax = [rax]; bit-field extract (fix 2026-08-05) */
+                    else if (afsz > 4) { int afy = st_field_ty_idx(stypes[s].name, fn); if (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); if (st_field_is_ptr(s, fn)) { int pel = st_field_pel(s, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; } } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址; fix 2026-08-19: 指针字段解引用后设 cg_mem_frow=pel — is_array_idx 排除指针字段后值读取路径需给 case-14 提供元素大小 → s->next_out[i] 按 1 缩放 (原残留 frow=8 → 8 字节步长写坏结构体) */ }
+                    else if (afsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field char */
+else if (afsz == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field short */
+                    else { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: ptr->field dword + bit-field */
                 } else if (var_isstatic(vn)) {
                     /* static struct member read */
                     int fsz = st_field_size(stypes[s].name, fn);
