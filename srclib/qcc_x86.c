@@ -3211,6 +3211,8 @@ static int kw(const char *s) {
     if (!strcmp(s, "static")) return VK; /* treat as type modifier */
     if (!strcmp(s, "const")) return VK;
     if (!strcmp(s, "volatile")) return VK; /* 类型修饰符（fix 2026-08-06: 内核 MMIO 需要; 当普通 VK 跳过, 语义同 int） */
+    if (!strcmp(s, "restrict")) return VK; /* C99 类型修饰符 (优化提示; qcc 无优化器, 忽略语义正确 — fix 2026-08-25 支持矩阵补全) */
+    if (!strcmp(s, "_Atomic")) return VK; /* C11 类型修饰符 (单线程下当普通类型, 无原子语义 — fix 2026-08-25 支持矩阵补全) */
     if (!strcmp(s, "void")) return VK;
     if (!strcmp(s, "FILE") || !strcmp(s, "long")) return VK; /* builtin types used by self-host */
     if (!strcmp(s, "enum")) return EN;
@@ -5771,11 +5773,13 @@ static int const_expr_eval(int *val) {
     if (!const_expr_prim(val)) return 0;
     for (;;) {
         int op = tt[tk];
-        if (op == PK || op == MK || op == DK || op == DV || op == MD || op == SH || op == SR || op == PT || op == OR || op == XR) {
+        if (op == PK || op == MK || op == DK || op == DV || op == MD || op == SH || op == SR || op == PT || op == OR || op == XR || op == QK || op == XK || op == LK || op == GK || op == HK || op == YK) {
             tk++; int r; if (!const_expr_prim(&r)) return 0;
             switch (op) { case PK: *val += r; break; case MK: *val -= r; break; case DK: *val *= r; break;
                 case DV: if (r) *val /= r; break; case MD: if (r) *val %= r; break; case SH: *val <<= r; break;
-                case SR: *val >>= r; break; case PT: *val &= r; break; case OR: *val |= r; break; case XR: *val ^= r; break; }
+                case SR: *val >>= r; break; case PT: *val &= r; break; case OR: *val |= r; break; case XR: *val ^= r; break;
+                case QK: *val = (*val == r); break; case XK: *val = (*val != r); break; case LK: *val = (*val < r); break;
+                case GK: *val = (*val > r); break; case HK: *val = (*val <= r); break; case YK: *val = (*val >= r); break; /* fix 2026-08-25: _Static_assert 比较运算符 */ }
         } else break;
     }
     return 1;
@@ -5838,6 +5842,17 @@ static int parse(const char *s) {
             if (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++;
             if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } }
             if (tt[tk] == SK) tk++;
+            continue;
+        }
+        /* _Static_assert(expr, "msg"); — C11 编译期断言 (fix 2026-08-25 支持矩阵补全) */
+        if (tt[tk] == VR && (!strcmp(tn[tk], "_Static_assert") || !strcmp(tn[tk], "static_assert"))) {
+            tk++; /* skip name */
+            if (tt[tk] == OK) tk++; /* ( */
+            int sval = 0;
+            const_expr_eval(&sval);
+            while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++; /* 跳到分号 (跳过 , "msg" ) ) */
+            if (tt[tk] == SK) tk++;
+            if (!sval) { fprintf(stderr, "[ERR] _Static_assert 失败\n"); return -1; }
             continue;
         }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
