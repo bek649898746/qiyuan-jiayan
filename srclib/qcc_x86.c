@@ -5847,6 +5847,13 @@ static int stmt(void) {
                 else if(tt[tk]==MK){ tk++; if (tt[tk]==NK) { cv = -tv[tk]; tk++; } } /* fix 2026-08-20: 负值 case 字面量: case -5: — 原负号 MK 未处理 → cv=0 且 `-5` 被当 body 语句解析 → 负值 case 全错 (zerr_to_string case Z_MEM_ERROR(-4) 比较 0 → status=0 返回 "out of memory"; git_deflate case Z_BUF_ERROR(-5) 变 0 → deflate Z_BUF_ERROR 走 error) */
                 else if(tt[tk]==VR){ int evc = e_lookup(tn[tk]); if (evc != 0x80000000) { cv = evc; tk++; } } /* enum constant label: case STR: (fix 2026-08-09: != 哨兵, 支持负值 case) */
                 if(tt[tk]==KK)tk++; /* 右括号 (fix 2026-08-20) */
+                int is_range = 0; int cv2 = 0; /* GNU case 范围: case 1 ... 5: (fix 2026-08-25 step15) */
+                if(tt[tk]==DT && tt[tk+1]==DT && tt[tk+2]==DT) { /* `...` = 三个点 token */
+                    tk += 3;
+                    if(tt[tk]==NK){cv2=tv[tk];tk++;}
+                    else if(tt[tk]==MK){ tk++; if (tt[tk]==NK) { cv2 = -tv[tk]; tk++; } }
+                    is_range = 1;
+                }
                 if(tt[tk]==CL)tk++; /* : */
                 int body=Nd(5); /* case body */
                 int had_br=0; /* fix 2026-08-18: case 内 break 已消费 → 不是 fall-through */
@@ -5859,9 +5866,19 @@ static int stmt(void) {
                 if(ft_n>0 && n0[body]>=0){ for(int fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 继续等下一个非空 case) */
                 if(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链 — `case OPEN: case CLOSED: break;` 中 case 1 的 break 应让 case 0 也 break, 不得共享后续 case 的 body (git refs.c ref_transaction_free: state==0/1 命中 case PREPARED 的 BUG → 'free called on a prepared reference transaction') */
                 if(ft2_n>0){ for(int fi=0;fi<ft2_n;fi++){ int b2=n1[ft2_ifn[fi]]; if(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
-                int cvn=Nd(0);nv[cvn]=cv;
-                int eq=Nd(2);nv[eq]=T_QK;Nc(eq,sw_var);Nc(eq,cvn);
-                int ifn=Nd(8);Nc(ifn,eq);Nc(ifn,body);
+                int ifn;
+                if (is_range) { /* 范围 case: if (sw_var >= cv && sw_var <= cv2) body (fix 2026-08-25 step15) */
+                    int cvn=Nd(0);nv[cvn]=cv;
+                    int ge=Nd(2);nv[ge]=T_GK;Nc(ge,sw_var);Nc(ge,cvn);
+                    int cvn2=Nd(0);nv[cvn2]=cv2;
+                    int le=Nd(2);nv[le]=T_LK;Nc(le,sw_var);Nc(le,cvn2);
+                    int andn=Nd(2);nv[andn]=LA;Nc(andn,ge);Nc(andn,le);
+                    ifn=Nd(8);Nc(ifn,andn);Nc(ifn,body);
+                } else {
+                    int cvn=Nd(0);nv[cvn]=cv;
+                    int eq=Nd(2);nv[eq]=T_QK;Nc(eq,sw_var);Nc(eq,cvn);
+                    ifn=Nd(8);Nc(ifn,eq);Nc(ifn,body);
+                }
                 if(!had_br){ if(n0[body]<0){ if(ft_n<256) ft_ifn[ft_n++]=ifn; } else if(ft2_n<256) ft2_ifn[ft2_n++]=ifn; } /* 空 body 未 break → 共享下一 case body; 带 body 未 break → 追加下一 case 语句 (fix 2026-08-18: 原只登记空 body — case '\\' 带 body 落 default 丢失) */
                 if(prev>=0){n2[prev]=ifn;prev=ifn;}else{chain=ifn;prev=ifn;}
             }else if(tt[tk]==DF){ /* default: */
