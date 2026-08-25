@@ -20,6 +20,7 @@
 > v2.15（step15）：GNU `case 1...5:` 范围支持（生成 >= && <= 条件）；变参 double 已最小化定位（double 元素赋值×指针差交互，待专门攻坚）。
 > v2.16（step16）：**expr_is_double 数组名误判修复**（double 数组名衰减为地址非 double 值 → `(char*)arr+n` 基址不再丢失）；变参 double 进一步定位（va_start ap 槽存储缺失）。
 > v2.17（step17）：**node_psz 复合赋值分支**（`((p+=8)-8)` 指针差缩放修复——int*/double* 指针差错位）；调用图谱压测方法论。
+> v2.18（step18）：**变参 double（va_arg double）完整修复**（deref 解引用 double 标记，配合 expr_is_double + node_psz 三修复叠加；T\*\* 指针解引用精确区分）。
 
 ## 一、类型系统
 
@@ -111,7 +112,7 @@
 | char 符号性 | qcc 无符号 vs gcc 有符号（C 标准实现定义差异，diff_gate 生成器已按 qcc 约定 0..127）|
 | `volatile`/`_Atomic` | 语法接受，按普通类型处理（无内存屏障/无原子语义；单线程下行为正确）|
 | `&arr[i] - &arr[j]` 指针差 | node_psz(取址) 不识别 → 返回字节差（尝试修复破坏自举，已实证后放弃；变量指针差 `p-q` 已修，`&arr[i]` 差值为已知缺口）|
-| 变参 `va_list` | 支持（va_start/va_arg/va_end）；**int/指针等 8 字节内类型正常，double 变参取值错误**（XMM 区路径缺陷，va_test 实证 qcc 3.00 vs gcc 2.33，记录待攻）|
+| 变参 `va_list` | ✅ | 支持（va_start/va_arg/va_end）；int/指针/double 全通（2026-08-25 step18 修复 double 取值：expr_is_double 数组名 + node_psz 复合赋值 + deref 解引用 double 标记 三修复）|
 | C99 math 扩展（`log2/round/trunc/erf/lgamma` 等）| ❌ 传统 msvcrt.dll 无导出（在 UCRT/libmingwex），需 qcc 内置实现（待办）|
 | 系统头文件 | `<stdarg.h>` 等部分 stub 化（compat_prelude.h 补齐）|
 | 多线程/同步 | 无（volatile 无语义，无锁）|
