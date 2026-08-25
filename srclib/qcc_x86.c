@@ -3927,6 +3927,7 @@ static void Nc(int p, int c) { if (c < 0) return;
 static int cl_blk = -1; /* 当前 blk() 块 (compound literal 初始化挂这里, fix 2026-08-11) */
 static int compound_literal(int is_struct, int si, int is_array, int arr_n, int arr_esz);
 static int prim(void);
+static int blk(void); /* 语句表达式 ({ ... }) 复用块解析 (fix 2026-08-25 step19) */
 static int stmt(void);
 static int expr(void);
 
@@ -4364,6 +4365,18 @@ static int prim(void) {
         return prim(); /* 解析被转换的表达式 */
     }
     if (tt[tk] == OK) {
+        /* 语句表达式 ({ ... }) — GNU 扩展, 降级为逗号(块, 最后表达式): cg 先执行块语句再求值最后表达式 (fix 2026-08-25 step19) */
+        if (tk + 1 < TS && tt[tk + 1] == FK) {
+            tk++; /* ( */
+            int b = blk(); /* 解析 { ... } 语句序列, 消费 } */
+            if (tt[tk] == KK) tk++; /* ) */
+            int last = -1;
+            for (int i = 255; i >= 0; i--) { int c = child_i(b, i); if (c > 0) { last = c; break; } }
+            if (last > 0 && nt[last] != 5 && nt[last] != 7 && nt[last] != 8 && nt[last] != 9 && nt[last] != 16 && nt[last] != 17 && nt[last] != 18 && nt[last] != 20 && nt[last] != 21 && nt[last] != 25 && nt[last] != 26 && nt[last] != 14 && nt[last] != 15) {
+                int cm = Nd(2); nv[cm] = CK; Nc(cm, b); Nc(cm, last); return cm; /* 逗号: 执行块 + 返回最后表达式 */
+            }
+            return b; /* 最后非表达式: 只执行 */
+        }
         /* type cast: (type)expr — type keywords/struct/typedef then ). fix 2026-08-13 Phase3: unknown typedef (uint32_t 来自跳过 <stdint.h>) 也当 cast 类型 — var_lookup==-1 排除变量 (a) */
             if (tt[tk + 1] == VK || tt[tk + 1] == ST || (tt[tk + 1] == VR && td_is(tn[tk + 1]))) {
             char *cast_ty = 0; char *cast_ty2 = 0; char *cast_td = 0;
