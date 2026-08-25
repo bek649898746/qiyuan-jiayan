@@ -24,12 +24,15 @@ objs = sorted(f for f in os.listdir(objdir)
               and not f.startswith('_')  # 测试残留 (_a7.c/_repro_*.c 等, 有独立 main, fix 2026-08-20)
               and not f.endswith(PLATFORM_SUFFIXES)
               and not f.startswith('compat_linux_')
+and not f.startswith('contrib_')  # contrib 独立工具 (credential helpers 等, 有 main, fix 2026-08-25)
+and not f.startswith('t_')  # t/ 目录测试工具 (test-*.c 有独立 main, fix 2026-08-25)
+and not f.startswith('oss-fuzz_')  # oss-fuzz fuzz 工具, fix 2026-08-25
               and f != 'compat_mingw.o'  # mingw.c 被 msvc.c include, 重复符号 (fix 2026-08-17)
               and f != 'compat_simple-ipc_ipc-unix-socket.o')  # 平台变体: win32 优先 (fix 2026-08-17)
 print(f'链接 {len(objs)} 个 .o (排除 {sorted(EXCLUDE)})')
 
-cmd = [JYLD, '-o', os.path.join(GIT, 'git_jiayan_v1.exe')] + [os.path.join(objdir, f) for f in objs]
-r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
+cmd = [JYLD, '-o', os.path.join(GIT, 'git_jiayan_v1.exe')] + objs  # 相对文件名 + cwd=objdir (fix 2026-08-25: 556 .o 绝对路径超 Win 32767 命令行限制)
+r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600, cwd=objdir)
 print('stdout:', r.stdout.strip()[-2000:])
 print('stderr:', r.stderr.strip()[-4000:])
 print('rc =', r.returncode)
