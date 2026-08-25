@@ -26,6 +26,7 @@
 > v2.21（step21）：**`_Alignas` 对齐语义已实现**（字段级显式对齐：st_field_sz_r 单点 max(natural, N) 消费，自动抬升 struct 最大对齐；`{_Alignas(4) short}` sizeof 4、`{char,_Alignas(8) int}` i@8 sizeof 16 等与 gcc 一致；多 _Alignas/数组字段/嵌套全通；变量级存储对齐未实现，记录为限制）。
 > v2.22（step22）：**GNU case 范围边界 bug 修复**（switch 降级原用严格比较 T_GK/T_LK → `case 1...3` 对边界值 1/3 不匹配全落 default；改用 T_YK(>=)/T_HK(<=)，负值范围与 gcc 逐行一致）；**diff_gate 差异测试台扩展 alignas 族**（覆盖 step14-21 新特性，300 轮 0 差异）。
 > v2.23（step23）：**fscanf 无缓冲续读修复**（`_scanf_rt` 新增 consumed 报告 + emit_fscanf SetFilePointer 回退未消费部分——多次 fscanf 同 FILE* 连续解析，跨行/EOF 与 gcc 一致）；**`_scanf_rt` 返回值语义对齐 gcc**（转换失败不写参不计数 `sscanf("abc","%d")`=0；输入耗尽返回 -1 `fscanf@EOF`；stdio 全系闭环）。
+> v2.24（step24）：**C99 math 扩展二：erf/erfc/lgamma/tgamma 已支持**（qcc_rt 内置——erf/erfc 级数+连分式 ~1e-12，lgamma Stirling+反射，tgamma 递推+反射；41 项全区间扫描与 gcc %.9g 逐行一致；C99 math 待办清零）。
 
 ## 一、类型系统
 
@@ -108,7 +109,7 @@
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn + strtok/strrchr/strnlen/strpbrk/memcmp + strcoll/strxfrm/strncat/strncpy（builtin + ext_fn；`strcasecmp/strrev/strtoll` 等传统 msvcrt 无导出，未支持）
 - **ctype**：isdigit/isalpha/tolower + isalnum/isxdigit/isspace + islower/isupper/iscntrl/isgraph/isprint/ispunct（`isblank` 不在传统 msvcrt.dll 导出，未支持）
 - **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64、qsort/bsearch、rand/srand/abs/labs、atof（double 返回）
-- **math**（msvcrt 导入 + qcc_rt 内置）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个 msvcrt；copysign/hypot 映射 `_copysign/_hypot`；frexp/ldexp/modf 混合 ABI）+ C99 内置 10 个（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim，qcc_rt 内实现，调 msvcrt log/pow/floor/ceil）
+- **math**（msvcrt 导入 + qcc_rt 内置）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs + cosh/sinh/tanh/copysign/hypot + frexp/ldexp/modf（24 个 msvcrt；copysign/hypot 映射 `_copysign/_hypot`；frexp/ldexp/modf 混合 ABI）+ C99 内置 14 个（log2/round/trunc/fmax/fmin/exp2/log1p/expm1/cbrt/fdim + erf/erfc/lgamma/tgamma，qcc_rt 内实现：erf/erfc 级数+连分式 ~1e-12、lgamma Stirling+反射、tgamma 递推+反射；调 msvcrt log/pow/floor/ceil/exp/sin/fabs）
 - **其他**：isdigit/isalpha 等字符分类、GetStdHandle/WriteFile（Windows 内核）
 
 ## 六、已知限制（记录在案，勿当 bug 报）
@@ -120,7 +121,7 @@
 | `&arr[i] - &arr[j]` 指针差 | ✅ 已支持（node_psz 取址分支：&下标返回基数组元素大小；32/64 位指针差除法均正确；`(char*)` cast 显式元素大小优先于结构推断）|
 | `*(p+1)` 指针算术解引用 | ✅ 已支持（case 12 el 宽度取 node_psz(binop)；double/int/struct 元素宽度正确加载）|
 | 变参 `va_list` | ✅ | 支持（va_start/va_arg/va_end）；int/指针/double 全通（2026-08-25 step18 修复 double 取值：expr_is_double 数组名 + node_psz 复合赋值 + deref 解引用 double 标记 三修复）|
-| C99 math 扩展（`log2/round/trunc/erf/lgamma` 等）| ❌ 传统 msvcrt.dll 无导出（在 UCRT/libmingwex），需 qcc 内置实现（待办）|
+| C99 math 扩展（`log2/round/trunc/erf/lgamma/tgamma` 等）| ✅ 14 个 qcc_rt 内置实现（传统 msvcrt 无导出，erf/lgamma 等 2026-08-25 step24 补齐；与 gcc %.9g 逐行一致）|
 | 系统头文件 | `<stdarg.h>` 等部分 stub 化（compat_prelude.h 补齐）|
 | 多线程/同步 | 无（volatile 无语义，无锁）|
 
