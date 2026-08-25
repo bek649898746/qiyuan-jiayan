@@ -3211,6 +3211,8 @@ __attribute__((unused))
     若 (!strcmp(s, "static")) 返 VK; /* treat as type modifier */
     若 (!strcmp(s, "const")) 返 VK;
     若 (!strcmp(s, "volatile")) 返 VK; /* 类型修饰符（fix 2026-08-06: 内核 MMIO 需要; 当普通 VK 跳过, 语义同 int） */
+    若 (!strcmp(s, "restrict")) 返 VK; /* C99 类型修饰符 (优化提示; qcc 无优化器, 忽略语义正确 — fix 2026-08-25 支持矩阵补全) */
+    若 (!strcmp(s, "_Atomic")) 返 VK; /* C11 类型修饰符 (单线程下当普通类型, 无原子语义 — fix 2026-08-25 支持矩阵补全) */
     若 (!strcmp(s, "void")) 返 VK;
     若 (!strcmp(s, "FILE") || !strcmp(s, "long")) 返 VK; /* builtin types used by self-host */
     若 (!strcmp(s, "enum")) 返 EN;
@@ -5771,11 +5773,13 @@ __attribute__((unused))
     若 (!const_expr_prim(val)) 返 0;
     遍 (;;) {
         整 op = tt[tk];
-        若 (op == PK || op == MK || op == DK || op == DV || op == MD || op == SH || op == SR || op == PT || op == OR || op == XR) {
+        若 (op == PK || op == MK || op == DK || op == DV || op == MD || op == SH || op == SR || op == PT || op == OR || op == XR || op == QK || op == XK || op == LK || op == GK || op == HK || op == YK) {
             tk++; 整 r; 若 (!const_expr_prim(&r)) 返 0;
             择 (op) { 例 PK: *val += r; 断; 例 MK: *val -= r; 断; 例 DK: *val *= r; 断;
                 例 DV: 若 (r) *val /= r; 断; 例 MD: 若 (r) *val %= r; 断; 例 SH: *val <<= r; 断;
-                例 SR: *val >>= r; 断; 例 PT: *val &= r; 断; 例 OR: *val |= r; 断; 例 XR: *val ^= r; 断; }
+                例 SR: *val >>= r; 断; 例 PT: *val &= r; 断; 例 OR: *val |= r; 断; 例 XR: *val ^= r; 断;
+                例 QK: *val = (*val == r); 断; 例 XK: *val = (*val != r); 断; 例 LK: *val = (*val < r); 断;
+                例 GK: *val = (*val > r); 断; 例 HK: *val = (*val <= r); 断; 例 YK: *val = (*val >= r); 断; /* fix 2026-08-25: _Static_assert 比较运算符 */ }
         } 否 断;
     }
     返 1;
@@ -5838,6 +5842,17 @@ __attribute__((unused))
             若 (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++;
             若 (tt[tk] == OK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == OK) d++; 否 若 (tt[tk] == KK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } }
             若 (tt[tk] == SK) tk++;
+            续;
+        }
+        /* _Static_assert(expr, "msg"); — C11 编译期断言 (fix 2026-08-25 支持矩阵补全) */
+        若 (tt[tk] == VR && (!strcmp(tn[tk], "_Static_assert") || !strcmp(tn[tk], "static_assert"))) {
+            tk++; /* skip name */
+            若 (tt[tk] == OK) tk++; /* ( */
+            整 sval = 0;
+            const_expr_eval(&sval);
+            循环 (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++; /* 跳到分号 (跳过 , "msg" ) ) */
+            若 (tt[tk] == SK) tk++;
+            若 (!sval) { fprintf(stderr, "[ERR] _Static_assert 失败\n"); 返 -1; }
             续;
         }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
