@@ -1,7 +1,8 @@
-# qcc 支持矩阵（C 子集 + 已知限制）
+# qcc 支持矩阵 v2（C 子集 + 已知限制）
 
-> 2026-08-25 整理（2.0 候选文档零矛盾）。qcc = 启元自举 C 编译器（srclib/qcc_x86.c + 甲言镜像 qcc_work.jy）。
-> 验证基准：diff_gate 400 轮 DIFF=0 + git 2.45.2 实景 612/612 编译 + 455 .o 链接 + 实景运行正确。
+> 2026-08-25 v2 更新（2.0 候选文档零矛盾）。qcc = 启元自举 C 编译器（srclib/qcc_x86.c + 甲言镜像 qcc_work.jy）。
+> 验证基准：diff_gate 400 轮 DIFF=0 + git 2.45.2 实景 612/612 编译 + 455 .o 链接 + 实景运行正确 + 不动点 6846e6b4（H1==H2, 325/325 + 行为 20/20）。
+> v2 变更：`%e/%E/%g/%G` 已实现（与 gcc 输出逐行一致验证）；`restrict/_Atomic/static_assert` 已支持；变参 double 限制如实记录。
 
 ## 一、类型系统
 
@@ -19,8 +20,10 @@
 | `enum`/`typedef` | ✅ | |
 | `_Bool`/`bool` | ✅ | |
 | `size_t`/`uint64_t` 等 typedef | ✅ | compat_prelude.h 补齐 |
-| `volatile` | ⚠️ | **语法接受，语义同 int**（无内存屏障，MMIO 场景需自行处理）|
-| `restrict`/`_Atomic`/`static_assert` | ❌ | 不支持 |
+| `volatile` | ⚠️ | 语法接受；qcc 无优化器，访问必然真实发生（单线程下行为正确），但无内存屏障/无原子语义（多线程 MMIO 场景需自行处理）|
+| `restrict` | ✅ | 语法接受，按普通指针处理（qcc 无优化器，restrict 别名提示无观测影响，语义正确）|
+| `_Atomic` | ⚠️ | 语法接受，按普通类型处理（单线程下语义正确；无原子操作/无同步语义）|
+| `_Static_assert`/`static_assert` | ✅ | 编译期断言，表达式为假报错（含比较运算符求值）|
 | 位域 | ✅ | 真实位语义（slot 32 位 + bitof/bits）|
 
 ## 二、语句
@@ -69,7 +72,9 @@
 
 ## 五、库函数（builtin + msvcrt 导入）
 
-- **stdio**：printf 族（`%d %s %c %f %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf` 精度）、fprintf、sprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr
+- **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr
+  - `%e`/`%E`：科学计数法（1 位整数 + N 位小数 + e±XX，指数至少 2 位）
+  - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
 - **stdlib**：malloc/free/calloc/realloc、exit/abort、atoi/atol/strtol/strtoul/_strtoui64
 - **string**：strcpy/strcat/strcmp/strncmp/strlen/strchr/strstr/strdup/strndup/memcpy/memmove/memchr/strcspn/strspn
 - **math**（msvcrt 导入）：pow/atan2/fmod/sqrt/cos/sin/tan/acos/asin/atan/log/log10/exp/floor/ceil/fabs
@@ -79,12 +84,10 @@
 
 | 限制 | 现状 |
 |:--|:--|
-| `%e`/`%g`/`%E`/`%G` | 未实现（空输出不崩）；需科学计数法格式化，目标代码几乎不用（qcc 自检 0 命中）|
 | char 符号性 | qcc 无符号 vs gcc 有符号（C 标准实现定义差异，diff_gate 生成器已按 qcc 约定 0..127）|
-| `volatile` | 语法接受，无语义（无内存屏障）|
-| `restrict`/`_Atomic`/`static_assert` | 不支持 |
-| `&arr[i] - &arr[j]` 指针差 | node_psz(取址) 不识别 → 返回字节差（尝试修复破坏自举，放弃；变量指针差 `p-q` 已修）|
-| 变参 `va_list` | 支持（va_start/va_arg/va_end），非 add5 场景有历史限制 |
+| `volatile`/`_Atomic` | 语法接受，按普通类型处理（无内存屏障/无原子语义；单线程下行为正确）|
+| `&arr[i] - &arr[j]` 指针差 | node_psz(取址) 不识别 → 返回字节差（尝试修复破坏自举，已实证后放弃；变量指针差 `p-q` 已修，`&arr[i]` 差值为已知缺口）|
+| 变参 `va_list` | 支持（va_start/va_arg/va_end）；**int/指针等 8 字节内类型正常，double 变参取值错误**（XMM 区路径缺陷，va_test 实证 qcc 3.00 vs gcc 2.33，记录待攻）|
 | 系统头文件 | `<stdarg.h>` 等部分 stub 化（compat_prelude.h 补齐）|
 | 多线程/同步 | 无（volatile 无语义，无锁）|
 
