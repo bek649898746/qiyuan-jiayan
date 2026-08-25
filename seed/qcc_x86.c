@@ -10629,7 +10629,7 @@ static void cg(int n) {
                         int _csz_s = (!st_field_is_ptr(s2, fname) && _fty_s >= 0 && stypes[_fty_s].sz > 8 && n1[n] >= 0) ? stypes[_fty_s].sz : 0;
                         if (_csz_s > 0) {
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = &arr[i] */
-                            if (foff != 0) add_rax_imm8(foff);             /* rax = &arr[i].field = &dst */
+                            if (foff != 0) { ir_emit(I_ADD_RAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: &arr[i].field = &dst */
                             push_r(0);                                    /* &dst */
                             if (nt[n1[n]] == 1) {                          /* rax = &src (struct 变量) */
                                 char *_srn5 = (char*)(nn + n1[n]);
@@ -10829,13 +10829,12 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                 }
                             }
                             if (_fok) {
-                                lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz);
+                                ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush();
                                 push_r(0); /* &dst */
                                 if (nt[n1[n]] == 1) {
                                     char *_srn = (char*)(nn + n1[n]);
                                     int _sro = var_lookup(_srn);
-                                    if (var_isstatic(_srn)) lea_rax_rip(coff_static_disp(_sro, 1) - 1);
-                                    else lea_r_mbrp(0, var_sbase(_srn, _sro) - cur_frame_sz);
+                                    if (var_isstatic(_srn)) { ir_emit(I_LEA_RIP, _sro, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn, _sro) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: RHS 取址 */
                                 } else {
                                     int _rfsz2 = 0, _rsi2 = -1;
                                     mem_addr(n1[n], &_rfsz2, &_rsi2); /* re-emit &RHS after lea &dst (probe above emitted early) */
@@ -10870,7 +10869,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                         if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
                         }
-                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
+                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10 */ else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
                         else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                         else { mov_r_imm(0, 0); }
                         if (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case10: ARROWFALL 偏移 */
@@ -10895,7 +10894,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                INIT_LIST_HEAD 的 next 字段从未写 → git status tempfile 链表节点 next=0 → SEGV) */
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
                         }
-                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
+                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10 */ else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
                         else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                         else { mov_r_imm(0, 0); }
                         if (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case10: ARROWFALL 偏移 */
@@ -10921,7 +10920,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                     if (n1[n] >= 0 && nt[n1[n]] == 1) { /* 源是变量: &var (case 1 cg_no_deref 会读值非地址!) (fix 2026-08-16: n1[n]>=0 守卫 — parse 失败时缺源 n1=-1, 原直接读 nt[-1] 越界) */
                         char *srn = (char*)(nn + n1[n]);
                         int sro = var_lookup(srn);
-                        if (var_isstatic(srn)) lea_rax_rip(coff_static_disp(sro, 1) - 1); else lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz); /* fix 2026-08-06: 静态源要 ADDRESS (lea) */
+                        if (var_isstatic(srn)) { ir_emit(I_LEA_RIP, sro, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(srn, sro) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: 大结构 RHS 取址 */
                     } else {
                         cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; /* rax = &rhs (源) */
                     }
@@ -10954,9 +10953,9 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                     if (nt[n0[ac]] == 15) { int mc2 = n0[ac]; char *bvn = (char*)(nn + n0[mc2]); char *bfn = (char*)(nn + mc2); int bsi = var_stidx(bvn); if (bsi >= 0) { int bfty = st_field_ty_idx(stypes[bsi].name, bfn); if (bfty == -1 && st_field_el(bsi, bfn) == 8) base_is_ptrfield = 1; pf_el_sz = st_field_pel(bsi, bfn); } }
                     if (base_is_ptrfield) { cg(n0[ac]); cg_mem_frow = pf_el_sz > 0 ? pf_el_sz : 8; } /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0); fix 2026-08-17: 补设 cg_mem_frow — 原未设 → 存储宽度默认字节 → char **out 元素赋值只存低字节 (git init 目录参数丢) */
                     else { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
-                    if (nt[n0[ac]] == 12) { int pn0 = n0[n0[ac]]; if (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; if (pn0 >= 0 && nt[pn0] == 1) { if (var_esz((char*)(nn + pn0)) == 8) mov_reg_mreg64(0, 0); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((char*)(nn + pn0)); } if (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] c12 store: frow=%d\n", cg_mem_frow); } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
+                    if (nt[n0[ac]] == 12) { int pn0 = n0[n0[ac]]; if (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; if (pn0 >= 0 && nt[pn0] == 1) { if (var_esz((char*)(nn + pn0)) == 8) ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((char*)(nn + pn0)); } if (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] c12 store: frow=%d\n", cg_mem_frow); } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
                     pop_r(11);
-                    if (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* int *rva[4]: the inner [i] returned the slot address — load the 8-byte pointer before the second subscript (fix 2026-08-16) */
+                    if (cg_mem_ptr) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); cg_mem_ptr = 0; } /* Phase3-IR case10 */
                     if (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     if (cg_mem_frow > 1) {
                         if (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] nested-store scale=%d\n", cg_mem_frow);
