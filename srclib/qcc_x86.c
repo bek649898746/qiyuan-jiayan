@@ -9184,6 +9184,12 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_MOVSX_RAX_WORD 34 /* movsx eax, word [rax] — signed short 字段解引用 (符号扩展, fix 2026-08-25 bug#33) */
 #define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) — 64 位局部读 (指针/ll 字段) */
 #define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) — double 字段读 (movsd xmm0, [rbp+disp]) */
+/* ==== Phase 3 case10 赋值存储 IR 指令 (2026-08-25, 直译全等字节级一致) ==== */
+#define I_STORE_RAX_BYTE 35 /* MOV [rax], bl — char 字段存储 (rex; b(0x88); modrm(0,3,0)) */
+#define I_STORE_RAX_WORD 36 /* MOV [rax], bx — short 字段存储 (rex; b(0x66); b(0x89); modrm(0,3,0)) */
+#define I_STORE_RAX32 37    /* MOV [rax], ebx — int 字段存储 (rex; b(0x89); modrm(0,3,0)) */
+#define I_STORE_RAX64 38    /* MOV [rax], rbx — LL/指针字段存储 (rex(1); b(0x89); modrm(0,3,0)) */
+#define I_STORE_XMM0_RAX 39 /* movsd [rax], xmm0 — double 字段存储 (b(0xF2); b(0x0F); b(0x11); modrm(0,0,0)) */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9225,6 +9231,11 @@ static void ir_flush(void) {
             case I_MOVSX_RAX_WORD: asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); break;
             case I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); break;
             case I_LOAD_XMM0_RBP: movsd_xmm0_mbrp(ir_a[i]); break;
+            case I_STORE_RAX_BYTE: rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); break;
+            case I_STORE_RAX_WORD: rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); break;
+            case I_STORE_RAX32: rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); break;
+            case I_STORE_RAX64: rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); break;
+            case I_STORE_XMM0_RAX: b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 0); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10585,7 +10596,7 @@ static void cg(int n) {
                             if (nt[n1[n]] == 1) {                          /* rax = &src (struct 变量) */
                                 char *_srn5 = (char*)(nn + n1[n]);
                                 int _sro5 = var_lookup(_srn5);
-                                if (_sro5 >= 0) { if (var_isstatic(_srn5)) lea_rax_rip(coff_static_disp(_sro5, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn5, _sro5) - cur_frame_sz); }
+                                if (_sro5 >= 0) { if (var_isstatic(_srn5)) { ir_emit(I_LEA_RIP, _sro5, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn5, _sro5) - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: 大结构 RHS 取址 */
                                 else mov_r_imm(0, 0);
                             } else { cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; } /* rax = &RHS (数组元素/成员链取址) */
                             pop_r(3); /* rbx = &dst, rax = &src */
@@ -10593,22 +10604,22 @@ static void cg(int n) {
                         } else if (st_field_is_dbl(stypes[s2].name, fname)) { /* fix 2026-08-07: double 字段走 cg_f+push_xmm0+movsd — 原用 push_r 只存 4/8 字节 rax, double 值在 xmm0 → 存垃圾 */
                             cg_f(n1[n]); push_xmm0();
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = &arr[i] */
-                            if (foff != 0) add_rax_imm8(foff);
+                            if (foff != 0) { ir_emit(I_ADD_RAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 偏移 (double) */
                             pop_xmm0(); /* xmm0 = rhs */
-                            asm_emit("    存浮 [r0], xmm0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); /* movsd [rax], xmm0 */
+                            ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR case10: arr[i].field 存 double */
                         } else {
                         cg(n1[n]); push_r(0); /* save rhs */
                         cg_no_deref = 1; /* arr[i] must yield the ADDRESS (struct* param / struct array) */
                         cg(n0[mc]); /* rax = &arr[i] */
                         cg_no_deref = 0;
-                        if (is_arrow) mov_reg_mreg64(0, 0); /* t35o 2026-08-24: arr[i]->field 写回的 arr[i] 是指针元素, 需解引用取指针值 — 原用 &cache[i] 槽地址 → cache[i]->ce_flags &= ~mask 写进 cache 数组自身 → unpack_trees clear_ce_flags 损坏 index cache → status/shortlog SEGV */
-                        if (foff != 0) add_rax_imm8(foff);
+                        if (is_arrow) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i]->field 写回取指针值 */
+                        if (foff != 0) { ir_emit(I_ADD_RAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 偏移 */
                         pop_r(3); /* ebx = rhs */
                         if (bf_store(stypes[s2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                        else if (fsz == 1) { asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); } /* MOV [rax], bl */
-                else if (fsz == 2) { asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); } /* MOV [rax], bx (short field fix 2026-08-06) */
-                        else if (fsz == 8) { asm_emit("    存64 [r0], r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], rbx */
-                        else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [rax], ebx */
+                        else if (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 char */
+                else if (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 short */
+                        else if (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 64 */
+                        else { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 32 */
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         }
                     }
@@ -11327,7 +11338,7 @@ else if (var_is_short(vname)) mov_word_mbrp_ax(off - cur_frame_sz); /* fix 2026-
                     if (st_field_is_ptr(s2, fn)) { int _pel_mb = st_field_pel(s2, fn); cg_mem_frow = _pel_mb; cg_frows[0] = _pel_mb; cg_frows[1] = st_field_ffin(s2, fn); } /* fix 2026-08-22 t44: arr[i].ptrfield[j] — 指针字段作数组基 (mb[i].ptr[k]) st_field_2d_setup 用 fels(字段自身 8) 非 pel(指向元素 char=1) → 按 8 缩放 → xdiff_outf mb[i].ptr[size-1] SEGV; 镜像嵌套链分支 (10216 cg_mem_chain_si) 的 pel 修正 */
                     if (fsz > 4 || fsz == 0) { /* fsz==0: flex/空数组字段 char name[0] → 取地址 (fix 2026-08-20) */
                         int fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field 64 */ /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
+                        if (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field 64 */ /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
                                  fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
                         /* else: struct/array field -> address (no deref) */
                     } else if (!cg_no_deref && !cg_addr_of) { /* t35o 2026-08-24: 取地址链末字段保留地址 — &arr[i].field 在 cg_addr_of 下读到字段值 (status SEGV 链之一) */
