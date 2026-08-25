@@ -12052,7 +12052,7 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
             }
             if (pesz[pnode] > 0) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width; t35k: 非指针 cast 哨兵 -1 排除 */
             cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
-            if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode)))) { cg_mem_frow = 8; asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double* deref → xmm0 */
+            if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode))) || (pesz[pnode] == 8 && nt[pnode] != 1)) { cg_mem_frow = 8; ndbl[n] = 1; asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double 指针 deref → xmm0; fix 2026-08-25 step18: cast 表达式解引用 (pesz=8 且非变量; 变量走 var_pdbl; 结构体双指针变量 8B 指针保持整数 — regress_deref_cast_ptrptr) */
             }
             if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
