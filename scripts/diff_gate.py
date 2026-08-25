@@ -542,7 +542,7 @@ class Gen:
                 return ', '.join(str((i + 1) * 3) for i in range(n))
             return ', '.join(str((i + 1) * 7) for i in range(n))
         # 全局静态数组: const/非 const × 各类型 × 大小 1..250 (跨 arr_chain 块链 200 阈值)
-        gnames = []
+        gnames = []  # (nm, kind, n)
         for k in range(r.randrange(1, 4)):
             n = r.randrange(1, 250)
             ty = r.choice(['int', 'double', 'char', 'long long', 'short'])
@@ -551,44 +551,81 @@ class Gen:
             gnames.append((nm, ty, n))
             lines.append('static %s%s %s[] = { %s };' % (const, ty, nm, arr_vals(ty, n)))
         # struct 数组 (brace_fields 初始化)
+        has_struct = False
         if r.random() < 0.7:
             lines.append('struct GS { int a; int b; };')
+            has_struct = True
             n = r.randrange(1, 20)
             vals = ', '.join('{%d, %d}' % (i + 1, i * 3) for i in range(n))
             lines.append('static struct GS SA[] = { %s };' % vals)
             gnames.append(('SA', 'struct', n))
-        # 零初始化全局数组
+        # 零初始化全局数组 (含 struct 数组)
         for k in range(r.randrange(0, 3)):
             n = r.randrange(1, 12)
-            ty = r.choice(['int', 'double', 'char'])
-            lines.append('static %s ZB%d[%d];' % (ty, k, n))
-            gnames.append(('ZB%d' % k, ty, n))
+            if has_struct and r.random() < 0.5:
+                lines.append('static struct GS ZS%d[%d];' % (k, n))
+                gnames.append(('ZS%d' % k, 'zs', n))
+            else:
+                ty = r.choice(['int', 'double', 'char'])
+                lines.append('static %s ZB%d[%d];' % (ty, k, n))
+                gnames.append(('ZB%d' % k, ty, n))
+        # 静态 struct 变量 (brace_fields 单 struct)
+        if has_struct and r.random() < 0.6:
+            lines.append('static struct GS SV = { %d, %d };' % (r.randrange(1, 50), r.randrange(1, 50)))
+            gnames.append(('SV', 'svar', 1))
+        # 静态指针数组 (const char *arr[])
+        if r.random() < 0.5:
+            n = r.randrange(2, 6)
+            names = ['"aa"', '"bb"', '"cc"', '"dd"', '"ee"', '"ff"', '"gg"']
+            lines.append('static const char *PSTR[] = { %s };' % ', '.join(names[:n]))
+            gnames.append(('PSTR', 'ptr', n))
+        # 字符串二维数组 char arr[][4]
+        if r.random() < 0.5:
+            n = r.randrange(2, 5)
+            names = ['"ab"', '"cd"', '"ef"', '"gh"', '"ij"']
+            lines.append('static char CHARR[][4] = { %s };' % ', '.join(names[:n]))
+            gnames.append(('CHARR', 'str', n))
+        # 多维 int 数组 (2D brace_arr_init 递归)
+        if r.random() < 0.5:
+            d1 = r.randrange(1, 5); d2 = r.randrange(1, 6)
+            vals = ', '.join(str((i % 7) + 1) for i in range(d1 * d2))
+            lines.append('static int M2D[%d][%d] = { %s };' % (d1, d2, vals))
+            gnames.append(('M2D', 'int2d', d1, d2))
         # 函数内 static 数组
-        fn_names = []
         if r.random() < 0.8:
             lines.append('double gfn(int i) {')
             for k in range(r.randrange(1, 3)):
                 n = r.randrange(1, 16)
-                ty = 'double'
-                lines.append('    static const double F%d[] = { %s };' % (k, arr_vals(ty, n)))
+                lines.append('    static const double F%d[] = { %s };' % (k, arr_vals('double', n)))
             lines.append('    return F0[i % 4];')
             lines.append('}')
-        # main: 读数组元素验证 (含数组间无污染检查)
+        # main: 读元素验证 (含数组间无污染检查)
         lines.append('int main(void) {')
-        for nm, ty, n in gnames:
-            idx = r.randrange(0, n)
-            if ty == 'struct':
-                m.append(('    printf("%%d\\n", %s[%d].a + %s[%d].b);' % (nm, idx, nm, idx), 'int'))
+        for item in gnames:
+            nm = item[0]; ty = item[1]; n = item[2]
+            if ty == 'int2d':
+                d1 = item[2]; d2 = item[3]
+                m.append(('    printf("%%d\\n", %s[%d][%d]);' % (nm, r.randrange(0, d1), r.randrange(0, d2)), 'int'))
+            elif ty == 'svar':
+                m.append(('    printf("%%d\\n", %s.a + %s.b);' % (nm, nm), 'int'))
+            elif ty == 'ptr':
+                m.append(('    printf("%%d\\n", %s[%d][0]);' % (nm, r.randrange(0, n)), 'int'))
+            elif ty == 'str':
+                m.append(('    printf("%%d\\n", %s[%d][0]);' % (nm, r.randrange(0, n)), 'int'))
+            elif ty == 'zs':
+                m.append(('    printf("%%d\\n", %s[%d].a + %s[%d].b);' % (nm, r.randrange(0, n), nm, r.randrange(0, n)), 'int'))
+            elif ty == 'struct':
+                m.append(('    printf("%%d\\n", %s[%d].a + %s[%d].b);' % (nm, r.randrange(0, n), nm, r.randrange(0, n)), 'int'))
             elif ty == 'double':
-                m.append(('    printf("%%.9g\\n", %s[%d]);' % (nm, idx), 'dbl'))
+                m.append(('    printf("%%.9g\\n", %s[%d]);' % (nm, r.randrange(0, n)), 'dbl'))
             elif ty == 'long long':
-                m.append(('    printf("%%lld\\n", %s[%d]);' % (nm, idx), 'll'))
+                m.append(('    printf("%%lld\\n", %s[%d]);' % (nm, r.randrange(0, n)), 'll'))
             elif ty == 'char':
-                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, r.randrange(0, n)), 'int'))
             elif ty == 'short':
-                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, r.randrange(0, n)), 'int'))
             else:
-                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, idx), 'int'))
+                m.append(('    printf("%%d\\n", %s[%d]);' % (nm, r.randrange(0, n)), 'int'))
         if 'gfn' in lines[-1] and r.random() < 0.7:
             m.append(('    printf("%%.9g\\n", gfn(2));', 'dbl'))
         m.append(('    return 0;', None))
