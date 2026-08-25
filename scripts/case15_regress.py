@@ -22,6 +22,8 @@ tests = {
     'ptr_bitfield.c': '#include <stdio.h>\nstruct B { unsigned a:3; unsigned b:5; };\nint main(void) { struct B v; v.a = 5; v.b = 25; struct B *p = &v; printf("%u %u\\n", p->a, p->b); return 0; }\n',
     'arrowfall_typedef.c': '#include <stdio.h>\ntypedef struct Node { int val; char tag; } Node;\nvoid f(Node *p) { printf("%d %d\\n", p->val, p->tag); }\nint main(void) { Node n; n.val = 42; n.tag = 7; f(&n); return 0; }\n',
     'arrowfall_global.c': '#include <stdio.h>\nstruct G { int a; long long b; };\nstruct G *gp;\nint main(void) { struct G g; g.a = 5; g.b = 99; gp = &g; printf("%d %lld\\n", gp->a, gp->b); return 0; }\n',
+    'arr_assign_double.c': '#include <stdio.h>\nstruct D { double d; int n; };\nint main(void) { struct D a[2]; a[0].d = 3.5; a[1].d = 7.25; printf("%d %d\\n", (int)(a[0].d * 2), (int)(a[1].d * 4)); return 0; }\n',
+    'arr_assign_big.c': '#include <stdio.h>\nstruct Inner { int x[4]; };\nstruct Outer { struct Inner in; int tag; };\nint main(void) { struct Outer a[2]; struct Inner s; s.x[0] = 1; s.x[1] = 2; s.x[2] = 3; s.x[3] = 4; a[0].in = s; a[1].in.x[2] = 9; printf("%d %d %d %d | %d\\n", a[0].in.x[0], a[0].in.x[1], a[0].in.x[2], a[0].in.x[3], a[1].in.x[2]); return 0; }\n',
 }
 fails = 0
 for name, prog in tests.items():
