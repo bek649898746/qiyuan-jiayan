@@ -10814,14 +10814,14 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                 cg_struct_copy(_fcs);
                             } else if (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); /* double rhs → xmm0 */
-                                movsd_mbrp_xmm0(var_sbase(vname, off) + foff - cur_frame_sz); /* double field write */
+                                ir_emit(I_STORE_XMM0_RBP, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR case10: 局部 double 写 */
                             } else {
                                 cg(n1[n]);
-                                if (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); bf_store(stypes[si].name, fname); } /* bit-field RMW store (fix 2026-08-05) */
-                                else if (fsz == 8) { if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); mov_mbrp_reg64(var_sbase(vname, off) + foff - cur_frame_sz, 0); } /* ll 字段: int RHS 符号扩展 (fix 2026-08-06); fnptr 字段不扩 */
-                                else if (fsz == 1) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字节rax bl\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 3, 0); mov_rr(0, 3); } /* MOV [rax], bl (char store: lea must not clobber the value in eax — fix 2026-08-03; mov_rr restores value for chained assignments fix 2026-08-19) */
-                else if (fsz == 2) { push_r(0); lea_r_mbrp(0, var_sbase(vname, off) + foff - cur_frame_sz); pop_r(3); asm_emit("    存字rax bx\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x66); b(0x89); modrm(0, 3, 0); mov_rr(0, 3); } /* MOV [rax], bx (short field; mov_rr restores value for chained assignments fix 2026-08-19) */
-                                else { mov_mbrp_reg(var_sbase(vname, off) + foff - cur_frame_sz, 0); }
+                                if (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); bf_store(stypes[si].name, fname); } /* Phase3-IR case10: 局部 bit-field */
+                                else if (fsz == 8) { if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); ir_emit(I_STORE_RBP64, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 ll 写 */
+                                else if (fsz == 1) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 char 写 */
+                else if (fsz == 2) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 short 写 */
+                                else { ir_emit(I_STORE_RBP, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 dword 写 */
                             }
                         }
                     }
@@ -10840,15 +10840,15 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                         if (nt[n0[mc]] == 11 || nt[n0[mc]] == 12) {
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
                         }
-                        else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
                         else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                         else { mov_r_imm(0, 0); }
-                        if (fo != 0) add_rax_imm8(fo);
+                        if (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case10: ARROWFALL 偏移 */
                         push_r(0); /* &dst */
                         if (nt[n1[n]] == 1) {
                             char *_srn3 = (char*)(nn + n1[n]);
                             int _sro3 = var_lookup(_srn3);
-                            if (_sro3 >= 0) { if (var_isstatic(_srn3)) lea_rax_rip(coff_static_disp(_sro3, 1) - 1); else lea_r_mbrp(0, var_sbase(_srn3, _sro3) - cur_frame_sz); }
+                            if (_sro3 >= 0) { if (var_isstatic(_srn3)) { ir_emit(I_LEA_RIP, _sro3, 1, 0); ir_flush(); } else { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn3, _sro3) - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: ARROWFALL RHS 取址 */
                             else mov_r_imm(0, 0);
                         } else {
                             int _rfsz3 = 0, _rsi3 = -1;
@@ -10865,13 +10865,13 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                INIT_LIST_HEAD 的 next 字段从未写 → git status tempfile 链表节点 next=0 → SEGV) */
                             cg_no_deref = 1; cg(n0[mc]); cg_no_deref = 0; /* rax = 基指针值 */
                         }
-                        else if (off >= 0) { if (var_isstatic(vname)) mov_rax_rip64(coff_static_disp(off, 1) - 1); else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else mov_reg_mbrp(0, off - cur_frame_sz); }
+                        else if (off >= 0) { if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else if (var_pesz(vname) > 0) mov_reg_mbrp64(0, off - cur_frame_sz); else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } }
                         else if (off < 0) { load_param_val(vname); } /* param in register or stack */
                         else { mov_r_imm(0, 0); }
-                        if (fo != 0) add_rax_imm8(fo);
+                        if (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case10: ARROWFALL 偏移 */
                         pop_r(3); /* ebx = rhs */
                         if (si2 >= 0 && bf_store(stypes[si2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
-                        else { asm_emit("    存32rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 3, 0); } /* MOV [eax], ebx */
+                        else { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ARROWFALL 存 32 */
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     }
                 }
