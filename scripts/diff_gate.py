@@ -311,7 +311,9 @@ class Gen:
             lines.append('    struct Big %s;' % bv)
             assigned = r.sample(range(self.big_nf), min(4, self.big_nf))
             for bi in assigned:
-                lines.append('    %s.f%d = %d;' % (bv, bi, r.choice(SAFE_VAL)))
+                ftype = self.big_flds[bi].split()[0]  # fix 2026-08-25: char 字段只用 CHAR_VAL(0..127), 避免 qcc 无符号char 255 vs gcc 有符号 -24 假差异
+                val = r.choice(CHAR_VAL) if ftype == 'char' else r.choice(SAFE_VAL)
+                lines.append('    %s.f%d = %d;' % (bv, bi, val))
             m.append(('    printf("%d\\n", (int)sizeof(struct Big));', 'int'))
             idx = r.sample(assigned, min(3, len(assigned)))  # 从已赋值字段选 (防未初始化读取 UB, 2026-08-25)
             m.append(('    printf("%%d\\n", %s);' % ' + '.join('%s.f%d' % (bv, i) for i in idx), 'int'))
