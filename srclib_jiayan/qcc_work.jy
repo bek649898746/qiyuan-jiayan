@@ -2682,6 +2682,15 @@ __attribute__((unused))
     }
     返 -1;
 }
+/* Phase3-IR case15: mem_addr 前置 IR 前向声明 (骨架区定义, 相同值重复定义安全) */
+静 空 ir_emit(整 op, 整 a, 整 b, 整 c);
+静 空 ir_flush(空);
+#ifndef I_LEA_RIP
+#define I_LEA_RIP 18
+#define I_LEA_RBP_GPR 23
+#define I_DEREF64 28
+#define I_ADD_RAX_IMM8 27
+#endif
 静 整 mem_addr(整 n, 整 *fsz_out, 整 *si_out) {
     若 (nt[n] == 5 || nt[n] == 6) { /* PK(+) / MK(-): 指针算术表达式回收操作数元素大小 (t49c4 fix: (recs+nrec)-1 外层 -1 应缩放) */
         整 l = node_psz(n0[n]);
@@ -2694,9 +2703,9 @@ __attribute__((unused))
         若 (off < 0 && !(coff_mode && var_isstatic(vn))) 返 -1; /* fix 2026-08-18: extern 全局 (off<0 负槽) 允许 — coff 符号重定位 (var_isstatic=1); 原拒绝对外引用 → 嵌套链 the_repository->hash_algo->null_oid 根节点失败 → return 表达式静默丢弃 → null_oid() 返垃圾 → git init create_symref 崩 (简单箭头 case-15 早已允许, mem_addr 缺) */
         *fsz_out = 4;
         *si_out = var_stidx(vn);
-        若 (var_isstatic(vn)) lea_rax_rip(coff_static_disp(off, 1) - 1);
-        否 若 (var_pesz(vn) > 0) lea_r_mbrp(0, off - cur_frame_sz); /* fix 2026-08-07: 指针变量 root (q->next->v) — lea &q; var_sbase 对 st_idx 减 struct 大小 → 错位 (q 解引用读垃圾) */
-        否 lea_r_mbrp(0, var_sbase(vn, off) - cur_frame_sz);
+        若 (var_isstatic(vn)) { ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); } /* Phase3-IR case15: mem_addr root 静态地址 */
+        否 若 (var_pesz(vn) > 0) { ir_emit(I_LEA_RBP_GPR, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case15: mem_addr root 指针变量 */
+        否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, off) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case15: mem_addr root 局部 */
         返 0;
     }
     若 (nt[n] == 14) { /* arr[i]: rax = &arr[i]; element struct type from the array var (fix 2026-08-03: nested member chains with an array root, e.g. items[i].p.x, previously returned -1 → stores/loads silently dropped → stack corruption) */
@@ -2714,7 +2723,7 @@ __attribute__((unused))
         /* fix 2026-08-22 t46: *ptr 作 struct 值 (dst = *ptr / p->dm = *ptr) — deref 后 fsz 应为指向 struct 的大小
            (原保持基变量的默认 4 → 赋值 _fok2 检查 _rfsz==_fcs2 失败 → 落标量存储只存 4 字节 → ref->objectname=*oid 只存 hash 前 4 字节 → git branch "missing object") */
         若 (*si_out >= 0 && stypes[*si_out].sz > 8 && *fsz_out == 4) *fsz_out = stypes[*si_out].sz;
-        mov_reg_mreg64(0, 0); /* rax = [rax] = 操作数值 (e 的值); 外层 is_arrow 再 [rax] = *e */
+        ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* Phase3-IR case15: mem_addr *ptr 解引用 — rax = [rax] = 操作数值 */
         返 0;
     }
     若 (nt[n] == 15) {
@@ -2723,10 +2732,10 @@ __attribute__((unused))
         整 sub_si = -1, sub_fsz = 4;
         若 (mem_addr(n0[n], &sub_fsz, &sub_si) < 0) 返 -1;
         若 (sub_si < 0) 返 -1;
-        若 (is_arrow) mov_reg_mreg64(0, 0); /* deref: rax = [rax] (the struct pointer) */
+        若 (is_arrow) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: mem_addr 箭头解引用 — rax = [rax] (the struct pointer) */
         整 fo = st_off(stypes[sub_si].name, fn);
         若 (fo < 0) 返 -1;
-        若 (fo != 0) add_rax_imm8(fo);
+        若 (fo != 0) { ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case15: mem_addr 字段偏移 */
         cg_mem_chain_si = sub_si; /* 最终字段所在结构体 (fix 2026-08-18: 指针字段作数组基判定需要 containing struct) */
         *fsz_out = st_field_size(stypes[sub_si].name, fn);
         *si_out = st_field_ty_idx(stypes[sub_si].name, fn);
