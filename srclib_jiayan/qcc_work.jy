@@ -780,7 +780,38 @@ __attribute__((unused))
             返 pp_eval(inner);
         }
     }
-    若 (e[0] == '!') 返 pp_eval(e + 1) ? 0 : 1;
+    /* ! 只作用于紧邻操作数 (fix step28: 原 `!A || B` 被算成 !(A||B) — `!` 吃了整个剩余表达式;
+       现: 数前缀 ! 个数 → 解析紧邻操作数 (括号组/defined()/标识符) → 求值取反 → 剩余尾部拼回重求值;
+       操作数无法解析 (如 `!-5`) 回退旧行为, 兼容病理输入) */
+    {
+        整 nneg = 0; 整 i = 0;
+        循环 (e[i] == '!') { nneg++; i++; }
+        若 (i > 0) {
+            循环 (e[i] == ' ' || e[i] == '\t') i++;
+            整 end = i;
+            若 (e[i] == '(') {
+                整 d = 1; end++;
+                循环 (e[end] && d > 0) { 若 (e[end] == '(') d++; 否 若 (e[end] == ')') d--; end++; }
+                若 (e[end] == ')') end++;
+            } 否 若 (!strncmp(e + i, "defined", 7) && e[i + 7] == '(') {
+                整 d = 1; end = i + 8;
+                循环 (e[end] && d > 0) { 若 (e[end] == '(') d++; 否 若 (e[end] == ')') d--; end++; }
+                若 (e[end] == ')') end++;
+            } 否 {
+                循环 (e[end] && (isalnum((无 字)e[end]) || e[end] == '_' || ((无 字)e[end] >= 0x80))) end++;
+            }
+            若 (end > i) {
+                字 opd[512]; 整 ol = end - i; 若 (ol > 510) ol = 510; memcpy(opd, e + i, ol); opd[ol] = 0;
+                整 ov = pp_eval(opd);
+                整 v = (nneg & 1) ? (ov ? 0 : 1) : ov;
+                若 (e[end] == 0) 返 v;
+                字 full[512];
+                sprintf(full, "%d %s", v, e + end);
+                返 pp_eval(full);
+            }
+            返 pp_eval(e + 1) ? 0 : 1; /* 操作数无法解析: 回退旧行为 */
+        }
+    }
     /* split on || (lowest precedence), then &&, then ==/!=/< <= > >= — paren-aware (fix 2026-08-06 M7: 原在括号内错拆，(A||B)&&C 拆错) */
     遍 (整 i = 0, dp = 0; e[i]; i++) {
         若 (e[i] == '(') dp++;
