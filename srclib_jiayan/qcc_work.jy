@@ -11334,16 +11334,16 @@ __attribute__((unused))
                 若 (mem_addr(n, &fsz, &si_out) == 0) {
                     /* rax = &chain; deref by the final field's byte size (fix 2026-08-18: &取址/++目标 上下文保留末字段地址, 不再按字段大小解引用 — 多级箭头链 &o->m->in->buf 原 fsz==8 无条件 mov rax,[rax] 多解引用一层 → expand_base_dir(&...->path) 传 NULL 崩) */
                     若 (fsz > 8 || fsz == 0) { /* struct/array field → address; fsz==0: flex 数组取址 (fix 2026-08-20) */ }
-                    否 若 (fsz == 1) { 若 (!cg_no_deref && !cg_addr_of) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* movzx eax, byte[rax] */
-                    否 若 (fsz == 2) { 若 (!cg_no_deref && !cg_addr_of) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* movzx eax, word[rax] (short field fix 2026-08-06) */
+                    否 若 (fsz == 1) { 若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 char */
+否 若 (fsz == 2) { 若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 short */
                     否 若 (fsz == 8) { /* 64-bit pointer / struct field (fix 2026-08-18: 多级箭头取址不再解引用末指针字段) */
-                        若 (!cg_no_deref && !cg_addr_of) mov_reg_mreg64(0, 0);
+                        若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: 嵌套链 64 */
                         否 若 (!cg_incdec_target && !cg_addr_of && cg_mem_chain_si >= 0 && !st_field_is_array_idx(cg_mem_chain_si, fn) &&
                                  st_field_is_ptr(cg_mem_chain_si, fn)) {
                             /* 指针字段作数组基 (嵌套链 a->b->buf[i] / iter->map->table[i]): no_deref 下解引用取指针值 + 按指向元素缩放 (fix 2026-08-18:
                                镜像简单箭头分支 8851 修复 — 原嵌套链 no_deref 返回字段地址(&buf=struct+off) → 索引进结构体内部
                                → hashmap_iter_next iter->map->table[i] 读到 map->cmpfn → git init SEGV; ++/& 目标保留地址) */
-                            mov_reg_mreg64(0, 0); /* rax = [rax] = 指针值 */
+                            ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* Phase3-IR case15: 嵌套链指针字段作数组基 — rax = [rax] = 指针值 */
                             整 pel = st_field_pel(cg_mem_chain_si, fn);
                             cg_mem_frow = pel;
                             cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
@@ -11353,7 +11353,7 @@ __attribute__((unused))
                             若 (st_field_fdeep(cg_mem_chain_si, fn) >= 2) cg_mem_ptr_need = 1; /* 双指针字段单层取值需解引用 (fix 2026-08-22 t41b); 单指针 char* match 直接索引 — 原无条件设 → items[i].match[j] 多解引用 → git add 崩 */
                         }
                     }
-                    否 若 (!cg_no_deref && !cg_addr_of) { mov_reg_mreg(0, 0); 若 (si_out >= 0 && st_field_bitw(stypes[si_out].name, fn) > 0) bf_extract(stypes[si_out].name, fn); } /* bit-field extract (fix 2026-08-05) */
+                    否 若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (si_out >= 0 && st_field_bitw(stypes[si_out].name, fn) > 0) bf_extract(stypes[si_out].name, fn); } /* Phase3-IR case15: 嵌套链 dword + bit-field */
                 }
             } 否 {
             /* fix 2026-08-23 t49e: (&expr)->field - paren-address-of then member access
@@ -11368,15 +11368,16 @@ __attribute__((unused))
                 若 (mem_addr(n0[n0[n]], &fsz11, &si11) == 0 && si11 >= 0) {
                     整 fo11 = st_off(stypes[si11].name, fn);
                     若 (fo11 >= 0) {
-                        若 (fo11 != 0) add_rax_imm8(fo11);
+                        若 (fo11 != 0) ir_emit(I_ADD_RAX_IMM8, fo11, 0, 0); /* Phase3-IR case15: &e->f 偏移 */
                         整 afsz11 = st_field_size(stypes[si11].name, fn);
                         st_field_2d_setup(si11, fn);
                         若 (cg_no_deref || st_field_is_array_idx(si11, fn)) {
                             /* array field: address retained */
-                        } 否 若 (afsz11 == 8) { mov_reg_mreg64(0, 0); }
-                        否 若 (afsz11 == 1) { asm_emit("    \xe9\x9b\xb6\xe6\x89\xa9\xe5\xb1\x95 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
-                        否 若 (afsz11 == 2) { asm_emit("    \xe9\x9b\xb6\xe6\x89\xa9\xe5\xb1\x95\xe5\xad\x97 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] */
-                        否 { mov_reg_mreg(0, 0); }
+                        } 否 若 (afsz11 == 8) { ir_emit(I_DEREF64, 0, 0, 0); } /* Phase3-IR case15: &e->f 64 */
+                        否 若 (afsz11 == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); } /* Phase3-IR case15: &e->f char */
+                        否 若 (afsz11 == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); } /* Phase3-IR case15: &e->f short */
+                        否 { ir_emit(I_DEREF32, 0, 0, 0); } /* Phase3-IR case15: &e->f dword */
+                        ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */
                         断;
                     }
                 }
