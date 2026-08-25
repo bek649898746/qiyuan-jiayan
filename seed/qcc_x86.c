@@ -9209,6 +9209,8 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_STORE_XMM0_RIP 56  /* MOVSD [rip+disp], xmm0 (b(0xF2);b(0x0F);b(0x11);b(0x05);b4) — static double 写 */
 #define I_STORE_RIP_RAX64 57 /* MOV [rip+disp], rax (rex1;b(0x89);b(0x05);b4) — static 64写 */
 #define I_STORE_RIP_EAX32 58 /* MOV [rip+disp], eax (b(0x89);b(0x05);b4) — static 32写 */
+#define I_TEST_SETE 62       /* test eax,eax; sete al; movzx eax,al — !expr */
+#define I_NOT_EAX 63         /* NOT eax (F7 D0) — ~expr */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9274,6 +9276,8 @@ static void ir_flush(void) {
             case I_STORE_XMM0_RIP: movsd_rip_xmm0(coff_static_disp(ir_a[i], ir_b[i]) - 2); break;
             case I_STORE_RIP_RAX64: mov_rip_rax64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_STORE_RIP_EAX32: mov_rip_eax(coff_static_disp(ir_a[i], ir_b[i])); break;
+            case I_TEST_SETE: test_rr(0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); break;
+            case I_NOT_EAX: b(0xF7); b(0xD0); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10578,11 +10582,10 @@ static void cg(int n) {
             }
         } break;
         case 17: /* !expr */
-            cg(n0[n]); test_rr(0,0);
-            asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3,0,0); movzx_eax_al(); /* SETE al; movzx eax,al */
+            cg(n0[n]); ir_emit(I_TEST_SETE, 0, 0, 0); ir_flush(); /* Phase3-IR: !expr */
         break;
         case 18: /* ~expr */
-            cg(n0[n]); asm_emit("    按位反 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF7); b(0xD0); /* NOT eax */
+            cg(n0[n]); ir_emit(I_NOT_EAX, 0, 0, 0); ir_flush(); /* Phase3-IR: ~expr */
         break;
         case 10: { /* assign — handles both var=expr and var.field=expr */
             if (getenv("QCC_DBG_AST")) { fprintf(stderr, "[C10] lhs_node=%d nt_lhs=%d nt0=%d nt0of0=%d nv=%d fname='%s' n1=%d nt_rhs=%d\n", n0[n], n0[n]>=0?nt[n0[n]]:-1, n0[n]>=0&&n0[n0[n]]>=0?nt[n0[n0[n]]]:-1, n0[n]>=0&&n0[n0[n]]>=0&&n0[n0[n0[n]]]>=0?nt[n0[n0[n0[n]]]]:-1, n0[n]>=0?nv[n0[n]]:-1, n0[n]>=0?(char*)(nn+n0[n]):"", n1[n], n1[n]>=0?nt[n1[n]]:-1); }
