@@ -66,7 +66,7 @@ __attribute__((unused))
 静 字 __pad0[STACK_PAD_SIZE];
 静 字 str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ 整 str_cnt;
 静 整 str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
-静 构 { 字 name[64]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; 字 p_dbl, is_char, is_short, is_uns, is_ll; 整 frows[4]; 整 blk_start, blk_end; } vars[16384]; /* fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
+静 构 { 字 name[64]; 整 rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; 字 p_dbl, is_char, is_short, is_uns, is_ll; 整 frows[4]; 整 blk_start, blk_end; } vars[16384]; /* fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 静 字 var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
 静 字 var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 整 vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -95,7 +95,7 @@ __attribute__((unused))
 静 整 cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
 静 整 cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
 静 整 cg_mem_chain_si = -1; /* mem_addr: 嵌套链 (a->b->c) 最终字段所在结构体索引 — case-15 指针字段作数组基判定用 (fix 2026-08-18: iter->map->table[i] 嵌套链原只在简单箭头分支解引用, 嵌套链 no_deref 返回字段地址 → 索引进结构体内部, hashmap_iter_next 崩) */
-静 整 cg_nested_cnt = 0; /* case 14: 嵌套 base 递归深度 — 内层下标被外层续索引时 >0 (fix 2026-08-22 t41b: 指针字段双指针双层下标 slab[i][j] — 内层 deref 条件 & 外层 cg_mem_ptr 判定) */
+静 整 cg_nested_cnt = 0; /* case 14: 嵌套 base 递归深度 — 内层下标被外层继续索引时 >0 (fix 2026-08-22 t41b: 指针字段双指针双层下标 slab[i][j] — 内层 deref 条件 & 外层 cg_mem_ptr 判定) */
 静 整 cg_mem_ptr_need = 0; /* case 15: 指针字段作数组基解引用后 — 内层 case 14 的索引结果 &slab[i] 是槽地址, 有外层下标时需设 cg_mem_ptr 供外层解引用 (fix 2026-08-22 t41b) */
 静 整 cg_blk_end = 0;  /* codegen: upper var-index bound of the CURRENT block (0 before first function). Later sibling-block locals are excluded so `char nm[9]` in an early loop body isn't shadowed by a later `const char *nm` (fix 2026-08-16 write_coff_obj memset dest=8) */
 静 整 cg_blk_start = 0; /* codegen: lower var-index bound of the CURRENT block (fix 2026-08-19: 嵌套块变量只在块内可见 — 见 var_codegen_visible) */
@@ -256,7 +256,7 @@ __attribute__((unused))
                 循环 (val && dep < 32 && (整)strlen(val) < 4000) {
                     常 字 *v2 = obj_find(val);
                     若 (!v2 || v2 == val) 断;
-                    /* 链式: val 本身也是对象宏名 → 续替换 */
+                    /* 链式: val 本身也是对象宏名 → 继续替换 */
                     整 vn = 0; 循环 (isalnum((无 字)val[vn]) || val[vn] == '_' || ((无 字)val[vn] >= 0x80)) vn++;
                     若 (val[vn] != 0) 断; /* 值含非标识符 → 不再链式 */
                     val = v2;
@@ -1563,7 +1563,7 @@ __attribute__((unused))
     否 { modrm(2, 0, 5); b4(disp); }
     b(imm & 0xFF);
 }
-/* 局部 char 变量存储: mov byte [rbp+disp], al (fix 2026-08-25 bug#28b) */
+/* 局部 char 变量存储: mov byte [rbp+disp], al (1 字节截断, fix 2026-08-25 bug#28b) */
 静 空 mov_byte_mbrp_al(整 disp) {
     asm_emit("    存字节 [rbp%+d], al\n", (字*)(长 长)(disp), (字*)(长 长)0, (字*)(长 长)0);
     b(0x88);
@@ -1573,17 +1573,17 @@ __attribute__((unused))
 /* 局部 char 变量读取: movzx eax, byte [rbp+disp] (零扩展, qcc char=unsigned 约定, fix 2026-08-25 bug#28b) */
 静 空 movzx_eax_mbrp(整 disp) {
     asm_emit("    零扩展字节 r0, [rbp%+d]\n", (字*)(长 长)(disp), (字*)(长 长)0, (字*)(长 长)0);
-    b(0x0F); b(0xB6); b(0x85); b4(disp);
+    b(0x0F); b(0xB6); b(0x85); b4(disp); /* movzx eax, byte [rbp+disp] */
 }
-/* 局部 short 变量读取: movzx eax, word [rbp+disp] (零扩展, uint16_t, fix 2026-08-25 bug#31b) */
+/* 局部 short 变量读取: movzx eax, word [rbp+disp] (零扩展, uint16_t/unsigned short, fix 2026-08-25 bug#31b) */
 静 空 movzx_eax_mbrp_w(整 disp) {
     asm_emit("    零扩展字 r0, [rbp%+d]\n", (字*)(长 长)(disp), (字*)(长 长)0, (字*)(长 长)0);
-    b(0x0F); b(0xB7); b(0x85); b4(disp);
+    b(0x0F); b(0xB7); b(0x85); b4(disp); /* movzx eax, word [rbp+disp] */
 }
 /* 局部 signed short 变量读取: movsx eax, word [rbp+disp] (符号扩展, fix 2026-08-25 bug#31b) */
 静 空 movsx_eax_mbrp_w(整 disp) {
     asm_emit("    符号扩展字 r0, [rbp%+d]\n", (字*)(长 长)(disp), (字*)(长 长)0, (字*)(长 长)0);
-    b(0x0F); b(0xBF); b(0x85); b4(disp);
+    b(0x0F); b(0xBF); b(0x85); b4(disp); /* movsx eax, word [rbp+disp] */
 }
 /* 局部 short 变量存储: mov word [rbp+disp], ax (2 字节截断, fix 2026-08-25 bug#31b) */
 静 空 mov_word_mbrp_ax(整 disp) {
@@ -2023,7 +2023,8 @@ __attribute__((unused))
     遍 (整 i = parse_base - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) 返 vars[i].is_ll; /* 全局 long long (fix 2026-08-13: 全局 LL 算术被当 32 位, b_global 6000000000→低32) */
     返 0;
 }
-/* char var: 1-byte loads/stores (fix 2026-08-25 bug#28b: 局部 char 变量 32 位读/写 → 负值/高位非零值错) */
+/* char var: 1-byte loads/stores (fix 2026-08-25 bug#28b: 局部 char 变量 32 位读/写 → 负值/高位非零值错 —
+   qcc char=unsigned 约定, 读用 movzx 零扩展, 存用 mov byte 截断) */
 静 整 var_is_char(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) 返 vars[i].is_char;
     遍 (整 i = parse_base - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) 返 vars[i].is_char; /* 全局 char */
@@ -2682,7 +2683,7 @@ __attribute__((unused))
     }
     返 -1;
 }
-/* Phase3-IR case15: mem_addr 前置 IR 前向声明 (骨架区定义, 相同值重复定义安全) */
+/* Phase3-IR case15: mem_addr 前置 IR 前向声明 (骨架区 9139 定义, 相同值重复定义安全) */
 静 空 ir_emit(整 op, 整 a, 整 b, 整 c);
 静 空 ir_flush(空);
 #ifndef I_LEA_RIP
@@ -3371,7 +3372,7 @@ __attribute__((unused))
             tt[ti] = NK; tv[ti] = cval; ti++; 续;
         }
         若 (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0;
-            长 长 v64 = 0; 整 is_hexoct = 0; /* 64-bit accumulator (fix 2026-08-05); fix 2026-08-25 bug#29: hex/octal 超 INT_MAX → unsigned (C11 6.4.4.1) */
+            长 长 v64 = 0; 整 is_hexoct = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05); fix 2026-08-25 bug#29: hex/octal 超 INT_MAX → unsigned (C11 6.4.4.1) */
             若 (s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
                 i += 2; is_hexoct = 1;
                 /* hex float literal 0x1.8p3 / 0x1p3 (C99; fix 2026-08-05) */
@@ -3411,7 +3412,7 @@ __attribute__((unused))
                 }
             }
             tv[ti] = (整)v64; tll_hi[ti] = (整)(v64 >> 32); /* low/high 32 (fix 2026-08-05) */
-            若 (is_hexoct && (无 长 长)v64 > 0x7FFFFFFFULL) tuns[ti] = 1; /* fix 2026-08-25 bug#29: hex/octal 字面量超 INT_MAX → unsigned int */
+            若 (is_hexoct && (无 长 长)v64 > 0x7FFFFFFFULL) tuns[ti] = 1; /* fix 2026-08-25 bug#29: hex/octal 字面量超 INT_MAX → unsigned int (0xFFFFFFFF > 0 应为真) */
             若 (s[i] == 'u' || s[i] == 'U') { tuns[ti] = 1; i++; } /* unsigned suffix 0xFFFFFFFFu (fix 2026-08-05) */
             若 (s[i] == 'l' || s[i] == 'L') { 循环 (s[i] == 'l' || s[i] == 'L') i++; tll[ti] = 1; } /* long long suffix (fix 2026-08-05) */
             ti++; 续; }
@@ -3964,7 +3965,7 @@ __attribute__((unused))
                             循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; } 否 { dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: sizeof(匿名 struct) 数组维度整体表达式求值 (原 NK/VR/PK/MK 手写分支) */
                             若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
                             st_field_sz_r(si, fn, fsz, frow);
-                            若 (funs) stypes[si].fsgn[stypes[si].fn - 1] = 1; /* fix 2026-08-25 bug#33 */
+                            若 (funs) stypes[si].fsgn[stypes[si].fn - 1] = 1; /* fix 2026-08-25 bug#33: 记录普通字段 unsigned (short 字段符号扩展判断, 原 fsgn 只给位域) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
                             若 (fdbl) st_field_dbl(si, fn);
                         }
@@ -4947,7 +4948,7 @@ __attribute__((unused))
                 续;
                 }
             } 否 { 整 is_ptr = 0;
-            整 struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
+            整 struct_brace_blk = -1; /* struct brace init 延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册) */
             循环 (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* struct Tag const *name / struct Tag volatile *name — const 在指针前 (fix 2026-08-15: cwexec trie undefined) */
             循环 (tt[tk] == DK) { is_ptr = 1; tk++; 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* 多级指针 **fragp / *const *p (fix 2026-08-15: show-branch/worktree/bundle-uri b 未注册) */
             若 (si >= 0 && tt[tk] == VR) {
@@ -5117,7 +5118,7 @@ __attribute__((unused))
             整 is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             整 is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
-            若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdi2b = tdef_lookup(tn[tk]);  若 (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr) { 若 (tdefs[tdi2b].sz == 1) { is_char = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 2) { is_short = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 4) { 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 8) { is_ll = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } } } /* fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
+            若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdi2b = tdef_lookup(tn[tk]);  若 (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr) { 若 (tdefs[tdi2b].sz == 1) { is_char = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 2) { is_short = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 4) { 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 8) { is_ll = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } } } /* fix 2026-08-25 bug#28a 补: typedef unsigned int (uint32_t) → is_uns (t28: 右移/比较/cast 全按 unsigned); fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
             tk++; 若 (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             若 (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
                 tk++; /* skip { */
@@ -5147,7 +5148,7 @@ __attribute__((unused))
             若 (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != AK && tt[tk + 1] != LB && tt[tk + 1] != CK && tt[tk + 1] != SK) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07); 变量名与 typedef 同名时 (cmp_type cmp_type = ...) 下一 token 是 =/[/,/; 不得当类型吃掉 (fix 2026-08-15: ref-filter.c cmp_type undefined) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
-                若 (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl) { 若 (tdefs[tdi2v].sz == 1) { is_char = 1; } 否 若 (tdefs[tdi2v].sz == 2) { is_short = 1; } 否 若 (tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1; } /* fix 2026-08-25 bug#28a: typedef 宽度族 2nd/3rd-token 路径 (const uint8_t v 同修) */
+                若 (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl) { 若 (tdefs[tdi2v].sz == 1) { is_char = 1; } 否 若 (tdefs[tdi2v].sz == 2) { is_short = 1; } 否 若 (tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1; } /* fix 2026-08-25 bug#28: typedef 宽度族 2nd/3rd-token 路径 (const uint8_t v 同修); is_uns 由 5081 统一处理 */
                 否 若 (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t"))) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20: 未知 typedef 回退按名字识别 8B unsigned (size_t 未注册时 rd 判 int → v1≠v2 movsxd 差异) */
                 否 若 (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t"))) is_ll = 1;
                 若 (tdi2v >= 0 && tdefs[tdi2v].is_uns) { is_uns = 1; }
@@ -5166,7 +5167,7 @@ __attribute__((unused))
             整 d = Nd(7);
             整 acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             遍 (整 i = 0; i < 8; i++) adimv[i] = 0;
-            整 brace_init_blk = -1; /* struct brace init 块延迟挂到声明之后, 逗号声明仍可续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册 → undefined) */
+            整 brace_init_blk = -1; /* struct brace init 块延迟挂到声明之后, 逗号声明仍可继续 (fix 2026-08-15: merge.c merge_names, *autogen 逗号声明 autogen 未注册 → undefined) */
             若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer: int (*fp)(args); */
                 tk++; tk++; /* skip ( * */
                 若 (tt[tk] == VR) {
@@ -5307,7 +5308,7 @@ __attribute__((unused))
             否 若 (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; 若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
             否 若 (is_ll) {  var_ll(vn); 若 (is_uns) vars[vcnt - 1].is_uns = 1; } /* long long / unsigned long long: 8-byte int (fix 2026-08-06: ULL 同时标 is_uns) */
             否 若 (is_double) { var_double(vn); }
-            否 { var_offset(vn); 若 (is_char) vars[vcnt - 1].is_char = 1; 若 (is_short) vars[vcnt - 1].is_short = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05) */
+            否 { var_offset(vn); 若 (is_char) vars[vcnt - 1].is_char = 1; 若 (is_short) vars[vcnt - 1].is_short = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05); fix 2026-08-25 bug#31b: is_short */
             memcpy((字*)(nn + d), vn, 32);
             
         } 若 (tt[tk] == AK) {
@@ -5658,7 +5659,7 @@ __attribute__((unused))
                     Nc(body,stmt());
                 }
                 若(tt[tk]==BR){tk++;若(tt[tk]==SK)tk++;had_br=1;} /* already consumed */
-                若(ft_n>0 && n0[body]>=0){ 遍(整 fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 续等下一个非空 case) */
+                若(ft_n>0 && n0[body]>=0){ 遍(整 fi=0;fi<ft_n;fi++) n1[ft_ifn[fi]]=body; ft_n=0; } /* 前导 fall-through case → 本 case body (fix 2026-08-20: 空 body 不设置 then — 原空 body 也设置 → case -5 的 then 被 case 0 空 body 覆盖 → case 1 共享 body 只挂 ifn2 → case -5 命中返回垃圾 eax (t_sw f(-5)=1); 空 body 应保留 ft_ifn 继续等下一个非空 case) */
                 若(had_br && n0[body]<0){ ft_n = 0; } /* fix 2026-08-20: break 终止 fall-through 链 — `case OPEN: case CLOSED: break;` 中 case 1 的 break 应让 case 0 也 break, 不得共享后续 case 的 body (git refs.c ref_transaction_free: state==0/1 命中 case PREPARED 的 BUG → 'free called on a prepared reference transaction') */
                 若(ft2_n>0){ 遍(整 fi=0;fi<ft2_n;fi++){ 整 b2=n1[ft2_ifn[fi]]; 若(b2>=0) Nc(b2,body); } ft2_n=0; } /* 带 body 的 fall-through case: 本 case 语句追加进其 body (fix 2026-08-18: case '\\' 转义只写一个反斜杠) */
                 整 cvn=Nd(0);nv[cvn]=cv;
@@ -7165,14 +7166,14 @@ __attribute__((unused))
                 整 p_fptr = 0, p_fptr_dbl = 0; /* typedef'd fnptr param: 8-byte pointer slot (fix 2026-08-03) */
                 整 pis_uns = 0; /* unsigned param: >> logical (fix 2026-08-05) */
                 整 pis_ll = 0; /* long long param: 8-byte slot (fix 2026-08-05) */
-                整 pis_short = 0;
+                整 pis_short = 0; /* fix 2026-08-25 bug#31b: short 参数 2 字节槽 */
                 若 (tt[tk] == NK) { tk++; 续; } /* 空宏 #define UNUSED 展开成 0 (NK) 残留在参数名后 (const char *err UNUSED) → 跳过 (fix 2026-08-14: 原 NK 卡死参数循环) */
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "void")) pis_void = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "short")) pis_short = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; }
                 否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { p_stidx = st_find(tn[tk]); tk++; } } /* struct B *arr: remember struct type */
                 否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; }
-                否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 2) pis_short = 1; /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: typedef struct 参数 (diffdata_t *dd1) — st_find(typedef名) 找不到, 必须经 td_st_index 回退到真 struct 名, 否则箭头成员访问落"按字段名搜全部 struct"兜底 → ha 字段命中 s_xrecord (foff=20) 而非 s_diffdata (foff=8) → xdiff 哈希数组错位崩 */ tk++; } /* typedef'd struct / double alias / fnptr */
+                否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0)) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 2) pis_short = 1; /* fix 2026-08-25 bug#31b: typedef 2B 标量参数 (uint16_t) */ /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: typedef struct 参数 (diffdata_t *dd1) — st_find(typedef名) 找不到, 必须经 td_st_index 回退到真 struct 名, 否则箭头成员访问落"按字段名搜全部 struct"兜底 → ha 字段命中 s_xrecord (foff=20) 而非 s_diffdata (foff=8) → xdiff 哈希数组错位崩 */ tk++; } /* typedef'd struct / double alias / fnptr */
                 若 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; 否 若 (!strcmp(tn[tk], "void")) pis_void = 1; 否 若 (!strcmp(tn[tk], "double")) pis_dbl = 1; 否 若 (!strcmp(tn[tk], "unsigned")) pis_uns = 1; 否 若 (!strcmp(tn[tk], "short")) pis_short = 1; 否 若 (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
-                若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 2) pis_short = 1; /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
+                若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; 若 (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; 若 (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 2) pis_short = 1; /* fix 2026-08-25 bug#31b: typedef 2B 标量参数 (uint16_t) */ /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); 若 (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
                 循环 (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* pointer(s) * - skip const after each * (t49c fix: const struct X * const *src middle const broke ptr chain) */
                 若 (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
@@ -7229,8 +7230,8 @@ __attribute__((unused))
                     }
                     var_param(tn[tk], pr, pis_ptr ? (ptr_depth > 1 ? 8 : 4) : 0, esz, p_stidx, pis_dbl && !pis_ptr, pis_ll && !pis_ptr); /* fix 2026-08-11: 指针参数 p_esz 原硬编码 4 - 多级指针(char pp / int pp)应 8 */
                     若 (ptr_depth > 0) { vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = p_stidx >= 0 ? stypes[p_stidx].sz : (pis_char ? 1 : (pis_void ? 1 : (pis_dbl ? 8 : (pis_ll ? 8 : 4)))); } /* fix 2026-08-18: (*X)[i] 元素大小/解引用宽度 — char** 参数原 p_esz=8 信息丢失 (store_key 元素 1); t35o: void* p_inner=1 */
-                    若 (pis_char && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_char = 1;
-                    若 (pis_short && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_short = 1; /* sizeof(char param) (fix 2026-08-05) */
+                    若 (pis_char && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_char = 1; /* sizeof(char param) (fix 2026-08-05) */
+                    若 (pis_short && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_short = 1; /* fix 2026-08-25 bug#31b: short/uint16_t 参数 2 字节槽 */
                     若 (pis_uns && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_uns = 1; /* unsigned param: >> logical (fix 2026-08-05) */
                     若 (pis_ll && !pis_ptr && p_stidx < 0) vars[vcnt - 1].is_ll = 1; /* long long param: 8-byte slot (fix 2026-08-05) */
                     若 (pis_dbl && pis_ptr) vars[vcnt - 1].p_dbl = 1; /* double* param */
@@ -8068,7 +8069,7 @@ __attribute__((unused))
     mov_mbrp_reg(scratch_base - cur_frame_sz + 232, 0); /* W = eax */
     asm_emit("    自增 r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 */
     jmp_rel(-1); patch_label(cp-4, lwidth, 2);
-    set_label(lwd_nondigit); /* fix 2026-08-23 t35g: 宽度后非数字 — 长度前缀(l/h/z/I)续, '.' 精度, 其余转换符 */
+    set_label(lwd_nondigit); /* fix 2026-08-23 t35g: 宽度后非数字 — 长度前缀(l/h/z/I)继续, '.' 精度, 其余转换符 */
     mov_r_imm(0, 'l'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, ll_cnt, 1);
     mov_r_imm(0, 'h'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lflags, 1);
     mov_r_imm(0, 'z'); alu_rr(T_QK, 1, 0); jz_rel(-1); patch_label(cp-4, lz, 1);
@@ -8092,7 +8093,7 @@ __attribute__((unused))
     否 { asm_emit("    减即 r13, 8\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x83); modrm(3, 5, 5); b(8); /* sub r13, 8 */ }
     mov_mbrp_reg(scratch_base - cur_frame_sz + 232, 0); /* W = arg */
     asm_emit("    零扩展 ecx, [r11]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0x0F); b(0xB6); modrm(0, 1, 3); /* movzx ecx, byte[r11] */
-    jmp_rel(-1); patch_label(cp-4, lflag, 2); /* 续解析 (fix 2026-08-23: 返 lflag 直接检查 - lflags 会 inc r11 跳过 'I' 导致 %*I64u 的 '6''4' 被当宽度数字, ll_cnt 为失) */
+    jmp_rel(-1); patch_label(cp-4, lflag, 2); /* 继续解析 (fix 2026-08-23: 返 lflag 直接检查 - lflags 会 inc r11 跳过 'I' 导致 %*I64u 的 '6''4' 被当宽度数字, ll_cnt 为失) */
     set_label(lstar); /* .* 星号精度 (fix 2026-08-18): 从参数表取 int, 参数表前移 */
     asm_emit("    自增 r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xFF); modrm(3, 0, 3); /* inc r11 (past '*') */
     mov_eax_mr13(); /* eax = [r13] = precision int */
@@ -9143,7 +9144,7 @@ __attribute__((unused))
 #define IR_MAX 2000000
 静 整 ir_op[IR_MAX], ir_a[IR_MAX], ir_b[IR_MAX], ir_c[IR_MAX];
 静 整 ir_n;
-静 空 graph_record_call(常 字 *to); /* -graph 旁路: 调用关系记录 */
+静 空 graph_record_call(常 字 *to); /* -graph 旁路: 调用关系记录 (定义在 main 前, 前向声明供 case4 使用) */
 静 空 ir_emit(整 op, 整 a, 整 b, 整 c) {
     若 (ir_n >= IR_MAX) { fprintf(stderr, "[IR-OVERFLOW] ir_n=%d\n", ir_n); exit(1); }
     ir_op[ir_n] = op; ir_a[ir_n] = a; ir_b[ir_n] = b; ir_c[ir_n] = c; ir_n++;
@@ -9174,15 +9175,15 @@ __attribute__((unused))
 #define I_CALL_FNPTR 24 /* a=add_rsp_imm: mov r10,rax; call r10; add_rsp_imm(a) */
 #define I_ALU_EBX 25    /* a=op: alu_rr(op, 0, 1) — eax op ebx */
 #define I_CVTT2SI 26    /* cvttsd2si eax, xmm0: (int)double 截断 */
-/* ==== Phase 3 case15 成员访问 IR 指令 (2026-08-25) ==== */
-#define I_ADD_RAX_IMM8 27 /* a=v: add_rax_imm8(v) — 字段偏移 */
-#define I_DEREF64 28      /* mov_reg_mreg64(0,0): mov rax, [rax] */
-#define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] */
-#define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] */
-#define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] */
-#define I_MOVSX_RAX_WORD 34 /* movsx eax, word [rax] — signed short 字段符号扩展 (fix 2026-08-25 bug#33) */
-#define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) */
-#define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) */
+/* ==== Phase 3 case15 成员访问 IR 指令 (2026-08-25, 直译全等字节级一致) ==== */
+#define I_ADD_RAX_IMM8 27 /* a=v: add_rax_imm8(v) — 字段偏移 (imm8/imm32 自动) */
+#define I_DEREF64 28      /* mov_reg_mreg64(0,0): mov rax, [rax] — 64 位指针/ll 字段解引用 */
+#define I_DEREF32 29      /* mov_reg_mreg(0,0): mov eax, [rax] — 32 位 int 字段解引用 */
+#define I_MOVZX_RAX_BYTE 30 /* movzx eax, byte [rax] — char 字段解引用 (零扩展) */
+#define I_MOVZX_RAX_WORD 31 /* movzx eax, word [rax] — short 字段解引用 (零扩展) */
+#define I_MOVSX_RAX_WORD 34 /* movsx eax, word [rax] — signed short 字段解引用 (符号扩展, fix 2026-08-25 bug#33) */
+#define I_LOAD_RBP64 32    /* a=reg, b=disp: mov_reg_mbrp64(reg, disp) — 64 位局部读 (指针/ll 字段) */
+#define I_LOAD_XMM0_RBP 33 /* a=disp: movsd_xmm0_mbrp(disp) — double 字段读 (movsd xmm0, [rbp+disp]) */
 /* ==== Phase 3 case10 赋值存储 IR 指令 (2026-08-25, 直译全等字节级一致) ==== */
 #define I_STORE_RAX_BYTE 35 /* MOV [rax], bl — char 字段存储 (rex; b(0x88); modrm(0,3,0)) */
 #define I_STORE_RAX_WORD 36 /* MOV [rax], bx — short 字段存储 (rex; b(0x66); b(0x89); modrm(0,3,0)) */
@@ -9198,6 +9199,16 @@ __attribute__((unused))
 #define I_SHL_R11_IMM 46  /* SHL r11d, imm (rex(0,0,0,1); C1; modrm(3,4,3); imm) — 索引缩放 */
 #define I_MOVSXD_R11 47   /* MOVSXD r11, r11d (4D 63 DB) — 32位索引符号扩展 */
 #define I_MOV_R9_IMM 48   /* MOV r9d, imm (41 B9 imm32) — 缩放因子加载 */
+#define I_STORE_RBX_BYTE 49  /* MOV [rbx], al (rex; b(0x88); modrm(0,0,3)) — *ptr=expr char */
+#define I_STORE_RBX_WORD 50  /* MOV word [rbx], ax (b(0x66); b(0x89); modrm(0,0,3)) */
+#define I_STORE_RBX32 51     /* MOV [rbx], eax (rex; b(0x89); modrm(0,0,3)) */
+#define I_STORE_RBX64 52     /* MOV [rbx], rax (rex1; b(0x89); modrm(0,0,3)) */
+#define I_STORE_XMM0_RBX 53  /* MOVSD [rbx], xmm0 (b(0xF2);b(0x0F);b(0x11); modrm(0,0,3)) */
+#define I_STORE_RBP_BYTE 54  /* MOV byte [rbp+disp], al (b(0x88); modrm(1/2,0,5)) */
+#define I_STORE_RBP_WORD 55  /* MOV word [rbp+disp], ax (b(0x66);b(0x89); modrm(1/2,0,5)) */
+#define I_STORE_XMM0_RIP 56  /* MOVSD [rip+disp], xmm0 (b(0xF2);b(0x0F);b(0x11);b(0x05);b4) — static double 写 */
+#define I_STORE_RIP_RAX64 57 /* MOV [rip+disp], rax (rex1;b(0x89);b(0x05);b4) — static 64写 */
+#define I_STORE_RIP_EAX32 58 /* MOV [rip+disp], eax (b(0x89);b(0x05);b4) — static 32写 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 静 空 (*ir_pass_cb)(整 *op, 整 *a, 整 *b, 整 *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9253,6 +9264,16 @@ __attribute__((unused))
             例 I_SHL_R11_IMM: rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(ir_a[i]); 断;
             例 I_MOVSXD_R11: b(0x4D); b(0x63); b(0xDB); 断;
             例 I_MOV_R9_IMM: b(0x41); b(0xB9); b4(ir_a[i]); 断;
+            例 I_STORE_RBX_BYTE: rex(0, 0, 0, 0); b(0x88); modrm(0, 0, 3); 断;
+            例 I_STORE_RBX_WORD: b(0x66); b(0x89); modrm(0, 0, 3); 断;
+            例 I_STORE_RBX32: rex(0, 0, 0, 0); b(0x89); modrm(0, 0, 3); 断;
+            例 I_STORE_RBX64: rex(1, 0, 0, 0); b(0x89); modrm(0, 0, 3); 断;
+            例 I_STORE_XMM0_RBX: b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 3); 断;
+            例 I_STORE_RBP_BYTE: b(0x88); 若 (ir_a[i] < 128 && ir_a[i] >= -128) { modrm(1, 0, 5); b(ir_a[i]); } 否 { modrm(2, 0, 5); b4(ir_a[i]); } 断;
+            例 I_STORE_RBP_WORD: b(0x66); b(0x89); 若 (ir_a[i] < 128 && ir_a[i] >= -128) { modrm(1, 0, 5); b(ir_a[i]); } 否 { modrm(2, 0, 5); b4(ir_a[i]); } 断;
+            例 I_STORE_XMM0_RIP: movsd_rip_xmm0(coff_static_disp(ir_a[i], ir_b[i]) - 2); 断;
+            例 I_STORE_RIP_RAX64: mov_rip_rax64(coff_static_disp(ir_a[i], ir_b[i]) - 1); 断;
+            例 I_STORE_RIP_EAX32: mov_rip_eax(coff_static_disp(ir_a[i], ir_b[i])); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 若 (ir_a[i] == PK) addsd_xmm0_xmm1();
                 否 若 (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9363,8 +9384,8 @@ __attribute__((unused))
                     否 若 (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     否 若 (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     否 若 (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
-                    否 若 (var_is_char(vn)) { movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 */
-                    否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-25 bug#31b: short 16 位读; nll 时 movsxd 64 位扩展 */
+                    否 若 (var_is_char(vn)) { movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错) */
+                    否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-25 bug#31b: 局部 short 16 位读; nll 时 movsxd 64 位扩展 (t42 (unsigned long long)short) */
                     否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); } /* Phase3-IR: 局部 int 读 */
                 }
             }
@@ -9394,8 +9415,8 @@ __attribute__((unused))
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            若 (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) { /* fix 2026-08-25 bug#32: (long long)cast 节点本身走 64 位 */
-                /* 64-bit long long arithmetic / comparison (fix 2026-08-05) */
+            若 (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
+                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负) */
                 若 (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { 整 pel64 = node_psz(n0[n]);
                       若 (pel64 <= 0 && (o == PK || o == MK || o == DK)) { /* Phase3-IR: LL 64位 PK/MK/DK 无指针缩放 */
@@ -9649,7 +9670,7 @@ __attribute__((unused))
                     }
                     slot_h[slot_n] = total_h;
                     若 (ndbl[c] || fn_dbl_get(fname, slot_n) || fn_math_iat(fname) >= 0) { cg_f(c); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush(); } /* Phase3-IR */
-                    否 若 (nll[c] || fn_ll_get(fname, slot_n)) { cg(c); 若 (!nll[c]) ll_ext32(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#30: int 实参→ll 形参符号扩展 */
+                    否 若 (nll[c] || fn_ll_get(fname, slot_n)) { cg(c); 若 (!nll[c]) ll_ext32(c); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#30: int 实参→ll 形参符号扩展 (add5(1,255,255,255,-5) 的 -5) */
                     否 { cg(c); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR */
                     total_h += 8;
                 }
@@ -9724,7 +9745,7 @@ __attribute__((unused))
 
             若 (is_sret) {
                 graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
-                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
+                    ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } 否 若 (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
                 整 fp_extra = nargs > 4 ? nargs - 4 : 0;
@@ -9741,7 +9762,7 @@ __attribute__((unused))
                 /* (原三行删除) */
             } 否 若 (is_user && fi >= 0) {
                 graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
-                ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
+                    ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
             } 否 若 (!strcmp(fname, "memset")) {
                 /* dst=rcx, val=rdx, n=r8d */
                 mov_rr(10, 8); /* r10d = n */
@@ -10402,10 +10423,10 @@ __attribute__((unused))
                 } 否 {
                 若 (n0[n] >= 0 && ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } 否 cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS (fix 2026-08-16: n0[n]=-1 守卫) */
                 若 (var_is_ll(vname)) ll_ext32(n0[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06: long long v=-7 → 4294967289) */
-                若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); 否 mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
+                            若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
                 否 若 (var_pesz(vname) > 0) {  mov_mbrp_reg64(off - cur_frame_sz, 0); }
                 否 若 (var_is_ll(vname)) {  mov_mbrp_reg64(off - cur_frame_sz, 0); } /* long long: 64-bit store (fix 2026-08-05) */
-                否 若 (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
+                            否 若 (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                 否 若 (var_is_char(vname)) { mov_byte_mbrp_al(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节截断存 */
                 否 若 (var_is_short(vname)) { mov_word_mbrp_ax(off - cur_frame_sz); } /* fix 2026-08-25 bug#31b: 局部 short 2 字节截断存 */
                 否 { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } } /* close E: else of STR */
@@ -10472,7 +10493,7 @@ __attribute__((unused))
                 整 step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 遍 (整 vi = vs_n() - 1; vi >= 0; vi--) 若 (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { 若 (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; 否 若 (vars[vi].p_esz > 0) step = vars[vi].p_esz; 断; }
                 若 (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
-                否 若 (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); 否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR */
+                否 若 (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); 否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/-- */
                 ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
                 ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 若 (var_isstatic(vn)) {
@@ -10480,9 +10501,9 @@ __attribute__((unused))
                     alu_rr(T_PK, 0, 1); /* eax += ebx */
                     mov_rip_eax(coff_static_disp(off, 0));
                 } 否 {
-                    若 (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); 否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } 否 ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR */
+                    若 (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); 否 若 (var_is_short(vn)) { 若 (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); 否 movsx_eax_mbrp_w(off - cur_frame_sz); 若 (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x63); modrm(3, 0, 0); } } 否 ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR; fix 2026-08-25 bug#31b */
                     ir_emit(I_ALU_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx */
-                    若 (var_is_char(vn)) mov_byte_mbrp_al(off - cur_frame_sz); 否 若 (var_is_short(vn)) mov_word_mbrp_ax(off - cur_frame_sz); 否 ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR */
+                    若 (var_is_char(vn)) mov_byte_mbrp_al(off - cur_frame_sz); 否 若 (var_is_short(vn)) mov_word_mbrp_ax(off - cur_frame_sz); 否 ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR; fix 2026-08-25 bug#31b */
                 }
                 pop_r(0); /* restore old value → eax */
             } 否 {
@@ -10634,7 +10655,7 @@ __attribute__((unused))
                         pop_r(3); /* ebx = rhs */
                         若 (bf_store(stypes[s2].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                         否 若 (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 char */
-否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 short */
+                否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 short */
                         否 若 (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 64 */
                         否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: arr[i].field 存 32 */
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
@@ -10676,7 +10697,7 @@ __attribute__((unused))
                             pop_r(3); /* ebx = rhs */
                             若 (si_out >= 0 && bf_store(stypes[si_out].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                             否 若 (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 char */
-否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 short */
+                否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 short */
                             否 若 (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 64 */
                             否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 32 */
                             mov_rr(0, 3); /* eax = stored value (chained assignments) */
@@ -10707,7 +10728,7 @@ __attribute__((unused))
                                 否 若 (coff_mode && var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } /* Phase3-IR case10 */
                                 否 若 (off < 0) { load_param_val(vname); } /* param ptr in register/stack (fix 2026-08-22 #34b: 参数指针 arrow 赋值原 rax=0 → 拷贝垃圾) */
                                 否 { mov_r_imm(0, 0); }
-                                若 (foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 大结构 dst 偏移 */
+                                若(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 大结构 dst 偏移 */
                                 push_r(0); /* &dst */
                                 若 (nt[n1[n]] == 1) {
                                     字 *_srn = (字*)(nn + n1[n]);
@@ -10722,22 +10743,22 @@ __attribute__((unused))
                                 cg_struct_copy(_fcs2);
                             } 否 若 (st_field_is_dbl(stypes[si].name, fname)) {
                                 cg_f(n1[n]); push_xmm0(); /* save rhs (xmm0 slot) */
-若 (off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
+若(off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
                                 否 {mov_r_imm(0,0);} /* ptr=0 if not found */
-                                若 (foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
+                                若(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
                                 pop_xmm0(); /* xmm0 = rhs */
                                 ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR case10: ptr->field 存 double */
                         } 否 {
 
                                 cg(n1[n]); 若 (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196) */
-若 (off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
+若(off>=0 || (coff_mode && var_isstatic(vname))){ 若 (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
                                 否 {mov_r_imm(0,0);} /* ptr=0 if not found */
-                                若 (foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
+                                若(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
                                 pop_r(3); /* ebx = rhs */
                                 若 (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                                 否 若 (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 64 */
                                 否 若 (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 char */
-否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 short */
+                否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 short */
                                 否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: ptr->field 存 32 */
                             mov_rr(0, 3); /* eax = stored value (chained assignments) */
                             }
@@ -10760,7 +10781,7 @@ __attribute__((unused))
                                   若 (nt[n1[n]] == 1) {
                                       字 *_srn = (字*)(nn + n1[n]);
                                       整 _sro = var_lookup(_srn);
-                                     若 (var_isstatic(_srn)) { ir_emit(I_LEA_RIP, _sro, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn, _sro) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: static 大结构 RHS 取址 */
+                                      若 (var_isstatic(_srn)) { ir_emit(I_LEA_RIP, _sro, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(_srn, _sro) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: static 大结构 RHS 取址 */
                                   } 否 {
                                       整 _rfsz2 = 0, _rsi2 = -1;
                                       mem_addr(n1[n], &_rfsz2, &_rsi2); /* re-emit &RHS after lea &dst (probe above emitted early) */
@@ -10779,7 +10800,7 @@ __attribute__((unused))
                                 若 (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                                 否 若 (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 存 64 */
                                 否 若 (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 存 char */
-否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 存 short */
+                否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 存 short */
                                 否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 存 32 */
                                 mov_rr(0, 3); /* eax = stored value (chained assignments) */
                               }
@@ -10793,7 +10814,7 @@ __attribute__((unused))
                             若 (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
                             否 若 (fsz == 8) { ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 存 64 */
                             否 若 (fsz == 1) { ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 存 char */
-否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 存 short */
+                否 若 (fsz == 2) { ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 存 short */
                             否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 存 32 */
                         } 否 {
                             整 _fty = st_field_ty_idx(stypes[si].name, fname);
@@ -10829,7 +10850,7 @@ __attribute__((unused))
                                 若 (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); bf_store(stypes[si].name, fname); } /* Phase3-IR case10: 局部 bit-field */
                                 否 若 (fsz == 8) { 若 (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); ir_emit(I_STORE_RBP64, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 ll 写 */
                                 否 若 (fsz == 1) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 char 写 */
-否 若 (fsz == 2) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 short 写 */
+                否 若 (fsz == 2) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 short 写 */
                                 否 { ir_emit(I_STORE_RBP, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 dword 写 */
                             }
                         }
@@ -10941,13 +10962,13 @@ __attribute__((unused))
                         若 (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] nested-store scale=%d\n", cg_mem_frow);
                         ir_emit(I_MOV_R9_IMM, cg_mem_frow, 0, 0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); /* Phase3-IR case10: nested 索引缩放 */
                     }
-                        ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
-                        ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                        ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 索引符号扩展 */
+                        ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 地址+=索引 */
                         若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (cg_mem_frow == 1 || cg_mem_frow == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (cg_mem_frow == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (cg_mem_frow == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(cg_mem_frow == 1 || cg_mem_frow == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(cg_mem_frow == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(cg_mem_frow == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } 否 若(off>=0){
                     整 did=0;
@@ -10955,29 +10976,29 @@ __attribute__((unused))
                     遍(整 vi=vs_n()-1;vi>=0;vi--)若(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
-                    若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 普通数组索引缩放 */
+                    若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
                     整 base=off-vars[vi].arr_sz*esz;
                     ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 数组基地址 */
                     若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     did=1; 断;
                     }
                     若(!did && peszl>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
                         整 esz = var_esz(vn);
                         mov_rr(11,0); /* r11d = index */
-                        若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 指针变量索引缩放 */
+                        若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
                         load_ptr_slot(off, vn); /* rax = ptr (static → RIP, else frame) */
                         ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                         ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                         若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         mov_rr(0, 3); /* eax = stored value (chained a=b=c assignments need it) */
                         did = 1;
                     }
@@ -10985,13 +11006,13 @@ __attribute__((unused))
                         整 esz = 4;
                         遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vn)&&vars[vi].is_static&&vars[vi].arr_esz>0){esz=vars[vi].arr_esz;断;}
                         mov_rr(11,0);
-                        若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 */
+                        若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 */
                         ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: static 数组基地址 */
                         若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         did=1;
                     }
@@ -11004,7 +11025,7 @@ __attribute__((unused))
                         否 若 (nt[kid] == 1) esz = var_esz((字*)(nn + kid)); /* &var */
                     }
                     mov_rr(11, 0); /* r11d = index */
-                    若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: generic base 索引缩放 */
+                    若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
                     push_r(11); /* cg(n0[ac]) may clobber r11 (fix 2026-08-09) */
                     cg(n0[ac]); /* base addr → rax (case 11 yields the address) */
                     pop_r(11);
@@ -11012,24 +11033,24 @@ __attribute__((unused))
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                     ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                     若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
                 否 { /* pointer param arr[i]=v: index in r11 (r9 may be the param reg) */
                     整 peszp = var_esz(vn);
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs (fix 2026-08-05) */
                     mov_rr(11, 0); /* r11d = index */
-                    若 (peszp==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (peszp==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (peszp>4){ mov_r_imm(0,peszp); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 指针参数索引缩放 */
+                    若(peszp==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(peszp==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(peszp>4){ mov_r_imm(0,peszp); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
                     load_param_val(vn); /* eax = ptr (reg or [rbp+disp]) */
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                     ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                     若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (peszp==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 若 (peszp==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(peszp==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若(peszp==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
             } /* end struct-array-element else (fix 2026-08-06) */
@@ -11094,7 +11115,7 @@ __attribute__((unused))
                     cg_no_deref = 1; cg(pnode); cg_no_deref = 0; /* rax = &dst (case-12 no_deref 给指针值=结构体地址) */
                     push_r(0);
                     若 (nt[n1[n]] == 12 || nt[n1[n]] == 15 || nt[n1[n]] == 13) { cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; } /* rax = &src (*src 解引用 / desc->entry 成员链取址, fix 2026-08-22 t47) */
-                    否 { 字 *srn = (字*)(nn + n1[n]); 整 sro = var_lookup(srn); 若 (var_isstatic(srn)) lea_rax_rip(coff_static_disp(sro, 1) - 1); 否 lea_r_mbrp(0, var_sbase(srn, sro) - cur_frame_sz); } /* rax = &结构体变量 */
+                    否 { 字 *srn = (字*)(nn + n1[n]); 整 sro = var_lookup(srn); 若 (var_isstatic(srn)) { ir_emit(I_LEA_RIP, sro, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(srn, sro) - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: *dst=*src RHS 取址 */
                     pop_r(3); /* rbx = &dst, rax = &src */
                     cg_struct_copy(stypes[p_sti].sz);
                 } 否 {
@@ -11104,11 +11125,11 @@ __attribute__((unused))
                 若 (is_dp) cg_f(n1[n]); /* double rhs → xmm0 */
                 否 cg(n1[n]); /* rhs → eax */
                 pop_r(3); /* ebx = ptr */
-                若 (is_dp) { asm_emit("    存浮 [r3], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0, 0, 3); } /* MOVSD [rbx], xmm0 */
-                否 若 (pe == 1) { asm_emit("    存字节 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 0); b(0x88); modrm(0, 0, 3); } /* MOV [rbx], al */
-                否 若 (pe == 2) { asm_emit("    存字 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x66); b(0x89); modrm(0, 0, 3); } /* MOV word [rbx], ax (fix 2026-08-09: short* direct store was dword) */
-                否 若 (pe == 8) { asm_emit("    存64 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 0, 3); } /* MOV [rbx], rax */
-                否 { asm_emit("    存32 [r3], r0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 0); b(0x89); modrm(0, 0, 3); } /* MOV [rbx], eax */
+                若 (is_dp) { ir_emit(I_STORE_XMM0_RBX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 double */
+                否 若 (pe == 1) { ir_emit(I_STORE_RBX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 char */
+                否 若 (pe == 2) { ir_emit(I_STORE_RBX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 short */
+                否 若 (pe == 8) { ir_emit(I_STORE_RBX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 64 */
+                否 { ir_emit(I_STORE_RBX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 32 */
                 }
             } 否 {
                 字 *vname = (字*)(nn + n0[n]);
@@ -11121,7 +11142,7 @@ __attribute__((unused))
                     cg(n1[n]);
                     cg_sret_off = 0;
                 } 否 若 (var_is_dbl(vname)) {
-                    若 (var_isstatic(vname)) { cg_f(n1[n]); movsd_rip_xmm0(coff_static_disp(off, 2) - 2); } /* static double assign */
+                    若 (var_isstatic(vname)) { cg_f(n1[n]); ir_emit(I_STORE_XMM0_RIP, off, 2, 0); ir_flush(); } /* Phase3-IR case10: static double 写 */
                     否 { cg_f(n1[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
                 } 否 若 (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && off >= 0 && n1[n] >= 0 && nt[n1[n]] == 1) {
                     /* struct 值赋值 b = a (big struct): 逐 8/4 字节拷贝 (fix 2026-08-06: 原只拷首 4 字节 → 姓名拷了分数没拷/崩溃)
@@ -11132,9 +11153,9 @@ __attribute__((unused))
                     字 *srcn = (字*)(nn + n1[n]);
                     整 soff = var_lookup(srcn);
                     若 (soff >= 0) {
-                        若 (var_isstatic(vname)) lea_rax_rip(coff_static_disp(off, 1) - 1); 否 lea_r_mbrp(0, var_sbase(vname, off) - cur_frame_sz); /* fix 2026-08-06: 静态目标要 ADDRESS (lea) */
+                        若 (var_isstatic(vname)) { ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: 大结构拷贝 &b */
                         push_r(0); /* &b */
-                        若 (var_isstatic(srcn)) lea_rax_rip(coff_static_disp(soff, 1) - 1); 否 lea_r_mbrp(0, var_sbase(srcn, soff) - cur_frame_sz); /* fix 2026-08-06: 静态源要 ADDRESS (lea) */
+                        若 (var_isstatic(srcn)) { ir_emit(I_LEA_RIP, soff, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(srcn, soff) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: 大结构拷贝 &a */
                         pop_r(3); /* rbx = &b (目标), rax = &a (源) */
                         cg_struct_copy(csz);
                         /* csz 是 algn(4/8) 的倍数, 8+4 覆盖; 1 字节尾部不出现 */
@@ -11149,7 +11170,7 @@ __attribute__((unused))
                     整 rsti = (rp >= 0 && nt[rp] == 1) ? var_stidx((字*)(nn + rp)) : -1;
                     若 (rsti == sti && rp >= 0 && nt[rp] == 1 && var_pesz((字*)(nn + rp)) > 0) {
                         整 csz2 = stypes[sti].sz;
-                        若 (var_isstatic(vname)) lea_rax_rip(coff_static_disp(off, 1) - 1); 否 lea_r_mbrp(0, var_sbase(vname, off) - cur_frame_sz); /* &dst */
+                        若 (var_isstatic(vname)) { ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); } 否 { ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: b=*p 拷贝 */
                         push_r(0); /* &b */
                         cg_no_deref = 1; cg(n1[n]); cg_no_deref = 0; /* rax = p 指针值 = &src (case 12 cg_no_deref 不解引用直接给指针值) */
                         pop_r(3); /* rbx = &b (目标), rax = &src (源) */
@@ -11160,12 +11181,12 @@ __attribute__((unused))
                         否 cg(n1[n]);
                         若 (var_is_ll(vname)) ll_ext32(n1[n]);
                         若 (off >= 0 || (coff_mode && var_isstatic(vname) && off < 0)) {
-                            若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); 否 mov_rip_eax(coff_static_disp(off, 0)); }
-                            否 若 (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
-                            否 若 (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0);
-                            否 若 (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
-                            否 若 (var_is_char(vname)) mov_byte_mbrp_al(off - cur_frame_sz);
-                            否 若 (var_is_short(vname)) mov_word_mbrp_ax(off - cur_frame_sz);
+                            若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
+                            否 若 (var_pesz(vname) > 0) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_is_ll(vname)) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_is_char(vname)) { ir_emit(I_STORE_RBP_BYTE, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+否 若 (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: short 2 字节截断存 */
                             否 { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                         }
                     }
@@ -11174,12 +11195,12 @@ __attribute__((unused))
                 否 cg(n1[n]);
                 若 (var_is_ll(vname)) ll_ext32(n1[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06) */
                 若 (off >= 0 || (coff_mode && var_isstatic(vname) && off < 0)) { /* fix 2026-08-17: coff 模式 extern 全局赋值 (off<0 负槽 + is_static=1) — 原 if(off>=0) 排除 → git_work_tree_cfg=xgetcwd() 只发 call 不存储 → init_db 兜底失效 → 崩 */
-                    若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) mov_rip_rax64(coff_static_disp(off, 1) - 1); 否 mov_rip_eax(coff_static_disp(off, 0)); } /* long long: 64-bit static store (fix 2026-08-05) */
-                    否 若 (var_pesz(vname) > 0) mov_mbrp_reg64(off - cur_frame_sz, 0);
-                    否 若 (var_is_ll(vname)) mov_mbrp_reg64(off - cur_frame_sz, 0); /* long long: 64-bit store (fix 2026-08-05) */
-                    否 若 (var_small_struct(vname)) mov_mbrp_reg64(var_sbase(vname, off) - cur_frame_sz, 0);
-                    否 若 (var_is_char(vname)) mov_byte_mbrp_al(off - cur_frame_sz);
-                            否 若 (var_is_short(vname)) mov_word_mbrp_ax(off - cur_frame_sz);
+                            若 (var_isstatic(vname)) { 若 (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } 否 { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
+                            否 若 (var_pesz(vname) > 0) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_is_ll(vname)) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                            否 若 (var_is_char(vname)) { ir_emit(I_STORE_RBP_BYTE, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+否 若 (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: short 2 字节截断存 */
                     否 { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); }
                 }
                 }
@@ -11352,11 +11373,11 @@ __attribute__((unused))
                     若 (st_field_is_ptr(s2, fn)) { 整 _pel_mb = st_field_pel(s2, fn); cg_mem_frow = _pel_mb; cg_frows[0] = _pel_mb; cg_frows[1] = st_field_ffin(s2, fn); } /* fix 2026-08-22 t44: arr[i].ptrfield[j] — 指针字段作数组基 (mb[i].ptr[k]) st_field_2d_setup 用 fels(字段自身 8) 非 pel(指向元素 char=1) → 按 8 缩放 → xdiff_outf mb[i].ptr[size-1] SEGV; 镜像嵌套链分支 (10216 cg_mem_chain_si) 的 pel 修正 */
                     若 (fsz > 4 || fsz == 0) { /* fsz==0: flex/空数组字段 char name[0] → 取地址 (fix 2026-08-20) */
                         整 fty2 = st_field_ty_idx(stypes[s2].name, fn);
-                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
+                        若 (fsz == 8 && (fty2 == -2 || fty2 == -3 || (fty2 == -1 && st_field_row(stypes[s2].name, fn) == 8) || st_field_is_ptr(s2, fn))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field 64 */ /* fix 2026-08-16 根因D4; fix 2026-08-17: el==8→frow==8 — char * / int * 指针字段 el=pointee(1/4) 漏判, 数组字段 frow<8 保留地址: arr[i].指针字段 (secs[i].data) 原只 fnptr(-2) 解引用, 普通指针/LL 字段 (-1/-3) 被当 struct/array 取地址 → fwrite 写进 secs 结构体内存; 对齐另一分支 (afy==-1&&el==8) 语义: fnptr/LL/指针字段 load 64-bit VALUE, struct/array 字段保留地址
                                  fix 2026-08-19: struct X * 指针字段 (fty2≥0 指向 struct 标签) 原漏判 → arr[i].ptrfield 保留元素地址不解引用 → configset_iter `entry = list->items[i].e` 编成 entry=&items[i] → entry->key/value_list 读到 items 数组自己 → git status SEGV; 与嵌套链分支 (cg_mem_chain_si) 的 st_field_is_ptr 判定对齐 */
                         /* else: struct/array field -> address (no deref) */
                     } 否 若 (!cg_no_deref && !cg_addr_of) { /* t35o 2026-08-24: 取地址链末字段保留地址 — &arr[i].field 在 cg_addr_of 下读到字段值 (status SEGV 链之一) */
-                        若 (st_field_bitw(stypes[s2].name, fn) > 0) { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); bf_extract(stypes[s2].name, fn); } /* Phase3-IR case15: arr[i].field bit-field */
+                        若 (st_field_bitw(stypes[s2].name, fn) > 0) { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); bf_extract(stypes[s2].name, fn); } /* Phase3-IR case15: arr[i].field bit-field (deref 先回放再 extract) */
                         否 若 (fsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field char */
 否 若 (fsz == 2) { 若 (st_field_is_uns(stypes[s2].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* fix 2026-08-25 bug#33: arr[i].field short */
                         否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field dword */
@@ -11412,8 +11433,7 @@ __attribute__((unused))
                         否 若 (afsz11 == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); } /* Phase3-IR case15: &e->f char */
                         否 若 (afsz11 == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); } /* Phase3-IR case15: &e->f short */
                         否 { ir_emit(I_DEREF32, 0, 0, 0); } /* Phase3-IR case15: &e->f dword */
-                        ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */
-                        断;
+                        ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */                        断;
                     }
                 }
             }
@@ -11444,7 +11464,7 @@ __attribute__((unused))
             } 否 若((o>=0 || (coff_mode && var_isstatic(vn))) && s>=0){整 fo=st_off(stypes[s].name,fn);若(fo>=0){ /* fix 2026-08-17: o>=0 门控放行 coff extern 静态 (off<0 负槽) — 原排除 → the_repository->worktree 无输出 → get_git_work_tree 空函数返回垃圾 */
                 若(is_arrow){ /* ptr->field: load ptr, add offset, deref (array/fnptr fields keep the ADDRESS) */
                     整 off=var_lookup(vn);
-                    若(off>=0 || (coff_mode && var_isstatic(vn))){ 若 (var_isstatic(vn)) ir_emit(I_LOAD_RIP64, off, 1, 0); 否 若 (var_pesz(vn) > 0) ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); 否 ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); } /* Phase3-IR case15: rax = ptr */
+                    若(off>=0 || (coff_mode && var_isstatic(vn))){ 若 (var_isstatic(vn)) ir_emit(I_LOAD_RIP64, off, 1, 0); 否 若 (var_pesz(vn) > 0) ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); 否 ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); } /* Phase3-IR case15: rax = ptr (extern: coff 符号重定位) */
                     若(fo!=0){ ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); } /* Phase3-IR case15: rax += field offset */
                     ir_flush(); /* Phase3-IR case15: flush ptr->field 地址序列 */
                     整 afsz = st_field_size(stypes[s].name, fn);
@@ -11510,10 +11530,10 @@ __attribute__((unused))
                 } 否 {
                     若 (cg_no_deref) {
                         st_field_2d_setup(s, fn); /* fix 2026-08-07 */
-                        ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); /* Phase3-IR case15: field as ARRAY base */
+                        ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); /* Phase3-IR case15: field as ARRAY base → address */
                         { 整 afsz3 = st_field_size(stypes[s].name, fn); 若 (!cg_incdec_target && !cg_addr_of && afsz3 == 8 && st_field_is_ptr(s, fn)) { mov_reg_mreg64(0, 0); /* fix 2026-08-18: 非箭头 var.field 指针字段作数组基 (store.seen[i] / store.parsed[i] / store.key[i]): 原 cg_no_deref 只返回字段地址 → seen[0] 读到指针值本身 → config 写循环 j 垃圾; 对齐箭头分支 — 解引用取指针值 + 按指向元素缩放; fix 2026-08-19: 条件统一 st_field_is_ptr (原 el==8 对 char* 恒假) */ 整 pel3 = st_field_pel(s, fn); cg_mem_frow = pel3; cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */ cg_frows[0] = pel3; cg_frows[1] = st_field_ffin(s, fn); 若 (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2; 若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; } }
                     } 否 若 (st_field_is_dbl(stypes[s].name, fn)) {
-                        ir_emit(I_LOAD_XMM0_RBP, var_sbase(vn, o) + fo - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR case15: double field */
+                        ir_emit(I_LOAD_XMM0_RBP, var_sbase(vn, o) + fo - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR case15: double field → xmm0 */
                     } 否 {
                     整 fsz = st_field_size(stypes[s].name, fn);
                     整 fty = st_field_ty_idx(stypes[s].name, fn);
@@ -11573,7 +11593,7 @@ __attribute__((unused))
                 整 sv_addrof = cg_addr_of; /* t35o 2026-08-24: 取地址链中间基须解引用 — &istate->cache[pos]->oid 的 cache 指针字段受外层 & 影响 → status SEGV */
                 cg_no_deref = 1; /* nested base must yield the ADDRESS (2D array row / struct field) */
                 cg_addr_of = 0;
-                cg_nested_cnt++; /* fix 2026-08-22 t41b: 标记内层下标被外层续索引 — 内层 deref 判定 & cg_mem_ptr 传递 */
+                cg_nested_cnt++; /* fix 2026-08-22 t41b: 标记内层下标被外层继续索引 — 内层 deref 判定 & cg_mem_ptr 传递 */
                 cg(n0[n]); /* base address �?rax */
                 cg_nested_cnt--;
                 cg_no_deref = sv_noderef;
@@ -12828,43 +12848,55 @@ __attribute__((unused))
     w4f(f, sym_off);
     w4f(f, csym_n);
 }
+
 /* ==== Phase 3 阶段 C: IR 工程预埋区 (v1.4 §11.2 定义态 · 宏门内零占用) ====
    语义依据: 《甲言_逆向定律库_IR工程预埋全景.md》§12 优先级 (类型宽度第一)
-   纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4) */
+   纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4)
+   激活: Phase 7 打开宏 + 引用 → 必须过预埋尺 (v1.4 §7.2) + 差异测试双闸 */
 #ifdef IR_PREBED_ACTIVE
+/* 1. IR3 三地址码 (v1.4 §2.1, LLVM 值模型定律 §6) — 类型宽度第一优先 */
 typedef 构 { 整 op; 整 ty; 整 d; 整 s1; 整 s2; 整 s3; } IR3;
-#define IR3_CAP 1000000
+/* ty 编码: 低 8 位类型 (i8=1 i16=2 i32=3 i64=4 u8=5 u16=6 u32=7 u64=8 f32=9 f64=10 ptr=11),
+   高 8 位值级属性位 (LAW_LINEAR/SUM/LATTICE) */
+#define IR3_CAP 1000000  /* 预埋初始值: 激活前按编译 Git 全量最坏规模实测校准 (2026-08-25 启元审计) */
 静 IR3 ir3[IR3_CAP]; 静 整 ir3_n;
 
+/* 2. 块表/CFG (v1.4 §3, LLVM CFG 定律 §7) — 只存 succ 反向算 pred (LLVM 定律 2) */
 typedef 构 { 整 start; 整 end; 整 npred; 整 nsucc; 整 preds[8]; 整 succs[8]; } BLK;
-#define BLK_CAP 100000
+#define BLK_CAP 100000  /* 预埋初始值: 激活前按 Git 全量函数数 × 最坏基本块数实测校准 (2026-08-25 启元审计) */
 静 BLK blks[BLK_CAP]; 静 整 blk_n;
 
-#define VT_CAP 1000000
-静 整 vt_lifetime[VT_CAP];
-静 整 vt_lifetime_id[VT_CAP];
-静 整 vt_tag[VT_CAP];
-静 整 vt_tyvar[VT_CAP];
-静 整 vt_trunc[VT_CAP];
+/* 3. 值级 side-tables (v1.4 §10.1, 逆向定律库 §1-3/§5) */
+#define VT_CAP 1000000  /* 预埋初始值: 激活前按编译 Git 全量最坏规模实测校准 (2026-08-25 启元审计) */
+静 整 vt_lifetime[VT_CAP];      /* 所有权状态机: 0=普通 1=move后 2=不可变借用 3=可变借用 (int 一次给够, 对齐逆向定律库 §1) */
+静 整 vt_lifetime_id[VT_CAP];   /* lifetime 域编号: 0=函数级 1..N=显式 'a 域 */
+静 整 vt_tag[VT_CAP];           /* 和类型判别式: 0..N-1 */
+静 整 vt_tyvar[VT_CAP];         /* 类型变量编号: 0=非泛型 >0=第 N 个 */
+静 整 vt_trunc[VT_CAP];         /* 截断标记: 0=无 1=赋值截断 2=cast 截断 3=扩展 */
 
-#define STYPES_CAP 256
-静 整 stypes_lo[STYPES_CAP];
-静 整 stypes_hi[STYPES_CAP];
-静 整 stypes_super[STYPES_CAP];
+/* 4. 类型级 side-tables (逆向定律库 §4, 不内联 stypes — §11.1 冻结) */
+#define STYPES_CAP 256  /* 与 stypes[256] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
+静 整 stypes_lo[STYPES_CAP];    /* 范围下界 (-1=无界) */
+静 整 stypes_hi[STYPES_CAP];    /* 范围上界 (-1=无界) */
+静 整 stypes_super[STYPES_CAP]; /* 父类型 id (-1=无) */
 
+/* 5. 分析结果缓存 (逆向定律库 §8, LLVM NewPM 定律 2) — 任意变换后全失效 (实战定) */
 typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
-#define ANALYSIS_CAP 64
+#define ANALYSIS_CAP 64 /* 预埋初始值: 激活前按 Git 全量 pass/分析类型数实测校准 (2026-08-25 启元审计) */
 静 IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; 静 整 analysis_n;
-静 整 analysis_store[ANALYSIS_CAP][64];
+静 整 analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定容量, 无 malloc) */
+
+/* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
 #endif /* IR_PREBED_ACTIVE */
 
-/* ==== -graph 旁路导出 (P0 工具侧闭环, 2026-08-25) ==== */
+/* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====
+   旁路: 不插桩不影响编译行为, 仅编译完成后遍历 func_tbl/stypes + 调用记录导出 JSON */
 静 整 graph_mode = 0; 静 字 graph_out[512] = "";
 #define GRAPH_CALLS_CAP 20000
 静 字 graph_calls_from[GRAPH_CALLS_CAP][64]; 静 字 graph_calls_to[GRAPH_CALLS_CAP][64]; 静 整 graph_calls_n;
 静 空 graph_record_call(常 字 *to) {
     若 (!graph_mode || !cur_fn_name[0] || graph_calls_n >= GRAPH_CALLS_CAP) 返;
-    遍 (整 i = 0; i < graph_calls_n; i++) /* 去重: 同一 from→to 只记一次 (2026-08-25) */
+    遍 (整 i = 0; i < graph_calls_n; i++) /* 去重: 同一 from→to 只记一次 (防 4000 上限被重复调用占满截断, 2026-08-25) */
         若 (!strcmp(graph_calls_from[i], cur_fn_name) && !strcmp(graph_calls_to[i], to)) 返;
     strcpy(graph_calls_from[graph_calls_n], cur_fn_name);
     strcpy(graph_calls_to[graph_calls_n], to);
@@ -12891,7 +12923,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     first = 1;
     遍 (整 i = 0; i < st_n; i++) {
         若 (!first) { fprintf(f, ",\n"); } first = 0;
-        常 字 *risk; /* risk 阈值 (审计定): 字段≥8 或 大小≥64 = high; 字段≥4 或 大小≥32 = medium */
+        常 字 *risk; /* risk 阈值 (2026-08-25 审计定): 字段≥8 或 大小≥64 = high; 字段≥4 或 大小≥32 = medium; 否则 low */
         若 (stypes[i].fn >= 8 || stypes[i].sz >= 64) risk = "high";
         否 若 (stypes[i].fn >= 4 || stypes[i].sz >= 32) risk = "medium";
         否 risk = "low";
@@ -12901,9 +12933,6 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     fclose(f);
     fprintf(stderr, "[graph] %s 导出完成 (fn:%d st:%d calls:%d)\n", graph_out, func_n, st_n, graph_calls_n);
 }
-
-
-
 
 整 main(整 argc, 字 **argv) {
     常 字 *src = "int main() { return 42; }";
@@ -12936,8 +12965,8 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
             }
             argi += 2; 续;
         }
-        若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 */
-若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
+        若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
+        若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
             若 (hb) {
                 整 hl = (整)strlen(hb);
@@ -13194,7 +13223,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     }
 
     若 (asm_out) { fclose(asm_out); asm_out = NULL; }
-    若 (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后) */
+    若 (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后, 2026-08-25) */
 
     若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
     返 0;

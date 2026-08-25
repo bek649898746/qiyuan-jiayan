@@ -30,6 +30,9 @@ tests = {
     'bigparam_assign.c': '#include <stdio.h>\nstruct S { int a; char b; long long c; };\nvoid set(struct S s) { s.a = 1; s.b = 2; s.c = 3; printf("%d %d %lld\\n", s.a, s.b, s.c); }\nint main(void) { struct S v; v.a = 9; v.b = 9; v.c = 9; set(v); return 0; }\n',
     'arr_short_assign.c': '#include <stdio.h>\nshort sa[4]; int main(void) { sa[0] = 100; sa[1] = 200; sa[2] = 300; sa[3] = 400; printf("%d %d %d %d\\n", sa[0], sa[1], sa[2], sa[3]); return 0; }\n',
     'arr_struct_assign.c': '#include <stdio.h>\nstruct E { int x; int y; };\nint main(void) { struct E a[3]; a[0].x = 1; a[0].y = 2; a[1] = a[0]; a[2] = a[1]; printf("%d %d %d %d\\n", a[1].x, a[1].y, a[2].x, a[2].y); return 0; }\n',
+    'ptr_store.c': '#include <stdio.h>\nint main(void) { int a = 1; char c = 65; short s = 300; long long ll = 123456; int *p = &a; char *pc = &c; short *ps = &s; long long *pl = &ll; *p = 42; *pc = 66; *ps = 500; *pl = 98765; printf("%d %d %d %lld\\n", a, c, s, ll); return 0; }\n',
+    'ptr_struct_copy.c': '#include <stdio.h>\nstruct S { int x; int y; };\nvoid f(struct S *dst, struct S *src) { *dst = *src; }\nint main(void) { struct S a; a.x = 7; a.y = 8; struct S b; f(&b, &a); printf("%d %d\\n", b.x, b.y); return 0; }\n',
+    'global_assign.c': '#include <stdio.h>\nint gi; char gc; short gs; long long gl; static double gd;\nint main(void) { gi = 11; gc = 90; gs = 600; gl = 777777; gd = 3.5; printf("%d %d %d %lld %d\\n", gi, gc, gs, gl, (int)(gd * 2)); return 0; }\n',
 }
 fails = 0
 for name, prog in tests.items():
