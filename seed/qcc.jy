@@ -9193,6 +9193,11 @@ __attribute__((unused))
 #define I_STORE_RBP64 41   /* mov_mbrp_reg64(disp,0): mov [rbp+disp], rax (rex1; b(0x89); modrm(1/2,0,5)) */
 #define I_STORE_XMM0_RBP 42 /* movsd_mbrp_xmm0(disp): movsd [rbp+disp], xmm0 (b(0xF2);b(0x0F);b(0x11); modrm(1/2,0,5)) */
 #define I_LEA_RIP_OFF 43   /* lea_rax_rip(coff_static_disp(a,b)+c-1) — static 字段写地址含 foff */
+#define I_IMUL_R11_R9 44  /* IMUL r11d, r9d (rex(0,1,0,1); 0F AF; modrm(3,3,1)) — arr[i]=expr 索引缩放 */
+#define I_ADD_RAX_R11 45  /* ADD rax, r11 (rex(1,1,0,0); 01; modrm(3,3,0)) — 地址+=索引 */
+#define I_SHL_R11_IMM 46  /* SHL r11d, imm (rex(0,0,0,1); C1; modrm(3,4,3); imm) — 索引缩放 */
+#define I_MOVSXD_R11 47   /* MOVSXD r11, r11d (4D 63 DB) — 32位索引符号扩展 */
+#define I_MOV_R9_IMM 48   /* MOV r9d, imm (41 B9 imm32) — 缩放因子加载 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 静 空 (*ir_pass_cb)(整 *op, 整 *a, 整 *b, 整 *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9243,6 +9248,11 @@ __attribute__((unused))
             例 I_STORE_RBP64: rex(1, 0, 0, 0); b(0x89); 若 (ir_a[i] < 128 && ir_a[i] >= -128) { modrm(1, 0, 5); b(ir_a[i]); } 否 { modrm(2, 0, 5); b4(ir_a[i]); } 断;
             例 I_STORE_XMM0_RBP: b(0xF2); b(0x0F); b(0x11); 若 (ir_a[i] < 128 && ir_a[i] >= -128) { modrm(1, 0, 5); b(ir_a[i]); } 否 { modrm(2, 0, 5); b4(ir_a[i]); } 断;
             例 I_LEA_RIP_OFF: lea_rax_rip(coff_static_disp(ir_a[i], ir_b[i]) + ir_c[i] - 1); 断;
+            例 I_IMUL_R11_R9: rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); 断;
+            例 I_ADD_RAX_R11: rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); 断;
+            例 I_SHL_R11_IMM: rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(ir_a[i]); 断;
+            例 I_MOVSXD_R11: b(0x4D); b(0x63); b(0xDB); 断;
+            例 I_MOV_R9_IMM: b(0x41); b(0xB9); b4(ir_a[i]); 断;
             例 I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 若 (ir_a[i] == PK) addsd_xmm0_xmm1();
                 否 若 (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10901,8 +10911,8 @@ __attribute__((unused))
                    means double-return, elements are pointers (64-bit stores). */
                 整 arr_dbl = var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0);
                 若 (arr_dbl) { cg_f(n1[n]); push_xmm0(); } /* double array element write */
-                否 { cg(n1[n]); 若 (var_is_ll(vn)) ll_ext32(n1[n]); push_r(0); } /* rhs -> eax (compute value FIRST), saved on stack; ll 数组: int RHS 符号扩展 (fix 2026-08-06) */
-                cg(n1[ac]); /* index -> eax */
+                否 { cg(n1[n]); ir_flush(); 若 (var_is_ll(vn)) ll_ext32(n1[n]); push_r(0); } /* Phase3-IR case10: RHS 编译后清残留 IR */
+                cg(n1[ac]); ir_flush(); /* Phase3-IR case10: index 编译后清残留 IR */
                 /* NOTE: pop_r(3) is DELAYED into each store branch — the base-address
                    expression (cg(n0[ac]), e.g. `vars[vcnt-1]`) may itself use r3 for a
                    `var - const` subtraction and would CLOBBER the RHS (fix 2026-08-05:
@@ -10929,15 +10939,15 @@ __attribute__((unused))
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     若 (cg_mem_frow > 1) {
                         若 (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] nested-store scale=%d\n", cg_mem_frow);
-                        mov_ri_ext(9, cg_mem_frow); asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); /* IMUL r11d, r9d */
+                        ir_emit(I_MOV_R9_IMM, cg_mem_frow, 0, 0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); /* Phase3-IR case10: nested 索引缩放 */
                     }
-                    movsxd_r11(); /* 32 位索引符号扩展 (fix 2026-08-19: 负索引零扩展 → ptr+4GB → SEGV) */
-                    asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax, r11 */
-                    若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
-                    否 若(cg_mem_frow == 1 || cg_mem_frow == 0){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
-                    否 若(cg_mem_frow == 8){asm_emit("    存64 [r0], r3\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit) */
-                    否 若(cg_mem_frow == 2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
-                    否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
+                        ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                        ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                        若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (cg_mem_frow == 1 || cg_mem_frow == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (cg_mem_frow == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (cg_mem_frow == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } 否 若(off>=0){
                     整 did=0;
@@ -10945,29 +10955,29 @@ __attribute__((unused))
                     遍(整 vi=vs_n()-1;vi>=0;vi--)若(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
-                    若(esz==4){asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);} /* IMUL r11d, r9d */
+                    若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 普通数组索引缩放 */
                     整 base=off-vars[vi].arr_sz*esz;
-                    lea_r_mbrp(0,base - cur_frame_sz); movsxd_r11(); asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
-                    若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
-                    否 若(esz==1){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
-                    否 若(esz==8){asm_emit("    存64 [r0], r3\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit fnptr element) */
-                    否 若(esz==2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
-                    否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
+                    ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 数组基地址 */
+                    若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                     did=1; 断;
                     }
                     若(!did && peszl>0 && var_arrsz(vn)==0){ /* pointer var (not array): static �?.data slot holds the ptr; else frame */
                         整 esz = var_esz(vn);
                         mov_rr(11,0); /* r11d = index */
-                        若(esz==4){asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
+                        若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 指针变量索引缩放 */
                         load_ptr_slot(off, vn); /* rax = ptr (static → RIP, else frame) */
-                        movsxd_r11(); /* 32 位索引符号扩展 (fix 2026-08-19) */
-                        asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0);b(0x01);modrm(3,3,0); /* ADD rax,r11 */
-                        若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
-                        否 若(esz==1){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl (char) */
-                        否 若(esz==8){asm_emit("    存64 [r0], r3\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
-                        否 若(esz==2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
-                        否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],ebx */
+                        ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                        ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                        若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         mov_rr(0, 3); /* eax = stored value (chained a=b=c assignments need it) */
                         did = 1;
                     }
@@ -10975,14 +10985,13 @@ __attribute__((unused))
                         整 esz = 4;
                         遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vn)&&vars[vi].is_static&&vars[vi].arr_esz>0){esz=vars[vi].arr_esz;断;}
                         mov_rr(11,0);
-                        若(esz==2){asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(1);}否 若(esz==4){asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1);b(0xC1);modrm(3,4,3);b(2);}
-                        否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
-                        lea_rax_rip(coff_static_disp(off, 1)-1); movsxd_r11(); asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0);b(0x01);modrm(3,3,0);
-                        若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double array / double* POINTER var, not fnptr array) */
-                        否 若(esz==1){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x88);modrm(0,3,0);} /* MOV [rax],bl */
-                        否 若(esz==8){asm_emit("    存64 [r0], r3\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx (64-bit pointer element) */
-                        否 若(esz==2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
-                        否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0);b(0x89);modrm(0,3,0);}
+                        若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 */
+                        ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: static 数组基地址 */
+                        若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         did=1;
                     }
@@ -10995,32 +11004,32 @@ __attribute__((unused))
                         否 若 (nt[kid] == 1) esz = var_esz((字*)(nn + kid)); /* &var */
                     }
                     mov_rr(11, 0); /* r11d = index */
-                    若(esz==4){asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}否 若(esz==2){asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}否 若(esz>4){mov_r_imm(0,esz);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
+                    若 (esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: generic base 索引缩放 */
                     push_r(11); /* cg(n0[ac]) may clobber r11 (fix 2026-08-09) */
                     cg(n0[ac]); /* base addr → rax (case 11 yields the address) */
                     pop_r(11);
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-09: cg may clobber r3) */
-                    movsxd_r11(); /* 32 位索引符号扩展 (fix 2026-08-19: 负索引零扩展 → ptr+4GB → SEGV) */
-                    asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
-                    若 (var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 */
-                    否 若(esz==1){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
-                    否 若(esz==8){asm_emit("    存64 [r0], r3\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(1,0,0,0);b(0x89);modrm(0,3,0);} /* MOV [rax],rbx */
-                    否 若(esz==2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx */
-                    否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
+                    ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                    ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                    若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
                 否 { /* pointer param arr[i]=v: index in r11 (r9 may be the param reg) */
                     整 peszp = var_esz(vn);
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs (fix 2026-08-05) */
                     mov_rr(11, 0); /* r11d = index */
-                    若(peszp==4){asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(2);}否 若(peszp==2){asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,1); b(0xC1); modrm(3,4,3); b(1);}否 若(peszp>4){mov_r_imm(0,peszp);mov_rr(9,0);asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0);rex(0,1,0,1);b(0x0F);b(0xAF);modrm(3,3,1);}
+                    若 (peszp==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若 (peszp==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若 (peszp>4){ mov_r_imm(0,peszp); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 指针参数索引缩放 */
                     load_param_val(vn); /* eax = ptr (reg or [rbp+disp]) */
-                    movsxd_r11(); /* 32 位索引符号扩展 (fix 2026-08-19: 负索引零扩展 → ptr+4GB → SEGV) */
-                    asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1,1,0,0); b(0x01); modrm(3,3,0); /* ADD rax,r11 */
-                    若 (var_pdbl(vn)) { pop_xmm0(); asm_emit("    存浮 [r0], xmm0\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x11); modrm(0,0,0); } /* movsd [rax], xmm0 (double* param) */
-                    否 若(peszp==1){asm_emit("    存字节rax bl\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x88); modrm(0,3,0);} /* MOV [rax],bl */
-                    否 若(peszp==2){asm_emit("    存字rax bx\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x66); b(0x89); modrm(0,3,0);} /* MOV word [rax],bx fix 2026-08-08 */
-                    否{asm_emit("    存32rax\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0,0,0,0); b(0x89); modrm(0,3,0);} /* MOV [rax],ebx */
+                    ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                    ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
+                    若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (peszp==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 若 (peszp==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    否 { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 }
             } /* end struct-array-element else (fix 2026-08-06) */
