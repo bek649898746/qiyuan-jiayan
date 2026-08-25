@@ -9550,11 +9550,13 @@ static void cg(int n) {
                 cg(n0[n]); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush();
                 cg(n1[n]); ir_emit(I_ALU_RBX, o, 0, 0); ir_flush();
             } else {
-            cg(n0[n]); push_r(0); cg(n1[n]); pop_r(3);
-            if (pscale > 1) { mov_rr(10, 0); mov_r_imm(0, pscale); asm_emit("    乘 r0, r10\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(0, 0, 0, 1); b(0x0F); b(0xAF); modrm(3, 0, 2); } /* eax = index * row size (REX.B=1 → rm=r10; fix 2026-08-03: text said r2) */
-            if (o == T_SR) g_uns_shift = expr_is_unsigned(n0[n]); /* unsigned >> → SHR (fix 2026-08-05) */
-            if (o == T_DV || o == T_MD) g_uns_div = expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* fix 2026-08-06 M1 */
-            alu_rr(o, 3, 0); mov_rr(0, 3);
+            cg(n0[n]); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush();
+            cg(n1[n]); ir_emit(I_POP_RBX, 0, 0, 0); ir_flush();
+            if (pscale > 1) { ir_emit(I_IMUL32_SCALE, pscale, 0, 0); ir_flush(); }
+            int uns = 0;
+            if (o == T_SR) uns = expr_is_unsigned(n0[n]); /* unsigned >> → SHR (fix 2026-08-05) */
+            else if (o == T_DV || o == T_MD) uns = expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* fix 2026-08-06 M1 */
+            ir_emit(I_ALU_RBX_RES, o, uns, 0); ir_flush();
             }
             if (psub_div > 1) { /* eax = (p - q) / 元素大小 (idiv: edx:eax / ecx) */
                 ir_emit(I_PSUB_DIV, psub_div, 0, 0); ir_flush();
