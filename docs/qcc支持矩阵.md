@@ -25,6 +25,7 @@
 > v2.20（step20）：**`&arr[i]-&arr[j]` 指针差已支持**（node_psz 取址分支：仅当下标操作数时返回基数组元素大小；32/64 位指针差除法路径统一受益）；**`*(p+1)` 指针算术解引用宽度修复**（case 12 原无 binop 分支→字节加载，现按元素大小加载，double 指针算术解引用同步正确）；支持矩阵已知限制指针差一项清零。
 > v2.21（step21）：**`_Alignas` 对齐语义已实现**（字段级显式对齐：st_field_sz_r 单点 max(natural, N) 消费，自动抬升 struct 最大对齐；`{_Alignas(4) short}` sizeof 4、`{char,_Alignas(8) int}` i@8 sizeof 16 等与 gcc 一致；多 _Alignas/数组字段/嵌套全通；变量级存储对齐未实现，记录为限制）。
 > v2.22（step22）：**GNU case 范围边界 bug 修复**（switch 降级原用严格比较 T_GK/T_LK → `case 1...3` 对边界值 1/3 不匹配全落 default；改用 T_YK(>=)/T_HK(<=)，负值范围与 gcc 逐行一致）；**diff_gate 差异测试台扩展 alignas 族**（覆盖 step14-21 新特性，300 轮 0 差异）。
+> v2.23（step23）：**fscanf 无缓冲续读修复**（`_scanf_rt` 新增 consumed 报告 + emit_fscanf SetFilePointer 回退未消费部分——多次 fscanf 同 FILE* 连续解析，跨行/EOF 与 gcc 一致）；**`_scanf_rt` 返回值语义对齐 gcc**（转换失败不写参不计数 `sscanf("abc","%d")`=0；输入耗尽返回 -1 `fscanf@EOF`；stdio 全系闭环）。
 
 ## 一、类型系统
 
@@ -100,7 +101,7 @@
 
 ## 五、库函数（builtin + msvcrt 导入）
 
-- **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr、scanf（stdin）、sscanf（内存）、fscanf（文件，无缓冲限制：多次调用同 FILE* 不续读，重开或一次读全）
+- **stdio**：printf 族（`%d %s %c %f %e %E %g %G %x %X %u %o %p %ld %lld %llu %zu %%`，`%.Nf`/`%.Ne`/`%.Ng` 精度）、fprintf、sprintf、snprintf、vsnprintf、fopen/fread/fwrite/fclose、stdin/stdout/stderr、scanf（stdin）、sscanf（内存）、fscanf（文件，**支持同 FILE* 连续多次调用续读**——_scanf_rt 报告 consumed + SetFilePointer 回退；EOF 返回 -1 与 gcc 一致）
   - `%e`/`%E`：科学计数法（1 位整数 + N 位小数 + e±XX，指数至少 2 位）
   - `%g`/`%G`：通用格式（指数 <-4 或 >= 精度时用科学计数法，否则小数；尾零剥离；精度 0 按 1 处理）
 - **time**（msvcrt 导入）：time/_time64、difftime（double 返回）、localtime/_localtime64、gmtime/_gmtime64、mktime/_mktime64、strftime、clock、asctime、ctime（struct tm 需自行定义，compat_prelude 未含）
