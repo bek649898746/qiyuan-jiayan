@@ -583,6 +583,12 @@ def main():
     done = 0
     for src_path, seed, family in tasks:
         cat, det = classify_and_test(src_path, seed, family, qcc, qcc_args)
+        # 清理本轮编译产物 (qcc exe ~256MB/个), 防止 D 盘爆盘 (fix 2026-08-25)
+        for _p in ('t%d_%s_q.exe' % (seed, family), 't%d_%s_g.exe' % (seed, family)):
+            try:
+                os.remove(os.path.join(OUT_DIR, _p))
+            except OSError:
+                pass
         done += 1
         if cat == 'pass':
             stats['pass'] += 1

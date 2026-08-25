@@ -9209,8 +9209,12 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_STORE_XMM0_RIP 56  /* MOVSD [rip+disp], xmm0 (b(0xF2);b(0x0F);b(0x11);b(0x05);b4) — static double 写 */
 #define I_STORE_RIP_RAX64 57 /* MOV [rip+disp], rax (rex1;b(0x89);b(0x05);b4) — static 64写 */
 #define I_STORE_RIP_EAX32 58 /* MOV [rip+disp], eax (b(0x89);b(0x05);b4) — static 32写 */
+#define I_MOVZX_EAX_RBP 59   /* movzx eax, byte [rbp+disp] (0F B6 85 disp32) — char 局部读 */
+#define I_MOVZX_EAX_RBP_W 60 /* movzx eax, word [rbp+disp] (0F B7 85 disp32) — short 零扩展读 */
+#define I_MOVSX_EAX_RBP_W 61 /* movsx eax, word [rbp+disp] (0F BF 85 disp32) — short 符号扩展读 */
 #define I_TEST_SETE 62       /* test eax,eax; sete al; movzx eax,al — !expr */
 #define I_NOT_EAX 63         /* NOT eax (F7 D0) — ~expr */
+#define I_ALU_EAX_EBX 64     /* alu_rr(op, 0, 1): eax op ebx (无 pop!) — ++/-- 用 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9276,8 +9280,12 @@ static void ir_flush(void) {
             case I_STORE_XMM0_RIP: movsd_rip_xmm0(coff_static_disp(ir_a[i], ir_b[i]) - 2); break;
             case I_STORE_RIP_RAX64: mov_rip_rax64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_STORE_RIP_EAX32: mov_rip_eax(coff_static_disp(ir_a[i], ir_b[i])); break;
+            case I_MOVZX_EAX_RBP: b(0x0F); b(0xB6); b(0x85); b4(ir_a[i]); break;
+            case I_MOVZX_EAX_RBP_W: b(0x0F); b(0xB7); b(0x85); b4(ir_a[i]); break;
+            case I_MOVSX_EAX_RBP_W: b(0x0F); b(0xBF); b(0x85); b4(ir_a[i]); break;
             case I_TEST_SETE: test_rr(0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); break;
             case I_NOT_EAX: b(0xF7); b(0xD0); break;
+            case I_ALU_EAX_EBX: alu_rr(ir_a[i], 0, 1); break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -10496,18 +10504,18 @@ static void cg(int n) {
             if (nt[op0] == 1 && off >= 0) {
                 int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; else if (vars[vi].p_esz > 0) step = vars[vi].p_esz; break; }
-                if (var_isstatic(vn)) mov_eax_rip(coff_static_disp(off, 0));
-                else if (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); else if (var_is_short(vn)) { if (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); else movsx_eax_mbrp_w(off - cur_frame_sz); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/-- */
+                if (var_isstatic(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); }
+                else if (var_is_char(vn)) { ir_emit(I_MOVZX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } else if (var_is_short(vn)) { if (var_is_uns(vn)) { ir_emit(I_MOVZX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVSX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/-- */
                 ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
                 ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 if (var_isstatic(vn)) {
-                    mov_eax_rip(coff_static_disp(off, 0));
-                    alu_rr(T_PK, 0, 1); /* eax += ebx */
-                    mov_rip_eax(coff_static_disp(off, 0));
+                    ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush();
+                    ir_emit(I_ALU_EAX_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx (无 pop) */
+                    ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush();
                 } else {
-                    if (var_is_char(vn)) movzx_eax_mbrp(off - cur_frame_sz); else if (var_is_short(vn)) { if (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); else movsx_eax_mbrp_w(off - cur_frame_sz); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); /* Phase3-IR; fix 2026-08-25 bug#31b */
+                    if (var_is_char(vn)) { ir_emit(I_MOVZX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } else if (var_is_short(vn)) { if (var_is_uns(vn)) { ir_emit(I_MOVZX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVSX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b */
                     ir_emit(I_ALU_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx */
-                    if (var_is_char(vn)) mov_byte_mbrp_al(off - cur_frame_sz); else if (var_is_short(vn)) mov_word_mbrp_ax(off - cur_frame_sz); else ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR; fix 2026-08-25 bug#31b */
+                    if (var_is_char(vn)) { ir_emit(I_STORE_RBP_BYTE, off - cur_frame_sz, 0, 0); ir_flush(); } else if (var_is_short(vn)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b */
                 }
                 pop_r(0); /* restore old value → eax */
             } else {
