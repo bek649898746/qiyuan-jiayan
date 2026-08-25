@@ -7279,7 +7279,6 @@ static int parse(const char *s) {
 
 /* ?????? ??????: AST ??x86-64 machine code ?????? */
 static void cg(int n);
-static void cgc(int n);
 static void cg_f(int n); /* emit xmm0 = double value of expr n */
 
 /* xmm0 = double value of an expression (float var/literal/arith, or int→cvtsi2sd) */
@@ -7350,17 +7349,6 @@ static void cg_f(int n) {
 static int str_place(int idx);
 static int dbl_place(int idx);
 
-static void cgc(int n) {
-    cg(n0[n]); /* lhs ??eax */
-    push_r(0); /* save lhs on stack (nesting- and call-safe) */
-    cg(n1[n]); /* rhs ??eax */
-    pop_r(3);  /* ebx = lhs */
-    alu_rr(T_QK, 3, 0); /* cmp ebx(lhs), eax(rhs) ??flags = lhs - rhs */
-    int o = nv[n];
-    if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); /* fix 2026-08-06 M1: unsigned 比较 */
-    else setcc(o); /* setcc al */
-    movzx_eax_al();
-}
 
 /* printf/fprintf/putstr: build output into a frame scratch buffer, then WriteFile.
    r10=handle r11=fmt r12=buf(advancing) r14=buf(start) r13=next-format-arg ptr.
@@ -9215,6 +9203,9 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_TEST_SETE 62       /* test eax,eax; sete al; movzx eax,al — !expr */
 #define I_NOT_EAX 63         /* NOT eax (F7 D0) — ~expr */
 #define I_ALU_EAX_EBX 64     /* alu_rr(op, 0, 1): eax op ebx (无 pop!) — ++/-- 用 */
+#define I_CMP_SETCC32 65     /* pop rbx; cmp ebx,eax; setcc/setcc_u; movzx eax,al — 32位比较 */
+#define I_CMP64_SETCC 66     /* pop r64; cmp rax,rbx; setcc/setcc_u; movzx eax,al — 64位比较 */
+#define I_DBL_CMP_SETCC 67   /* movsd xmm1,xmm0; pop xmm0; comisd; setcc(浮点cc); movzx — double 比较 */
 /* ==== Phase 3 阶段C: pass 框架 + 定律接口位 ==== */
 static void (*ir_pass_cb)(int *op, int *a, int *b, int *c) __attribute__((unused)) = 0; /* pass 回调, 默认不激活 (0=直译全等) */
 #define LAW_LINEAR 1  /* 定律接口位: 线性资源 (move/borrow/lifetime) — 不激活 */
@@ -9286,6 +9277,16 @@ static void ir_flush(void) {
             case I_TEST_SETE: test_rr(0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); break;
             case I_NOT_EAX: b(0xF7); b(0xD0); break;
             case I_ALU_EAX_EBX: alu_rr(ir_a[i], 0, 1); break;
+            case I_CMP_SETCC32: pop_r(3); alu_rr(T_QK, 3, 0); if (ir_b[i]) setcc_u(ir_a[i]); else setcc(ir_a[i]); movzx_eax_al(); break;
+            case I_CMP64_SETCC: pop_r64(0); asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); if (ir_b[i]) setcc_u(ir_a[i]); else setcc(ir_a[i]); movzx_eax_al(); break;
+            case I_DBL_CMP_SETCC: movsd_xmm1_xmm0(); pop_xmm0(); comisd_xmm0_xmm1();
+                if (ir_a[i] == T_LK) { asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x92); modrm(3, 0, 0); movzx_eax_al(); }      /* setb: xmm0 < xmm1 */
+                else if (ir_a[i] == T_GK) { asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x97); modrm(3, 0, 0); movzx_eax_al(); } /* seta */
+                else if (ir_a[i] == T_QK) { asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); } /* sete */
+                else if (ir_a[i] == T_XK) { asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x95); modrm(3, 0, 0); movzx_eax_al(); } /* setne */
+                else if (ir_a[i] == T_HK) { asm_emit("    置低等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x96); modrm(3, 0, 0); movzx_eax_al(); } /* setbe */
+                else { asm_emit("    置高等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x93); modrm(3, 0, 0); movzx_eax_al(); }                /* setae: >= */
+                break;
             case I_DBL_BIN: movsd_xmm1_xmm0(); pop_xmm0();
                 if (ir_a[i] == PK) addsd_xmm0_xmm1();
                 else if (ir_a[i] == MK) subsd_xmm0_xmm1();
@@ -9414,15 +9415,8 @@ static void cg(int n) {
                     break;
                 }
                 if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) {
-                    cg_f(n0[n]); push_xmm0();
-                    cg_f(n1[n]); movsd_xmm1_xmm0(); pop_xmm0();
-                    comisd_xmm0_xmm1(); /* flags: CF/ZF (unordered compare) */
-                    if (o == T_LK) { asm_emit("    置低 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x92); modrm(3, 0, 0); movzx_eax_al(); }      /* setb: xmm0 < xmm1 (fix 2026-08-03) */
-                    else if (o == T_GK) { asm_emit("    置高 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x97); modrm(3, 0, 0); movzx_eax_al(); } /* seta */
-                    else if (o == T_QK) { asm_emit("    置等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); } /* sete */
-                    else if (o == T_XK) { asm_emit("    置不等 al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x95); modrm(3, 0, 0); movzx_eax_al(); } /* setne */
-                    else if (o == T_HK) { asm_emit("    置低ç­ al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x96); modrm(3, 0, 0); movzx_eax_al(); } /* setbe */
-                    else { asm_emit("    置高ç­ al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0x93); modrm(3, 0, 0); movzx_eax_al(); }                /* setae: >= */
+                    cg_f(n0[n]); ir_emit(I_PUSH_XMM0, 0, 0, 0); ir_flush();
+                    cg_f(n1[n]); ir_emit(I_DBL_CMP_SETCC, o, 0, 0); ir_flush();
                     break;
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
@@ -9470,32 +9464,33 @@ static void cg(int n) {
                     break;
                 }
                 if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) {
-                    cg(n0[n]); ll_ext32(n0[n]); push_r64(0);
-                    cg(n1[n]); ll_ext32(n1[n]); mov_rr64(3, 0);
-                    pop_r64(0);
-                    asm_emit("    比较64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x39); modrm(3, 3, 0); /* cmp rax, rbx (fix 2026-08-05: rex 已含 48，双 REX 破坏 H1==H2) */
-                    if (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) setcc_u(o); else setcc(o); /* fix 2026-08-06 M1: unsigned 用 setcc_u，并修正旧文本-字节不配对（置低=0x92 却发 0x9C setl） */
-                    movzx_eax_al();
+                    cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
+                    cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
+                    ir_emit(I_CMP64_SETCC, o, (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) ? 1 : 0, 0); ir_flush();
                     break;
                 }
             }
             if (o == LA) { /* && short-circuit */
                 int lf = new_label(), le = new_label();
-                cg(n0[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lf, 1);
-                cg(n1[n]); test_rr(0, 0); jz_rel(-1); patch_label(cp-4, lf, 1);
-                mov_r_imm(0, 1); jmp_rel(-1); patch_label(cp-4, le, 2);
-                set_label(lf); mov_r_imm(0, 0); set_label(le);
+                cg(n0[n]); ir_emit(I_TEST_JZ, lf, 0, 0); ir_flush();
+                cg(n1[n]); ir_emit(I_TEST_JZ, lf, 0, 0); ir_flush();
+                ir_emit(I_MOV_IMM, 0, 1, 0); ir_emit(I_JMP_LBL, le, 0, 0); ir_flush();
+                ir_emit(I_LABEL, lf, 0, 0); ir_emit(I_MOV_IMM, 0, 0, 0); ir_emit(I_LABEL, le, 0, 0); ir_flush();
                 break;
             }
             if (o == LO) { /* || short-circuit (fix 2026-08-15: 原 eager eval 两边, trace2 `!tgt_value || !strcmp(tgt_value,"")` 在 NULL 上 strcmp 崩) */
                 int lt = new_label(), le = new_label();
-                cg(n0[n]); test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lt, 1);
-                cg(n1[n]); test_rr(0, 0); jnz_rel(-1); patch_label(cp-4, lt, 1);
-                mov_r_imm(0, 0); jmp_rel(-1); patch_label(cp-4, le, 2);
-                set_label(lt); mov_r_imm(0, 1); set_label(le);
+                cg(n0[n]); ir_emit(I_TEST_JNZ, lt, 0, 0); ir_flush();
+                cg(n1[n]); ir_emit(I_TEST_JNZ, lt, 0, 0); ir_flush();
+                ir_emit(I_MOV_IMM, 0, 0, 0); ir_emit(I_JMP_LBL, le, 0, 0); ir_flush();
+                ir_emit(I_LABEL, lt, 0, 0); ir_emit(I_MOV_IMM, 0, 1, 0); ir_emit(I_LABEL, le, 0, 0); ir_flush();
                 break;
             }
-            if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) { cgc(n); break; }
+            if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) {
+                cg(n0[n]); ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush();
+                cg(n1[n]); ir_emit(I_CMP_SETCC32, o, (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) ? 1 : 0, 0); ir_flush();
+                break;
+            }
             /* pointer arithmetic: `ptr + int` scales the int by the element size
                (int *p: p+1 → +4; char *s: s+1 → +1; char *names[]: +8).
                `ptr - ptr` divides the byte difference by the element size
