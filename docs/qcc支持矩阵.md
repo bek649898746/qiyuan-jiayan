@@ -22,6 +22,7 @@
 > v2.17（step17）：**node_psz 复合赋值分支**（`((p+=8)-8)` 指针差缩放修复——int*/double* 指针差错位）；调用图谱压测方法论。
 > v2.18（step18）：**变参 double（va_arg double）完整修复**（deref 解引用 double 标记，配合 expr_is_double + node_psz 三修复叠加；T\*\* 指针解引用精确区分）。
 > v2.19（step19）：**GNU 语句表达式 `({ ... })` 已支持**（复用 blk() 解析块 + 逗号节点降级：先执行块语句再求值最后表达式；与 gcc 逐行一致；`#define MAX(a,b) ({...})` 宏场景正常）。
+> v2.20（step20）：**`&arr[i]-&arr[j]` 指针差已支持**（node_psz 取址分支：仅当下标操作数时返回基数组元素大小；32/64 位指针差除法路径统一受益）；**`*(p+1)` 指针算术解引用宽度修复**（case 12 原无 binop 分支→字节加载，现按元素大小加载，double 指针算术解引用同步正确）；支持矩阵已知限制指针差一项清零。
 
 ## 一、类型系统
 
@@ -113,7 +114,8 @@
 |:--|:--|
 | char 符号性 | qcc 无符号 vs gcc 有符号（C 标准实现定义差异，diff_gate 生成器已按 qcc 约定 0..127）|
 | `volatile`/`_Atomic` | 语法接受，按普通类型处理（无内存屏障/无原子语义；单线程下行为正确）|
-| `&arr[i] - &arr[j]` 指针差 | node_psz(取址) 不识别 → 返回字节差（尝试修复破坏自举，已实证后放弃；变量指针差 `p-q` 已修，`&arr[i]` 差值为已知缺口）|
+| `&arr[i] - &arr[j]` 指针差 | ✅ 已支持（node_psz 取址分支：&下标返回基数组元素大小；32/64 位指针差除法均正确；`(char*)` cast 显式元素大小优先于结构推断）|
+| `*(p+1)` 指针算术解引用 | ✅ 已支持（case 12 el 宽度取 node_psz(binop)；double/int/struct 元素宽度正确加载）|
 | 变参 `va_list` | ✅ | 支持（va_start/va_arg/va_end）；int/指针/double 全通（2026-08-25 step18 修复 double 取值：expr_is_double 数组名 + node_psz 复合赋值 + deref 解引用 double 标记 三修复）|
 | C99 math 扩展（`log2/round/trunc/erf/lgamma` 等）| ❌ 传统 msvcrt.dll 无导出（在 UCRT/libmingwex），需 qcc 内置实现（待办）|
 | 系统头文件 | `<stdarg.h>` 等部分 stub 化（compat_prelude.h 补齐）|

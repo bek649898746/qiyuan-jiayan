@@ -9757,7 +9757,12 @@ static int node_psz(int n) {
         }
     }
     if (pesz[n] < 0) return 0; /* t35k 2026-08-23: 非指针整数 cast (uintptr_t/size_t) 哨兵 → 指针算术不缩放 (原 (uintptr_t)p-1 按 node_psz=4 缩放 → cb_node_of p-4 → cbtree 崩) */
-    if (pesz[n] > 0) return pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) */
+    if (pesz[n] > 0) return pesz[n]; /* (T*) cast 元素大小 (fix 2026-08-19) — 必须先于 nt==11 结构推断: (char*)&arr[i] 的 cast 在操作数上写 pesz=1, 取址推断不得覆盖 (fix 2026-08-25 step20 回归: regress_cmdlist/regress_struct_align) */
+    if (nt[n] == 11) { /* &expr: 取址数组元素 → 指针元素大小 = 基数组元素大小 (fix 2026-08-25 step20: &arr[i]-&arr[j] 缩放; 变量指针差 p-q 已修, 取址下标差值是最后缺口; 只有下标操作数才缩放, 其他取址返回 0 保持原行为) */
+        int op = n0[n];
+        if (op >= 0 && nt[op] == 14) return node_psz(n0[op]); /* &arr[i] → 数组/指针基元素大小 (int arr→4, double da→8, struct pa→sizeof, char→1 无缩放) */
+        return 0;
+    }
     if (nt[n] == 10) return node_psz(n0[n]); /* 复合赋值 (p += N): 返回左操作数元素大小 (fix 2026-08-25 step17: ((p+=8)-8) 减法 lpsz 原=0 无缩放 → int 指针/double 指针差错位; char 指针碰巧对) */
     if (nt[n] == 1) { /* 变量名: 数组名→元素宽, T** 指针→arr_esz(8), T*→p_esz */
         char *vn = (char*)(nn + n);
@@ -12062,6 +12067,10 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
                         if (fpel2 > 0) el = fpel2; /* char** → 8, char* → 1, int* → 4 */
                     }
                 }
+            }
+            else if (nt[pnode] == 2) { /* ptr+N / ptr-N 指针算术: 解引用宽度=元素大小 (fix 2026-08-25 step20: 指针加整数解引用原无分支 el=0 字节加载只取低字节; 整数 binop 返回 0 保持默认 1 字节) */
+                el = node_psz(pnode);
+                if (el <= 0) el = 1;
             }
             if (pesz[pnode] > 0) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width; t35k: 非指针 cast 哨兵 -1 排除 */
             cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
