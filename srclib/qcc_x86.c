@@ -932,6 +932,8 @@ static int line_at(const char *s, int pos) {
     for (int k = 0; k < pos && s[k]; k++) if (s[k] == '\n') ln++;
     return ln - rt_line_skip;
 }
+static char expect_sha[65] = ""; /* #expect (Phase 4 哈希审判) */
+static char selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
 static char *pp_include_expand(const char *src, int depth) {
     if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
     if (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; if (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n++; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
@@ -951,6 +953,7 @@ static char *pp_include_expand(const char *src, int depth) {
             int is_else = !strncmp(p, "#else", 5);
             int is_endif = !strncmp(p, "#endif", 6);
             int is_include = !strncmp(p, "#include", 8);
+            int is_expect = !strncmp(p, "#expect", 7); /* Phase4 期望原语: #expect <sha256> 声明产物哈希 */
             if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 int parent = if_skip; int cond = 0;
                 if (is_ifdef || is_ifndef) {
@@ -978,6 +981,12 @@ static char *pp_include_expand(const char *src, int depth) {
                     if (if_n > 0) { if_n--; if_skip = if_n > 0 ? !if_taken[if_n-1] : 0; } /* fix 2026-08-13 Phase3: 嵌套假分支恢复用 !taken 而非 parent */
                 }
                 memcpy(out + oi, p, llen + 1); oi += llen + 1;
+            } else if (is_expect && !if_skip) { /* #expect <sha256>: 绝对断言, 编译完对账产物哈希 (Phase4) */
+                const char *q = p + 7;
+                while (*q == ' ' || *q == '\t') q++;
+                int xi = 0;
+                while ((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'f') || (*q >= 'A' && *q <= 'F')) { if (xi < 64) expect_sha[xi++] = *q; q++; }
+                expect_sha[xi] = 0;
             } else if (is_include && !if_skip) {
                 const char *q = p + 8;
                 while (*q == ' ' || *q == '\t') q++;
@@ -13016,7 +13025,6 @@ static void sha256_file(const char *path, char out[65]) {
     }
     out[64] = 0;
 }
-static char selfcheck_sha[65] = "";
 
 
 int main(int argc, char **argv) {
@@ -13319,6 +13327,14 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
             return 1;
         }
         fprintf(stderr, "[SELFCHECK] OK: %s\n", sh);
+    }
+    if (expect_sha[0]) { /* #expect 源码内期望原语: 产物哈希对账 (Phase4), 与 --selfcheck 同级 */
+        char eh[65]; sha256_file(outf, eh);
+        if (strcmp(eh, expect_sha) != 0) {
+            fprintf(stderr, "[EXPECT] FAIL: %s != %s (期望原语对账失败)\n", eh, expect_sha);
+            return 1;
+        }
+        fprintf(stderr, "[EXPECT] OK: %s\n", eh);
     }
     return 0;
 }
