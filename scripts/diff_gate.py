@@ -31,7 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---------------- 生成器 (按 bug 族分层) ----------------
 
-FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib']
+FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math']
 
 # 非零分母保护: 除法/取模右操作数用 "lit" (安全字面量) 或 "(x)+lit"
 SAFE_INT = [1, 2, 3, 5, 7, 11, 100]
@@ -694,6 +694,42 @@ class Gen:
         lines.append('}')
         return '\n'.join(lines)
 
+    # ---- math 族: 数学函数随机覆盖 (step24 单独验证 41 项, 随机化补盲) ----
+    def gen_math(self):
+        r = self.r
+        lines = ['#include <stdio.h>', '#include <math.h>', 'int main(void) {']
+        m = []
+        unary1 = ['erf', 'erfc', 'lgamma', 'tgamma', 'log2', 'exp2', 'cbrt', 'log1p', 'expm1',
+                  'round', 'trunc', 'floor', 'ceil', 'fabs', 'sqrt', 'log', 'log10', 'exp',
+                  'cos', 'sin', 'tan', 'cosh', 'sinh', 'tanh']
+        binary = ['fmax', 'fmin', 'fdim', 'hypot', 'atan2', 'fmod', 'copysign', 'pow']
+        # 值池: 避开 sqrt/log 负数输入; lgamma/tgamma 避开 0 与负整数 (极点);
+        # 半整数可测反射公式; pow 指数随机整数 (负底安全).
+        v_pos = ['0.25', '0.5', '1.0', '1.5', '2.0', '3.5', '7.25', '10.0', '0.01', '100.0']
+        v_mix = ['-3.5', '-2.5', '-1.5', '-0.5', '0.5', '1.5', '2.5', '3.5', '5.0', '7.5', '-5.0', '0.25', '-0.25']
+        v_lt = ['-3.5', '-2.5', '-1.5', '-0.5', '0.5', '1.5', '2.5', '3.5', '5.0', '7.5', '-5.0']
+        for _ in range(r.randrange(6, 12)):
+            fn = r.choice(unary1)
+            if fn in ('sqrt', 'log', 'log10', 'log2', 'log1p'):
+                v = r.choice(v_pos)
+            elif fn in ('lgamma', 'tgamma'):
+                v = r.choice(v_lt)
+            else:
+                v = r.choice(v_pos if r.random() < 0.5 else v_mix)
+            m.append(('    printf("%%.9g\\n", %s(%s));' % (fn, v), 'dbl'))
+        for _ in range(r.randrange(2, 6)):
+            fn = r.choice(binary)
+            a = r.choice(v_mix)
+            b = r.choice(v_mix)
+            if fn == 'pow' and r.random() < 0.5:
+                b = r.choice(['2', '3', '-2', '-3', '0'])  # 整数指数
+            m.append(('    printf("%%.9g\\n", %s(%s, %s));' % (fn, a, b), 'dbl'))
+        m.append(('    return 0;', None))
+        for text, _ in m:
+            lines.append(text)
+        lines.append('}')
+        return '\n'.join(lines)
+
     def gen_program(self, family):
         if family == 'types':
             return self.gen_types()
@@ -711,6 +747,8 @@ class Gen:
             return self.gen_ginit()
         if family == 'strlib':
             return self.gen_strlib()
+        if family == 'math':
+            return self.gen_math()
         raise ValueError('unknown family: %s' % family)
 
 
@@ -747,12 +785,12 @@ def classify_and_test(src_path, seed, family, qcc, qcc_args):
     st, so, se = compile_one(qcc, src_path, q_exe, qcc_args)
     if st != 'ok':
         # gcc 是否也拒绝? 都拒 = skip; 仅 qcc 拒 = 疑似 bug (合法 C 编不了)
-        gst, gso, gse = compile_one('gcc', src_path, g_exe, ['-O0', '-w'])
+        gst, gso, gse = compile_one('gcc', src_path, g_exe, ['-O0', '-w', '-lm'])
         if gst != 'ok':
             return 'skip', 'both compile fail'
         return 'qcc_compile_fail', (se or so)[-400:]
-    # gcc 编译
-    gst, gso, gse = compile_one('gcc', src_path, g_exe, ['-O0', '-w'])
+    # gcc 编译 (math 族需要 -lm; 非 math 用例无害)
+    gst, gso, gse = compile_one('gcc', src_path, g_exe, ['-O0', '-w', '-lm'])
     if gst != 'ok':
         return 'gcc_fail_only', (gse or gso)[-200:]
     # 运行
@@ -760,7 +798,13 @@ def classify_and_test(src_path, seed, family, qcc, qcc_args):
     gst, g_out, g_rc = run_one(g_exe, OUT_DIR)
     if q_rc == -999 or g_rc == -999:
         return 'run_timeout', 'q_rc=%d g_rc=%d' % (q_rc, g_rc)
-    if q_out == g_out and q_rc == g_rc:
+    # NaN 符号位是 IEEE 实现细节 (gcc tgamma(-1) 输出 'nan', qcc '-nan(ind)'; msvcrt vs qcc 位模式不同) — 归一化 (fix step29)
+    def _norm_nan(s):
+        import re as _re
+        s = _re.sub(r'[-+]?nan\(ind\)', 'NAN', s)
+        s = _re.sub(r'[-+]?nan\b', 'NAN', s)
+        return s
+    if _norm_nan(q_out) == _norm_nan(g_out) and q_rc == g_rc:
         return 'pass', ''
     # 归档差异 (含输出快照)
     with open(os.path.join(OUT_DIR, 'fail_%d_%s.out.txt' % (seed, family)), 'w', encoding='utf-8') as f:
@@ -804,7 +848,7 @@ def main():
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
-    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib']
+    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math']
     qcc = DEFAULT_QCC
     do_minimize = False
     i = 3
