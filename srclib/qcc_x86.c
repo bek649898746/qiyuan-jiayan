@@ -70,7 +70,7 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[2048][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符) */ int str_cnt;
 static int str_offs[2048]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容) */
-static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; } vars[16384]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
+static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[16384]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
 static char var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -2333,6 +2333,23 @@ static int var_struct(const char *n, int si) {
     return vars[vcnt++].rsp_off;
 }
 __attribute__((unused))
+/* fix step31: VLA 变长数组 — 运行时大小, 声明处动态 sub rsp 分配, 基址存地址槽.
+   复用 step30 地址槽间接机制 (alignN=1): case 1 decay / case 10 写 / case 14 下标读槽.
+   维度表达式节点在声明处 cg 求值 (变量已初始化). 回收靠函数 epilogue mov rsp,rbp (循环内 VLA 记录限制). */
+static int var_vla(const char *n, int esz, int dim_node) {
+    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    strcpy(vars[vcnt].name, n);
+    rsp_used += 8; rsp_used = (rsp_used + 15) & ~15; /* 地址槽 (8B) */
+    vars[vcnt].rsp_off = rsp_used - 8;
+    vars[vcnt].alignN = 1; vars[vcnt].align_base = 0;
+    vars[vcnt].vla_dim = dim_node;
+    vars[vcnt].is_param = 0;
+    vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = esz;
+    vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
+    vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
+    if (getenv("QCC_DBG_VLA")) fprintf(stderr, "[VLA] var '%s' esz=%d dim_node=%d slot=%d\n", n, esz, dim_node, vars[vcnt].rsp_off);
+    return vars[vcnt++].rsp_off;
+}
 static int var_array(const char *n, int count, int esz) {
     int _pa = var_align(); /* fix step25: _Alignas(N) 变量级 */
     /* always allocate */
@@ -5537,11 +5554,12 @@ static int blk(void) {
                    st_idx set so arr[i].field resolves (fix 2026-08-03: this branch
                    shadowed the second typedef branch, registering P arr[3] as an
                    INT array with no st_idx → arr[i].a read garbage). */
-                int cnt = 1; int first = 1; int dims = 0;
+                int cnt = 1; int first = 1; int dims = 0; int vla_dimn = -1; /* fix step31: VLA 维度表达式节点 (第一维) */
                 while (tt[tk] == LB) {
                     tk++; int cdim = 0;
                     if (const_expr_eval(&cdim)) { if (dims == 0) first = cdim; if (dims < 8) adimv[dims] = cdim; dims++; cnt *= cdim; }
-                    else if (tt[tk] == VR) tk++; /* 真 VLA: 跳过维度名避免死循环 (fix 2026-08-11) */
+                    else if (vla_dimn < 0) { vla_dimn = expr(); /* fix step31: 真 VLA — 维度表达式转 AST 节点, 声明处求值动态分配 (原跳过维度名当 1 元素数组 → 越界) */ }
+                    else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } /* 多维 VLA 第二维+: 跳过 (记录限制) */
                     if (tt[tk] == RB) tk++;
                 }
                 /* fix 2026-08-05: unsized array `int a[] = {1,2,3}` / `char *names[] = {...}`
@@ -5589,7 +5607,7 @@ static int blk(void) {
                     if (is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned array: u[i] >> n logical (fix 2026-08-05) */
                     if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si;
                 } else {
-                    var_array(vn, cnt, esz);
+                    if (vla_dimn >= 0) { var_vla(vn, (dims > 0 ? cnt : 1) * esz, vla_dimn); } /* fix step31: VLA — 运行时大小, 地址槽间接; 多维时 arr_esz=行大小 (cnt=后续 const 维度乘积) */ else { var_array(vn, cnt, esz); }
                     if (is_ll) vars[vcnt - 1].is_ll = 1; /* long long array: 8-byte elements (fix 2026-08-06) */
                     if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array (fix 2026-08-05) */
                     if (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; /* struct array elem type */
@@ -6121,7 +6139,7 @@ static int skip_global_init(int tk) {
 
 static int parse(const char *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
-    for (int _vi = 0; _vi < 16384; _vi++) { vars[_vi].alignN = 0; vars[_vi].align_base = 0; } /* fix step30: 静态 vars 数组跨编译残留清零 — 对齐间接标记必须每编译重置 */
+    for (int _vi = 0; _vi < 16384; _vi++) { vars[_vi].alignN = 0; vars[_vi].align_base = 0; vars[_vi].vla_dim = 0; } /* fix step30/31: 静态 vars 数组跨编译残留清零 — 对齐间接/VLA 标记必须每编译重置 */
     fdef_n = 0; /* fix 2026-08-06: 每次 parse 重置顶层函数列表 */
     memset(ndbl, 0, sizeof(ndbl)); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, sizeof(nuns)); /* per-node unsigned flags (fix 2026-08-05) */
@@ -10316,10 +10334,10 @@ static void cg(int n) {
                     int is_arr = 0; int base = off; int vi_found = -1;
                     for (int vi = vs_n() - 1; vi >= 0; vi--)
                         if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) {
-                            if (vars[vi].arr_sz != 0) { is_arr = 1; vi_found = vi; int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4; base = off - vars[vi].arr_sz * esz; }
+                            if (vars[vi].arr_sz != 0 || vars[vi].vla_dim > 0) { is_arr = 1; vi_found = vi; int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4; base = off - vars[vi].arr_sz * esz; } /* fix step31: VLA (arr_sz==0) 也是数组 */
                             break;
                         }
-                    if (is_arr) { if (vi_found >= 0 && vars[vi_found].alignN > 0) { mov_reg_mbrp64(0, off - cur_frame_sz); } /* fix step30: 对齐数组 — 地址槽存运行时对齐地址 (固定帧无法静态 >16 对齐) */ else lea_r_mbrp(0, base - cur_frame_sz); }
+                    if (is_arr) { if (vi_found >= 0 && (vars[vi_found].alignN > 0 || vars[vi_found].vla_dim > 0)) { mov_reg_mbrp64(0, off - cur_frame_sz); } /* fix step30/31: 对齐数组/VLA — 地址槽存运行时基址 */ else lea_r_mbrp(0, base - cur_frame_sz); }
                     else if (var_pesz(vn) > 0) { mov_reg_mbrp64(0, off - cur_frame_sz); } /* pointer: full 64-bit */
                     else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
@@ -11316,6 +11334,26 @@ static void cg(int n) {
         } break;
         case 7: { /* decl+init */
             char *vname = (char*)(nn + n);
+            /* fix step31: VLA 声明 — 运行时维度动态栈分配 (sub rsp, n*esz 对齐 16), 基址存地址槽.
+               维度表达式在此 cg 求值 (声明点, 变量已初始化); 回收靠函数 epilogue mov rsp,rbp.
+               必须放 if 块外: 无初始化器的 VLA (n0[n]<0) 也要分配. */
+            { int _vi_ = -1;
+              for (int _k = vs_n() - 1; _k >= 0; _k--) if (!strcmp(vars[_k].name, vname) && vars[_k].vla_dim > 0 && var_codegen_visible(_k)) { _vi_ = _k; break; }
+              if (_vi_ >= 0) {
+                  int _esz = vars[_vi_].arr_esz ? vars[_vi_].arr_esz : 4;
+                  cg(vars[_vi_].vla_dim); ir_flush(); /* rax = 维度值 */
+                  if (_esz == 4) { b(0x48); b(0xC1); b(0xE0); b(2); }          /* shl rax, 2 */
+                  else if (_esz == 2) { b(0x48); b(0xC1); b(0xE0); b(1); }     /* shl rax, 1 */
+                  else if (_esz == 8) { b(0x48); b(0xC1); b(0xE0); b(3); }     /* shl rax, 3 */
+                  else if (_esz != 1) { b(0x48); b(0x69); b(0xC0); b4(_esz); } /* imul rax, rax, imm32 */
+                  b(0x48); b(0x83); b(0xC0); b(15);                            /* add rax, 15 */
+                  b(0x48); b(0x83); b(0xE0); b(0xF0);                          /* and rax, -16 */
+                  b(0x48); b(0x29); b(0xC4);                                   /* sub rsp, rax */
+                  mov_rr64(0, 4);                                              /* rax = rsp */
+                  mov_mbrp_reg64(vars[_vi_].rsp_off - cur_frame_sz, 0);        /* 地址槽 = 基址 */
+                  if (getenv("QCC_DBG_VLA")) fprintf(stderr, "[VLA] decl '%s' esz=%d slot=%d\n", vname, _esz, vars[_vi_].rsp_off);
+              }
+            }
             
             if (n0[n] >= 0 && !(vname[0] != 0 && var_isstatic(vname) && var_ginit(vname) >= 0 && !cg_ginit_ctx)) {
                 /* ginit-handled function-local static: its initializer runs ONCE at
@@ -11944,12 +11982,12 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                 } else if(off>=0){
                     int did=0;
                     if (!arr_dbl) pop_r(3); /* ebx = rhs (plain array/pointer branches never touch r3 in the address calc) */
-                    for(int vi=vs_n()-1;vi>=0;vi--)if(!strcmp(vars[vi].name,vn)&&vars[vi].arr_sz>0&&!vars[vi].is_static&&var_codegen_visible(vi)){
+                    for(int vi=vs_n()-1;vi>=0;vi--)if(!strcmp(vars[vi].name,vn)&&(vars[vi].arr_sz>0||vars[vi].vla_dim>0)&&!vars[vi].is_static&&var_codegen_visible(vi)){ /* fix step31: VLA (arr_sz==0) 也是数组 */
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     int esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
                     if(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } else if(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } else if(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
                     int base=off-vars[vi].arr_sz*esz;
-                    if (vars[vi].alignN > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); } /* fix step30: 对齐数组写基址 = 地址槽 */ else { ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); }
+                    if (vars[vi].alignN > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); } /* fix step30/31: 对齐数组/VLA 写基址 = 地址槽 */ else { ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); }
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 数组基地址 */
                     if (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     else if(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -12605,7 +12643,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index �?eax */
                 int did = 0;
                 for (int vi = vs_n() - 1; vi >= 0; vi--)
-                    if (!strcmp(vars[vi].name, vname) && vars[vi].arr_sz > 0 && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) {
+                    if (!strcmp(vars[vi].name, vname) && (vars[vi].arr_sz > 0 || vars[vi].vla_dim > 0) && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) { /* fix step31: VLA (arr_sz==0) 也是数组 */
                         int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         int elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
                         { int pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1) */
@@ -13175,7 +13213,7 @@ void gen_code(void) {
         /* fix step30: 局部 _Alignas(>16) 数组 — 固定 rbp 帧 rbp%N ∈ {8,24} 编译期未知, 静态 [rbp+disp]
            无法保证 >16 对齐; 候选区运行时对齐, 对齐地址存地址槽 (cg case1 数组 decay 读槽). */
         for (int vi = fv0; vi < fv1 && !bin_no_params; vi++) {
-            if (vars[vi].alignN > 0) {
+            if (vars[vi].alignN > 0 && vars[vi].vla_dim <= 0) { /* fix step31: VLA 的 alignN=1 只是地址槽标记, 不是 _Alignas 对齐数组 — 跳过, 动态分配在声明处 */
                 int _an = vars[vi].alignN;
                 if (getenv("QCC_DBG_ALIGN")) fprintf(stderr, "[ALIGN] prologue '%s' N=%d cand=%d slot=%d\n", vars[vi].name, _an, vars[vi].align_base, vars[vi].rsp_off);
                 lea_r_mbrp(0, vars[vi].align_base - cur_frame_sz);  /* rax = 候选区基址 */
@@ -13230,7 +13268,10 @@ void gen_code(void) {
             asm_emit("    iretq\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
             b(0x48); b(0xCF);
         } else {
-            add_rsp_imm(fn_frame);
+            int _has_vla = 0; /* fix step31: VLA 动态 sub rsp 后 rsp 不在 rbp-fn_frame — 用 mov rsp,rbp 直接丢弃 VLA 栈区 */
+            for (int _vk = fv0; _vk < fv1; _vk++) if (vars[_vk].vla_dim > 0) { _has_vla = 1; break; }
+            if (_has_vla) mov_rr64(4, 5); /* mov rsp, rbp */
+            else add_rsp_imm(fn_frame);
             pop_r(3); /* pop rbx */
             pop_r(5); /* pop rbp */
             ret();
