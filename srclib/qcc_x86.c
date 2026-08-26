@@ -1284,7 +1284,7 @@ static char *pp_include_expand(const char *src, int depth) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[64]; char fnames[256][64]; int foffs[256]; int fsizes[256]; int frows[256]; int ftypes[256]; int fbits[256]; int fbitof[256]; char fdbls[256]; char fsgn[256]; int fels[256]; int fpels[256]; char fptrs[256]; int ffins[256]; char fdeep[256]; int fn; int sz; int algn; } stypes[256]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放 */
+static struct { char name[64]; char fnames[1024][64]; int foffs[1024]; int fsizes[1024]; int frows[1024]; int ftypes[1024]; int fbits[1024]; int fbitof[1024]; char fdbls[1024]; char fsgn[1024]; int fels[1024]; int fpels[1024]; char fptrs[1024]; int ffins[1024]; char fdeep[1024]; int fn; int sz; int algn; } stypes[4096]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放 */
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_find '%s' -> %d sz=%d algn=%d fn=%d\n", n, i, stypes[i].sz, stypes[i].algn, stypes[i].fn); return i; }
@@ -1301,7 +1301,7 @@ static int st_cur_struct_align = 1; /* fix 2026-08-19: struct 类型成员的对
 static int alignas_pending = 0; /* fix 2026-08-25 step21: _Alignas(N) 显式对齐暂存 — parser 在 AG token 处设, st_field_sz_r 消费 (字段级对齐, 并抬升 struct 最大对齐) */
 static int ag_struct = 0; /* fix 2026-08-25 step25: _Alignas(N) struct 前 — 修饰 struct 变量 (gcc: `_Alignas(16) struct S v;` 对齐 v, 不修饰类型/字段); var_struct 消费 */
 static int st_add(const char *n) {
-    if (st_n >= 256) { fprintf(stderr, "[ERR] struct 表满 256 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
+    if (st_n >= 4096) { fprintf(stderr, "[ERR] struct 表满 4096 (fix 2026-08-17 审计: 满则硬退, 绝不返 -1 — 原返 -1 调用方未检查 → stypes[-1] 越界写)\n"); exit(1); }
     strcpy(stypes[st_n].name, n); stypes[st_n].fn = 0; stypes[st_n].sz = 0; stypes[st_n].algn = 1;
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     st_cur_struct_align = 1; /* fix 2026-08-20: 新 struct 开始时重置 struct 对齐暂存 — 原跨 struct 泄漏 (eg_a algn=8 残留 → eg_b 字段被 8 对齐 → di_b 数组字段偏移 8 错 (应 4)) */
@@ -1312,7 +1312,7 @@ static int st_add(const char *n) {
     return ns;
 }
 static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
-    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct '%s' 字段超过 256 上限\n", stypes[si].name); exit(1); }
+    if (stypes[si].fn >= 1024) { fprintf(stderr, "[ERR] struct '%s' 字段超过 1024 上限\n", stypes[si].name); exit(1); }
     if (getenv("QCC_DBG_XDF")) fprintf(stderr, "[SZR] struct '%s' fld='%s' fsz=%d frow=%d\n", stypes[si].name, fn, fsz, frow); /* tmp diag */
     if (getenv("QCC_DBG_NS")) if (!strcmp(stypes[si].name, "gz3") || !strcmp(stypes[si].name, "z_stream_s") || !strcmp(stypes[si].name, "git_zstream") || strstr(stypes[si].name, "z_stream") || !strcmp(stypes[si].name, "config_set") || !strcmp(stypes[si].name, "hashmap") || !strcmp(stypes[si].name, "configset_list") || !strcmp(stypes[si].name, "string_list")) fprintf(stderr, "[FLD] struct '%s' fld='%s' fsz=%d frow=%d idx=%d\n", stypes[si].name, fn, fsz, frow, stypes[si].fn); /* tmp diag */
     int idx = stypes[si].fn;
@@ -1351,8 +1351,8 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
 }
 static int st_fidx(int si, const char *fn) { for (int i = 0; i < stypes[si].fn; i++) if (!strcmp(stypes[si].fnames[i], fn)) return i; return -1; }
 static int st_field_el(int si, const char *fn) { int idx = st_fidx(si, fn); return (idx >= 0 && stypes[si].fels[idx] > 0) ? stypes[si].fels[idx] : (idx >= 0 ? stypes[si].frows[idx] : 1); } /* 数组字段元素大小; 未设置→frow (标量) */
-static int st_field_pel(int si, const char *fn) { int idx = st_fidx(si, fn); if (getenv("QCC_DBG_SZ") && !strcmp(fn, "config")) fprintf(stderr, "[PEL] %s.%s fpels=%d idx=%d\n", stypes[si].name, fn, idx >= 0 ? stypes[si].fpels[idx] : -99, idx); if (idx >= 0 && stypes[si].fpels[idx] > 0) return stypes[si].fpels[idx]; /* fix 2026-08-21: fpels 未设置/为 0 — 前向声明 struct T *field 的指向元素大小未回填 (L5634 inner_si>=0 分支用未完成 struct 的 sz=0, 且不注册 pend) → fallback 到字段类型的 st_sz (config_set* → 72) */ if (idx >= 0) { int tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); if (tsi >= 0 && tsi < 256) { int tsz = stypes[tsi].sz; if (tsz > 0) return tsz; } } return 4; } /* 指针字段的指向元素大小 (fix 2026-08-17: char *buf → 1, int * → 4; 未设置→4) */
-static int st_field_ffin(int si, const char *fn) { /* fix 2026-08-22 t41b: 指针字段最终元素大小 — T** 双层下标第二维 (slab[i][j] 元素 sizeof(T)); 单指针 T* 返回 sizeof(T) 等同 fpels */ int idx = st_fidx(si, fn); if (idx >= 0 && stypes[si].ffins[idx] > 0) return stypes[si].ffins[idx]; if (idx >= 0) { int tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); if (tsi >= 0 && tsi < 256) { int tsz = stypes[tsi].sz; if (tsz > 0) return tsz; } } return st_field_pel(si, fn); }
+static int st_field_pel(int si, const char *fn) { int idx = st_fidx(si, fn); if (getenv("QCC_DBG_SZ") && !strcmp(fn, "config")) fprintf(stderr, "[PEL] %s.%s fpels=%d idx=%d\n", stypes[si].name, fn, idx >= 0 ? stypes[si].fpels[idx] : -99, idx); if (idx >= 0 && stypes[si].fpels[idx] > 0) return stypes[si].fpels[idx]; /* fix 2026-08-21: fpels 未设置/为 0 — 前向声明 struct T *field 的指向元素大小未回填 (L5634 inner_si>=0 分支用未完成 struct 的 sz=0, 且不注册 pend) → fallback 到字段类型的 st_sz (config_set* → 72) */ if (idx >= 0) { int tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); if (tsi >= 0 && tsi < 4096) { int tsz = stypes[tsi].sz; if (tsz > 0) return tsz; } } return 4; } /* 指针字段的指向元素大小 (fix 2026-08-17: char *buf → 1, int * → 4; 未设置→4) */
+static int st_field_ffin(int si, const char *fn) { /* fix 2026-08-22 t41b: 指针字段最终元素大小 — T** 双层下标第二维 (slab[i][j] 元素 sizeof(T)); 单指针 T* 返回 sizeof(T) 等同 fpels */ int idx = st_fidx(si, fn); if (idx >= 0 && stypes[si].ffins[idx] > 0) return stypes[si].ffins[idx]; if (idx >= 0) { int tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); if (tsi >= 0 && tsi < 4096) { int tsz = stypes[tsi].sz; if (tsz > 0) return tsz; } } return st_field_pel(si, fn); }
 static int st_field_fdeep(int si, const char *fn) { /* fix 2026-08-22 t41b: 指针字段层级 (T*=1, T**=2) — 决定数组基的最大下标层数 */ int idx = st_fidx(si, fn); if (idx >= 0 && stypes[si].fdeep[idx] > 0) return stypes[si].fdeep[idx]; if (idx >= 0 && stypes[si].fptrs[idx] != 0) return 1; return 0; }
 static int st_field_is_ptr(int si, const char *fn) { int idx = st_fidx(si, fn); return idx >= 0 && stypes[si].fptrs[idx] != 0; } /* 指针字段标记 (struct X 星号 等; fix 2026-08-18: 指针字段作数组基判定 — 原 fty==-1 漏判 struct 指针字段) */
 static int st_field_is_array_idx(int si, const char *fn) { int idx = st_fidx(si, fn); if (idx >= 0 && stypes[si].fptrs[idx]) return 0; if (idx < 0) return 0; if (stypes[si].fels[idx] > 0) return stypes[si].fels[idx] != stypes[si].fsizes[idx]; return stypes[si].fsizes[idx] == 0; } /* 数组字段: fels>0 且 fels(元素大小) != fsizes(总大小); fels==0 时 fsizes==0 → flex/空数组 char name[0] 也是数组 → 成员访问取地址 (fix 2026-08-20: dir_entry.name[FLEX_ARRAY=0] fsz=0 原落 4 字节标量加载 → "hell" 当地址 → add_files %s 崩); fnptr 字段 fels==0, 标量 fels==fsize (fix 2026-08-16); fix 2026-08-19: 指针字段 (fptrs=1) 的 fels=指向元素大小≠fsizes=指针大小 → 被误判为内联数组 → s->next_out[i] 保留字段地址+按 frow(8) 缩放 → qcc_deflate_emit 拷贝写坏 z_stream (next_out=7a/avail_out=-1) */
@@ -1372,7 +1372,7 @@ static void st_field_bit(int si, const char *fn, int fsz, int frow, int bitw, in
     /* real bit-field semantics: pack consecutive bit-fields into shared int slots.
        foffs = slot byte offset; fbitof = bit offset inside the slot; fbits = width.
        uns = 1 for `unsigned` bit-fields (no sign extension on read); int → signed. */
-    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct 字段超过 256 上限\n"); exit(1); }
+    if (stypes[si].fn >= 1024) { fprintf(stderr, "[ERR] struct 字段超过 1024 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     if (bit_slot < 0 || bit_pos + bitw > 32) { bit_slot = stypes[si].sz; stypes[si].sz += 4; bit_pos = 0; }
@@ -1439,7 +1439,7 @@ static int st_field_is_dbl(const char *sn, const char *fn) {
 static void st_field_sz(int si, const char *fn, int fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 static void st_union_field(int si, const char *fn, int fsz) {
-    if (stypes[si].fn >= 256) { fprintf(stderr, "[ERR] struct 字段超过 256 上限\n"); exit(1); }
+    if (stypes[si].fn >= 1024) { fprintf(stderr, "[ERR] struct 字段超过 1024 上限\n"); exit(1); }
     int idx = stypes[si].fn;
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = 0;
@@ -14315,7 +14315,7 @@ static int vt_tyvar[VT_CAP];         /* 类型变量编号: 0=非泛型 >0=第 N
 static int vt_trunc[VT_CAP];         /* 截断标记: 0=无 1=赋值截断 2=cast 截断 3=扩展 */
 
 /* 4. 类型级 side-tables (逆向定律库 §4, 不内联 stypes — §11.1 冻结) */
-#define STYPES_CAP 256  /* 与 stypes[256] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
+#define STYPES_CAP 4096  /* 与 stypes[256] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
 static int stypes_lo[STYPES_CAP];    /* 范围下界 (-1=无界) */
 static int stypes_hi[STYPES_CAP];    /* 范围上界 (-1=无界) */
 static int stypes_super[STYPES_CAP]; /* 父类型 id (-1=无) */
