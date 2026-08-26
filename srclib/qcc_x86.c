@@ -1516,7 +1516,7 @@ static int st_field_size(const char *sn, const char *fn) {
 
 /* ?????? typedef ??????????? */
 static struct { char name[64]; int is_struct; char st_name[64]; char is_dbl;
-                 char is_fnptr; char fnptr_dbl; char is_uns; int sz; } tdefs[512]; static int tdef_n; /* sz: 基类型字节大小 (fix 2026-08-17: typedef 字段大小) */
+                 char is_fnptr; char fnptr_dbl; char is_uns; int sz; int arr_n; } tdefs[512]; static int tdef_n; /* sz: 基类型字节大小 (fix 2026-08-17: typedef 字段大小); arr_n: typedef 数组元素数 (fix 2026-08-27 特性#2: typedef int arr_t[3] — sizeof(arr_t)=12, 变量声明按数组) */
 
 __attribute__((unused))
 static int tdef_lookup(const char *n) {
@@ -1541,6 +1541,7 @@ static void tdef_add(const char *n, int is_st, const char *sn, int is_dbl, int t
     tdefs[tdef_n].is_fnptr = 0;
     tdefs[tdef_n].fnptr_dbl = 0;
     tdefs[tdef_n].sz = tsz; /* fix 2026-08-17 */
+    tdefs[tdef_n].arr_n = 0;
     if (sn) strcpy(tdefs[tdef_n].st_name, sn);
     tdef_n++;
 }
@@ -1554,6 +1555,7 @@ static void tdef_add_fnptr(const char *n, int ret_dbl) {
     tdefs[tdef_n].is_uns = 0;
     tdefs[tdef_n].is_fnptr = 1;
     tdefs[tdef_n].fnptr_dbl = (char)(ret_dbl ? 1 : 0); /* double-returning fnptr: fp(x) yields xmm0 */
+    tdefs[tdef_n].sz = 8; /* fix 2026-08-27 特性#2: sizeof(fnptr typedef) 原 0 */
     tdefs[tdef_n].st_name[0] = 0;
     tdef_n++;
 }
@@ -4472,6 +4474,7 @@ static int prim(void) {
             if (tdi >= 0 && tdefs[tdi].is_struct) {
                 int sz = st_sz(tdefs[tdi].st_name); tk++;
                 if (tt[tk] == KK) tk++; /* ) */
+                if (tdefs[tdi].arr_n > 0) sz *= tdefs[tdi].arr_n; /* fix 2026-08-27 特性#2: struct typedef 数组 sizeof(PairArr)=16 */
                 int n = Nd(0); nv[n] = sz; return n;
             }
             if (tdi >= 0 && tdefs[tdi].is_dbl && !tdefs[tdi].is_struct) { /* sizeof(typedef double) → 8 (fix 2026-08-05) */
@@ -4479,10 +4482,12 @@ static int prim(void) {
                 if (tt[tk] == KK) tk++;
                 int n = Nd(0); nv[n] = 8; return n;
             }
-            if (tdi >= 0 && !tdefs[tdi].is_struct && !tdefs[tdi].is_dbl) { /* sizeof(标量 typedef) — size_t=8 (fix 2026-08-19: 原落 varname 路径 sz=4 → bitsizeof 错 → st_mult 溢出误报) */
+            if (tdi >= 0 && !tdefs[tdi].is_struct && !tdefs[tdi].is_dbl) { /* sizeof(标量 typedef) — size_t=8 (fix 2026-08-19: 原落 varname 路径 sz=4 → bitsizeof 错 → st_mult 溢出误报); typedef 数组 arr_n>0 → sz*arr_n (fix 2026-08-27 特性#2: sizeof(arr_t)=12) */
                 tk++;
                 if (tt[tk] == KK) tk++;
-                int n = Nd(0); nv[n] = tdefs[tdi].sz; return n;
+                int tszx = tdefs[tdi].sz;
+                if (tdefs[tdi].arr_n > 0) tszx = tdefs[tdi].sz * tdefs[tdi].arr_n;
+                int n = Nd(0); nv[n] = tszx; return n;
             }
             if (tdi < 0) { /* fix 2026-08-27 特性#1: <stdint.h> 被跳过未注册的类型名兜底 — sizeof(int16_t)=4 根因 */
                 int tsz = 4;
@@ -5822,12 +5827,13 @@ static int blk(void) {
             if (tt[tk] == VR) { char vn[64]; strcpy(vn, tn[tk]); tk++;
             int tdi_sz2 = (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && tdefs[tdi2v].sz > 0) ? tdefs[tdi2v].sz : 0; /* fix 2026-08-19: typedef 标量数组元素大小 (wchar_t=unsigned short → 2; 原默认 4 → FindFirstFileW pattern 数组步长 4 错位 → 宽字符 API 全失败) */
             int esz = tdi_fnptr_v ? 8 : (is_ptr ? 8 : (tdi_sz2 > 0 ? tdi_sz2 : (is_char ? 1 : (is_short ? 2 : (is_double ? 8 : (is_ll ? 8 : 4)))))); /* fix 2026-08-08: +is_short 2 字节; 2026-08-13: 提升作用域 — brace_arr_init 需传 esz (char *arr[] STR 存地址); fix 2026-08-19: +tdi_sz2 typedef 标量大小 */
-            if (tt[tk] == LB) { /* array (static char names[3][16] too) */
+            int td_arrn = (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && tdefs[tdi2v].arr_n > 0) ? tdefs[tdi2v].arr_n : 0; /* fix 2026-08-27 特性#2: typedef 数组元素数 (arr_t arr 无 [N] 也按数组) */
+            if (tt[tk] == LB || td_arrn > 0) { /* array (static char names[3][16] too); typedef 数组 arr_t arr 无 [N] 也进 */
                 /* typedef'd struct array: P arr[3] — element size = struct size,
                    st_idx set so arr[i].field resolves (fix 2026-08-03: this branch
                    shadowed the second typedef branch, registering P arr[3] as an
                    INT array with no st_idx → arr[i].a read garbage). */
-                int cnt = 1; int first = 1; int dims = 0; int vla_dimn = -1; /* fix step31: VLA 维度表达式节点 (第一维) */
+                int cnt = td_arrn > 0 ? td_arrn : 1; int first = 1; int dims = 0; int vla_dimn = -1; /* fix step31: VLA 维度表达式节点 (第一维); fix 2026-08-27: typedef 数组 cnt 起点 = arr_n */
                 while (tt[tk] == LB) {
                     tk++; int cdim = 0;
                     if (const_expr_eval(&cdim)) { if (dims == 0) first = cdim; if (dims < 8) adimv[dims] = cdim; dims++; cnt *= cdim; }
@@ -5838,7 +5844,7 @@ static int blk(void) {
                 /* fix 2026-08-05: unsized array `int a[] = {1,2,3}` / `char *names[] = {...}`
                    → infer element count from the brace init list (was: cnt=1, only first
                    element written, pointer-array crashes on names[1]). */
-                if (dims == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
+                if (dims == 0 && td_arrn == 0 && tt[tk] == AK && tt[tk + 1] == FK) {
                     int save = tk;
                     tk += 2; /* skip '=' '{' */
                     int n = 1, depth = 0, last_comma = 0;
@@ -5857,6 +5863,7 @@ static int blk(void) {
                     adimv[0] = n; /* fix 2026-08-07: 未定长数组推断的个数必须进 adimv — 否则 brace_arr_init 的 gi_idx 进位读 dims[0]=0 → 所有初始化值写进元素 0 (int a[]={1,2,3} 得 3 0 0) */
                     tk = save; /* rewind to '=' — normal init path below */
                 }
+                else if (dims == 0 && td_arrn > 0 && tt[tk] == AK && tt[tk + 1] == FK) { adimv[0] = td_arrn; } /* fix 2026-08-27 特性#2: typedef 数组已知大小 — 跳过 unsized 推断 (嵌套 brace last_comma 误减), 但 adimv[0] 必须设 (否则 brace_arr_init 全写进元素 0) */
                 /* fix 2026-08-20: 局部 static char x[] = "literal" — 字符串初始化器推断数组大小
                    (原只处理 ={..} 分支; cnt=1 → sizeof=1 → wrapper.c git_mkstemps_mode 的
                    num_x=ARRAY_SIZE(x_pattern)-1=0 → XXXXXX 永不替换 → git commit 写对象死循环;
@@ -7352,6 +7359,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     }
                 }
             } else if (tt[tk] == VR && td_is(tn[tk])) {
+                int tdv1 = tdef_lookup(tn[tk]);
+                if (tdv1 >= 0 && tdefs[tdv1].sz > 0) { td_sz = tdefs[tdv1].sz; if (tdefs[tdv1].is_dbl) td_isdbl = 1; if (tdefs[tdv1].is_uns) td_isuns = 1; if (tdefs[tdv1].is_struct) { td_isst = 1; strcpy(td_stname, tdefs[tdv1].st_name); } } /* fix 2026-08-27 特性#2: typedef 基类型继承大小/性质 (typedef Pair PairArr[2] — Pair struct typedef → PairArr 元素 8B + struct 性质) */
                 tk++; /* skip typedef'd type name */
             } else if (tt[tk] == EN) {
                 /* typedef enum { RED, GREEN, BLUE } Color; — parse body & register
@@ -7386,9 +7395,20 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             while (tt[tk] == DK) { td_sz = 8; tk++; } /* typedef struct Tag *Alias; 的指针 * (fix 2026-08-15: kwset.h typedef struct kwset_t* kwset_t → 别名未注册 → diffcore-pickaxe 整个文件 break; fix 2026-08-17: 指针基类型 td_sz=8) */
             if (tt[tk] == VR) {
-                td_reg(tn[tk]); /* register alias as type name */
-                if (td_isst && td_stname[0]) { int tsz2 = 0; { int tsi2 = st_find(td_stname); if (tsi2 >= 0) tsz2 = stypes[tsi2].sz; } tdef_add(tn[tk], 1, td_stname, 0, tsz2, td_isuns); } /* typedef struct X → Y */
-                else tdef_add(tn[tk], 0, "", td_isdbl, td_sz, td_isuns); /* typedef double real → remember base type; td_sz = 基类型大小 (fix 2026-08-17) */
+                char tdalias[64]; strcpy(tdalias, tn[tk]);
+                td_reg(tdalias); /* register alias as type name */
+                int td_arr_n = 0;
+                int tk_alias = tk;
+                if (tt[tk + 1] == LB) { /* fix 2026-08-27 特性#2: typedef 数组 `typedef int arr_t[3]` — 记录元素数 (sizeof(arr_t)=sz*arr_n); rewind 让 consume loop 统一吞 [N] */
+                    tk += 2; /* skip [ */
+                    int cnt = 1; int cdim = 0;
+                    while (tk < TS && tt[tk] != RB && tt[tk] != EK) { if (tt[tk] == NK) { cdim = tv[tk]; cnt *= cdim > 0 ? cdim : 1; } tk++; }
+                    if (tt[tk] == RB) tk++;
+                    td_arr_n = cnt;
+                    tk = tk_alias;
+                }
+                if (td_isst && td_stname[0]) { int tsz2 = 0; { int tsi2 = st_find(td_stname); if (tsi2 >= 0) tsz2 = stypes[tsi2].sz; } int tbn = tdef_n; tdef_add(tdalias, 1, td_stname, 0, tsz2, td_isuns); if (td_arr_n > 0 && tdef_n > tbn) tdefs[tbn].arr_n = td_arr_n; } /* typedef struct X → Y; struct typedef 数组 arr_n (fix 2026-08-27 特性#2) */
+                else { int tbn = tdef_n; tdef_add(tdalias, 0, "", td_isdbl, td_sz, td_isuns); if (td_arr_n > 0 && tdef_n > tbn) tdefs[tbn].arr_n = td_arr_n; } /* typedef double real → remember base type; td_sz = 基类型大小 (fix 2026-08-17); typedef 数组 arr_n 记录 (fix 2026-08-27 特性#2) */
                 tk++; /* skip alias */
             }
             /* consume tokens until ; (brace-balanced: typedef enum {..} X; must not
