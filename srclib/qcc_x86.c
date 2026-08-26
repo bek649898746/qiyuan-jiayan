@@ -988,25 +988,26 @@ static char *pp_include_expand(const char *src, int depth) {
         const char *le = p; while (*le && *le != '\n') le++;
         int llen = (int)(le - p);
         if (*p == '#') {
-            int is_ifdef = !strncmp(p, "#ifdef", 6);
-            int is_ifndef = !strncmp(p, "#ifndef", 7);
-            int is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
-            int is_elif = !strncmp(p, "#elif", 5);
-            int is_else = !strncmp(p, "#else", 5);
-            int is_endif = !strncmp(p, "#endif", 6);
-            int is_include = !strncmp(p, "#include", 8);
-            int is_expect = !strncmp(p, "#expect", 7); /* Phase4 期望原语: #expect <sha256> 声明产物哈希 */
+            const char *pd = p + 1; while (*pd == ' ' || *pd == '\t') pd++; /* fix 2026-08-26 libpng: 缩进指令 #  include "pngconf.h" (png.h) — 原不跳 # 后空白 → include 未处理 → pngconf.h 宏定义全缺 → PNG_EXPORT/PNG_CALLBACK 未展开 → 解析挂死 */
+            int is_ifdef = !strncmp(pd, "ifdef", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
+            int is_ifndef = !strncmp(pd, "ifndef", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n');
+            int is_if = !strncmp(pd, "if", 2) && !is_ifdef && !is_ifndef && (pd[2] == 0 || pd[2] == ' ' || pd[2] == '\t' || pd[2] == '\r' || pd[2] == '\n');
+            int is_elif = !strncmp(pd, "elif", 4) && (pd[4] == 0 || pd[4] == ' ' || pd[4] == '\t' || pd[4] == '\r' || pd[4] == '\n');
+            int is_else = !strncmp(pd, "else", 4) && (pd[4] == 0 || pd[4] == ' ' || pd[4] == '\t' || pd[4] == '\r' || pd[4] == '\n');
+            int is_endif = !strncmp(pd, "endif", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
+            int is_include = !strncmp(pd, "include", 7) && (pd[7] == 0 || pd[7] == ' ' || pd[7] == '\t' || pd[7] == '\r' || pd[7] == '\n');
+            int is_expect = !strncmp(pd, "expect", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n'); /* Phase4 期望原语: #expect <sha256> 声明产物哈希 */
             if (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 int parent = if_skip; int cond = 0;
                 if (is_ifdef || is_ifndef) {
-                    char nm[64]; int ni = 0; const char *q = p + (is_ifdef ? 6 : 7);
+                    char nm[64]; int ni = 0; const char *q = pd + (is_ifdef ? 5 : 6);
                     while (*q == ' ' || *q == '\t') q++;
                     while (isalnum(*q) || *q == '_' || ((unsigned char)*q >= 0x80)) { if (ni < 63) nm[ni++] = *q; q++; }
                     nm[ni] = 0;
                     int def = pp_guard_exists(nm); /* fix 2026-08-07: 原 macro_exists 在 include 阶段为空 → 守卫永远假 → 重复头重复展开内部 #include */
                     cond = is_ifdef ? def : !def;
                 } else if (is_if || is_elif) {
-                    char expr[512]; int ei = 0; const char *q = p + (is_if ? 3 : 5);
+                    char expr[512]; int ei = 0; const char *q = pd + (is_if ? 2 : 4);
                     while (*q == ' ' || *q == '\t') q++;
                     while (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
                     while (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
@@ -1024,13 +1025,13 @@ static char *pp_include_expand(const char *src, int depth) {
                 }
                 memcpy(out + oi, p, llen + 1); oi += llen + 1;
             } else if (is_expect && !if_skip) { /* #expect <sha256>: 绝对断言, 编译完对账产物哈希 (Phase4) */
-                const char *q = p + 7;
+                const char *q = pd + 6;
                 while (*q == ' ' || *q == '\t') q++;
                 int xi = 0;
                 while ((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'f') || (*q >= 'A' && *q <= 'F')) { if (xi < 64) expect_sha[xi++] = *q; q++; }
                 expect_sha[xi] = 0;
             } else if (is_include && !if_skip) {
-                const char *q = p + 8;
+                const char *q = pd + 7;
                 while (*q == ' ' || *q == '\t') q++;
                 if (*q != '"') {
                     /* <system header>: try stub/file first (fix 2026-08-23 t35e:
@@ -1089,14 +1090,14 @@ static char *pp_include_expand(const char *src, int depth) {
                 }
             } else {
                 /* fix 2026-08-07: 注册 #define 名 → include 守卫生效; #undef 移除 */
-                int is_def = !strncmp(p, "#define", 7);
-                int is_undef = !strncmp(p, "#undef", 6);
+                int is_def = !strncmp(pd, "define", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n');
+                int is_undef = !strncmp(pd, "undef", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
                 if (is_def && !if_skip) {
                     char mnm[64]; int mval = 0;
                     pp_def_parse(p, mnm, &mval); /* fix 2026-08-07: 名字+数值都记 */
                     if (mnm[0]) pp_guard_add(mnm, mval);
                 } else if (is_undef) {
-                    const char *q = p + 6;
+                    const char *q = pd + 5;
                     while (*q == ' ' || *q == '\t') q++;
                     char mnm[64]; int mi = 0;
                     while (isalnum((unsigned char)*q) || *q == '_' || ((unsigned char)*q >= 0x80)) { if (mi < 63) mnm[mi++] = *q; q++; }
@@ -4154,7 +4155,7 @@ static int prim(void) {
             if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ-OK] sizeof( chain ) sz=%d tok=%d name=%s\n", sz, tt[tk], tn[tk]); /* tmp */
             int v = prim(); (void)v; /* 消费 expr (mod.add) */
             if (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ] sizeof-expr tok=%d name=%s sz=%d\n", tt[tk], tn[tk], sz); /* tmp */
-            if (tt[tk] == KK) tk++; /* ) */
+            if (sizeof_had_paren && tt[tk] == KK) tk++; /* ) — fix 2026-08-26 libpng: 无括号 sizeof *np 不得消费后续闭括号 (png_realloc_array 最后参数 sizeof *np → 原吞 args 的 ) → token 错位吞 if 关键字 → 语句错位卡死); 有括号 sizeof(*p) 才消费自己的 ) */
             int n = Nd(0); nv[n] = sz; return n;
         }
         if (tt[tk] == OK) { /* sizeof((expr)[0]): ARRAY_SIZE 宏 → 元素大小 (fix 2026-08-14: 原嵌套 ( 未消费 → ')[' 崩溃) */
