@@ -4241,6 +4241,16 @@ __attribute__((unused))
         }
         若 (tt[tk] == KK) tk++; /* ) */
         若 (sel < 0) { 整 n0d = Nd(0); nv[n0d] = 0; 返 n0d; } /* 无匹配且无 default: 宽松返回 0 */
+        /* fix 2026-08-27 特性#3 (_Generic): 后缀链 — _Generic(...)(args) / _Generic(...)[i] / _Generic(...).f
+           原返回 sel 后 (args) 残留 → a=sel(函数指针垃圾值); 同 cast/括号分支后缀链 */
+        循环 (1) {
+            若 (tt[tk] == LB) { tk++; 整 m = Nd(14); Nc(m, sel); Nc(m, expr()); 若 (tt[tk] == RB) tk++; sel = m; }
+            否 若 (tt[tk] == DT || tt[tk] == AR) {
+                整 ar = (tt[tk] == AR); tk++;
+                若 (tt[tk] == VR) { 整 m = Nd(15); Nc(m, sel); nv[m] = ar; memcpy((字*)(nn + m), tn[tk], 64); tk++; sel = m; } 否 断;
+            } 否 若 (tt[tk] == OK) { tk++; 整 c = Nd(4); 循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; Nc(c, expr()); 若 (tk == t0) 断; } 若 (tt[tk] == KK) tk++; Nc(c, sel); sel = c; }
+            否 断;
+        }
         返 sel;
     }
     若 (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */

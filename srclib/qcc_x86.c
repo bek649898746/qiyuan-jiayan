@@ -4241,6 +4241,16 @@ static int prim(void) {
         }
         if (tt[tk] == KK) tk++; /* ) */
         if (sel < 0) { int n0d = Nd(0); nv[n0d] = 0; return n0d; } /* 无匹配且无 default: 宽松返回 0 */
+        /* fix 2026-08-27 特性#3 (_Generic): 后缀链 — _Generic(...)(args) / _Generic(...)[i] / _Generic(...).f
+           原返回 sel 后 (args) 残留 → a=sel(函数指针垃圾值); 同 cast/括号分支后缀链 */
+        while (1) {
+            if (tt[tk] == LB) { tk++; int m = Nd(14); Nc(m, sel); Nc(m, expr()); if (tt[tk] == RB) tk++; sel = m; }
+            else if (tt[tk] == DT || tt[tk] == AR) {
+                int ar = (tt[tk] == AR); tk++;
+                if (tt[tk] == VR) { int m = Nd(15); Nc(m, sel); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 64); tk++; sel = m; } else break;
+            } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, sel); sel = c; }
+            else break;
+        }
         return sel;
     }
     if (tt[tk] == PP || tt[tk] == MM) { /* prefix ++/-- : mutate, then return the NEW value (fix 2026-08-05: was unhandled → no-op) */
