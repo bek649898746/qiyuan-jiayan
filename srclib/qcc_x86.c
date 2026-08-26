@@ -1827,7 +1827,7 @@ static void pop_r64(int reg) {
 static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0xff; code[pos+2] = (v>>16)&0xff; code[pos+3] = (v>>24)&0xff; }
 
 /* ?????? ??????: ???????????????????? */
-#define ASZ 262144
+#define ASZ 524288
 static int blk_vs[ASZ]; /* fix 2026-08-19: 块节点 (nt==5) 的 var 起点 = blk() 入口 vcnt — codegen case-5 设置 cg_blk_start 用 (嵌套块作用域判定) */
 #define MAX_LABELS 65536
 static int label_pos[MAX_LABELS];
