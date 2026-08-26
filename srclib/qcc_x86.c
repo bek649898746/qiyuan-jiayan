@@ -233,7 +233,7 @@ static char *obj_macro_expand(const char *s) {
                             while (ai > 0 && (av[ai-1] == ' ' || av[ai-1] == '\t' || av[ai-1] == '\r')) ai--;
                             av[ai] = 0;
                             { char _av2[4096]; int _a2 = 0; for (int _c = 0; _c < ai; ) { if (av[_c] == '/' && av[_c + 1] == '*') { while (_c + 1 < ai && !(av[_c] == '*' && av[_c + 1] == '/')) _c++; _c += 2; _av2[_a2++] = ' '; continue; } if (av[_c] == '/' && av[_c + 1] == '/') { while (_c < ai && av[_c] != '\n') _c++; _av2[_a2++] = ' '; continue; } _av2[_a2++] = av[_c++]; } _av2[_a2] = 0; memcpy(av, _av2, _a2 + 1); ai = _a2; while (ai > 0 && (av[ai-1] == ' ' || av[ai-1] == '\t')) ai--; av[ai] = 0; } /* fix 2026-08-26 pngtest: 同 collect — 注释替换为空白而非截断 */
-                            if (!(av[0] >= '0' && av[0] <= '9') && !(av[0] == '-' && av[1] >= '0' && av[1] <= '9') && !(av[0] == '0' && (av[1] == 'x' || av[1] == 'X'))) obj_add(nm, av); /* 纯数字宏不收集 (与 collect 同过滤) */
+                            obj_add(nm, av); /* fix 2026-08-27 ffmpeg pcmenc: 纯数字宏也收集 — 原跳过 (值走 lexer 数值表), 但 fn pass 在 lex 前需展开 CONFIG_PCM_U8_MUXER(0) 供 ## 拼接 → `PCMDEF_ ## config` 固化 PCMDEF_CONFIG_PCM_U8_MUXER 挂死; obj 展开 "0" 与 lexer 数值展开语义一致 */
                         }
                     }
                 }
@@ -442,7 +442,7 @@ static void obj_macro_collect(const char *s) {
                         while (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t' || av[ai - 1] == '\r')) ai--;
                         av[ai] = 0;
                         { char _av2[4096]; int _a2 = 0; for (int _c = 0; _c < ai; ) { if (av[_c] == '/' && av[_c + 1] == '*') { while (_c + 1 < ai && !(av[_c] == '*' && av[_c + 1] == '/')) _c++; _c += 2; _av2[_a2++] = ' '; continue; } if (av[_c] == '/' && av[_c + 1] == '/') { while (_c < ai && av[_c] != '\n') _c++; _av2[_a2++] = ' '; continue; } _av2[_a2++] = av[_c++]; } _av2[_a2] = 0; memcpy(av, _av2, _a2 + 1); ai = _a2; while (ai > 0 && (av[ai - 1] == ' ' || av[ai - 1] == '\t')) ai--; av[ai] = 0; } /* fix 2026-08-26 pngtest: 宏值内块注释替换为空白 (C 语义) — png.h 别名宏行尾 [Deprecated] 注释混进值 → pp_eval 失败; 注意只能替换不能截断 — sqlite3.c OPFLG_INITIALIZER 表体含行间注释, 原截断砍掉整个表 → 数组初始化残缺 → 解析死循环 AST 爆炸 */
-                        if (!(av[0] >= '0' && av[0] <= '9') && !(av[0] == '-' && av[1] >= '0' && av[1] <= '9') && !(av[0] == '0' && (av[1] == 'x' || av[1] == 'X'))) obj_add(nm, av); /* 允许空宏 #define X (ai==0) 展开为空 */
+                        obj_add(nm, av); /* fix 2026-08-27 ffmpeg pcmenc: 纯数字宏也收集 — 原跳过 (值走 lexer 数值表), 但 fn pass 在 lex 前需展开 CONFIG_PCM_U8_MUXER(0) 供 ## 拼接 → `PCMDEF_ ## config` 固化 PCMDEF_CONFIG_PCM_U8_MUXER 挂死; obj 展开 "0" 与 lexer 数值展开语义一致; 空宏 #define X (ai==0) 也展开为空 */
                     }
                 }
                 while (s[p] && s[p] != '\n') { if (s[p] == '\\' && s[p + 1] == '\n') p += 2; else if (s[p] == '\\' && s[p + 1] == '\r' && s[p + 2] == '\n') p += 3; else p++; } /* fix 2026-08-26 lua: 续行感知 — #define 反斜杠续行整逻辑行跳过 (值含 " 的宏体不被泄漏进 scan) */
@@ -649,6 +649,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             int name_start = i - ni; /* 宏名起始下标 — 必须在此处保存, 后面跳过空白到 ( 后 i 已移动 (fix 2026-08-15: obstack_free 原型带空格被误展开) */
             int fmi = -1;
             for (int k = 0; k < fn_macro_n; k++) if (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; break; } /* 自引用宏不重入 (fix 2026-08-07: #define A(x) A(x) 防死递归) */
+            if (fmi < 0) { /* fix 2026-08-27 ffmpeg pcmenc: fn 宏体替换时展开 obj 宏 — PCMDEF 嵌套宏 `CONFIG_PCM_ ## uppercase ## _MUXER` 拼接产物是 obj 宏, C 标准要求宏展开完成前展开; 原 fn pass 不查 obj → 拼接固化 `PCMDEF_CONFIG_PCM_U8_MUXER` → parse 挂死 */
+                const char *ov = obj_find(nm);
+                if (ov && ov[0] && fn_scan_depth < 24) { fn_scan_depth++; fn_macro_expand_to(ov, outp, o, cap, -1); fn_scan_depth--; continue; }
+            }
             if (fmi >= 0) { int pw = i; while (seg[pw] == ' ' || seg[pw] == '\t' || seg[pw] == '\r' || seg[pw] == '\n') pw++; if (seg[pw] == '(') i = pw; } /* fix 2026-08-13 Phase3: 函数宏调用允许名称与 ( 之间空白 — 仅真调用才跳过空白, 否则保留 (同名变量/函数指针不吞空白) */
             if (fmi >= 0 && seg[i] == '(' && fn_active[fmi]) { /* fix 2026-08-26 sqlite: fn_active 位置门控 — #define 之前的调用不展开 */
                 /* 函数声明检测: 宏名前面最近非空白词是类型关键字 → int error(...) 声明, 不展开 (fix 2026-08-14: git-compat-util.h 原型 int error(...) 在 #define error 之前, 但 fn_macro_collect 先收集所有宏 → 原型被误展开成 int (error(...), const_error())) */
