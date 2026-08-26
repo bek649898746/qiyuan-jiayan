@@ -5103,8 +5103,20 @@ __attribute__((unused))
                             若 (tt[tk] == DK) { fptr = 1; tk++; }
                             若 (inner_si >= 0 && tt[tk] == VR) {
                                 字 fn[64]; strcpy(fn, tn[tk]); tk++;
-                                st_field_sz_r(nsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (本地类型定义) */
+                                整 fel = fptr ? 8 : stypes[inner_si].sz; /* fix step32: 元素大小 (指针 8 / struct 大小) */
+                                整 fsz = fel;
+                                整 frow = fptr ? 8 : 1;
+                                整 first = 1, dims = 0;
+                                循环 (tt[tk] == LB) { /* fix step32: struct 数组字段 struct X a[5] — 原不消费 [N] → 字段循环死锁 (deflate.h internal_state dyn_ltree[HEAP_SIZE]) */
+                                    tk++; 整 cdim = 0;
+                                    若 (const_expr_eval(&cdim)) { 若 (dims == 0) first = cdim; dims++; fsz *= cdim > 0 ? cdim : 1; }
+                                    否 { dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                    若 (tt[tk] == RB) tk++;
+                                }
+                                若 (dims >= 1) frow = fsz / first; 否 frow = fsz;
+                                st_field_sz_r(nsi, fn, fsz, frow);
                                 st_field_ty(nsi, fn, inner_si);
+                                stypes[nsi].fels[stypes[nsi].fn - 1] = fel; /* fix 2026-08-07: 数组字段元素大小 */
                                 sty_persist = inner_si; /* fix 2026-08-18: 逗号续行继承类型索引 */
                             }
                         }
@@ -6423,8 +6435,19 @@ __attribute__((unused))
                                 若 (tt[tk] == DK) { fptr = 1; tk++; npel_st = 1; 循环 (tt[tk] == DK) { npel_st++; tk++; } } /* struct Node *next: * sits BEFORE the name */
                                 若 (inner_si >= 0 && tt[tk] == VR) {
                                     字 fn[64]; strcpy(fn, tn[tk]); tk++;
-                                    若 (is_union) st_union_field(si, fn, fptr ? 8 : stypes[inner_si].sz);
-                                    否 { 若 (!fptr && inner_si >= 0 && stypes[inner_si].algn > st_cur_struct_align) st_cur_struct_align = stypes[inner_si].algn; st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : stypes[inner_si].sz); st_field_ty(si, fn, inner_si); 若 (fptr) { 整 fidx = stypes[si].fn - 1; stypes[si].fptrs[fidx] = 1; stypes[si].fpels[fidx] = npel_st > 1 ? 8 : stypes[inner_si].sz; stypes[si].fels[fidx] = 8; stypes[si].ffins[fidx] = stypes[inner_si].sz; stypes[si].fdeep[fidx] = (字)npel_st; } /* fix 2026-08-18: struct X * / struct X ** 字段标记指针 + 指向元素大小 (指针字段作数组基 p->table[i] 缩放; 单指针 struct pointee 按 struct 大小) */ fsz = fptr ? 8 : stypes[inner_si].sz; frow = fptr ? 8 : stypes[inner_si].sz; sty_persist = inner_si; } /* fix 2026-08-07: 指针字段 frow=8 → 偏移 8 对齐 (原 frow=1 → align=1 → struct LNode* next 偏移 4, 读 [&b+4] 错位); fix 2026-08-18: fsz/frow 更新 + sty_persist — 逗号续行字段 (struct A *x, *y) 继承 struct 类型索引与大小 (原续行 y 只经 DK 环得 8B 无类型 → st_field_ty_idx=-1 → mem_addr 链 x.prev->next 失败崩); fix 2026-08-20: 非指针 struct 字段 frow 传 struct 大小 (原硬编码 1 → st_field_sz_r 判 frow!=fsz 进数组分支 → frow=1 align=1 → struct 字段 offset 4 错 (dir_internal.exclude_group 应 8 实 4) → sizeof 少 4); fix 2026-08-20b: 同时设 st_cur_struct_align=子 struct 的 algn (eg_b algn=4 数组字段应对齐 4 非 8 — 只传 frow 会按大小误判 8); fix 2026-08-22 t41b: ffins/fdeep — struct commit_buffer **slab 双指针字段双层下标第二维缩放 */
+                                    整 fel_st = fptr ? 8 : stypes[inner_si].sz; /* fix step32: 元素大小 (指针 8 / struct 大小) */
+                                    整 fsz_arr = fel_st;
+                                    整 frow_arr = fptr ? 8 : stypes[inner_si].sz;
+                                    整 first_st = 1, dims_st = 0;
+                                    循环 (tt[tk] == LB) { /* fix step32: struct 数组字段 struct X a[5] — 原不消费 [N] → 字段循环死锁 (deflate.h internal_state dyn_ltree[HEAP_SIZE]) */
+                                        tk++; 整 cdim = 0;
+                                        若 (const_expr_eval(&cdim)) { 若 (dims_st == 0) first_st = cdim; dims_st++; fsz_arr *= cdim > 0 ? cdim : 1; }
+                                        否 { dims_st++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                        若 (tt[tk] == RB) tk++;
+                                    }
+                                    若 (dims_st >= 1) frow_arr = fsz_arr / first_st;
+                                    若 (is_union) st_union_field(si, fn, fsz_arr);
+                                    否 { 若 (!fptr && inner_si >= 0 && stypes[inner_si].algn > st_cur_struct_align) st_cur_struct_align = stypes[inner_si].algn; st_field_sz_r(si, fn, fsz_arr, frow_arr); st_field_ty(si, fn, inner_si); 若 (fptr) { 整 fidx = stypes[si].fn - 1; stypes[si].fptrs[fidx] = 1; stypes[si].fpels[fidx] = npel_st > 1 ? 8 : stypes[inner_si].sz; stypes[si].fels[fidx] = 8; stypes[si].ffins[fidx] = stypes[inner_si].sz; stypes[si].fdeep[fidx] = (字)npel_st; } /* fix 2026-08-18: struct X * / struct X ** 字段标记指针 + 指向元素大小 (指针字段作数组基 p->table[i] 缩放; 单指针 struct pointee 按 struct 大小) */ 若 (!fptr) stypes[si].fels[stypes[si].fn - 1] = fel_st; /* fix step32: 数组字段元素大小 */ fsz = fsz_arr; frow = frow_arr; sty_persist = inner_si; } /* fix 2026-08-07: 指针字段 frow=8 → 偏移 8 对齐 (原 frow=1 → align=1 → struct LNode* next 偏移 4, 读 [&b+4] 错位); fix 2026-08-18: fsz/frow 更新 + sty_persist — 逗号续行字段 (struct A *x, *y) 继承 struct 类型索引与大小 (原续行 y 只经 DK 环得 8B 无类型 → st_field_ty_idx=-1 → mem_addr 链 x.prev->next 失败崩); fix 2026-08-20: 非指针 struct 字段 frow 传 struct 大小 (原硬编码 1 → st_field_sz_r 判 frow!=fsz 进数组分支 → frow=1 align=1 → struct 字段 offset 4 错 (dir_internal.exclude_group 应 8 实 4) → sizeof 少 4); fix 2026-08-20b: 同时设 st_cur_struct_align=子 struct 的 algn (eg_b algn=4 数组字段应对齐 4 非 8 — 只传 frow 会按大小误判 8); fix 2026-08-22 t41b: ffins/fdeep — struct commit_buffer **slab 双指针字段双层下标第二维缩放 */
                                     整 sdims = 0, sfirst = 1; /* struct 数组字段维度 (fix 2026-08-19: 原 LB 只吞 [N] 不缩放 → frow=1/fels=0 → case-14 下标缩放 1 → exclude_list_group[i] 16B 元素按 1B 步进 → group 垃圾指针 → git status match_pathname SEGV; 且 fsz 未乘 → sizeof(struct) 偏小) */
                                     循环 (tt[tk] == LB) {
                                         tk++; 整 scnt = 1;
@@ -6886,8 +6909,20 @@ __attribute__((unused))
                                     若 (tt[tk] == DK) { fptr = 1; tk++; }
                                     若 (inner_si >= 0 && tt[tk] == VR) {
                                         字 fn[64]; strcpy(fn, tn[tk]); tk++;
-                                        st_field_sz_r(tsi, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (typedef 带标签结构体) */
+                                        整 fel_t = fptr ? 8 : stypes[inner_si].sz; /* fix step32: 元素大小 */
+                                        整 fsz_t = fel_t;
+                                        整 frow_t = fptr ? 8 : 1;
+                                        整 first_t = 1, dims_t = 0;
+                                        循环 (tt[tk] == LB) { /* fix step32: struct 数组字段 struct X a[5] — 原不消费 [N] → 字段循环死锁 (deflate.h internal_state) */
+                                            tk++; 整 cdim = 0;
+                                            若 (const_expr_eval(&cdim)) { 若 (dims_t == 0) first_t = cdim; dims_t++; fsz_t *= cdim > 0 ? cdim : 1; }
+                                            否 { dims_t++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; }
+                                            若 (tt[tk] == RB) tk++;
+                                        }
+                                        若 (dims_t >= 1) frow_t = fsz_t / first_t;
+                                        st_field_sz_r(tsi, fn, fsz_t, frow_t); /* fix 2026-08-07: 指针字段 frow=8 (typedef 带标签结构体) */
                                         st_field_ty(tsi, fn, inner_si);
+                                        若 (!fptr) stypes[tsi].fels[stypes[tsi].fn - 1] = fel_t; /* fix step32: 数组字段元素大小 */
                                         若 (fptr) { 整 fidx = stypes[tsi].fn - 1; stypes[tsi].fptrs[fidx] = 1; stypes[tsi].fpels[fidx] = stypes[inner_si].sz; stypes[tsi].fels[fidx] = 8; stypes[tsi].ffins[fidx] = stypes[inner_si].sz; stypes[tsi].fdeep[fidx] = 1; } /* fix 2026-08-22 t44: typedef 分支 struct 指针字段缺 fptrs → st_field_is_ptr=0 → 赋值 _fcs2=struct 大小 → 结构体复制 (xdl_classify_record rec->next=rhash[hi] 覆盖 rec->ptr) */
                                     }
                                 }
@@ -6922,7 +6957,7 @@ __attribute__((unused))
                                 若 (bitw > 0) { st_field_bit(tsi, fn, fsz, fsz, bitw, tfuns); 若 (fdbl) st_field_dbl(tsi, fn); tfuns = 0; }
                                 否 {
                                 整 fel = fsz; /* fix 2026-08-07 */
-                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } 否 { dims++; 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == PK || tt[tk] == MK) { 整 op = tt[tk]; tk++; 若 (tt[tk] == NK) { 若 (op == PK) fsz += tv[tk]; 否 fsz -= tv[tk]; tk++; } } 若 (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
+                                循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; 若 (tt[tk] != RB) { 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; 若 (tt[tk] != RB) { 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } } 否 { dims++; 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == PK || tt[tk] == MK) { 整 op = tt[tk]; tk++; 若 (tt[tk] == NK) { 若 (op == PK) fsz += tv[tk]; 否 fsz -= tv[tk]; tk++; } } 若 (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
                                 若 (dims >= 1) frow = fsz / first;
                                 否 frow = fsz;
                                 若 (tdf_si >= 0) st_cur_struct_align = stypes[tdf_si].algn; /* fix 2026-08-19: struct 成员按自身对齐 */
