@@ -1,3 +1,12 @@
+## 9F268F7 (2026-08-27)
+
+**硬上限拆除 v1.2 步骤0-6（optimizer 前置地基）— 12 语料全量回归绿**
+
+- **步骤 0/3/4/5**：FFmpeg demux 收尾（ce64822）+ P0 struct 表 256→4096 + 字段 256→1024 + STYPES_CAP 同步（9c2c53e，自举 CBB084D9）+ P1 六表扩容 + v1.2 配套数组同步（fb0a071，自举 1181D73E）
+- **步骤 6 诊断清理（9f268f7，自举 3F6F72E0）**：删除语料攻坚 QCC_DBG_* 诊断 66 处（QCC_STAGE/DUMP_SRC 9 + 非 NS 57），保留 QCC_DBG_NS 19 处常驻命名空间调试；头部拔桩注释同步；修复删桩后 _tk0 未用变量残留
+- **三语料收官**：OpenSSL crypto 64/65（provider_predefined 深水区遗留）+ PostgreSQL common/port 104/106（SSE 汇编跳过）+ TCC 根目录 23/24（il-gen.c 平台弃用）—— 施工日志已归档至 memory/construction/
+- **验证**：自举五代全等（新不动点）+ 325/325 + 20/20 + full_regression 7 语料 + diff_gate 400 轮 + cpython 127/127 + modules 57/59 + ffmpeg libavformat/avcodec + 12 语料全量回归 PASS
+
 ## 650993A2 (2026-08-24)
 
 **Phase3: IR 重构上主线 — IR 骨架进编译器 + 部分 case 迁移（重构版本本地提交，不推远端）**
