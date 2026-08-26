@@ -70,9 +70,9 @@ __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
 static char str_tbl[32768][12288]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符); 2026-08-26 redis: 2048→8192→32768 槽 (redis-benchmark.c 宏展开 1.6 万字符串字面量 STR-OVERFLOW); 2026-08-26 cpython: 每槽 8192→12288 (sysmodule.c flags__doc__ 拼接 9330 字符) */ int str_cnt;
 static int str_offs[32768]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容; 2026-08-26 redis: 2048→32768) */
-static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[16384]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
-static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
-static char var_file_static[16384]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
+static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[65536]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
+static char var_static_kw[65536]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
+static char var_file_static[65536]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
 static int stc_n = 0; /* static vars: slots in .data after the 8-byte heap counter */
 /* two-pass generation state (file scope) */
@@ -83,8 +83,8 @@ static int *nchain; /* 块节点溢出链: 512 子槽满 → 新块节点挂这�
 static int fdef_list[1024]; static int fdef_n; /* 顶层函数定义节点列表 (fix 2026-08-06: 根节点 n0..n255 只容 256 个子 → 第 257 个函数 (main) 被 Nc 静默丢弃 → 编译产物无 main 崩; 自举文件恰满 256) */
 static int gen_final = 0; /* 1 only on the LAST gen_code pass: gate -S asm text so the .asm file holds one copy (fix 2026-08-05: iteration re-runs gen_code → duplicate code + broken label resolution) */
 static int crt_entry_off; /* .text offset of the mini-CRT entry stub (pass 2 value) */
-static int fvb[8192], fve[8192], fvn; /* per-function var index ranges (parse order == gen order) — 512→8192 (fix 2026-08-26 sqlite: sqlite3.c 数千函数) */
-static int fr_start[8192], fr_end[8192]; /* per-function rsp_used bounds at parse (exact frame footprint) */
+static int fvb[65536], fve[65536], fvn; /* per-function var index ranges (parse order == gen order) — 512→8192 (fix 2026-08-26 sqlite: sqlite3.c 数千函数) */
+static int fr_start[65536], fr_end[65536]; /* per-function rsp_used bounds at parse (exact frame footprint) */
 static int gfn; /* current function index during gen_code */
 static int vs_end = 0; /* var-search bound: vcnt during parse, fve[gfn] during codegen */
 static int parse_base = 0; /* var-search floor during parse: fvb[fvn] inside a function body, else 0.
@@ -1059,7 +1059,7 @@ static char *pp_read_file(const char *path) {
     if (!f) return 0;
     fseek(f, 0, 2); long sz = ftell(f); fseek(f, 0, 0); /* SEEK 宏定义在本函数之后，自宿主不处理真实 <stdio.h>；用字面量 0/1/2 避开先使用后定义 (fix 2026-08-16 自举回归) */
     if (sz < 0) { fclose(f); return 0; }
-    if (sz > 16 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 4MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
+    if (sz > 16 * 1024 * 1024) { fclose(f); fprintf(stderr, "[ERR] #include 文件超过 16MB 上限 (fix 2026-08-06 M8: 原无大小上限，编译不可信源码=任意大文件读取面)\n"); exit(1); }
     char *buf = malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return 0; }
     size_t rd = fread(buf, 1, (size_t)sz, f);
@@ -1406,9 +1406,9 @@ static void st_field_ty(int si, const char *fn, int ty) {
    字段解析时 inner_si=-1 走"未知标签指针字段"分支 (无 st_field_ty) → st_field_ty_idx=-1 →
    mem_addr 链 iter->vtable->advance 断 → 函数指针调用目标塌缩成 iter → call *iter → git init SEGV.
    Tag 结构体定义时 (st_add / 定义体完成) 回填 ftypes 索引 (字段大小/偏移早已按 8 字节指针就位). */
-static char pend_ftag[512][64]; static int pend_fsi[512]; static char pend_ffn[512][64]; static int pend_n;
+static char pend_ftag[4096][64]; static int pend_fsi[4096]; static char pend_ffn[4096][64]; static int pend_n;
 static void st_pend_add(const char *tag, int si, const char *fn) {
-    if (pend_n >= 512) { fprintf(stderr, "[ERR] pending 结构体标签表满 512\n"); exit(1); }
+    if (pend_n >= 4096) { fprintf(stderr, "[ERR] pending 结构体标签表满 4096\n"); exit(1); }
     strcpy(pend_ftag[pend_n], tag); pend_fsi[pend_n] = si; strcpy(pend_ffn[pend_n], fn); pend_n++;
 }
 static void st_pend_backfill(int new_si) {
@@ -1561,7 +1561,7 @@ static int e_lookup(const char *n) {
 }
 
 /* ?????????? double ??????????? */
-static int dbl_hi[1024]; static int dbl_lo[1024]; static int dbl_n;
+static int dbl_hi[8192]; static int dbl_lo[8192]; static int dbl_n;
 static int g_uns_shift; /* set by cg() before alu_rr: T_SR operand is unsigned → SHR (fix 2026-08-05) */
 static int g_uns_div;   /* set by cg() before alu_rr: T_DV/T_MD operand(s) unsigned → DIV (fix 2026-08-06 M1) */
 /* parse a floating literal at s[*i] (digits [ . digits] [e[+-]digits]) into its
@@ -2001,7 +2001,7 @@ static struct { int patch_at; int target_label; int is_jmp; } patches[131072]; i
 static struct { int patch_at; int str_idx; } str_patches[32768]; int strpn; /* fix 2026-08-16 自举回归: 2048→8192 — 同步镜像后字符串引用超 2048; fix 2026-08-26 redis: 8192→32768 — redis-benchmark.c 1.6 万字符串字面量引用超 8192 */
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
-static int ginit[4096]; static int ginit_n; /* global variable initializer nodes (emitted at main entry); fix 2026-08-06: 128→4096 + 溢出报错（原 >128 静默丢初始值） */
+static int ginit[16384]; static int ginit_n; /* global variable initializer nodes (emitted at main entry); fix 2026-08-06: 128→4096 + 溢出报错（原 >128 静默丢初始值） */
 static int ndbl[ASZ]; /* per-node flag: expression yields a double (floating) */
 static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
@@ -2010,7 +2010,7 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 
 /* ==================== COFF 对象输出（-c 模式） ==================== */
 static int stc_disp(int idx);
-static struct { char name[64]; int label; int defined; int ret_si; } func_tbl[8192]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1) */
+static struct { char name[64]; int label; int defined; int ret_si; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
 static char fn_static_names[512][64]; static int fn_static_n;
 static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
@@ -2278,7 +2278,7 @@ static int var_pdbl(const char *n) {
 static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05) */
     
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) {  vars[i].is_ll = 1; vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -2292,7 +2292,7 @@ static int var_ll(const char *n) { /* long long: 8-byte int slot (fix 2026-08-05
 }
 static int var_double(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].is_dbl = 1; vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -2324,7 +2324,7 @@ static int var_offset(const char *n) {
        search floor is parse_base (this function's var start) so an unrelated function's
        same-named param/local can't be silently reused either. */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 (blk_end=-1) — 同一槽被多块声明 (qcc_vsnprintf 两个块各 int r) 时 blk 作用域判定不得把条目限死在首个声明块 */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += _psz; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - _psz; /* point to start, not aligned end */
@@ -2349,7 +2349,7 @@ static int var_offset_ptr(const char *n, int pesz) {
        off-=sizeof(strbuf) → gitdir/report 地址间距 56/8 错位 → strbuf_add memcpy(NULL) 崩) */
     int off;
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && vars[i].p_esz == pesz && vars[i].st_idx < 0 && var_codegen_visible(i)) { off = vars[i].rsp_off; vars[i].p_esz = pesz; vars[i].blk_end = -1; return off; } /* fix 2026-08-19: 类型兼容才复用 (防污染外层 struct 条目 p_esz); 复用条目标记函数级可见 */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15;
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -2367,7 +2367,7 @@ static int var_static(const char *n, int pesz) {
     var_align(); /* fix step25: _Alignas 变量级 */
     
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } var_last_idx = i; return vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
-    if (vcnt >= 16000 || stc_n >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: stc_n 上限 0x4000000→0x20000000 — str_tbl 扩到 32768 槽 (256MB) 后静态槽数顶满旧 67M 上限 */
+    if (vcnt >= 65536 || stc_n >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: stc_n 上限 0x4000000→0x20000000 — str_tbl 扩到 32768 槽 (256MB) 后静态槽数顶满旧 67M 上限 */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); /* pointers take 8-byte slots (64-bit stores) */
     vars[vcnt].is_param = 0;
@@ -2383,7 +2383,7 @@ static int var_static(const char *n, int pesz) {
 static int var_extern(const char *n, int is_char, int is_dbl, int pesz, int is_ll) {
     static int extern_n = 2;
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].rsp_off < 0 && var_codegen_visible(i)) return vars[i].rsp_off;
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = -extern_n; extern_n++;
     vars[vcnt].is_param = 0; vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
@@ -2403,7 +2403,7 @@ static int var_static_arr(const char *n, int pesz, int esz, int count) {
     var_align(); /* fix step25: _Alignas 变量级 */
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vsa '%s' HIT i=%d rsp=%d pesz=%d esz=%d count=%d\n", n, i, vars[i].rsp_off, pesz, esz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } var_last_idx = i; return vars[i].rsp_off; }
     int slots = (count * esz + 3) / 4; /* 4-byte slots — 按字节数算槽 (fix 2026-08-26 自举: char/short 数组原 slots=count 4倍膨胀 — str_tbl[32768][12288] 4.03亿槽=1.6GB → data_vsize 2.06GB 超 2GB PE 加载上限 → 自举 v1.exe 无效; 正确槽数=总字节/4) */
-    if (vcnt >= 16000 || stc_n + slots >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: 上限 0x4000000→0x20000000 (str_tbl 32768 槽后自宿主逼近旧上限) */
+    if (vcnt >= 65536 || stc_n + slots >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: 上限 0x4000000→0x20000000 (str_tbl 32768 槽后自宿主逼近旧上限) */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
     vars[vcnt].is_param = 0;
@@ -2421,7 +2421,7 @@ static int var_static_struct(const char *n, int si, int count) {
     int slots = (stypes[si].sz + 3) / 4; if (slots < 1) slots = 1;
     int total = slots * count;
     if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vss '%s' NEW si=%d sz=%d count=%d slots=%d total=%d stc_n=%d\n", n, si, stypes[si].sz, count, slots, total, stc_n);
-    if (vcnt >= 16000 || stc_n + total >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: 上限同步 0x20000000 */
+    if (vcnt >= 65536 || stc_n + total >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: 上限同步 0x20000000 */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += total;
     vars[vcnt].is_param = 0;
@@ -2484,7 +2484,7 @@ static int var_struct(const char *n, int si) {
     if (ag_struct > _pa) _pa = ag_struct; /* fix step25: struct 前 _Alignas 修饰变量 (gcc 语义) */
     ag_struct = 0;
     /* always allocate �?may shadow parameter with same name */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
@@ -2502,7 +2502,7 @@ __attribute__((unused))
    复用 step30 地址槽间接机制 (alignN=1): case 1 decay / case 10 写 / case 14 下标读槽.
    维度表达式节点在声明处 cg 求值 (变量已初始化). 回收靠函数 epilogue mov rsp,rbp (循环内 VLA 记录限制). */
 static int var_vla(const char *n, int esz, int dim_node) {
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += 8; rsp_used = (rsp_used + 15) & ~15; /* 地址槽 (8B) */
     vars[vcnt].rsp_off = rsp_used - 8;
@@ -2518,7 +2518,7 @@ static int var_vla(const char *n, int esz, int dim_node) {
 static int var_array(const char *n, int count, int esz) {
     int _pa = var_align(); /* fix step25: _Alignas(N) 变量级 */
     /* always allocate */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int sz = count * esz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
@@ -2548,7 +2548,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
        stidx = struct type index for struct/struct* params (-1 otherwise), so
        arr[i].field and arr->field resolve field offsets. is_dbl: double param → 8-byte
        slot fed from xmm[i] (Win64). */
-    if (vcnt >= 16000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
+    if (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
     int psz = (pesz > 0 || stidx >= 0 || is_dbl || is_ll) ? 8 : 4; /* struct/dbl/LL by-value param: 8-byte slot */
     int big_val = (stidx >= 0 && stypes[stidx].sz > 8);
@@ -2862,7 +2862,7 @@ static int fn_dbl_get_ret(const char *name) {
 static int func_find(const char *name) {
     for (int i = 0; i < func_n; i++)
         if (!strcmp(func_tbl[i].name, name)) return i;
-    if (func_n >= 8192) { fprintf(stderr, "[ERR] func_tbl 满 %d (%s)\n", func_n, name); exit(1); } /* fix 2026-08-16 根因E3: 原 1024 守卫与 2048 容量错配 → 返 -1 → 调用点 func_tbl[-1] 越界写崩 (attr.c); 改满则硬退, 绝不返 -1 */
+    if (func_n >= 65536) { fprintf(stderr, "[ERR] func_tbl 满 %d (%s)\n", func_n, name); exit(1); } /* fix 2026-08-16 根因E3: 原 1024 守卫与 2048 容量错配 → 返 -1 → 调用点 func_tbl[-1] 越界写崩 (attr.c); 改满则硬退, 绝不返 -1 */
     strcpy(func_tbl[func_n].name, name);
     func_tbl[func_n].label = new_label();
     func_tbl[func_n].defined = 0;
@@ -3798,7 +3798,7 @@ static void lex(const char *s) {
                 if (is_hexfp) {
                     int fhi, flo;
                     hexfp_parse(s, &i, &fhi, &flo);
-                    if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
+                    if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
                     dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; continue;
@@ -3814,7 +3814,7 @@ static void lex(const char *s) {
                     int fhi, flo;
                     fp_parse(s, &i, &fhi, &flo);
                     if (s[i] == 'f' || s[i] == 'F') i++; /* float suffix 1.5f → double */
-                    if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
+                    if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
                     dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
                     ti++; continue;
@@ -3916,7 +3916,7 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cv; ti++; continue;
         }
-        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
+        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
     }
     if (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
@@ -4770,7 +4770,7 @@ static int prim(void) {
         if (tt[tk] == FP) {
             int idx = tv[tk];
             if (dbl_n < 1024) { dbl_hi[dbl_n] = dbl_hi[idx]; dbl_lo[dbl_n] = dbl_lo[idx]; dbl_hi[dbl_n] ^= 0x80000000; } /* fix 2026-08-07: 512→1024 对齐镜像 (dbl_n∈[512,1024) 时原静默不写却 dbl_n++ → 垃圾 double) */
-            if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); }
+            if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3)\n"); exit(1); }
             int n = Nd(FP); nv[n] = dbl_n; ndbl[n] = 1; dbl_n++; tk++; /* -double-literal: must be marked ndbl (fix 2026-08-06) */
             return n;
         }
@@ -6830,7 +6830,7 @@ static int parse(const char *s) {
                                 }
                             }
                             if (tt[tk] == AK) { /* = init: struct Tag *p = &x; — 原 skip_global_init 丢初始化器 → 全局指针 NULL → startup_info->x 解引用崩 (fix 2026-08-17) */
-                                if (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限\n"); exit(1); }
+                                if (ginit_n >= 16384) { fprintf(stderr, "[ERR] 全局初始化器超过 16384 上限\n"); exit(1); }
                                 tk++;
                                 int decl = Nd(7); memcpy((char*)(nn + decl), vn, 32);
                                 Nc(decl, expr());
@@ -7814,7 +7814,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     else var_static(gname, pesz);
                     if (g_static) var_file_static[vcnt - 1] = 1; /* 文件级 static → scl=3 局部符号 (fix 2026-08-14) */
                     if (tt[tk] == AK) { /* = init */
-                        if (ginit_n >= 4096) { fprintf(stderr, "[ERR] 全局初始化器超过 4096 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
+                        if (ginit_n >= 16384) { fprintf(stderr, "[ERR] 全局初始化器超过 16384 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
                         tk++;
                         if (tt[tk] == FK && g_stidx >= 0 && gcnt == 0) { /* struct G g = { a, b, c }; — brace init (fix 2026-08-07: +gcnt==0 → struct ARRAY 走数组分支, 否则 {{...}} 被当单 struct 字段 → brace_fields strcpy 越界崩) */
                             tk++;
@@ -8048,7 +8048,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             Nc(fdef, blk());
-            if (fvn >= 8192) { fprintf(stderr, "[ERR] 函数体表超过 8192 上限 (fix 2026-08-26 sqlite: 512→8192)\n"); exit(1); }
+            if (fvn >= 65536) { fprintf(stderr, "[ERR] 函数体表超过 65536 上限 (fix 2026-08-26 sqlite: 512→8192)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
             parse_base = 0; /* back to file scope for the next top-level item */
@@ -14315,7 +14315,7 @@ static int vt_tyvar[VT_CAP];         /* 类型变量编号: 0=非泛型 >0=第 N
 static int vt_trunc[VT_CAP];         /* 截断标记: 0=无 1=赋值截断 2=cast 截断 3=扩展 */
 
 /* 4. 类型级 side-tables (逆向定律库 §4, 不内联 stypes — §11.1 冻结) */
-#define STYPES_CAP 4096  /* 与 stypes[256] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
+#define STYPES_CAP 4096  /* 与 stypes[4096] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
 static int stypes_lo[STYPES_CAP];    /* 范围下界 (-1=无界) */
 static int stypes_hi[STYPES_CAP];    /* 范围上界 (-1=无界) */
 static int stypes_super[STYPES_CAP]; /* 父类型 id (-1=无) */
