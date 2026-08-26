@@ -434,7 +434,10 @@ double round(double x) {
     if (x >= 0.0) return floor(x + 0.5);
     return ceil(x - 0.5);
 }
-double trunc(double x) { return (double)(long long)x; } /* 向零截断 (|x|<2^63, 超出限制记录) */
+double trunc(double x) { /* fix step29: 原 (long long)cast 截断丢负零 (trunc(-0.5) 应 -0.0, gcc 输出 "-0"); floor/ceil 保留 IEEE 符号 */
+    if (x >= 0.0) return floor(x);
+    return ceil(x);
+}
 double fmax(double a, double b) {
     if (a > b) return a;
     return b;
@@ -447,9 +450,8 @@ double exp2(double x) { return pow(2.0, x); }
 double log1p(double x) { return log(1.0 + x); }
 double expm1(double x) { return exp(x) - 1.0; }
 double cbrt(double x) {
-    double r = pow(x, 1.0 / 3.0);
-    if (x < 0.0) r = -r;
-    return r;
+    if (x < 0.0) return -pow(-x, 1.0 / 3.0); /* fix step29: pow(负底, 1/3) 返回 NaN — 对正数开方再取负 (gcc: cbrt(-27)=-3) */
+    return pow(x, 1.0 / 3.0);
 }
 double fdim(double a, double b) {
     if (a > b) return a - b;
@@ -498,7 +500,7 @@ double lgamma(double x) {
     if (x == 1.0 || x == 2.0) return 0.0; /* Γ(1)=Γ(2)=1, ln1=0 精确 (fix step24: 大数相消给 ~5e-15) */
     if (x <= 0.0) {
         double s = sin(3.14159265358979323846 * x);
-        if (s == 0.0) return 1.7976931348623157E308; /* 极点 (gcc: +inf) */
+        if (fabs(s) < 1e-15) return 1.0 / 0.0; /* 负整数极点 → +inf (fix step29: msvcrt sin(±π)≈±1.2e-16 不精确为 0, 原 s==0 检测漏 → 反射算出 37.78 而非 inf) */
         return 1.14472988584940017414 - log(fabs(s)) - lgamma(1.0 - x); /* ln(pi) (fix step24: 原误用 lgamma(0.5)=0.57236 → 负半整数全错) */
     }
     {
@@ -523,7 +525,10 @@ double tgamma(double x) {
     }
     {
         double s = sin(3.14159265358979323846 * x);
-        if (s == 0.0) return 1.7976931348623157E308; /* 极点 */
+        if (fabs(s) < 1e-15) { /* 极点 (fix step29: 原 s==0 精确检测漏 sin(±π)≈±1.2e-16 → 反射除近零给出 -2.5e16; gcc: x=0 → +inf, 负整数 → nan) */
+            if (x == 0.0) return 1.0 / 0.0;
+            return 0.0 / 0.0;
+        }
         return 3.14159265358979323846 / (s * tgamma(1.0 - x));
     }
 }
