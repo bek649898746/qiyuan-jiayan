@@ -397,11 +397,11 @@ static void obj_macro_collect(const char *s) {
                 } else if (is_endif) {
                     if (cl_if_n > 0) { cl_if_n--; cl_if_skip = cl_if_n > 0 ? !cl_if_taken[cl_if_n-1] : 0; } /* fix 2026-08-13 Phase3: 同 lexer endif — 嵌套假分支恢复用 !taken */
                 }
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 — #if/#error 行内 \ 续行 (luaconf.h #error "... \  or ..." 反斜杠换行) 原逐字符跳过停在首个 \n 吞掉串引号 → 配对崩 → 级联幽灵字符串吞全文件 */
                 continue;
             }
             if (cl_if_skip) { /* 假分支: #define/#undef 一律不收 */
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 (同上) */
                 continue;
             }
             if (is_undef) { /* fix 2026-08-21: #undef 顺序定义表 + 对象宏删除 — 配合 expand 阶段 #define 重新收集, 完整位置语义 (collect 删 + expand 收集/删 同步) */
@@ -411,7 +411,7 @@ static void obj_macro_collect(const char *s) {
                 while (isalnum((unsigned char)s[q]) || s[q] == '_' || ((unsigned char)s[q] >= 0x80)) { if (ui < 63) un[ui++] = s[q]; q++; }
                 un[ui] = 0;
                 if (ui > 0) { pp_guard_del(un); obj_del(un); }
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 (同上) */
                 continue;
             }
             if (is_def) {
@@ -432,7 +432,7 @@ static void obj_macro_collect(const char *s) {
                         if (!(av[0] >= '0' && av[0] <= '9') && !(av[0] == '-' && av[1] >= '0' && av[1] <= '9') && !(av[0] == '0' && (av[1] == 'x' || av[1] == 'X'))) obj_add(nm, av); /* 允许空宏 #define X (ai==0) 展开为空 */
                     }
                 }
-                while (s[p] && s[p] != '\n') p++;
+                while (s[p] && s[p] != '\n') { if (s[p] == '\\' && s[p + 1] == '\n') p += 2; else if (s[p] == '\\' && s[p + 1] == '\r' && s[p + 2] == '\n') p += 3; else p++; } /* fix 2026-08-26 lua: 续行感知 — #define 反斜杠续行整逻辑行跳过 (值含 " 的宏体不被泄漏进 scan) */
                 i = p;
             }
         }
@@ -484,11 +484,11 @@ static void fn_macro_collect(const char *s) {
                 } else if (is_endif) {
                     if (cl_if_n > 0) { cl_if_n--; cl_if_skip = cl_if_n > 0 ? !cl_if_taken[cl_if_n-1] : 0; } /* fix 2026-08-13 Phase3: 同 lexer endif — 嵌套假分支恢复用 !taken 而非 parent */
                 }
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 — 假分支 #error 反斜杠续行引号平衡 (luaconf.h) */
                 continue;
             }
             if (cl_if_skip) { /* 假分支: #define/#undef 一律不收 */
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 (同上) */
                 continue;
             }
             if (is_undef) { /* fix 2026-08-07: 顺序定义表删除 (collect 阶段 #undef 生效) */
@@ -498,7 +498,7 @@ static void fn_macro_collect(const char *s) {
                 while (isalnum((unsigned char)s[q]) || s[q] == '_') { if (ui < 63) un[ui++] = s[q]; q++; }
                 un[ui] = 0;
                 if (ui > 0) { pp_guard_del(un); int fmi2 = -1; for (int k = 0; k < fn_macro_n; k++) if (!strcmp(fn_macros[k].name, un)) { fmi2 = k; break; } if (fmi2 >= 0 && fn_macro_multiline[fmi2] && fn_macros[fmi2].body[0] == '{') macro_remove(un); } /* fix 2026-08-15: 多行 do 语句宏保留 (color.c OUT 定义后使用再 #undef); 多行 { 初始化宏仍删 (userdiff.c PATTERNS/IPATTERN timeout) */
-                while (s[i] && s[i] != '\n') i++;
+                while (s[i] && s[i] != '\n') { if (s[i] == '\\' && s[i + 1] == '\n') i += 2; else if (s[i] == '\\' && s[i + 1] == '\r' && s[i + 2] == '\n') i += 3; else i++; } /* fix 2026-08-26 lua: 续行感知 (同上) */
                 continue;
             }
             if (is_def) {
@@ -5097,8 +5097,67 @@ static int blk(void) {
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field: int *p / char *s / void **pp — 8-byte on 64-bit (fix: DK was unhandled → infinite loop) */
                     if (tt[tk] == ST) { /* nested struct field (maybe self-ref) */
                         tk++;
+                        if (tt[tk] == FK) { /* 匿名 struct/union: struct { fields } name[N]; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: lstrlib struct cD { char c; union { lua_Number n; ... } u; } — 原 { 不被消费 → 字段循环死锁) */
+                            int anon_si = st_add("");
+                            int sub_union = !strcmp(tn[tk - 1], "union");
+                            tk++; /* { */
+                            while (tk < TS && tt[tk] != UK) {
+                                int nk0 = tk; /* 安全前进 */
+                                int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                if (tt[tk] == VR) {
+                                    char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                    if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                    if (sub_union) st_union_field(anon_si, nf, nsz); else st_field_sz_r(anon_si, nf, nsz, nrow);
+                                    if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
+                                }
+                                if (tt[tk] == CK) tk++;
+                                if (tt[tk] == SK) tk++;
+                                if (tk == nk0) tk++;
+                            }
+                            if (tt[tk] == UK) tk++; /* } */
+                            st_finalize(anon_si);
+                            int anon_sz = stypes[anon_si].sz;
+                            if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++;
+                                int ucnt = 1, udims = 0;
+                                while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { udims++; ucnt *= cdim > 0 ? cdim : 1; } else { udims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; }
+                                st_field_sz_r(nsi, ufn, anon_sz * ucnt, anon_sz);
+                                st_field_ty(nsi, ufn, anon_si);
+                            }
+                            if (tt[tk] == SK) tk++;
+                            continue;
+                        }
                         if (tt[tk] == VR) {
                             int inner_si = st_find(tn[tk]); tk++;
+                            if (tt[tk] == FK) { /* 内联定义体: struct Inner { fields } field — 注册新类型+解析体 (fix 2026-08-26 lua: 局部 struct 同型缺口) */
+                                int ni2 = inner_si < 0 ? st_add(tn[tk - 1]) : inner_si;
+                                tk++; /* { */
+                                while (tk < TS && tt[tk] != UK) {
+                                    int nk0 = tk; /* 安全前进 */
+                                    int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                    if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                    else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    if (tt[tk] == VR) {
+                                        char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                        if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                        st_field_sz_r(ni2, nf, nsz, nrow);
+                                        if (npel2 > 0) { int nfi = stypes[ni2].fn - 1; stypes[ni2].fptrs[nfi] = 1; stypes[ni2].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[ni2].ffins[nfi] = nbase; stypes[ni2].fdeep[nfi] = (char)npel2; }
+                                    }
+                                    if (tt[tk] == CK) tk++;
+                                    if (tt[tk] == SK) tk++;
+                                    if (tk == nk0) tk++;
+                                }
+                                if (tt[tk] == UK) tk++; /* } */
+                                st_finalize(ni2);
+                                inner_si = ni2;
+                            }
                             int fptr = 0;
                             if (tt[tk] == DK) { fptr = 1; tk++; }
                             if (inner_si >= 0 && tt[tk] == VR) {
@@ -6181,9 +6240,6 @@ static int parse(const char *s) {
     lex(exp_src);
     if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] lex done ti=%d\n", ti);
     free(exp_src);
-    if (getenv("QCC_DUMP")) { for (int di = 5215; di < ti && di < 5250; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
-    if (getenv("QCC_DUMP")) { for (int di = 1755; di < ti && di < 1800; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
-    if (getenv("QCC_DUMP")) { for (int di = 1755; di < ti && di < 1800; di++) fprintf(stderr, "[TK] %d: tt=%d tn='%s'\n", di, tt[di], tn[di]); }
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
     int p = Nd(3); if (p < 0) return -1;
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
@@ -6663,7 +6719,9 @@ static int parse(const char *s) {
         }
         /* extern variable declarations — 注册外部符号 (Task 5.1 多 .o 链接 fix 2026-08-06:
            原静默跳过 → 单独 -c 编译时引用被当局部变量; 现在注册 extern 负槽, coff_mode 生成未定义符号) */
-        if (tt[tk] == VK && !strcmp(tn[tk], "extern")) {
+        int qex_def = 0; /* extern 函数定义检测 (fix 2026-08-26 lua: LUALIB_API void luaL_traceback(...){} 宏展开 extern — 原被当原型跳到体内首个 ; → 函数体泄漏顶层 → 顶层 call 语句死锁) */
+        { int _et = tk + 1; while (tt[_et] == VK) _et++; if (tt[_et] == ST) { _et++; if (tt[_et] == VR) _et++; } if (tt[_et] == EN) { _et++; if (tt[_et] == VR) _et++; } if (tt[_et] == VR && td_is(tn[_et])) _et++; while (tt[_et] == DK || (tt[_et] == VK && !strcmp(tn[_et], "const"))) _et++; if (tt[_et] == VR && tt[_et + 1] == OK) { int _et2 = _et + 2, _ed = 1; while (_et2 < TS && _ed > 0) { if (tt[_et2] == OK) _ed++; else if (tt[_et2] == KK) _ed--; _et2++; } if (_et2 < TS && tt[_et2] == FK) qex_def = 1; } }
+        if (tt[tk] == VK && !strcmp(tn[tk], "extern") && !qex_def) {
             tk++; /* skip extern */
             int e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0, e_stidx = -1;
             while (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; else if (!strcmp(tn[tk], "double")) e_dbl = 1; else if (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
@@ -6813,15 +6871,66 @@ static int parse(const char *s) {
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
-                            if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
-                                int d = 1; tk++;
-                                while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
-                                if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); } /* 字段名 opr */
+                            if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: 同 MatchState capture[N] 缺口) */
+                                int anon_si = st_add(""); /* 匿名结构体类型 */
+                                tk++; /* { */
+                                while (tk < TS && tt[tk] != UK) {
+                                    int nk0 = tk; /* 安全前进 */
+                                    int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                    if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                    else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    if (tt[tk] == VR) {
+                                        char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                        while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                        if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                        st_field_sz_r(anon_si, nf, nsz, nrow);
+                                        if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
+                                    }
+                                    if (tt[tk] == CK) tk++;
+                                    if (tt[tk] == SK) tk++;
+                                    if (tk == nk0) tk++;
+                                }
+                                if (tt[tk] == UK) tk++; /* } */
+                                st_finalize(anon_si);
+                                int anon_sz = stypes[anon_si].sz;
+                                if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++;
+                                    int ucnt = 1, udims = 0;
+                                    while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { udims++; ucnt *= cdim > 0 ? cdim : 1; } else { udims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; }
+                                    st_field_sz_r(si, ufn, anon_sz * ucnt, anon_sz);
+                                    st_field_ty(si, ufn, anon_si);
+                                }
                                 if (tt[tk] == SK) tk++; /* ; */
                                 continue;
                             }
                             if (tt[tk] == VR) {
                                 int inner_si = st_find(tn[tk]); tk++;
+                                if (tt[tk] == FK) { /* 内联定义体: struct Inner { fields } field — 注册新类型+解析体 (fix 2026-08-26 lua: typedef 匿名分支同型缺口) */
+                                    int ni2 = inner_si < 0 ? st_add(tn[tk - 1]) : inner_si;
+                                    tk++; /* { */
+                                    while (tk < TS && tt[tk] != UK) {
+                                        int nk0 = tk; /* 安全前进 */
+                                        int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                        if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                        else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        if (tt[tk] == VR) {
+                                            char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                            if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                            st_field_sz_r(ni2, nf, nsz, nrow);
+                                            if (npel2 > 0) { int nfi = stypes[ni2].fn - 1; stypes[ni2].fptrs[nfi] = 1; stypes[ni2].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[ni2].ffins[nfi] = nbase; stypes[ni2].fdeep[nfi] = (char)npel2; }
+                                        }
+                                        if (tt[tk] == CK) tk++;
+                                        if (tt[tk] == SK) tk++;
+                                        if (tk == nk0) tk++;
+                                    }
+                                    if (tt[tk] == UK) tk++; /* } */
+                                    st_finalize(ni2);
+                                    inner_si = ni2;
+                                }
                                 int fptr = 0;
                                 if (tt[tk] == DK) { fptr = 1; tk++; } /* * before name */
                                 if (inner_si >= 0 && tt[tk] == VR) {
@@ -6896,15 +7005,66 @@ static int parse(const char *s) {
                             while (tt[tk] == DK) { fsz = 8; npel++; tk++; } /* pointer field (fix 2026-08-19: npel++ — 原只设 fsz=8 无标记) */
                             if (tt[tk] == ST) { /* nested struct field */
                                 tk++; /* struct */
-                                if (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
-                                    int d = 1; tk++;
-                                    while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
-                                    if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(tsi, ufn, 8, 8); }
+                                if (tt[tk] == FK) { /* 匿名 struct/union: struct { fields } name[N]; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: MatchState capture[LUA_MAXCAPTURES] — 原跳 body 后不消费 [N] → 字段循环死锁) */
+                                    int anon_si = st_add(""); /* 匿名结构体类型 */
+                                    tk++; /* { */
+                                    while (tk < TS && tt[tk] != UK) {
+                                        int nk0 = tk; /* 安全前进 */
+                                        int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                        if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                        else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                        if (tt[tk] == VR) {
+                                            char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                            while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                            if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                            st_field_sz_r(anon_si, nf, nsz, nrow);
+                                            if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
+                                        }
+                                        if (tt[tk] == CK) tk++;
+                                        if (tt[tk] == SK) tk++;
+                                        if (tk == nk0) tk++;
+                                    }
+                                    if (tt[tk] == UK) tk++; /* } */
+                                    st_finalize(anon_si);
+                                    int anon_sz = stypes[anon_si].sz;
+                                    if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++;
+                                        int ucnt = 1, udims = 0;
+                                        while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { udims++; ucnt *= cdim > 0 ? cdim : 1; } else { udims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; }
+                                        st_field_sz_r(tsi, ufn, anon_sz * ucnt, anon_sz);
+                                        st_field_ty(tsi, ufn, anon_si);
+                                    }
                                     if (tt[tk] == SK) tk++;
                                     continue;
                                 }
                                 if (tt[tk] == VR) {
                                     int inner_si = st_find(tn[tk]); tk++;
+                                    if (tt[tk] == FK) { /* 内联定义体: struct Inner { fields } field — 注册新类型+解析体 (fix 2026-08-26 lua: typedef union Node { struct NodeKey {...} u; TValue i_val; } — 原 inner_si=-1 不消费 { → 字段循环死锁) */
+                                        int ni2 = inner_si < 0 ? st_add(tn[tk - 1]) : inner_si;
+                                        tk++; /* { */
+                                        while (tk < TS && tt[tk] != UK) {
+                                            int nk0 = tk; /* 安全前进 */
+                                            int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                            if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                            else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                            else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                            else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                            if (tt[tk] == VR) {
+                                                char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                                while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                                if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                                st_field_sz_r(ni2, nf, nsz, nrow);
+                                                if (npel2 > 0) { int nfi = stypes[ni2].fn - 1; stypes[ni2].fptrs[nfi] = 1; stypes[ni2].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[ni2].ffins[nfi] = nbase; stypes[ni2].fdeep[nfi] = (char)npel2; }
+                                            }
+                                            if (tt[tk] == CK) tk++;
+                                            if (tt[tk] == SK) tk++;
+                                            if (tk == nk0) tk++;
+                                        }
+                                        if (tt[tk] == UK) tk++; /* } */
+                                        st_finalize(ni2);
+                                        inner_si = ni2;
+                                    }
                                     int fptr = 0;
                                     if (tt[tk] == DK) { fptr = 1; tk++; }
                                     if (inner_si >= 0 && tt[tk] == VR) {
@@ -7075,10 +7235,36 @@ static int parse(const char *s) {
                     while (tt[tk] == DK) { fsz = 8; tk++; } /* pointer field */
                     if (tt[tk] == ST) { /* nested struct field */
                         tk++; /* struct */
-                        if (tt[tk] == FK) { /* 匿名 struct/union: 跳过 body 但注册字段名 (fix 2026-08-13 Phase3) */
-                            int d = 1; tk++;
-                            while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) d--; tk++; }
-                            if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++; st_field_sz_r(si, ufn, 8, 8); }
+                        if (tt[tk] == FK) { /* 匿名 struct/union: struct { fields } name[N]; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: 全局匿名 struct 数组同型缺口) */
+                            int anon_si = st_add(""); /* 匿名结构体类型 */
+                            tk++; /* { */
+                            while (tk < TS && tt[tk] != UK) {
+                                int nk0 = tk; /* 安全前进 */
+                                int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
+                                if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
+                                else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                if (tt[tk] == VR) {
+                                    char nf[64]; strcpy(nf, tn[tk]); tk++;
+                                    while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
+                                    if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
+                                    st_field_sz_r(anon_si, nf, nsz, nrow);
+                                    if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
+                                }
+                                if (tt[tk] == CK) tk++;
+                                if (tt[tk] == SK) tk++;
+                                if (tk == nk0) tk++;
+                            }
+                            if (tt[tk] == UK) tk++; /* } */
+                            st_finalize(anon_si);
+                            int anon_sz = stypes[anon_si].sz;
+                            if (tt[tk] == VR) { char ufn[64]; strcpy(ufn, tn[tk]); tk++;
+                                int ucnt = 1, udims = 0;
+                                while (tt[tk] == LB) { tk++; int cdim = 0; if (const_expr_eval(&cdim)) { udims++; ucnt *= cdim > 0 ? cdim : 1; } else { udims++; while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } if (tt[tk] == RB) tk++; }
+                                st_field_sz_r(si, ufn, anon_sz * ucnt, anon_sz);
+                                st_field_ty(si, ufn, anon_si);
+                            }
                             if (tt[tk] == SK) tk++;
                             continue;
                         }
