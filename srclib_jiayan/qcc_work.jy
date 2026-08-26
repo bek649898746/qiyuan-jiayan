@@ -2734,6 +2734,9 @@ __attribute__((unused))
             若 (vars[i].arr_sz > 0) 返 vars[i].arr_sz * (vars[i].arr_esz > 0 ? vars[i].arr_esz : 4); /* 数组总字节 */
             若 (vars[i].p_depth > 0 || vars[i].p_esz > 0) 返 8; /* 指针 8 字节 */
             若 (vars[i].is_ll) 返 8; /* long long */
+            若 (vars[i].is_dbl) 返 8; /* fix 2026-08-27 特性#1: double 变量 */
+            若 (vars[i].is_char) 返 1; /* fix 2026-08-27 特性#1: char 变量 */
+            若 (vars[i].is_short) 返 2; /* fix 2026-08-27 特性#1: short 变量 */
             返 4;
         }
     返 0;
@@ -4257,7 +4260,7 @@ __attribute__((unused))
         tk++; /* skip sizeof */
         整 sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
         若 (tt[tk] == OK) tk++; /* skip ( */
-         
+        
         若 (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
             整 deref_n = 1; /* 解引用层级: *p=1, **p=2 (fix 2026-08-24 t35v: CALLOC_ARRAY(*info,1) 的 sizeof(*(*info)) 原只解一层 → 8 → xcalloc 只分 8B → reflog_walk_info 越界 → reflog 崩) */
             tk++; /* * */
@@ -4336,7 +4339,6 @@ __attribute__((unused))
                 若 (sizeof_had_paren && tt[tk] == KK) tk++; /* 消费 sizeof 自身的 ) — fix 2026-08-21: sizeof(*(链)) 作函数参数时残留 ) 被调用参数循环误当参数列表结束 → 后续参数丢失 (st_mult(sizeof(...),n) 只传 sizeof → n 残留指针 → malloc 巨大 → counter 写坏 → git status SEGV) */
                 整 n = Nd(0); nv[n] = sz; 返 n;
             }
-             
             整 v = prim(); (空)v; /* 消费 expr (mod.add) */
              
             若 (sizeof_had_paren && tt[tk] == KK) tk++; /* ) — fix 2026-08-26 libpng: 无括号 sizeof *np 不得消费后续闭括号 (png_realloc_array 最后参数 sizeof *np → 原吞 args 的 ) → token 错位吞 if 关键字 → 语句错位卡死); 有括号 sizeof(*p) 才消费自己的 ) */
@@ -4369,6 +4371,9 @@ __attribute__((unused))
                         若 (vars[vi].arr_sz > 0) esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         否 若 (vars[vi].p_esz != 0) esz = vars[vi].p_esz;
                         否 若 (vars[vi].is_char) esz = 1;
+                        否 若 (vars[vi].is_short) esz = 2; /* fix 2026-08-27 特性#1: sizeof(short 变量) 原 4 */
+                        否 若 (vars[vi].is_ll) esz = 8; /* fix 2026-08-27 特性#1: sizeof(long long 变量) 原 4 */
+                        否 若 (vars[vi].is_dbl) esz = 8;
                         否 esz = 4;
                         base_si = vars[vi].st_idx;
                         断;
@@ -4479,6 +4484,16 @@ __attribute__((unused))
                 若 (tt[tk] == KK) tk++;
                 整 n = Nd(0); nv[n] = tdefs[tdi].sz; 返 n;
             }
+            若 (tdi < 0) { /* fix 2026-08-27 特性#1: <stdint.h> 被跳过未注册的类型名兜底 — sizeof(int16_t)=4 根因 */
+                整 tsz = 4;
+                常 字 *tyn = tn[tk];
+                若 (!strcmp(tyn, "int8_t") || !strcmp(tyn, "uint8_t")) tsz = 1;
+                否 若 (!strcmp(tyn, "int16_t") || !strcmp(tyn, "uint16_t")) tsz = 2;
+                否 若 (!strcmp(tyn, "int64_t") || !strcmp(tyn, "uint64_t") || !strcmp(tyn, "size_t") || !strcmp(tyn, "uintptr_t") || !strcmp(tyn, "intptr_t") || !strcmp(tyn, "ptrdiff_t") || !strcmp(tyn, "off_t") || !strcmp(tyn, "time_t")) tsz = 8;
+                tk++;
+                若 (tt[tk] == KK) tk++;
+                整 n = Nd(0); nv[n] = tsz; 返 n;
+            }
         }
         若 (tt[tk] == VR) { /* sizeof(varname): array -> N*esz, double -> 8, char -> 1, ptr -> 8, else 4 */
             整 sz = 4;
@@ -4489,6 +4504,7 @@ __attribute__((unused))
                     若 (vars[vi].arr_sz > 0) { 整 e = vars[vi].arr_esz ? vars[vi].arr_esz : 4; esz = e; sz = vars[vi].arr_sz * e; }
                     否 若 (vars[vi].is_dbl) { esz = 8; sz = 8; }
                     否 若 (vars[vi].is_char) { esz = 1; sz = 1; }
+                    否 若 (vars[vi].is_short) { esz = 2; sz = 2; } /* fix 2026-08-27 特性#1: sizeof(short 变量/元素) 原 4 */
                     否 若 (vars[vi].is_ll) { esz = 8; sz = 8; } /* long long / size_t 变量 (fix 2026-08-19: 原落 else sz=4 → sizeof(size_t 参数)=4 → bitsizeof 错 → st_mult 溢出误报) */
                     否 若 (vars[vi].p_esz != 0) { esz = vars[vi].p_esz; sz = 8; } /* pointer: p_esz=element size, slot is 8 bytes */
                     否 若 (vars[vi].st_idx >= 0) { esz = st_sz(stypes[vars[vi].st_idx].name); sz = esz; } /* struct 变量: sizeof = struct 大小 (fix 2026-08-19: init_repository_format memcpy(dst,&fresh,sizeof(fresh)) 原 sz=4 只拷 version → v1_only_extensions.nr/items 栈垃圾 → verify_repository_format 误入 v1-only 错误路径 → git status 死循环/崩溃) */
@@ -5702,7 +5718,8 @@ __attribute__((unused))
             整 is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             整 is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
-            若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdi2b = tdef_lookup(tn[tk]);  若 (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr) { 若 (tdefs[tdi2b].sz == 1) { is_char = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 2) { is_short = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 4) { 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 8) { is_ll = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } } } /* fix 2026-08-25 bug#28a 补: typedef unsigned int (uint32_t) → is_uns (t28: 右移/比较/cast 全按 unsigned); fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
+            若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdi2b = tdef_lookup(tn[tk]);  若 (tdi2b >= 0 && !tdefs[tdi2b].is_struct && !tdefs[tdi2b].is_dbl && !tdefs[tdi2b].is_fnptr) { 若 (tdefs[tdi2b].sz == 1) { is_char = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 2) { is_short = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 4) { 若 (tdefs[tdi2b].is_uns) is_uns = 1; } 否 若 (tdefs[tdi2b].sz == 8) { is_ll = 1; 若 (tdefs[tdi2b].is_uns) is_uns = 1; } }
+            否 若 (tdi2b < 0 && !is_double) { /* fix 2026-08-27 特性#1 类型宽度: <stdint.h> 被跳过未注册的标准类型名兜底 (首 token 路径) — sizeof(int64_t)=4 根因; int8/16/32 宽度同理 */ 若 (!strcmp(tn[tk], "int8_t")) is_char = 1; 否 若 (!strcmp(tn[tk], "uint8_t")) { is_char = 1; is_uns = 1; } 否 若 (!strcmp(tn[tk], "int16_t")) is_short = 1; 否 若 (!strcmp(tn[tk], "uint16_t")) { is_short = 1; is_uns = 1; } 否 若 (!strcmp(tn[tk], "uint32_t")) is_uns = 1; 否 若 (!strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t")) is_ll = 1; 否 若 (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t")) { is_ll = 1; is_uns = 1; } } } /* fix 2026-08-25 bug#28a 补: typedef unsigned int (uint32_t) → is_uns (t28: 右移/比较/cast 全按 unsigned); fix 2026-08-20: typedef long long 变量 (uint64_t v) is_ll+is_uns → sizeof(v)=8 且 v%62 走 64 位无符号 DIV (原 is_uns 缺 → 有符号 IDIV → 负数余数 → letters[负索引] 越界 → mkstemp 乱码文件名) */
             tk++; 若 (was_enum && tt[tk] == VR) tk++; /* skip enum type name */
             若 (was_enum && tt[tk] == FK) { /* enum body: { A, B = 5, C } — register constants (fix 2026-08-09: 此前跳过 body, 常量未注册 → 使用崩溃 0xC0000005) */
                 tk++; /* skip { */
