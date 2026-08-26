@@ -192,7 +192,7 @@ __attribute__((unused))
                     nm[ni] = 0;
                     整 def = pp_guard_exists(nm) || macro_exists(nm) || obj_find(nm) != 0; /* 顺序表 + 数值/字符串/函数表 + 当前对象宏表 */
                     cond = is_ifdef ? def : !def;
-                    若 (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_OMIT_WSD") || !strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_AMALGAMATION"))) fprintf(stderr, "[COND] %s '%s' at i=%d def=%d cond=%d cx_skip=%d cx_n=%d obj_wd=%d\n", is_ifdef?"ifdef":(is_ifndef?"ifndef":"??"), nm, i, def, cond, cx_skip, cx_n, obj_find("SQLITE_WSD")?1:0); /* 临时诊断 2026-08-25 sqlite */
+                     
                 } 否 若 (is_if || is_elif) {
                     字 expr[512]; 整 ei = 0; 整 q3 = q2 + (is_if ? 2 : 4);
                     循环 (s[q3] == ' ' || s[q3] == '\t') q3++;
@@ -262,10 +262,10 @@ __attribute__((unused))
             整 next_ok = (isalnum((无 字)s[j]) || s[j] == '_' || ((无 字)s[j] >= 0x80));
             字 nm[64]; 整 nl = j - i;
             若 (nl < 63) { memcpy(nm, s + i, nl); nm[nl] = 0; } 否 nl = 0; /* fix 2026-08-15: 32→64, FIND_BISECTION_FIRST_PARENT_ONLY (32 字符) 原 nl>=31 被丢弃不展开 → undefined */
-            若 (getenv("QCC_DBG_OBJ") && !strcmp(nm, "SQLITE_PRIVATE") && (prev_ok || next_ok)) fprintf(stderr, "[OBJ-NOBOUND] 'SQLITE_PRIVATE' i=%d prev=%d(%c) next=%d(%c) prev_ok=%d next_ok=%d\n", i, i>0?s[i-1]:0, i>0&&s[i-1]>=32&&s[i-1]<127?s[i-1]:'.', s[j]>=0?s[j]:0, s[j]>=32&&s[j]<127?s[j]:'.', prev_ok, next_ok); /* 临时诊断 2026-08-25 sqlite */
+             
             若 (!prev_ok && !next_ok && nl > 0) {
                 常 字 *val = obj_find(nm);
-                若 (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_PRIVATE") || !strcmp(nm, "SQLITE_API"))) fprintf(stderr, "[OBJ] '%s' at i=%d prev=%d(%c) next=%d(%c) found=%s depth=%d\n", nm, i, s[i-1]>=0?s[i-1]:0, s[i-1]>=32&&s[i-1]<127?s[i-1]:'.', s[j]>=0?s[j]:0, s[j]>=32&&s[j]<127?s[j]:'.', val?val:"(null)", cx_skip); /* 临时诊断 2026-08-25 sqlite */
+                 
                 整 dep = 0;
                 循环 (val && dep < 32 && (整)strlen(val) < 4000) {
                     常 字 *v2 = obj_find(val);
@@ -374,7 +374,7 @@ __attribute__((unused))
         若 (s[i] == '\'') { i++; 循环 (s[i] && s[i] != '\'') { 若 (s[i] == '\\') i++; i++; } 续; }
         若 (s[i] == '#') {
             整 dj = i + 1; 循环 (s[dj] == ' ' || s[dj] == '\t') dj++; /* fix 2026-08-13 Phase3: 跳过 # 后空白 — glibc 缩进指令 #  define */
-            若 (getenv("QCC_DBG_OBJ") && i > 15000 && i < 30000) fprintf(stderr, "[HASH2] i=%d dir='%.30s'\n", i, s + dj); /* 临时诊断 2026-08-25 sqlite */
+             
             整 is_ifdef = !strncmp(s + dj, "ifdef", 5) && (s[dj + 5] == 0 || s[dj + 5] == ' ' || s[dj + 5] == '\t' || s[dj + 5] == '\r' || s[dj + 5] == '\n');
             整 is_ifndef = !strncmp(s + dj, "ifndef", 6) && (s[dj + 6] == 0 || s[dj + 6] == ' ' || s[dj + 6] == '\t' || s[dj + 6] == '\r' || s[dj + 6] == '\n');
             整 is_if = !strncmp(s + dj, "if", 2) && !is_ifdef && !is_ifndef && (s[dj + 2] == 0 || s[dj + 2] == ' ' || s[dj + 2] == '\t' || s[dj + 2] == '\r' || s[dj + 2] == '\n');
@@ -391,7 +391,7 @@ __attribute__((unused))
                     循环 (isalnum((无 字)s[q]) || s[q] == '_' || ((无 字)s[q] >= 0x80)) { 若 (ni < 63) nm[ni++] = s[q]; q++; }
                     nm[ni] = 0;
                     cond = is_ifdef ? pp_guard_exists(nm) : !pp_guard_exists(nm);
-                    若 (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_OMIT_WSD") || !strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_AMALGAMATION"))) fprintf(stderr, "[CLCOND] %s '%s' at i=%d pge=%d cond=%d cl_if_skip=%d cl_if_n=%d\n", is_ifdef?"ifdef":(is_ifndef?"ifndef":"??"), nm, i, pp_guard_exists(nm), cond, cl_if_skip, cl_if_n); /* 临时诊断 2026-08-25 sqlite */
+                     
                 } 否 若 (is_if || is_elif) {
                     字 expr[512]; 整 ei = 0; 整 q = dj + (is_if ? 2 : 4);
                     循环 (s[q] == ' ' || s[q] == '\t') q++;
@@ -433,7 +433,7 @@ __attribute__((unused))
                 字 nm[64]; 整 ni = 0;
                 循环 (isalnum((无 字)s[p]) || s[p] == '_' || ((无 字)s[p] >= 0x80)) { 若 (ni < 63) nm[ni++] = s[p]; p++; }
                 nm[ni] = 0;
-                若 (getenv("QCC_DBG_OBJ") && (!strcmp(nm, "SQLITE_WSD") || !strcmp(nm, "SQLITE_PRIVATE") || !strcmp(nm, "SQLITE_API"))) fprintf(stderr, "[COLLECT] #define '%s' at i=%d cl_if_skip=%d cl_if_n=%d obj_n=%d\n", nm, i, cl_if_skip, cl_if_n, obj_macro_n); /* 临时诊断 2026-08-25 sqlite */
+                 
                 若 (nm[0] && s[p] != '(') { /* 非函数宏 → 对象宏候选; fix 2026-08-13 Phase3: ( 必须紧贴名字才算函数宏 */
                     循环 (s[p] == ' ' || s[p] == '\t') p++;
                     若 (s[p] != '"') { /* fix 2026-08-13 Phase3: 字符串宏不收 (值以 " 开头) — 否则 TAG "A"/"C" 被当对象宏展开覆盖 lexer 的字符串宏 */
@@ -1313,7 +1313,7 @@ __attribute__((unused))
 }
 静 空 st_field_sz_r(整 si, 常 字 *fn, 整 fsz, 整 frow) {
     若 (stypes[si].fn >= 1024) { fprintf(stderr, "[ERR] struct '%s' 字段超过 1024 上限\n", stypes[si].name); exit(1); }
-    若 (getenv("QCC_DBG_XDF")) fprintf(stderr, "[SZR] struct '%s' fld='%s' fsz=%d frow=%d\n", stypes[si].name, fn, fsz, frow); /* tmp diag */
+     
     若 (getenv("QCC_DBG_NS")) 若 (!strcmp(stypes[si].name, "gz3") || !strcmp(stypes[si].name, "z_stream_s") || !strcmp(stypes[si].name, "git_zstream") || strstr(stypes[si].name, "z_stream") || !strcmp(stypes[si].name, "config_set") || !strcmp(stypes[si].name, "hashmap") || !strcmp(stypes[si].name, "configset_list") || !strcmp(stypes[si].name, "string_list")) fprintf(stderr, "[FLD] struct '%s' fld='%s' fsz=%d frow=%d idx=%d\n", stypes[si].name, fn, fsz, frow, stypes[si].fn); /* tmp diag */
     整 idx = stypes[si].fn;
     /* fix 2026-08-06: struct 字段对齐填充（char+int 应 8 非 5）。对齐单位由 frow（元素/行大小）推导:
@@ -1351,7 +1351,7 @@ __attribute__((unused))
 }
 静 整 st_fidx(整 si, 常 字 *fn) { 遍 (整 i = 0; i < stypes[si].fn; i++) 若 (!strcmp(stypes[si].fnames[i], fn)) 返 i; 返 -1; }
 静 整 st_field_el(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 返 (idx >= 0 && stypes[si].fels[idx] > 0) ? stypes[si].fels[idx] : (idx >= 0 ? stypes[si].frows[idx] : 1); } /* 数组字段元素大小; 未设置→frow (标量) */
-静 整 st_field_pel(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 若 (getenv("QCC_DBG_SZ") && !strcmp(fn, "config")) fprintf(stderr, "[PEL] %s.%s fpels=%d idx=%d\n", stypes[si].name, fn, idx >= 0 ? stypes[si].fpels[idx] : -99, idx); 若 (idx >= 0 && stypes[si].fpels[idx] > 0) 返 stypes[si].fpels[idx]; /* fix 2026-08-21: fpels 未设置/为 0 — 前向声明 struct T *field 的指向元素大小未回填 (L5634 inner_si>=0 分支用未完成 struct 的 sz=0, 且不注册 pend) → fallback 到字段类型的 st_sz (config_set* → 72) */ 若 (idx >= 0) { 整 tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); 若 (tsi >= 0 && tsi < 4096) { 整 tsz = stypes[tsi].sz; 若 (tsz > 0) 返 tsz; } } 返 4; } /* 指针字段的指向元素大小 (fix 2026-08-17: char *buf → 1, int * → 4; 未设置→4) */
+静 整 st_field_pel(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn);  若 (idx >= 0 && stypes[si].fpels[idx] > 0) 返 stypes[si].fpels[idx]; /* fix 2026-08-21: fpels 未设置/为 0 — 前向声明 struct T *field 的指向元素大小未回填 (L5634 inner_si>=0 分支用未完成 struct 的 sz=0, 且不注册 pend) → fallback 到字段类型的 st_sz (config_set* → 72) */ 若 (idx >= 0) { 整 tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); 若 (tsi >= 0 && tsi < 4096) { 整 tsz = stypes[tsi].sz; 若 (tsz > 0) 返 tsz; } } 返 4; } /* 指针字段的指向元素大小 (fix 2026-08-17: char *buf → 1, int * → 4; 未设置→4) */
 静 整 st_field_ffin(整 si, 常 字 *fn) { /* fix 2026-08-22 t41b: 指针字段最终元素大小 — T** 双层下标第二维 (slab[i][j] 元素 sizeof(T)); 单指针 T* 返回 sizeof(T) 等同 fpels */ 整 idx = st_fidx(si, fn); 若 (idx >= 0 && stypes[si].ffins[idx] > 0) 返 stypes[si].ffins[idx]; 若 (idx >= 0) { 整 tsi = -1; memcpy(&tsi, &stypes[si].ftypes[idx], 4); 若 (tsi >= 0 && tsi < 4096) { 整 tsz = stypes[tsi].sz; 若 (tsz > 0) 返 tsz; } } 返 st_field_pel(si, fn); }
 静 整 st_field_fdeep(整 si, 常 字 *fn) { /* fix 2026-08-22 t41b: 指针字段层级 (T*=1, T**=2) — 决定数组基的最大下标层数 */ 整 idx = st_fidx(si, fn); 若 (idx >= 0 && stypes[si].fdeep[idx] > 0) 返 stypes[si].fdeep[idx]; 若 (idx >= 0 && stypes[si].fptrs[idx] != 0) 返 1; 返 0; }
 静 整 st_field_is_ptr(整 si, 常 字 *fn) { 整 idx = st_fidx(si, fn); 返 idx >= 0 && stypes[si].fptrs[idx] != 0; } /* 指针字段标记 (struct X 星号 等; fix 2026-08-18: 指针字段作数组基判定 — 原 fty==-1 漏判 struct 指针字段) */
@@ -1461,7 +1461,7 @@ __attribute__((unused))
 静 整 st_off(常 字 *sn, 常 字 *fn) {
     整 si = st_find(sn); 若 (si < 0) 返 -1;
     遍 (整 i = 0; i < stypes[si].fn; i++)
-        若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v; memcpy(&v, &stypes[si].foffs[i], 4); 若 (getenv("QCC_DBG_OFF") && !strcmp(fn, "ha")) fprintf(stderr, "[OFF] %s.%s foff=%d\n", sn, fn, v); 返 v; }
+        若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v; memcpy(&v, &stypes[si].foffs[i], 4);  返 v; }
     返 -1;
 }
 静 整 st_field_bitw(常 字 *sn, 常 字 *fn) { /* bit-field width, 0 = not a bit-field (fix 2026-08-05) */
@@ -1482,7 +1482,7 @@ __attribute__((unused))
         若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v = 0; memcpy(&v, &stypes[si].fsgn[i], 1); 返 v != 0; }
     返 0;
 }
-静 整 st_sz(常 字 *sn) { 整 si = st_find(sn); 若 (getenv("QCC_DBG_SZ") && (!strcmp(sn, "config_set") || !strcmp(sn, "hashmap") || !strcmp(sn, "configset_list"))) fprintf(stderr, "[STSZ] %s sz=%d si=%d\n", sn, si >= 0 ? stypes[si].sz : -999, si); 返 si >= 0 ? stypes[si].sz : 0; }
+静 整 st_sz(常 字 *sn) { 整 si = st_find(sn);  返 si >= 0 ? stypes[si].sz : 0; }
 静 整 st_field_size(常 字 *sn, 常 字 *fn) {
     整 si = st_find(sn); 若 (si < 0) 返 0;
     遍 (整 i = 0; i < stypes[si].fn; i++)
@@ -2488,7 +2488,7 @@ __attribute__((unused))
     strcpy(vars[vcnt].name, n);
     整 sz = stypes[si].sz;
     rsp_used += sz; rsp_used = (rsp_used + 15) & ~15;
-    若 (getenv("QCC_DBG_ALIGN")) fprintf(stderr, "[ALIGN] var_struct '%s' _pa=%d sz=%d rsp=%d\n", n, _pa, sz, rsp_used);
+    
     若 (_pa >= 16) rsp_used += 8; /* fix step25: rsp_off ≡ 8 mod 16 → struct 地址 16 对齐 */
     vars[vcnt].rsp_off = rsp_used;
     vars[vcnt].is_param = 0;
@@ -2512,7 +2512,7 @@ __attribute__((unused))
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = esz;
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
-    若 (getenv("QCC_DBG_VLA")) fprintf(stderr, "[VLA] var '%s' esz=%d dim_node=%d slot=%d\n", n, esz, dim_node, vars[vcnt].rsp_off);
+    
     返 vars[vcnt++].rsp_off;
 }
 静 整 var_array(常 字 *n, 整 count, 整 esz) {
@@ -2529,7 +2529,7 @@ __attribute__((unused))
         rsp_used += 8;                                 /* 地址槽 (8 字节, 存对齐后地址) */
         vars[vcnt].rsp_off = rsp_used - 8;             /* rsp_off 指向地址槽 — cg case1 数组 decay 读槽得对齐地址 */
         vars[vcnt].alignN = _pa;
-        若 (getenv("QCC_DBG_ALIGN")) fprintf(stderr, "[ALIGN] var_array '%s' pa=%d cand=%d slot=%d\n", n, _pa, vars[vcnt].align_base, vars[vcnt].rsp_off);
+        
     } 否 {
         vars[vcnt].rsp_off = rsp_used;
         vars[vcnt].alignN = 0; vars[vcnt].align_base = 0;
@@ -2622,7 +2622,7 @@ __attribute__((unused))
 }
 静 整 var_pelem(常 字 *n) { /* (*X)[i] 的元素大小: X=T** → sizeof(T); X=T*** 及以上 → 8 (指针); 单指针 → pointee (fix 2026-08-18: (*store_key)[i] char** 参数原 var_pesz=8 缩放 → config 写坏) */
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
-        若 (getenv("QCC_DBG_ESZ")) fprintf(stderr, "[PELEM] %s p_depth=%d p_inner=%d p_esz=%d arr_esz=%d arr_sz=%d\n", n, vars[i].p_depth, vars[i].p_inner, vars[i].p_esz, vars[i].arr_esz, vars[i].arr_sz);
+        
         若 (vars[i].p_depth >= 3) 返 8;
         若 (vars[i].p_depth == 2 && vars[i].p_inner > 0) 返 vars[i].p_inner;
         若 (vars[i].p_inner > 0) 返 vars[i].p_inner;
@@ -2699,7 +2699,7 @@ __attribute__((unused))
 静 整 var_esz(常 字 *n) {
     遍 (整 i = vs_n() - 1; i >= 0; i--)
         若 (!strcmp(vars[i].name, n) && var_codegen_visible(i)) {
-            若 (getenv("QCC_DBG_ESZ")) fprintf(stderr, "[ESZ] %s arr_esz=%d p_esz=%d p_depth=%d p_inner=%d arr_sz=%d\n", n, vars[i].arr_esz, vars[i].p_esz, vars[i].p_depth, vars[i].p_inner, vars[i].arr_sz);
+            
             若 (vars[i].arr_esz > 0) 返 vars[i].arr_esz;
             返 vars[i].p_esz > 0 ? vars[i].p_esz : 4;
         }
@@ -4237,13 +4237,13 @@ __attribute__((unused))
         tk++; /* skip sizeof */
         整 sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
         若 (tt[tk] == OK) tk++; /* skip ( */
-        若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZA] sizeof arg tok=%d name=%s sz=%d\n", tt[tk], tn[tk], tt[tk]==BK?0:0); /* tmp */
+         
         若 (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
             整 deref_n = 1; /* 解引用层级: *p=1, **p=2 (fix 2026-08-24 t35v: CALLOC_ARRAY(*info,1) 的 sizeof(*(*info)) 原只解一层 → 8 → xcalloc 只分 8B → reflog_walk_info 越界 → reflog 崩) */
             tk++; /* * */
             循环 (tt[tk] == DK) { deref_n++; tk++; } /* 连续 **p — 多层解引用 (fix 2026-08-24 t35v) */
             整 sz = 8;
-            若 (tt[tk] == VR) { 字 vn[64]; strcpy(vn, tn[tk]); 整 si = var_stidx(vn); 若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZD] sizeof(*%s) si=%d pesz=%d pbase=%d\n", vn, si, var_pesz(vn), parse_base); 若 (deref_n >= 2) {
+            若 (tt[tk] == VR) { 字 vn[64]; strcpy(vn, tn[tk]); 整 si = var_stidx(vn);  若 (deref_n >= 2) {
                     /* **p: 双指针 → 最深层基类型大小 (fix 2026-08-24 t35v) */
                     整 pd = var_pdepth(vn); 整 pin = var_pinner(vn);
                     若 (pd >= 2 && pin > 0) sz = pin;
@@ -4316,9 +4316,9 @@ __attribute__((unused))
                 若 (sizeof_had_paren && tt[tk] == KK) tk++; /* 消费 sizeof 自身的 ) — fix 2026-08-21: sizeof(*(链)) 作函数参数时残留 ) 被调用参数循环误当参数列表结束 → 后续参数丢失 (st_mult(sizeof(...),n) 只传 sizeof → n 残留指针 → malloc 巨大 → counter 写坏 → git status SEGV) */
                 整 n = Nd(0); nv[n] = sz; 返 n;
             }
-            若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ-OK] sizeof( chain ) sz=%d tok=%d name=%s\n", sz, tt[tk], tn[tk]); /* tmp */
+             
             整 v = prim(); (空)v; /* 消费 expr (mod.add) */
-            若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ] sizeof-expr tok=%d name=%s sz=%d\n", tt[tk], tn[tk], sz); /* tmp */
+             
             若 (sizeof_had_paren && tt[tk] == KK) tk++; /* ) — fix 2026-08-26 libpng: 无括号 sizeof *np 不得消费后续闭括号 (png_realloc_array 最后参数 sizeof *np → 原吞 args 的 ) → token 错位吞 if 关键字 → 语句错位卡死); 有括号 sizeof(*p) 才消费自己的 ) */
             整 n = Nd(0); nv[n] = sz; 返 n;
         }
@@ -4396,7 +4396,7 @@ __attribute__((unused))
         若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == KK) tk++; 整 n = Nd(0); nv[n] = 4; 返 n; } /* sizeof(enum Tag) → int 4 字节 (fix 2026-08-15: commit-slab elem_size=sizeof(enum contains_result) → contains_result 泄漏 undefined) */
         若 (tt[tk] == ST) { tk++; /* skip struct */
             若 (tt[tk] == VR) {
-                若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZST] sizeof(struct %s) sz=%d\n", tn[tk], st_sz(tn[tk])); /* tmp */
+                 
                 整 sz = st_sz(tn[tk]); tk++; /* struct name */
                 若 (tt[tk] == DK) { sz = 8; tk++; 循环 (tt[tk] == DK) tk++; } /* sizeof(struct X*) \xe2\x86\x92 8 - \xe5\x89\x8d\xe5\x90\x91\xe5\xa3\xb0\xe6\x98\x8e struct \xe6\x8c\x87\xe9\x92\x88 st_sz=0 (fix 2026-08-23) */
                 若 (tt[tk] == KK) tk++; /* ) */
@@ -4611,7 +4611,7 @@ __attribute__((unused))
                 整 m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } 否 若 (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                整 callee = n; 若 (getenv("QCC_DBG_CALL")) fprintf(stderr, "[CALL2] callee_nt=%d callee='%s' tk=%d\n", nt[callee], (字*)(nn + callee), tk); tk++; 整 c = Nd(4); 循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; Nc(c, expr()); 若 (tk == t0) 断; } 若 (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                整 callee = n;  tk++; 整 c = Nd(4); 循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; Nc(c, expr()); 若 (tk == t0) 断; } 若 (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 若 (nt[callee] == 1 && (fn_dbl_get_ret((字*)(nn + callee)) || fn_math_iat((字*)(nn + callee)) >= 0 || ext_fn_ret((字*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
                 若 (nt[callee] == 1 && (fn_ll_get_ret((字*)(nn + callee)) || ext_fn_ret((字*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
             } 否 断;
@@ -4795,7 +4795,7 @@ __attribute__((unused))
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
 静 整 tern(空) { 整 n = lor(); 若 (tt[tk] == QU) { tk++; 整 t = lor(); 若 (tt[tk] == CL) tk++; 整 f = tern(); 整 a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); 返 a; } 返 n; }
-静 整 asgn(空) { 整 n = tern(); 若 (tt[tk] == AK) { tk++; 整 a = Nd(10); Nc(a, n); Nc(a, asgn()); 若 (getenv("QCC_DBG_AST") && nt[n] == 1) { 字 *_vn=(字*)(nn+n); 若 (!strcmp(_vn,"ref")||!strcmp(_vn,"dir")||!strcmp(_vn,"sanitized")) fprintf(stderr, "[REF-ASGN] '%s' rhs_nt=%d\n", _vn, n1[a]>=0?nt[n1[a]]:-1); } 返 a; }
+静 整 asgn(空) { 整 n = tern(); 若 (tt[tk] == AK) { tk++; 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
     若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         整 o = tt[tk++];
         整 op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
@@ -5030,7 +5030,7 @@ __attribute__((unused))
     循环 (tt[tk] != UK && tt[tk] != EK) { /* fix 2026-08-07: 缺 } 时 EK 防死循环 (原 while != UK 遇 EOF 转空 + tk 越界崩溃) */
         alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每块语句清残留 — 变量前 _Alignas 不消费也不毒害后续声明; step25: ag_struct 同步清 */
         若 (tt[tk] == AG) { 整 agv = tv[tk]; tk++; 若 (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } 否 alignas_pending = agv; } /* fix 2026-08-25 step21: 块级 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
-        若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[BLK] ref stmt: next_tt=%d next='%s' td_is=%d\n", tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-", td_is("ref"));
+        
         若 (b_cnt >= 200) { /* block near its 256 child slots: chain a new sub-block
                                (cg case 5 recurses into nested blocks). main()'s body
                                has ~270 statements �?without this, Nc() silently drops
@@ -5805,17 +5805,17 @@ __attribute__((unused))
                     整 save = tk;
                     tk += 2; /* skip '=' '{' */
                     整 n = 1, depth = 0, last_comma = 0;
-                    若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' dims=%d before-infer, tk=%d tt[tk]=%d tt[tk+1]=%d\n", vn, dims, tk, tt[tk], tt[tk + 1]);
+                    
                     循环 (tk < TS && !(tt[tk] == UK && depth == 0)) {
                         若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) depth++;
                         否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) depth--;
                         否 若 (tt[tk] == CK && depth == 0) { n++; last_comma = 1; }
                         否 若 (depth == 0) last_comma = 0; /* fix 2026-08-19: C99 尾逗号 — 局部 static `char *arr[] = {"A","B",}` 原算成 3 元素 → sizeof=24 → ARRAY_SIZE=3 → is_special_ref special_refs[2] 越界 (git init strcmp 崩); 与全局路径 last_comma 对齐 */
-                        若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR]   tok[%d]=%d '%s' depth=%d n=%d\n", tk, tt[tk], tn[tk], depth, n);
+                        
                         tk++;
                     }
                     若 (last_comma) n--; /* 尾部逗号不增加元素 (C99 trailing comma) */
-                    若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' inferred n=%d\n", vn, n);
+                    
                     cnt = n;
                     adimv[0] = n; /* fix 2026-08-07: 未定长数组推断的个数必须进 adimv — 否则 brace_arr_init 的 gi_idx 进位读 dims[0]=0 → 所有初始化值写进元素 0 (int a[]={1,2,3} 得 3 0 0) */
                     tk = save; /* rewind to '=' — normal init path below */
@@ -5828,7 +5828,7 @@ __attribute__((unused))
                     整 slen = (整)strlen(str_tbl[tv[tk + 1]]) + 1;
                     cnt = slen;
                     adimv[0] = slen;
-                    若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[LARR] vn='%s' string-init inferred n=%d\n", vn, slen);
+                    
                 }
                 acnt = cnt; adims = dims; /* expose to ={...} init */
                 若 (ltd_si >= 0 && !is_ptr) { esz = stypes[ltd_si].sz; } /* struct element size; pointer-to-struct array elements are 8-byte pointers (fix 2026-08-15: tr2_tgt_builtins[] miscompiled as struct array → for_each_builtin never derefs NULL terminator) */
@@ -6128,7 +6128,7 @@ __attribute__((unused))
         返 n;
     }
     若 (tt[tk] == RK) { tk++; 整 r = Nd(6); Nc(r, expr()); tk++; 返 r; }
-    若 (tt[tk] == IK) { tk++; tk++; 整 n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt()); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] after then-stmt tk=%d tt=%d tok='%s' n2check\n", tk, tt[tk], tn[tk]); 若 (tt[tk] == ZK) { tk++; Nc(n, stmt()); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] else attached, after else-stmt tk=%d tt=%d\n", tk, tt[tk]); } 否 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[IF] NO else (tt=%d)\n", tt[tk]); 返 n; }
+    若 (tt[tk] == IK) { tk++; tk++; 整 n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  若 (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  返 n; }
     若 (tt[tk] == WK) { tk++; tk++; 整 n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); 返 n; }
     若 (tt[tk] == DW) { /* do stmt while (cond); */
         tk++; /* do */
@@ -6292,8 +6292,8 @@ __attribute__((unused))
     若 (tt[tk] == BR) { tk++; 整 r = Nd(16); tk++; 返 r; } /* break; */
     若 (tt[tk] == CN) { tk++; 整 r = Nd(21); tk++; 返 r; } /* continue; */
     若 (tt[tk] == SK) { tk++; 返 Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
-    若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "ref")) fprintf(stderr, "[STMT] expr-stmt starting at 'ref', next tt=%d\n", tt[tk+1]);
-    { 整 _tk0 = tk; 整 e = expr(); 若 (getenv("QCC_DBG_IF")) fprintf(stderr, "[STMT] expr-stmt tk %d->%d (was '%s' tt=%d), node=%d nt=%d\n", _tk0, tk, tn[_tk0], tt[_tk0], e, nt[e]); tk++; 返 e; }
+    
+    { 整 e = expr(); tk++; 返 e; }
 }
 /* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
    左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
@@ -6382,19 +6382,19 @@ __attribute__((unused))
     fvn = 0; /* reset per-function var-range table */
     memset(tt, 0, TS * 4);
     字 *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
-    若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] include expand done len=%d\n", (整)strlen(exp_src));
-    若 (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("precollect_dump.txt", "wb"); 若 (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote precollect %d bytes\n", (整)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
+    
+     
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
-    若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] fn_macro_collect done n=%d\n", fn_macro_n); /* 临时诊断 */
+     
     obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
-    若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] obj_macro_collect done\n"); /* 临时诊断 */
+     
     若 (fn_macro_n > 0) {
         字 *msrc = fn_macro_expand(exp_src);
-        若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] fn_macro_expand1 done\n"); /* 临时诊断 */
+         
         若 (msrc && msrc[0]) { free(exp_src); exp_src = msrc; }
     }
     若 (obj_macro_n > 0) { /* fix 2026-08-13: 对象宏文本层展开 (lex 前) */
-        若 (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("preobj_dump.txt", "wb"); 若 (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote preobj %d bytes\n", (整)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
+         
         字 *osrc = obj_macro_expand(exp_src);
         若 (osrc && osrc[0]) { free(exp_src); exp_src = osrc; }
     }
@@ -6403,10 +6403,10 @@ __attribute__((unused))
         若 (msrc2 && msrc2[0]) { free(exp_src); exp_src = msrc2; }
     }
     pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
-    若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] macro expand done, lexing...\n");
-    若 (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("prelex_dump.txt", "wb"); 若 (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote prelex %d bytes\n", (整)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
+    
+     
     lex(exp_src);
-    若 (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] lex done ti=%d\n", ti);
+    
     free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
     整 p = Nd(3); 若 (p < 0) 返 -1;
@@ -6415,7 +6415,7 @@ __attribute__((unused))
     循环 (tk < TS && tt[tk] != EK) {
         alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct; step25: ag_struct 同步清 */
         若 (tt[tk] == AG) { 整 agv = tv[tk]; tk++; 若 (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } 否 alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
-        若 (getenv("QCC_DBG_AST") && tt[tk] == VR && !strcmp(tn[tk], "xstrfmt")) fprintf(stderr, "[TOK] xstrfmt at tk=%d tt_next=%d\n", tk, tt[tk+1]);
+        
         若 (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 顶层内联汇编 (__attribute__ 误解析致函数体落到顶层): 跳过 */
             tk++;
             若 (tt[tk] == VR && (!strcmp(tn[tk], "__volatile__") || !strcmp(tn[tk], "volatile"))) tk++;
@@ -6535,7 +6535,7 @@ __attribute__((unused))
                                                     循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (v2dims == 0) v2first = cdim; v2dims++; v2sz2 *= cdim > 0 ? cdim : 1; } 否 { v2dims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: u2 嵌套内联字段数组维度整体表达式求值 */
                                                     若 (v2bw > 0) v2sz2 = 4;
                                                     若 (u2_union) { st_union_field(u2, v2f, v2sz2); 若 (v2t_si >= 0) st_field_ty(u2, v2f, v2t_si); }
-                                                    否 { 整 v2row2 = v2dims >= 1 ? v2sz2 / v2first : v2sz2; st_field_sz_r(u2, v2f, v2sz2, v2row2); 若 (v2t_si >= 0) st_field_ty(u2, v2f, v2t_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] u2 field '%s' sz=%d off=%d\n", v2f, v2sz2, stypes[u2].sz - v2sz2); /* fix 2026-08-20: struct 数组字段按元素 struct algn 校正偏移 — st_field_sz_r 只按 frow 大小推对齐 (frow=16→align 8), 元素纯 int struct (algn=4) 时应对齐 4 (exclude_group[3] 应 off 4 实 8) */ 若 (v2dims >= 1 && v2t_si >= 0 && stypes[v2t_si].algn > 1) { 整 eal5 = stypes[v2t_si].algn; 整 fidx5 = stypes[u2].fn - 1; 整 foff5 = stypes[u2].foffs[fidx5]; 整 fsz5 = stypes[u2].fsizes[fidx5]; 若 (foff5 % eal5) { 整 noff5 = foff5 + (eal5 - (foff5 % eal5)); stypes[u2].foffs[fidx5] = noff5; stypes[u2].sz = noff5 + fsz5; } } }
+                                                    否 { 整 v2row2 = v2dims >= 1 ? v2sz2 / v2first : v2sz2; st_field_sz_r(u2, v2f, v2sz2, v2row2); 若 (v2t_si >= 0) st_field_ty(u2, v2f, v2t_si);  /* fix 2026-08-20: struct 数组字段按元素 struct algn 校正偏移 — st_field_sz_r 只按 frow 大小推对齐 (frow=16→align 8), 元素纯 int struct (algn=4) 时应对齐 4 (exclude_group[3] 应 off 4 实 8) */ 若 (v2dims >= 1 && v2t_si >= 0 && stypes[v2t_si].algn > 1) { 整 eal5 = stypes[v2t_si].algn; 整 fidx5 = stypes[u2].fn - 1; 整 foff5 = stypes[u2].foffs[fidx5]; 整 fsz5 = stypes[u2].fsizes[fidx5]; 若 (foff5 % eal5) { 整 noff5 = foff5 + (eal5 - (foff5 % eal5)); stypes[u2].foffs[fidx5] = noff5; stypes[u2].sz = noff5 + fsz5; } } }
                                                     若 (v2ll) st_field_ty(u2, v2f, -3);
                                                     若 (v2dbl) st_field_dbl(u2, v2f);
                                                 }
@@ -6561,8 +6561,8 @@ __attribute__((unused))
                                         若 (bitw > 0) msz = 4; /* 位域: 32 位槽 */
                                         整 mdims = 0, mfirst = 1;
                                         循环 (tt[tk] == LB) { tk++; 整 cdim = 0; 若 (const_expr_eval(&cdim)) { 若 (mdims == 0) mfirst = cdim; mdims++; msz *= cdim > 0 ? cdim : 1; } 否 { mdims++; 循环 (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } 若 (tt[tk] == RB) tk++; } /* t35k 2026-08-23: union 成员数组维度整体表达式求值 */
-                                        若 (u_is_union) { st_union_field(u_si, mf, msz); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] union field '%s' msz=%d u_si=%d u2_si=%d\n", mf, msz, u_si, u2_si); }
-                                        否 { 整 mrow = mdims >= 1 ? msz / mfirst : msz; st_field_sz_r(u_si, mf, msz, mrow); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si); 若 (getenv("QCC_DBG_UNION")) fprintf(stderr, "[UDBG] struct field '%s' msz=%d mrow=%d u_si=%d u2_si=%d\n", mf, msz, mrow, u_si, u2_si); }
+                                        若 (u_is_union) { st_union_field(u_si, mf, msz); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si);  }
+                                        否 { 整 mrow = mdims >= 1 ? msz / mfirst : msz; st_field_sz_r(u_si, mf, msz, mrow); 若 (u2_si >= 0) st_field_ty(u_si, mf, u2_si);  }
                                         若 (u_npel > 0) { 整 fidx = stypes[u_si].fn - 1; stypes[u_si].fptrs[fidx] = 1; stypes[u_si].fpels[fidx] = u_npel > 1 ? 8 : ufsz; stypes[u_si].fels[fidx] = 8; stypes[u_si].ffins[fidx] = ufsz; stypes[u_si].fdeep[fidx] = (字)u_npel; }
                                         若 (ufdbl) st_field_dbl(u_si, mf);
                                         若 (ufll) st_field_ty(u_si, mf, -3);
@@ -6731,7 +6731,7 @@ __attribute__((unused))
                             }
                             若 (tt[tk] == UK) tk++;
                         } } /* enum field: `enum Color c;` / 匿名 `enum { A } c;` → int (fix 2026-08-13: 匿名 enum body 卡在 { 死循环, merge-recursive.h detect_directory_renames) */
-                        否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !tkw && npel == 0 && !(tk + 1 < TS && tt[tk + 1] == CL)) { 整 tdv = tdef_lookup(tn[tk]); /* t35o 2026-08-24: 字段名撞 struct 标签且后跟 : 是 bitfield 非类型 (packed_git 的 multi_pack_index:1) */ 若 (getenv("QCC_DBG_XDF")) fprintf(stderr, "[TD] %s tok='%s' tdv=%d is_fnptr=%d sz=%d is_struct=%d\n", stypes[si].name, tn[tk], tdv, tdv >= 0 ? tdefs[tdv].is_fnptr : -99, tdv >= 0 ? tdefs[tdv].sz : -99, tdv >= 0 ? tdefs[tdv].is_struct : -99); 若 (tdv >= 0) { 若 (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } 否 若 (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tdfield_si = td_st_index(tn[tk]); tk++; /* fix 2026-08-21: typedef 名后的指针 `typedef_name *field` (kh_oid_set_t *set / kh_oid_set_t **table) — 原不消费 * → 安全守卫吞掉 * → 字段名以 typedef 大小(非 8)注册且无类型 → st_field_ty_idx=-1 → mem_addr 嵌套链 (iter->set->n_buckets) 断 → 比较表达式编译成 iter 指针自身 → fsck_blobs oidset_iter_next 对空集返回垃圾 oid → hash-object SEGV */ 循环 (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; 循环 (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } 若 (npel > 0) { fpel = (tdfield_si >= 0 && npel == 1 && stypes[tdfield_si].sz > 0) ? stypes[tdfield_si].sz : 8; } } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局); fix 2026-08-19: 已见基类型/指针时该 VR 是字段名 — `char *ref;` 的 ref 撞 remote.h `struct ref` 标签 → 原被当类型吞掉 → ref_namespace_info 布局 8B(错 16B) → ref_namespace 与 ref_rev_parse_rules .data 重叠 → git status strbuf_vaddf 死循环; fix 2026-08-19: tdfield_si=td_st_index (struct typedef → struct 索引; td_is 只回布尔) → 注册后 st_field_ty 供嵌套链解析 (z_stream z;) */
+                        否 若 (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !tkw && npel == 0 && !(tk + 1 < TS && tt[tk + 1] == CL)) { 整 tdv = tdef_lookup(tn[tk]); /* t35o 2026-08-24: 字段名撞 struct 标签且后跟 : 是 bitfield 非类型 (packed_git 的 multi_pack_index:1) */  若 (tdv >= 0) { 若 (tdefs[tdv].is_fnptr) { fsz = 8; frow = 8; ffnptr = 1; } 否 若 (tdefs[tdv].sz > 0) { fsz = tdefs[tdv].sz; frow = tdefs[tdv].sz; } } tdfield_si = td_st_index(tn[tk]); tk++; /* fix 2026-08-21: typedef 名后的指针 `typedef_name *field` (kh_oid_set_t *set / kh_oid_set_t **table) — 原不消费 * → 安全守卫吞掉 * → 字段名以 typedef 大小(非 8)注册且无类型 → st_field_ty_idx=-1 → mem_addr 嵌套链 (iter->set->n_buckets) 断 → 比较表达式编译成 iter 指针自身 → fsck_blobs oidset_iter_next 对空集返回垃圾 oid → hash-object SEGV */ 循环 (tt[tk] == DK) { fsz = 8; frow = 8; npel++; tk++; 循环 (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } 若 (npel > 0) { fpel = (tdfield_si >= 0 && npel == 1 && stypes[tdfield_si].sz > 0) ? stypes[tdfield_si].sz : 8; } } /* typedef type; typedef'd fnptr 字段按 8 字节指针登记 (fix 2026-08-16); typedef 标量字段按基类型大小 (fix 2026-08-17: size_t=8B → strbuf 布局); fix 2026-08-19: 已见基类型/指针时该 VR 是字段名 — `char *ref;` 的 ref 撞 remote.h `struct ref` 标签 → 原被当类型吞掉 → ref_namespace_info 布局 8B(错 16B) → ref_namespace 与 ref_rev_parse_rules .data 重叠 → git status strbuf_vaddf 死循环; fix 2026-08-19: tdfield_si=td_st_index (struct typedef → struct 索引; td_is 只回布尔) → 注册后 st_field_ty 供嵌套链解析 (z_stream z;) */
                         若 (tt[tk] == CL) { /* unnamed bit-field (fix 2026-08-05) */
                             tk++; 整 ubw = 0;
                             若 (tt[tk] == NK) { ubw = tv[tk]; tk++; }
@@ -6755,7 +6755,7 @@ __attribute__((unused))
                             否 frow = fsz; /* scalar field: row = its own byte size (frow==fsz → not an array) */
                             若 (unsized) { fsz = 0; frow = fel; } /* 柔性数组: 不占 struct 空间, 元素大小保留 = 基类型 fel. fix 2026-08-22 t46: 原硬编码 4 → char name[] frow=4 → name[i] 索引按 4 缩放 → ref_entry_cmp_sslice ent->name[key->len] 读错位置 → search_ref_dir bsearch 找不到 refs/ → git branch 空迭代器无输出 */
                             若 (is_union) st_union_field(si, fn, fsz);
-                            否 { 若 (tdfield_si >= 0) st_cur_struct_align = stypes[tdfield_si].algn; 若 (getenv("QCC_DBG_XDF")) fprintf(stderr, "[XDF] %s.%s fsz=%d frow=%d tdfield_si=%d sty=%d\n", stypes[si].name, fn, fsz, frow, tdfield_si, sty_persist); st_field_sz_r(si, fn, fsz, frow); stypes[si].fels[stypes[si].fn - 1] = fel; stypes[si].fpels[stypes[si].fn - 1] = fpel; stypes[si].fptrs[stypes[si].fn - 1] = (字)(npel > 0); 若 (sty_persist >= 0) st_field_ty(si, fn, sty_persist); 若 (tdfield_si >= 0) st_field_ty(si, fn, tdfield_si); } /* fix 2026-08-07; fix 2026-08-17: fpels 记指针指向元素大小; fix 2026-08-18: fptrs 指针字段标记; sty_persist 逗号续行 struct 字段继承类型 (struct A *x, *y — 原 y 无类型 → mem_addr 失败); fix 2026-08-19: tdfield_si typedef struct 字段类型 (z_stream z; → 嵌套链 gz.z.avail_in); fix 2026-08-19: st_cur_struct_align — struct 成员按自身对齐 */
+                            否 { 若 (tdfield_si >= 0) st_cur_struct_align = stypes[tdfield_si].algn;  st_field_sz_r(si, fn, fsz, frow); stypes[si].fels[stypes[si].fn - 1] = fel; stypes[si].fpels[stypes[si].fn - 1] = fpel; stypes[si].fptrs[stypes[si].fn - 1] = (字)(npel > 0); 若 (sty_persist >= 0) st_field_ty(si, fn, sty_persist); 若 (tdfield_si >= 0) st_field_ty(si, fn, tdfield_si); } /* fix 2026-08-07; fix 2026-08-17: fpels 记指针指向元素大小; fix 2026-08-18: fptrs 指针字段标记; sty_persist 逗号续行 struct 字段继承类型 (struct A *x, *y — 原 y 无类型 → mem_addr 失败); fix 2026-08-19: tdfield_si typedef struct 字段类型 (z_stream z; → 嵌套链 gz.z.avail_in); fix 2026-08-19: st_cur_struct_align — struct 成员按自身对齐 */
                             若 (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记: 64 位指针访问 (fix 2026-08-16) */
                             若 (fdbl) st_field_dbl(si, fn);
                             若 (fll) st_field_ty(si, fn, -3); /* long long 字段标记: 64 位访问 (fix 2026-08-06) */
@@ -6777,7 +6777,7 @@ __attribute__((unused))
                         若 (st_static) var_file_static[vcnt - 1] = 1;
                         tk++;
                         循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) tk++; 否 若 (tt[tk] == VR) tk++; /* fix 2026-08-13: 维度标识符跳过 */ 若 (tt[tk] == RB) tk++; }
-                        若 (tt[tk] == AK && tt[tk + 1] == FK) { 整 n = 1, d0 = 0; tk += 2; 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) { 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; 否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 < 0) { tk++; 断; } } /* fix 2026-08-22 #35: 全局具名 struct 数组推断数组 } 后 d0 变负立即 break, 否则后续数组逗号被数进元素数 */ 否 若 (tt[tk] == CK && d0 == 0) n++; tk++; } 若 (cnt == 1 && n > 1) { 若 (getenv("QCC_DBG_SLOT")) fprintf(stderr, "[SLOT] unsized struct arr '%s' n=%d cnt=%d stc_n=%d sz=%d\n", tn[tk], n, cnt, stc_n, stypes[si].sz); vars[vcnt - 1].arr_sz = n; 整 slp = (stypes[si].sz + 3) / 4; 若 (slp < 1) slp = 1; stc_n += (n - 1) * slp; } /* fix step26: 未定长顶层 struct 数组推断后补分配槽 — 原只改 arr_sz, 槽不足 → 数组越界写邻 .data 变量 (SA[]={3元素} 槽停在 2 → 覆盖 ZB0) */ 若 (tt[tk] == UK) tk++; }
+                        若 (tt[tk] == AK && tt[tk + 1] == FK) { 整 n = 1, d0 = 0; tk += 2; 循环 (tk < TS && !(tt[tk] == UK && d0 == 0)) { 若 (tt[tk] == FK || tt[tk] == OK || tt[tk] == LB) d0++; 否 若 (tt[tk] == UK || tt[tk] == KK || tt[tk] == RB) { d0--; 若 (d0 < 0) { tk++; 断; } } /* fix 2026-08-22 #35: 全局具名 struct 数组推断数组 } 后 d0 变负立即 break, 否则后续数组逗号被数进元素数 */ 否 若 (tt[tk] == CK && d0 == 0) n++; tk++; } 若 (cnt == 1 && n > 1) {  vars[vcnt - 1].arr_sz = n; 整 slp = (stypes[si].sz + 3) / 4; 若 (slp < 1) slp = 1; stc_n += (n - 1) * slp; } /* fix step26: 未定长顶层 struct 数组推断后补分配槽 — 原只改 arr_sz, 槽不足 → 数组越界写邻 .data 变量 (SA[]={3元素} 槽停在 2 → 覆盖 ZB0) */ 若 (tt[tk] == UK) tk++; }
                         否 tk = skip_global_init(tk); /* = expr 初始化器 (fix 2026-08-15) */
                     }
                     循环 (tt[tk] == CK) { tk++; 整 ip2 = 0; 循环 (tt[tk] == DK) { ip2 = 1; tk++; } 若 (tt[tk] == VR) { 若 (ip2) { var_static(tn[tk], 4); vars[var_last_idx].st_idx = si; vars[var_last_idx].p_esz = 8; vars[var_last_idx].p_depth = 1; } 否 var_static_struct(tn[tk], si, 1); 若 (st_static) var_file_static[vcnt - 1] = 1; tk++; tk = skip_global_init(tk); } }
@@ -7761,7 +7761,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         若 (g_first_unsized && gdim_n > 0) { 遍 (整 gi = gdim_n; gi >= 1; gi--) gdims[gi] = gdims[gi - 1]; gdims[0] = n; gdim_n++; } /* fix step26: 保留第二维 (char CHARR[][4] → gdims=[3,4], gdim_n=2 — 原只设 [3] → brace_arr_init 按一维 3 元素初始化错位) */
                         否 { gdim_n = 1; gdims[0] = n; }
                         gcnt = (dim2 > 0) ? n * dim2 : n; gfirst = n; /* fix step26: 保留第二维 (CHARR 3×4=12) */
-                        若 (getenv("QCC_DBG_GCNT")) fprintf(stderr, "[GCNT] infer gname='%s' n=%d dim2=%d gcnt=%d gdim_n=%d\n", gname, n, dim2, gcnt, gdim_n);
+                        
                         tk = save; /* rewind to '=' */
                     }
                     若 (had_br && gcnt == 0 && tt[tk] == AK && tt[tk + 1] == STR) {
@@ -8054,7 +8054,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             parse_base = 0; /* back to file scope for the next top-level item */
             Nc(p, fdef);
             若 (fdef_n < 1024) fdef_list[fdef_n++] = fdef; /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢) */
-        } 否 { 若 (getenv("QCC_DBG_OBJ")) fprintf(stderr, "[PARSE-BREAK] tk=%d tt=%d tn='%s' next_tt=%d next='%s'\n", tk, tt[tk], tn[tk], tk+1<TS?tt[tk+1]:-1, tk+1<TS?tn[tk+1]:"-"); 断; } /* 临时诊断 2026-08-25 sqlite */
+        } 否 {  断; } 
     }
     返 p;
 }
@@ -8337,7 +8337,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     mov_rr64(4, 15); /* mov rsp, r15 �?restore original stack position */
 }
 静 空 emit_vfprintf(整 nargs) {
-    若 (getenv("QCC_DBG_EVF")) fprintf(stderr, "[EVF] nargs=%d\n", nargs);
+    
     /* fix 2026-08-23 t49e: vfprintf(fp, fmt, args) - fp is the qcc standard stream
        (0=stdout/stderr macro) -> route through WriteFile(GetStdHandle) exactly like the
        fprintf builtin. Direct msvcrt vfprintf(fp=0) crashes inside RtlEnterCriticalSection
@@ -10887,7 +10887,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             /* ?????????????????*/
             字 *fname = (字*)(nn + fn);
             整 fi = -1;
-            若 (getenv("QCC_DBG_CALL")) 若 (nt[fn] != 1) fprintf(stderr, "[CG4] fn=%d nt=%d callee='%s'\n", fn, nt[fn], (字*)(nn + fn));
+            
             若 (nt[fn] == 1) fi = func_find(fname); /* expression callee: no name to register */
             /* 内建 __asm_byte(v): 发射一个字节到 bin_hdr (Multiboot header/手写内核, fix 2026-08-08) */
             若 (nt[fn] == 1 && !strcmp(fname, "__asm_byte") && bin_mode) {
@@ -11753,7 +11753,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                   b(0x48); b(0x29); b(0xC4);                                   /* sub rsp, rax */
                   mov_rr64(0, 4);                                              /* rax = rsp */
                   mov_mbrp_reg64(vars[_vi_].rsp_off - cur_frame_sz, 0);        /* 地址槽 = 基址 */
-                  若 (getenv("QCC_DBG_VLA")) fprintf(stderr, "[VLA] decl '%s' esz=%d slot=%d\n", vname, _esz, vars[_vi_].rsp_off);
+                  
               }
             }
             
@@ -11997,7 +11997,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             cg(n0[n]); ir_emit(I_NOT_EAX, 0, 0, 0); ir_flush(); /* Phase3-IR: ~expr */
         断;
         例 10: { /* assign — handles both var=expr and var.field=expr */
-            若 (getenv("QCC_DBG_AST")) { fprintf(stderr, "[C10] lhs_node=%d nt_lhs=%d nt0=%d nt0of0=%d nv=%d fname='%s' n1=%d nt_rhs=%d\n", n0[n], n0[n]>=0?nt[n0[n]]:-1, n0[n]>=0&&n0[n0[n]]>=0?nt[n0[n0[n]]]:-1, n0[n]>=0&&n0[n0[n]]>=0&&n0[n0[n0[n]]]>=0?nt[n0[n0[n0[n]]]]:-1, n0[n]>=0?nv[n0[n]]:-1, n0[n]>=0?(字*)(nn+n0[n]):"", n1[n], n1[n]>=0?nt[n1[n]]:-1); }
+            
             若 (nt[n0[n]] == 13 || nt[n0[n]] == 15) {
                 /* struct member assign: var.field = expr (also ptr->field, arr[i].field) */
                 整 mc = n0[n]; /* member access node */
@@ -12365,12 +12365,12 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     若 (nt[n0[ac]] == 15) { 整 mc2 = n0[ac]; 字 *bvn = (字*)(nn + n0[mc2]); 字 *bfn = (字*)(nn + mc2); 整 bsi = var_stidx(bvn); 若 (bsi >= 0) { 整 bfty = st_field_ty_idx(stypes[bsi].name, bfn); 若 (bfty == -1 && st_field_el(bsi, bfn) == 8) base_is_ptrfield = 1; pf_el_sz = st_field_pel(bsi, bfn); } }
                     若 (base_is_ptrfield) { cg(n0[ac]); cg_mem_frow = pf_el_sz > 0 ? pf_el_sz : 8; } /* pointer field: base is the POINTER VALUE, not the field address (fix 2026-08-16: sb->buf[0]=0 原覆盖了指针字段本身 → xstrfmt buf=0); fix 2026-08-17: 补设 cg_mem_frow — 原未设 → 存储宽度默认字节 → char **out 元素赋值只存低字节 (git init 目录参数丢) */
                     否 { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
-                    若 (nt[n0[ac]] == 12) { 整 pn0 = n0[n0[ac]]; 若 (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; 若 (pn0 >= 0 && nt[pn0] == 1) { 若 (var_esz((字*)(nn + pn0)) == 8) ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((字*)(nn + pn0)); } 若 (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] c12 store: frow=%d\n", cg_mem_frow); } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
+                    若 (nt[n0[ac]] == 12) { 整 pn0 = n0[n0[ac]]; 若 (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; 若 (pn0 >= 0 && nt[pn0] == 1) { 若 (var_esz((字*)(nn + pn0)) == 8) ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((字*)(nn + pn0)); }  } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
                     pop_r(11);
                     若 (cg_mem_ptr) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); cg_mem_ptr = 0; } /* Phase3-IR case10 */
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     若 (cg_mem_frow > 1) {
-                        若 (getenv("QCC_DBG_IDX")) fprintf(stderr, "[IDX] nested-store scale=%d\n", cg_mem_frow);
+                        
                         ir_emit(I_MOV_R9_IMM, cg_mem_frow, 0, 0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); /* Phase3-IR case10: nested 索引缩放 */
                     }
                         ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 索引符号扩展 */
@@ -12660,7 +12660,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             } 否 {
             字 *vname = (字*)(nn + n0[n]);
             整 off = var_lookup(vname);
-            若 (getenv("QCC_DBG_AMP")) 若 (!strcmp(vname, "dir") || !strcmp(vname, "pathspec") || !strcmp(vname, "st")) fprintf(stderr, "[AMP] &%s off=%d sz=%d pesz=%d\n", vname, off, var_stidx(vname) >= 0 ? stypes[var_stidx(vname)].sz : -1, var_pesz(vname)); /* tmp diag */
+             
             若 (off >= 0) {
                 若 (var_isstatic(vname)) { lea_rax_rip(coff_static_disp(off, 1) - 1); } /* static: &var = .data addr (lea 7B) */
                 否 {
@@ -12774,7 +12774,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         }
                         若 (cur_si >= 0) { s2 = cur_si; fo = st_off(stypes[s2].name, fn); }
                     }
-                    若 (getenv("QCC_DBG_CHAIN")) fprintf(stderr, "[CHNDBG] fn=%s av=%s s2=%d fo=%d\n", fn, av, s2, fo);
+                    
                 }
                 若 (fo >= 0) {
                     cg_no_deref = 1; /* arr[i].field: case-14 must yield the element ADDRESS, not the value */
@@ -12858,9 +12858,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             /* for arrow, search all structs if variable not struct-typed */
             若(is_arrow && s<0){
                 整 fo=-1,si=-1;
-                若 (getenv("QCC_DBG_OFF")) fprintf(stderr, "[ARROWFALL] vn=%s fn=%s s=%d o=%d\n", vn, fn, s, o);
+                
                 遍(整 i=0;i<st_n;i++){fo=st_off(stypes[i].name,fn);若(fo>=0){si=i;断;}}
-                若 (getenv("QCC_DBG_OFF")) fprintf(stderr, "[ARROWFALL] found si=%d (name=%s) fo=%d\n", si, si>=0?stypes[si].name:"?", fo);
+                
                 若(si>=0){ /* found struct */
                     若(o>=0){ 若 (var_isstatic(vn)) { ir_emit(I_LOAD_RIP64, o, 1, 0); ir_flush(); } 否 若 (var_pesz(vn) > 0) { ir_emit(I_LOAD_RBP64, 0, o - cur_frame_sz, 0); ir_flush(); } 否 { ir_emit(I_LOAD_RBP, 0, o - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case15: ARROWFALL rax = ptr */
                     否 若 (o < 0 && var_isstatic(vn)) { ir_emit(I_LOAD_RIP64, o, 1, 0); ir_flush(); } /* fix 2026-08-17: extern 全局指针 (coff off<0 负槽 + is_static) — 原被当参数 load_param_val → 指针值垃圾 → get_git_work_tree 返回垃圾崩 */
@@ -13016,7 +13016,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 cg_addr_of = sv_addrof;
                 pop_r(11);
                 若 (cg_mem_ptr) { mov_reg_mreg64(0, 0); cg_mem_ptr = 0; } /* inner was a pointer-array slot address: load the 8-byte pointer before the second subscript (fix 2026-08-16) */
-                若 (getenv("QCC_DBG_T14")) fprintf(stderr, "[T14] idx_expr base node=%d nt=%d frow=%d fdepth=%d fdepth_max=%d ptr_need=%d nested_cnt=%d no_deref=%d\n", n0[n], n0[n]>=0?nt[n0[n]]:-1, cg_mem_frow, cg_fdepth, cg_fdepth_max, cg_mem_ptr_need, cg_nested_cnt, cg_no_deref);
+                
                 /* scale idx by cg_mem_frow (element/row byte size, set by cg(n0[n])).
                    frow==1 (char) or 0 (unset) -> no scale. frow==4/8 -> scalar deref.
                    frow>8 -> row is an array -> yield the ADDRESS (C decay, no deref).
@@ -13617,7 +13617,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         遍 (整 vi = fv0; vi < fv1 && !bin_no_params; vi++) {
             若 (vars[vi].alignN > 0 && vars[vi].vla_dim <= 0) { /* fix step31: VLA 的 alignN=1 只是地址槽标记, 不是 _Alignas 对齐数组 — 跳过, 动态分配在声明处 */
                 整 _an = vars[vi].alignN;
-                若 (getenv("QCC_DBG_ALIGN")) fprintf(stderr, "[ALIGN] prologue '%s' N=%d cand=%d slot=%d\n", vars[vi].name, _an, vars[vi].align_base, vars[vi].rsp_off);
+                
                 lea_r_mbrp(0, vars[vi].align_base - cur_frame_sz);  /* rax = 候选区基址 */
                 b(0x48); b(0x81); b(0xC0); b4(_an - 1);             /* add rax, N-1 */
                 b(0x48); b(0x25); b4(-_an);                         /* and rax, -N */
@@ -14021,7 +14021,7 @@ __attribute__((unused))
         整 si = nv[rhs];
         若 (!coff_str_sym) coff_str_sym = csym_add(".rstr", 0, 2, 3, 0);
         整 addend = (si >= 0 && si < 2048 && str_offs[si] >= 0) ? str_offs[si] : 0;
-        若 (getenv("QCC_DBG_STR")) fprintf(stderr, "[STRI] si=%d str_offs=%d str='%s'\n", si, (si >= 0 && si < 2048) ? str_offs[si] : -1, (si >= 0 && si < 2048) ? str_tbl[si] : "(bad)");
+        
         coff_data_crel(data_off, 0x0002, coff_str_sym, addend);
         返;
     }
@@ -14044,11 +14044,11 @@ __attribute__((unused))
     }
     若 (nt[gn] == 10) {
         整 lv = n0[gn], rhs = n1[gn];
-        若 (getenv("QCC_DBG_GINIT")) fprintf(stderr, "[GINIT] lv_nt=%d rhs_nt=%d\n", lv>=0?nt[lv]:-99, rhs>=0?nt[rhs]:-99);
+        
         若 (lv < 0 || rhs < 0) 返;
         整 bs = 0, esz = 0, si = -1;
         整 boff = coff_lval_byte(lv, &bs, &esz, &si);
-        若 (getenv("QCC_DBG_GINIT")) fprintf(stderr, "[GINIT] boff=%d bs=%d esz=%d si=%d\n", boff, bs, esz, si);
+        
         若 (boff < 0 || bs < 0) 返;
         整 data_off = 4 * bs + boff;
         若 (data_off < 0 || esz <= 0 || data_off + (esz > 4 ? 8 : esz) > stc_n * 4) 返;
@@ -14203,7 +14203,7 @@ __attribute__((unused))
     遍 (整 i = 0; i < crel_n; i++) {
         若 (crel[i].site >= COFF_DATA_SITE_BASE && (crel[i].type == 0x0002 || crel[i].type == 0x0001)) {
             整 off = crel[i].site - COFF_DATA_SITE_BASE;
-            若 (getenv("QCC_DBG_STR")) fprintf(stderr, "[ADDP] site=0x%x off=0x%x type=0x%x addend=%d\n", crel[i].site, off, crel[i].type, crel[i].addend);
+            
             若 (off >= 0 && off + 8 <= stc_n * 4) {
                 整 a = crel[i].addend;
                 若 (crel[i].type == 0x0001) { 长 长 la = (长 长)(无 整)a; memcpy(ddata + off, &la, 8); }
