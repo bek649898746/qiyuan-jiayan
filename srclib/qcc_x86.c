@@ -68,7 +68,7 @@ static int cont_label = -1;    /* continue jump target (innermost loop) */
    above ~5.9MB so nothing overlaps the stack. */
 __attribute__((unused))
 static char __pad0[STACK_PAD_SIZE];
-static char str_tbl[32768][8192]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符); 2026-08-26 redis: 2048→8192→32768 槽 (redis-benchmark.c 宏展开 1.6 万字符串字面量 STR-OVERFLOW) */ int str_cnt;
+static char str_tbl[32768][12288]; /* fix 2026-08-06: 512→2048 支持长字面量; 2026-08-13 全量链接: 每槽 2048→8192 支持 Git 超长拼接 help 文本 (最长 3896 字符); 2026-08-26 redis: 2048→8192→32768 槽 (redis-benchmark.c 宏展开 1.6 万字符串字面量 STR-OVERFLOW); 2026-08-26 cpython: 每槽 8192→12288 (sysmodule.c flags__doc__ 拼接 9330 字符) */ int str_cnt;
 static int str_offs[32768]; /* RVA offset for each string (declared early for cg STR case) (fix 2026-08-11: str_tbl 2048 时镜像 1090 字符串 > 1024 → 同步扩容; 2026-08-26 redis: 2048→32768) */
 static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[16384]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 static char var_static_kw[16384]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
@@ -334,6 +334,16 @@ static void pp_def_parse(const char *p, char *nm, int *val) {
     *val = (int)(neg ? -v : v);
 }
 static int pp_eval(const char *e); /* fwd: 定义在 fn_macro 区之后 (fn_macro_collect 的条件编译感知用) */
+static int pp_eval_operand_uns(const char *opd) { /* fix 2026-08-26 cpython: 关系比较无符号感知 — 操作数是单个已注册无符号宏 (macro_uns=1, 值被 int 截断为负) 时, 比较按 32 位无符号 */
+    int len = (int)strlen(opd);
+    while (len > 0 && (opd[len - 1] == ' ' || opd[len - 1] == '\t')) len--;
+    int s = 0; while (s < len && (opd[s] == ' ' || opd[s] == '\t')) s++;
+    int nl = len - s;
+    if (nl <= 0 || nl > 63) return 0;
+    char nm[64]; memcpy(nm, opd + s, nl); nm[nl] = 0;
+    for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, nm) && macro_uns[i]) return 1;
+    return 0;
+}
 
 /* function-like macros: #define NAME(p1,p2) body — collected, calls expanded by fn_macro_expand BEFORE lexing (fix 2026-08-05: was skipped → call sites were undefined-function calls) */
 static struct { char name[64]; char params[16][64]; int pn; char body[16384]; } fn_macros[2048]; static int fn_macro_n; /* fix 2026-08-15: 1024→2048 — loose.c 等大文件 include 链函数宏超 1024, strbuf_reset 未收集 → undefined */
@@ -562,6 +572,29 @@ static int fn_active[2048]; static int fn_scan_depth; /* fix 2026-08-26 sqlite: 
 
 /* expand fn-macro calls inside seg (recursive for nested macros) into *out at *o (grows).
    fix 2026-08-07: #x 字符串化 / ## 拼接 / __VA_ARGS__ 变参 / 自引用防递归 / 字符串字面量内不展开 / 参数扫描不拆串内逗号 */
+static char *fn_arena_blocks[64]; static int fn_arena_block_n; static char *fn_arena_pos; static char *fn_arena_end; /* fix 2026-08-26 cpython/sqlite: fn_macro_expand_to 的 args/exp_args 大缓冲从栈移到堆竞技场 — 16×4096×2=128KB/层 × 递归嵌套 (sqlite3.c 深展开) 爆 1MB 栈 (0xC00000FD); args/exp_args 只在 tmp 构建前存活, 递归前可释放复用. 块链表: 块永不移动, 存活帧的 args/exp_args 裸指针不过期 (单块 realloc 移动基址 → 旧指针失效 → memcpy 写已释放块 → sqlite3.c 0xC0000005); 释放后区域复用, 峰值=最大并发嵌套 */
+static void *fn_arena_alloc(int n) {
+    if (!fn_arena_block_n) {
+        fn_arena_blocks[0] = malloc(4 << 20);
+        if (!fn_arena_blocks[0]) { fprintf(stderr, "[ERR] OOM fn_arena\n"); exit(1); }
+        fn_arena_pos = fn_arena_blocks[0];
+        fn_arena_end = fn_arena_blocks[0] + (4 << 20);
+        fn_arena_block_n = 1;
+    }
+    if (fn_arena_pos + n > fn_arena_end) {
+        if (fn_arena_block_n >= 64) { fprintf(stderr, "[ERR] fn_arena blocks overflow\n"); exit(1); }
+        int nb = 8 << 20;
+        fn_arena_blocks[fn_arena_block_n] = malloc(nb);
+        if (!fn_arena_blocks[fn_arena_block_n]) { fprintf(stderr, "[ERR] OOM fn_arena\n"); exit(1); }
+        fn_arena_pos = fn_arena_blocks[fn_arena_block_n];
+        fn_arena_end = fn_arena_pos + nb;
+        fn_arena_block_n++;
+    }
+    void *r = fn_arena_pos; fn_arena_pos += n;
+    return r;
+}
+static void fn_arena_release(char *mark) { fn_arena_pos = mark; } /* LIFO: 释放到 mark (块链表块永不移动, 裸指针永有效); 首建场景 mark=NULL → 下轮 alloc 新建块 (一次性 4MB 浪费, 可接受) */
+
 static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, int self_fmi) {
     char *out = *outp;
     if (fn_scan_depth == 0) for (int k = 0; k < fn_macro_n; k++) fn_active[k] = 0; /* fix 2026-08-26 sqlite: 顶层扫描从空激活集开始, 遇 #define 激活, 遇 #undef 停用 */
@@ -636,6 +669,11 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         if (!strcmp(_pw2, "struct") || !strcmp(_pw2, "union") || !strcmp(_pw2, "enum")) _is_decl = 1;
                     }
                 }
+                if (_is_decl) { /* fix 2026-08-26 cpython/curl: 声明启发式误伤 — `int CURL_DEPRECATED(7.56.0, "") curl_formget(...)` 的宏调用前有 int, 但实参是字面量 (数字/字符串) 而非类型 → 是调用不是原型 (curl.h 的 CURL_DEPRECATED(version,message) 属性宏); 原型首实参必是类型 (git 案例 `int error(const char *fmt,...)` 不受影响) */
+                    int _fa = i; /* i 指向 ( */
+                    while (seg[_fa] && (seg[_fa] == '(' || seg[_fa] == ' ' || seg[_fa] == '\t' || seg[_fa] == '\r' || seg[_fa] == '\n')) _fa++;
+                    if (seg[_fa] == '"' || seg[_fa] == '\'' || (seg[_fa] >= '0' && seg[_fa] <= '9')) _is_decl = 0;
+                }
                 if (_is_decl) { if (*o + ni + 1 > *cap) { *cap *= 2; *outp = realloc(out, *cap); if (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } for (int k = 0; k < ni; k++) out[(*o)++] = nm[k]; continue; }
                 int in_stack = 0; for (int s = 0; s < fn_exp_n; s++) if (fn_exp_stack[s] == fmi) { in_stack = 1; break; } /* fix 2026-08-13: 展开栈 — 互递归 A→B→A 防重入 (原 self_fmi 只防直接自递归) */
                 if (in_stack) { /* 已在展开栈: 保留函数调用 (C 蓝色油漆语义) */
@@ -644,16 +682,17 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     continue;
                 }
                 fn_exp_stack[fn_exp_n++] = fmi; /* 压栈 */
-                char args[16][1024]; int an = 0; /* fix 2026-08-14: 256→1024, Git 超长 help_patch_text 宏实参 ~280 字符被 255 截断 → 字符串未闭合死链 */
+                char (*args)[4096] = (char (*)[4096])fn_arena_alloc(16 * 4096); int an = 0; /* fix 2026-08-14: 256→1024, Git 超长 help_patch_text 宏实参 ~280 字符被 255 截断 → 字符串未闭合死链; fix 2026-08-26 cpython: 1024→4096 — PyDoc_STR(sys_doc) 实参 1354 字符; 2026-08-26: 栈→堆竞技场 (块链表) */
+                char *fn_arena_mark = (char *)args; /* fix 2026-08-26: mark=args 起始 (块链表块永不移动, 裸指针有效) — 释放到 args 连 exp_args 一起回收 */
                 i++;
                 int depth = 1, aj = 0, ain_str = 0;
                 while (seg[i] && depth > 0) {
                     if (seg[i] == '"' && !ain_str) ain_str = 1;
                     else if (seg[i] == '"' && ain_str && !quote_escaped(seg, i)) ain_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
                     if (seg[i] == '\'' && !ain_str) { /* 字符字面量 '"' 在宏实参内 — 跳过, 防 " 翻转 ain_str (fix 2026-08-14) */
-                        if (aj < 1023) args[an][aj++] = seg[i++]; /* opening ' */
-                        while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) { if (aj < 1023) args[an][aj++] = seg[i]; i++; }
-                        if (seg[i]) { if (aj < 1023) args[an][aj++] = seg[i]; i++; }
+                        if (aj < 4095) args[an][aj++] = seg[i++]; /* opening ' */
+                        while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) { if (aj < 4095) args[an][aj++] = seg[i]; i++; }
+                        if (seg[i]) { if (aj < 4095) args[an][aj++] = seg[i]; i++; }
                         continue;
                     }
                     if (!ain_str) {
@@ -662,18 +701,18 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         if (seg[i] == ',' && depth == 1) { /* fix 2026-08-07: 串内逗号不拆参 */
                             args[an][aj] = 0;
                             if (an < 15) { an++; aj = 0; }
-                            else { if (aj < 1023) args[an][aj++] = ','; if (aj < 1023) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
+                            else { if (aj < 4095) args[an][aj++] = ','; if (aj < 4095) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
                             i++; while (seg[i] == ' ' || seg[i] == '\t') i++; continue; /* fix 2026-08-14: 跳逗号后前导空格 — DECLARE_PROC_ADDR(..., strftime) 的 strftime 前带空格 → ## 拼接 proc_addr_ strftime 有空隙 */
                         }
                     }
-                    if (aj < 1023) args[an][aj++] = seg[i];
+                    if (aj < 4095) args[an][aj++] = seg[i];
                     i++;
                 }
                 args[an][aj] = 0; an++;
                 if (seg[i] == ')') i++;
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
-                char exp_args[16][1024];
+                char (*exp_args)[4096] = (char (*)[4096])fn_arena_alloc(16 * 4096); /* fix 2026-08-26 cpython: 1024→4096 — sys_doc 实参 1354 字符, 1024 截断 → 尾引号丢失幽灵字符串; 2026-08-26: 堆竞技场 (块链表) */
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     int save_exp_stack[64]; for (int _s = 0; _s < 64; _s++) save_exp_stack[_s] = fn_exp_stack[_s]; /* fix 2026-08-14: 实参展开独立栈只重置 fn_exp_n, 展开实参时覆盖 fn_exp_stack[0..] → 恢复后外层栈被污染 → 非递归宏 (__ac_fsize) 被误判 in_stack → 泄漏成 undefined */
@@ -682,12 +721,13 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         分配, bump allocator 下 eout 展开期间 expand_to 递归 realloc out 时
                         out 非堆顶 → fresh-copy 泄漏旧 out (sha1dc 18.5万次实参展开 × 每out 4MB
                         ≈ 数十GB → 堆越界). 实测实参展开 <100B, 栈缓冲 4KB 足够, 零堆分配零泄漏,
-                        且不改任何堆分配模式 (不触发布局敏感). */
+                        且不改任何堆分配模式 (不触发布局敏感). 超 4KB 时 fn_macro_expand_to realloc
+                        到堆, eoutp 收口安全 (fix 2026-08-26 cpython). */
                     char *eoutp = eout;
                     int eo = 0, ecap = sizeof(eout);
                     fn_macro_expand_to(args[ai], &eoutp, &eo, &ecap, -1);
-                    eout[eo] = 0;
-                    { int cl = eo < 1023 ? eo : 1023; memcpy(exp_args[ai], eout, cl); exp_args[ai][cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告) */
+                    eoutp[eo] = 0; /* fix 2026-08-26 cpython: 用 eoutp 而非 eout — 展开超栈缓冲时 fn_macro_expand_to realloc 到堆, 原 eout[eo]=0 写栈越界且 memcpy 源错 (latent bug, sys_doc ~4000 字符已近 4KB 阈值) */
+                    { int cl = eo < 4095 ? eo : 4095; memcpy(exp_args[ai], eoutp, cl); exp_args[ai][cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告); fix 2026-08-26 cpython: 1023→4095 — sys_doc 实参 1354 字符不再截断 */
                     fn_exp_n = save_exp_n;
                     for (int _s = 0; _s < 64; _s++) fn_exp_stack[_s] = save_exp_stack[_s];
                 }
@@ -753,6 +793,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     }
                 }
                 tmp[ti2] = 0;
+                fn_arena_release(fn_arena_mark); /* fix 2026-08-26: args/exp_args 已用完 (tmp 已构建), 递归前释放 — 内层复用同一区域, 栈只留 tmp/eout */
                 fn_macro_expand_to(tmp, outp, o, cap, fmi); /* recurse: body may contain nested macro calls */
                 fn_exp_n--; /* 弹栈 (fix 2026-08-13) */
                 out = *outp;
@@ -862,6 +903,39 @@ static int pp_eval(const char *e) {
             return (pp_eval(a) && pp_eval(b)) ? 1 : 0;
         }
     }
+    /* 位或 | (fix 2026-08-26 cpython: _PyObject_VAR_SIZE #if ((SIZEOF_VOID_P-1) & SIZEOF_VOID_P) — 位运算缺位 → 条件求值错) */
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && e[i] == '|' && e[i+1] != '|') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 1);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            return pp_eval(a) | pp_eval(b);
+        }
+    }
+    /* 异或 ^ */
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && e[i] == '^') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 1);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            return pp_eval(a) ^ pp_eval(b);
+        }
+    }
+    /* 位与 & (单 &, 与 && 区分) */
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (dp == 0 && e[i] == '&' && e[i+1] != '&') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 1);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            return pp_eval(a) & pp_eval(b);
+        }
+    }
     for (int i = 0, dp = 0; e[i]; i++) {
         if (e[i] == '(') dp++;
         else if (e[i] == ')') dp--;
@@ -870,13 +944,20 @@ static int pp_eval(const char *e) {
         else if (dp == 0 && e[i] == '!' && e[i+1] == '=') { op = 2; ol = 2; }
         else if (dp == 0 && e[i] == '<' && e[i+1] == '=') { op = 3; ol = 2; }
         else if (dp == 0 && e[i] == '>' && e[i+1] == '=') { op = 4; ol = 2; }
-        else if (dp == 0 && e[i] == '<') { op = 5; ol = 1; }
-        else if (dp == 0 && e[i] == '>') { op = 6; ol = 1; }
+        else if (dp == 0 && e[i] == '<' && e[i+1] != '<' && (i == 0 || e[i-1] != '<')) { op = 5; ol = 1; } /* fix 2026-08-26 cpython: 排除 << 移位 (前后都查 — `A >> B` 的第二个 > 原被当比较) */
+        else if (dp == 0 && e[i] == '>' && e[i+1] != '>' && (i == 0 || e[i-1] != '>')) { op = 6; ol = 1; }
         if (op) {
             char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + ol);
             int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
             int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
             int x = pp_eval(a), y = pp_eval(b);
+            if (op >= 3 && (pp_eval_operand_uns(a) || pp_eval_operand_uns(b))) { /* fix 2026-08-26 cpython: 无符号感知比较 — UINT32_MAX=4294967295 截断 int 为 -1, `OUTPUT_BUFFER_MAX_BLOCK_SIZE > UINT32_MAX` (268M > 4G 应假) 误判真 → zlibmodule.c #error; 操作数是无符号宏时按 32 位无符号比较 */
+                unsigned ux = (unsigned)x, uy = (unsigned)y;
+                if (op == 3) return ux <= uy;
+                if (op == 4) return ux >= uy;
+                if (op == 5) return ux < uy;
+                if (op == 6) return ux > uy;
+            }
             if (op == 1) return x == y;
             if (op == 2) return x != y;
             if (op == 3) return x <= y;
@@ -885,12 +966,29 @@ static int pp_eval(const char *e) {
             if (op == 6) return x > y;
         }
     }
-    /* arithmetic +/- (fix 2026-08-13: git-compat-util.h 的 __STDC_VERSION__ - 0 < 199901L;
-       原整串当宏名 → 0 → #error. 优先级低于比较: 比较先拆, 算术在更内层) */
-    for (int i = 1, dp = 0; e[i]; i++) {
+    /* 移位 << >> (优先级高于关系比较, 低于加减) */
+    for (int i = 0, dp = 0; e[i]; i++) {
         if (e[i] == '(') dp++;
         else if (e[i] == ')') dp--;
-        if (dp == 0 && (e[i] == '-' || e[i] == '+')) {
+        if (dp == 0 && e[i] == '<' && e[i+1] == '<') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            int sh = pp_eval(b); return sh >= 0 && sh < 32 ? pp_eval(a) << sh : 0;
+        } else if (dp == 0 && e[i] == '>' && e[i+1] == '>') {
+            char a[512], b[512]; memcpy(a, e, i); a[i] = 0; strcpy(b, e + i + 2);
+            int la = (int)strlen(a); while (la > 0 && (a[la-1] == ' ' || a[la-1] == '\t')) a[--la] = 0;
+            int lb = (int)strlen(b); while (lb > 0 && (b[lb-1] == ' ' || b[lb-1] == '\t')) b[--lb] = 0;
+            int sh = pp_eval(b); return sh >= 0 && sh < 32 ? pp_eval(a) >> sh : 0;
+        }
+    }
+    /* arithmetic +/- (fix 2026-08-13: git-compat-util.h 的 __STDC_VERSION__ - 0 < 199901L;
+       原整串当宏名 → 0 → #error. 优先级低于比较: 比较先拆, 算术在更内层;
+       fix 2026-08-26 cpython: 循环从 i=0 起数括号 — 原 i=1 漏数首 '(' → (A-1)&B 的 - 被当顶层拆分 → 求值错) */
+    for (int i = 0, dp = 0; e[i]; i++) {
+        if (e[i] == '(') dp++;
+        else if (e[i] == ')') dp--;
+        if (i >= 1 && dp == 0 && (e[i] == '-' || e[i] == '+')) {
             char a[512], b[512];
             int la = i;
             while (la > 0 && (e[la-1] == ' ' || e[la-1] == '\t')) la--;
@@ -902,11 +1000,11 @@ static int pp_eval(const char *e) {
     }
     /* arithmetic * / % (fix 2026-08-26 pngtest: png.h 版本检查 #if PNG_LIBPNG_VER != PNG_LIBPNG_VER_MAJOR * 10000 + ... 
        — 原无乘除拆解 → `PNG_LIBPNG_VER_MAJOR * 10000` 整串当宏名 → 0 → 10643!=0 误报 #error "Inconsistent version numbers".
-       在 +/- 之后拆分 (乘除优先级高于加减; 递归内层自然生效); 除零返回 0 防 UB) */
-    for (int i = 1, dp = 0; e[i]; i++) {
+       在 +/- 之后拆分 (乘除优先级高于加减; 递归内层自然生效); 除零返回 0 防 UB; fix 2026-08-26 cpython: 同 +/- 括号计数) */
+    for (int i = 0, dp = 0; e[i]; i++) {
         if (e[i] == '(') dp++;
         else if (e[i] == ')') dp--;
-        if (dp == 0 && (e[i] == '*' || e[i] == '/' || e[i] == '%')) {
+        if (i >= 1 && dp == 0 && (e[i] == '*' || e[i] == '/' || e[i] == '%')) {
             char a[512], b[512];
             int la = i;
             while (la > 0 && (e[la-1] == ' ' || e[la-1] == '\t')) la--;
@@ -925,6 +1023,7 @@ static int pp_eval(const char *e) {
         int v = 0, p = 2; while (isxdigit((unsigned char)e[p])) { int c = e[p]; v = v * 16 + (c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : c - 'A' + 10)); p++; }
         return neg ? -v : v;
     }
+    if (e[0] == '0' && e[1] >= '0' && e[1] <= '7') { int v = 0, p = 0; while (e[p] >= '0' && e[p] <= '7') v = v * 8 + (e[p++] - '0'); return neg ? -v : v; } /* fix 2026-08-26 cpython: 八进制字面量 — fileutils.c `#if _S_IREAD != 0400` 原 0400 按十进制 400 求值 → 256!=400 真 → #error "Unsupported C library"; 必须在十进制之前 (0 开头优先) */
     if (isdigit((unsigned char)e[0])) { int v = 0, p = 0; while (isdigit((unsigned char)e[p])) v = v * 10 + (e[p++] - '0'); return neg ? -v : v; }
     if (neg) return 0; /* -名字: 不支持 */
     if (!strncmp(e, "defined", 7) && e[7] == '(') { /* defined(X) 原子: 逻辑/比较拆分后到达 (fix 2026-08-15: defined(A)||defined(B) 原早退只算 A) */
@@ -978,8 +1077,8 @@ static char *pp_read_file_inc(const char *fname) {
             "#define CHAR_MIN 0\n#define CHAR_MAX 255\n"
             "#define SHRT_MIN -32768\n#define SHRT_MAX 32767\n#define USHRT_MAX 65535\n"
             "#define INT_MIN -2147483647\n#define INT_MAX 2147483647\n#define UINT_MAX 4294967295u\n"
-            "#define LONG_MIN -9223372036854775807\n#define LONG_MAX 9223372036854775807\n#define ULONG_MAX 18446744073709551615\n"
-            "#define LLONG_MIN -9223372036854775807\n#define LLONG_MAX 9223372036854775807\n#define ULLONG_MAX 18446744073709551615\n";
+            "#define LONG_MIN -9223372036854775808\n#define LONG_MAX 9223372036854775807\n#define ULONG_MAX 18446744073709551615UL\n"
+            "#define LLONG_MIN -9223372036854775808\n#define LLONG_MAX 9223372036854775807\n#define ULLONG_MAX 18446744073709551615ULL\n";
         size_t sl = strlen(st);
         char *stub2 = malloc(sl + 1);
         if (stub2) { memcpy(stub2, st, sl); stub2[sl] = 0; }
@@ -2300,9 +2399,8 @@ static int var_isstatic(const char *n) {
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
 static int var_static_arr(const char *n, int pesz, int esz, int count) {
     var_align(); /* fix step25: _Alignas 变量级 */
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vsa '%s' HIT i=%d rsp=%d pesz=%d esz=%d count=%d\n", n, i, vars[i].rsp_off, pesz, esz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = count; if (esz > 4) sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } var_last_idx = i; return vars[i].rsp_off; }
-    int slots = count; /* 4-byte slots; esz>4 (double / 2D rows / 64-bit ptr) needs real byte slots */
-    if (esz > 4) slots = (count * esz + 3) / 4;
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] vsa '%s' HIT i=%d rsp=%d pesz=%d esz=%d count=%d\n", n, i, vars[i].rsp_off, pesz, esz, count); if (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; int sl2 = (count * esz + 3) / 4; stc_n += sl2; vars[i].arr_sz = count; vars[i].arr_esz = esz; } var_last_idx = i; return vars[i].rsp_off; }
+    int slots = (count * esz + 3) / 4; /* 4-byte slots — 按字节数算槽 (fix 2026-08-26 自举: char/short 数组原 slots=count 4倍膨胀 — str_tbl[32768][12288] 4.03亿槽=1.6GB → data_vsize 2.06GB 超 2GB PE 加载上限 → 自举 v1.exe 无效; 正确槽数=总字节/4) */
     if (vcnt >= 16000 || stc_n + slots >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: 上限 0x4000000→0x20000000 (str_tbl 32768 槽后自宿主逼近旧上限) */
     strcpy(vars[vcnt].name, n);
     vars[vcnt].rsp_off = stc_n; stc_n += slots; /* contiguous slots */
@@ -3545,7 +3643,7 @@ static void lex(const char *s) {
     while (s[i] && ti < TS) {
         while (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r' || s[i] == '\f' || s[i] == '\v') i++; /* fix 2026-08-13 Phase3: \f/\v 是合法空白 — 漏掉会落入 switch default 发射 tt=0(EK) 幽灵 token, 中间截断 parse (regex_internal.c 第40行 \f) */
         if (!s[i]) break;
-        if (if_skip && s[i] != '#') { while (s[i] && s[i] != '\n') i++; continue; } /* false branch: skip whole code lines (fix 2026-08-05) */
+        if (if_skip && s[i] != '#') { if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; } /* fix 2026-08-26 cpython: 跳过区内块注释整体跳到闭合符 — pyconfig.h 注释里含条件指令示例文本, 逐行跳过会把注释内容当真指令 → 条件栈失衡 → 守卫 endif 关错层 */ while (s[i] && s[i] != '\n') i++; continue; } /* false branch: skip whole code lines (fix 2026-08-05) */
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; }
         if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; }
         if (s[i] == '#') { /* #define NAME VALUE / #include / conditional compilation (fix 2026-08-05: #ifdef/#ifndef/#if/#elif/#else/#endif) */
@@ -3779,7 +3877,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 32768) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "L") && (s[i] == '"' || s[i] == '\'')) { continue; } /* 宽字符串/宽字符 L"..." / L'x' — L 前缀跳过 (fix 2026-08-14: mingw.c normalize_ntpath L"\\??\\"; fix 2026-08-15: fsm-listen L'/' 泄漏 L undefined) */
-            else if (!strcmp(tn[ti], "__attribute__")) { /* fix 2026-08-08: GCC attr __attribute__((...)) in decl position hung the parser (bin_test.c) - lexer swallows the balanced-paren block, emits no token */
+            else if (!strcmp(tn[ti], "__attribute__") || !strcmp(tn[ti], "__declspec")) { /* fix 2026-08-08: GCC attr __attribute__((...)) in decl position hung the parser (bin_test.c) - lexer swallows the balanced-paren block, emits no token; fix 2026-08-26 cpython: __declspec(dllimport/dllexport) MSVC 等价 (pyconfig.h/pymem.h Windows 导出宏) — 同法吞掉, 不发 token */
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
                 if (s[aj] == '(') { i = aj; int ad = 0; while (s[i]) { if (s[i] == '"') { i++; while (s[i] && s[i] != '"') { if (s[i] == '\\') i++; i++; } continue; } if (s[i] == '(') ad++; else if (s[i] == ')') { ad--; if (ad <= 0) { i++; break; } } i++; } }
                 continue; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
@@ -3798,8 +3896,8 @@ static void lex(const char *s) {
                 tt[ti] = AG; tv[ti] = av; ti++; i = aj; continue;
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
-            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 32768) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 8190) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
-        if (s[i] == '"') { if (str_cnt >= 32768) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 8190) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else if (s[i] == 'r') str_tbl[str_cnt][j++] = '\r'; else if (s[i] == 'f') str_tbl[str_cnt][j++] = '\f'; else if (s[i] == 'v') str_tbl[str_cnt][j++] = '\v'; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 8190 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 8190 字符上限 (fix 2026-08-13 全量链接: Git 超长拼接 help 文本)\n"); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + j < 8190) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], j + 1); i = i; continue; } } { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* fix step27: 字符串字面量 interning — 相同内容复用 si (gcc 合并相同字面量 → 指针比较/差一致; 原每字面量独立 si → strchr("hello",104)-"hello" 差 -6) */ tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 32768) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
+        if (s[i] == '"') { if (str_cnt >= 32768) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 12286) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else if (s[i] == 'r') str_tbl[str_cnt][j++] = '\r'; else if (s[i] == 'f') str_tbl[str_cnt][j++] = '\f'; else if (s[i] == 'v') str_tbl[str_cnt][j++] = '\v'; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 12286 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 12286 字符上限 j=%d cnt=%d strt='%.50s' around='%.40s' (fix 2026-08-13 全量链接: Git 超长拼接 help 文本; fix 2026-08-26 cpython)\n", j, str_cnt, str_tbl[str_cnt], s + i - j); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + j < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], j + 1); i = i; continue; } } { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* fix step27: 字符串字面量 interning — 相同内容复用 si (gcc 合并相同字面量 → 指针比较/差一致; 原每字面量独立 si → strchr("hello",104)-"hello" 差 -6) */ tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
             if (cv == '\\' && s[i + 1]) {
@@ -6285,9 +6383,12 @@ static int parse(const char *s) {
     if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] include expand done len=%d\n", (int)strlen(exp_src));
     if (getenv("QCC_DUMP_SRC")) { FILE *dsf = fopen("precollect_dump.txt", "wb"); if (dsf) { fwrite(exp_src, 1, strlen(exp_src), dsf); fclose(dsf); fprintf(stderr, "[DUMP-SRC] wrote precollect %d bytes\n", (int)strlen(exp_src)); } } /* 临时诊断 2026-08-25 sqlite */
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
+    if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] fn_macro_collect done n=%d\n", fn_macro_n); /* 临时诊断 */
     obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
+    if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] obj_macro_collect done\n"); /* 临时诊断 */
     if (fn_macro_n > 0) {
         char *msrc = fn_macro_expand(exp_src);
+        if (getenv("QCC_STAGE")) fprintf(stderr, "[STAGE] fn_macro_expand1 done\n"); /* 临时诊断 */
         if (msrc && msrc[0]) { free(exp_src); exp_src = msrc; }
     }
     if (obj_macro_n > 0) { /* fix 2026-08-13: 对象宏文本层展开 (lex 前) */
@@ -14400,6 +14501,20 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
                 *last = 0;
                 strcat(sp, "/srclib/qcc_rt.c");
                 rtb = read_file(sp);
+            }
+        }
+        if (!rtb && argc > 0) { /* fix 2026-08-26: 从编译器自身路径推导 — rt 在编译器目录不在源码目录; 原从 argv[1](源码) 推导 → 语料目录编译时 rt 静默缺失 → strncmp/strcspn/strspn/strdup 未定义恒 0/崩 (diff_gate strlib/math 85 差异) */
+            char sp[1024];
+            strncpy(sp, argv[0], 1023); sp[1023] = 0;
+            char *sl = strrchr(sp, '/');
+            char *bs = strrchr(sp, '\\');
+            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
+            if (last) {
+                *last = 0;
+                char sp2[1024];
+                strcpy(sp2, sp); strcat(sp2, "/srclib/qcc_rt.c");
+                rtb = read_file(sp2);
+                if (!rtb) { strcpy(sp2, sp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); }
             }
         }
         if (rtb) {
