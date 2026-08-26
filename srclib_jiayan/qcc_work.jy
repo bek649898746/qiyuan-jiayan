@@ -83,8 +83,8 @@ __attribute__((unused))
 静 整 fdef_list[1024]; 静 整 fdef_n; /* 顶层函数定义节点列表 (fix 2026-08-06: 根节点 n0..n255 只容 256 个子 → 第 257 个函数 (main) 被 Nc 静默丢弃 → 编译产物无 main 崩; 自举文件恰满 256) */
 静 整 gen_final = 0; /* 1 only on the LAST gen_code pass: gate -S asm text so the .asm file holds one copy (fix 2026-08-05: iteration re-runs gen_code → duplicate code + broken label resolution) */
 静 整 crt_entry_off; /* .text offset of the mini-CRT entry stub (pass 2 value) */
-静 整 fvb[512], fve[512], fvn; /* per-function var index ranges (parse order == gen order) */
-静 整 fr_start[512], fr_end[512]; /* per-function rsp_used bounds at parse (exact frame footprint) */
+静 整 fvb[8192], fve[8192], fvn; /* per-function var index ranges (parse order == gen order) — 512→8192 (fix 2026-08-26 sqlite: sqlite3.c 数千函数) */
+静 整 fr_start[8192], fr_end[8192]; /* per-function rsp_used bounds at parse (exact frame footprint) */
 静 整 gfn; /* current function index during gen_code */
 静 整 vs_end = 0; /* var-search bound: vcnt during parse, fve[gfn] during codegen */
 静 整 parse_base = 0; /* var-search floor during parse: fvb[fvn] inside a function body, else 0.
@@ -555,14 +555,30 @@ __attribute__((unused))
 }
 
 静 整 fn_exp_stack[64]; 静 整 fn_exp_n; /* fix 2026-08-13: 展开栈 — 防宏互递归 A→B→A (self_fmi 只防直接自递归: 展开 A 时 body 调 B → B 展开时 A 又可入 → 无限; Git hashmap_for_each_entry 嵌套链 + revision.c) */
+静 整 fn_active[2048]; 静 整 fn_scan_depth; /* fix 2026-08-26 sqlite: fn 宏位置语义 — 只有 #define 之后的调用才展开 (sqlite3Utf8Read 原型在 #define 之前被误展开成 (*((*A)++)) → 声明变表达式 → params 循环死锁) */
 
 /* expand fn-macro calls inside seg (recursive for nested macros) into *out at *o (grows).
    fix 2026-08-07: #x 字符串化 / ## 拼接 / __VA_ARGS__ 变参 / 自引用防递归 / 字符串字面量内不展开 / 参数扫描不拆串内逗号 */
 静 空 fn_macro_expand_to(常 字 *seg, 字 **outp, 整 *o, 整 *cap, 整 self_fmi) {
     字 *out = *outp;
+    若 (fn_scan_depth == 0) 遍 (整 k = 0; k < fn_macro_n; k++) fn_active[k] = 0; /* fix 2026-08-26 sqlite: 顶层扫描从空激活集开始, 遇 #define 激活, 遇 #undef 停用 */
+    fn_scan_depth++;
     整 in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     遍 (整 i = 0; seg[i]; ) {
         若 (seg[i] == '#') { 整 q2 = i + 1; 循环 (seg[q2] == ' ' || seg[q2] == '\t') q2++; 若 (seg[q2] == 'd' || seg[q2] == 'u' || seg[q2] == 'i' || seg[q2] == 'e' || seg[q2] == 'l' || seg[q2] == 'p' || seg[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开); fix 2026-08-13 Phase3: # 后空白 (缩进 #  define __REPB_PREFIX(name) 原被展开成 #define name name) */
+            若 (!strncmp(seg + q2, "define", 6) && (seg[q2+6] == 0 || seg[q2+6] == ' ' || seg[q2+6] == '\t')) { /* fix 2026-08-26 sqlite: 位置语义 — 记录函数宏定义点, 之后的调用才展开 */
+                整 q3 = q2 + 6; 循环 (seg[q3] == ' ' || seg[q3] == '\t') q3++;
+                字 fnm[64]; 整 fni2 = 0;
+                循环 (isalnum((无 字)seg[q3]) || seg[q3] == '_' || ((无 字)seg[q3] >= 0x80)) { 若 (fni2 < 63) fnm[fni2++] = seg[q3]; q3++; }
+                fnm[fni2] = 0;
+                若 (seg[q3] == '(') 遍 (整 k = 0; k < fn_macro_n; k++) 若 (!strcmp(fn_macros[k].name, fnm)) { fn_active[k] = 1; 断; }
+            } 否 若 (!strncmp(seg + q2, "undef", 5) && (seg[q2+5] == 0 || seg[q2+5] == ' ' || seg[q2+5] == '\t')) {
+                整 q3 = q2 + 5; 循环 (seg[q3] == ' ' || seg[q3] == '\t') q3++;
+                字 fnm[64]; 整 fni2 = 0;
+                循环 (isalnum((无 字)seg[q3]) || seg[q3] == '_' || ((无 字)seg[q3] >= 0x80)) { 若 (fni2 < 63) fnm[fni2++] = seg[q3]; q3++; }
+                fnm[fni2] = 0;
+                遍 (整 k = 0; k < fn_macro_n; k++) 若 (!strcmp(fn_macros[k].name, fnm)) { fn_active[k] = 0; 断; }
+            }
             循环 (seg[i] && seg[i] != '\n') { 若 (*o + 1 > *cap) { *cap *= 2; /* fix 2026-08-13 Phase3: 倍增替代 +4096 — bump allocator realloc 泄漏旧缓冲, 小步进在 sequencer.c 大宏展开时平方级爆堆 */; *outp = realloc(out, *cap); 若 (!*outp) { fprintf(stderr, "[ERR] OOM realloc\n"); exit(1); } out = *outp; } out[(*o)++] = seg[i++]; }
             续;
         } }
@@ -598,7 +614,7 @@ __attribute__((unused))
             整 fmi = -1;
             遍 (整 k = 0; k < fn_macro_n; k++) 若 (k != self_fmi && !strcmp(fn_macros[k].name, nm)) { fmi = k; 断; } /* 自引用宏不重入 (fix 2026-08-07: #define A(x) A(x) 防死递归) */
             若 (fmi >= 0) { 整 pw = i; 循环 (seg[pw] == ' ' || seg[pw] == '\t' || seg[pw] == '\r' || seg[pw] == '\n') pw++; 若 (seg[pw] == '(') i = pw; } /* fix 2026-08-13 Phase3: 函数宏调用允许名称与 ( 之间空白 — 仅真调用才跳过空白, 否则保留 (同名变量/函数指针不吞空白) */
-            若 (fmi >= 0 && seg[i] == '(') {
+            若 (fmi >= 0 && seg[i] == '(' && fn_active[fmi]) { /* fix 2026-08-26 sqlite: fn_active 位置门控 — #define 之前的调用不展开 */
                 /* 函数声明检测: 宏名前面最近非空白词是类型关键字 → int error(...) 声明, 不展开 (fix 2026-08-14: git-compat-util.h 原型 int error(...) 在 #define error 之前, 但 fn_macro_collect 先收集所有宏 → 原型被误展开成 int (error(...), const_error())) */
                 整 _b = name_start - 1; /* 宏名起始前一个字符 (与 ( 之间是否空白无关) */
                 循环 (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--;
@@ -747,6 +763,7 @@ __attribute__((unused))
             out[(*o)++] = seg[i++];
         }
     }
+    fn_scan_depth--; /* fix 2026-08-26 sqlite: 位置语义深度 */
     *outp = out;
 }
 
@@ -7867,7 +7884,7 @@ __attribute__((unused))
             若 (tt[tk] == SK) { fn_dbl_set_ret((字*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((字*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; 续; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             Nc(fdef, blk());
-            若 (fvn >= 512) { fprintf(stderr, "[ERR] 函数体表超过 512 上限 (fix 2026-08-06 M9)\n"); exit(1); }
+            若 (fvn >= 8192) { fprintf(stderr, "[ERR] 函数体表超过 8192 上限 (fix 2026-08-26 sqlite: 512→8192)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
             parse_base = 0; /* back to file scope for the next top-level item */
