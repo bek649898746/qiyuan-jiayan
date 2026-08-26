@@ -7154,7 +7154,8 @@ static int parse(const char *s) {
                         td_reg(tn[tk]);
                         tdef_add(tn[tk], 1, stypes[si].name, 0, stypes[si].sz, 0); /* register the alias as a STRUCT typedef (fix 2026-08-03: only td_reg ran → td_st_index() returned -1 → `typedef struct {...} Alias; Alias globals[N];` registered as an int array and the main() body was silently dropped) */
                         tk++;
-                    }
+                    } else { goto tdef_st_tag; } /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有 tag → FK 分支不匹配, 跳 tdef_st_tag 复用 tag body 处理 (原漏处理 → 主解析器解析数组指针字段挂死) */
+tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有 tag 时 7022 ST 分支 FK 失败 → body 漏处理 → 主解析器挂死 (FFStreamInfo duration_error 数组指针字段); 从 7022 goto 到此复用 tag 处理 */
                 } else if (tt[tk] == VR) { /* struct tag name — remember for typedef X */
                     strcpy(td_stname, tn[tk]); td_isst = 1; tk++;
                     if (tt[tk] == FK) { /* typedef struct Tag { fields } Alias; — parse the body too */
@@ -7165,6 +7166,7 @@ static int parse(const char *s) {
                         int tfuns = 0; /* unsigned bit-field marker (fix 2026-08-05) */
                         int fsz = 4; int frow = 1; int tdf_si = -1; /* fix 2026-08-22 #43: 移出循环 — 逗号续行 `xdfile_t xdf1, xdf2;` 的 xdf2 原在迭代重置 fsz=4 → sizeof(xdfenv_t)=120 而非 224 → xdl_malloc 分配过小 → xdiff 哈希数组越界崩. fsz/frow/tdf_si 跨逗号继承, SK 重置 */
                         while (tk < TS && tt[tk] != UK) {
+                            int nk0 = tk; /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag 字段循环防死循环守卫 — fnptr 分支 (*name) 消费后 [2][5] 维度残留 (FFStreamInfo duration_error), 原无守卫 → 死循环 */
                             int dims = 0; int first = 1; int fdbl = 0; int ffnptr = 0; int ttkw = 0; /* fix 2026-08-19: 类型关键字已消费标记 (同 5402 撞名根因) */
                             int npel = 0; /* fix 2026-08-19: typedef struct Tag 路径指针字段标记 — 原无 npel/fptrs 导致 z_stream_s 的 char 星号字段 fptrs=0 被当内联数组按 8 缩放 */
                             if (tt[tk] == VK) { ttkw = 1; if (!strcmp(tn[tk], "unsigned")) tfuns = 1; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; } else if (!strcmp(tn[tk], "double")) { fsz = 8; fdbl = 1; } tk++; }
@@ -7302,6 +7304,7 @@ static int parse(const char *s) {
                             }
                             if (tt[tk] == CK) tk++;
                             if (tt[tk] == SK) { tk++; fsz = 4; frow = 1; tdf_si = -1; tfuns = 0; } /* fix 2026-08-22 #43: ; 结束字段类型 — 重置 fsz/frow/tdf_si (防 `double a; int b;` 的 b 继承 8) */
+                            if (tk == nk0) tk++; /* fix 2026-08-27 ffmpeg demuxer: 防死循环守卫 (未识别 token 强制前进) */
                         }
                         if (tt[tk] == UK) tk++;
                         st_finalize(tsi); /* fix 2026-08-06: 尾部填充 round up (typedef struct) */
