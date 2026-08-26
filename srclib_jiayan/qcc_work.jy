@@ -988,25 +988,26 @@ __attribute__((unused))
         常 字 *le = p; 循环 (*le && *le != '\n') le++;
         整 llen = (整)(le - p);
         若 (*p == '#') {
-            整 is_ifdef = !strncmp(p, "#ifdef", 6);
-            整 is_ifndef = !strncmp(p, "#ifndef", 7);
-            整 is_if = !strncmp(p, "#if", 3) && !is_ifdef && !is_ifndef;
-            整 is_elif = !strncmp(p, "#elif", 5);
-            整 is_else = !strncmp(p, "#else", 5);
-            整 is_endif = !strncmp(p, "#endif", 6);
-            整 is_include = !strncmp(p, "#include", 8);
-            整 is_expect = !strncmp(p, "#expect", 7); /* Phase4 期望原语: #expect <sha256> 声明产物哈希 */
+            常 字 *pd = p + 1; 循环 (*pd == ' ' || *pd == '\t') pd++; /* fix 2026-08-26 libpng: 缩进指令 #  include "pngconf.h" (png.h) — 原不跳 # 后空白 → include 未处理 → pngconf.h 宏定义全缺 → PNG_EXPORT/PNG_CALLBACK 未展开 → 解析挂死 */
+            整 is_ifdef = !strncmp(pd, "ifdef", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
+            整 is_ifndef = !strncmp(pd, "ifndef", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n');
+            整 is_if = !strncmp(pd, "if", 2) && !is_ifdef && !is_ifndef && (pd[2] == 0 || pd[2] == ' ' || pd[2] == '\t' || pd[2] == '\r' || pd[2] == '\n');
+            整 is_elif = !strncmp(pd, "elif", 4) && (pd[4] == 0 || pd[4] == ' ' || pd[4] == '\t' || pd[4] == '\r' || pd[4] == '\n');
+            整 is_else = !strncmp(pd, "else", 4) && (pd[4] == 0 || pd[4] == ' ' || pd[4] == '\t' || pd[4] == '\r' || pd[4] == '\n');
+            整 is_endif = !strncmp(pd, "endif", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
+            整 is_include = !strncmp(pd, "include", 7) && (pd[7] == 0 || pd[7] == ' ' || pd[7] == '\t' || pd[7] == '\r' || pd[7] == '\n');
+            整 is_expect = !strncmp(pd, "expect", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n'); /* Phase4 期望原语: #expect <sha256> 声明产物哈希 */
             若 (is_if || is_ifdef || is_ifndef || is_elif || is_else || is_endif) {
                 整 parent = if_skip; 整 cond = 0;
                 若 (is_ifdef || is_ifndef) {
-                    字 nm[64]; 整 ni = 0; 常 字 *q = p + (is_ifdef ? 6 : 7);
+                    字 nm[64]; 整 ni = 0; 常 字 *q = pd + (is_ifdef ? 5 : 6);
                     循环 (*q == ' ' || *q == '\t') q++;
                     循环 (isalnum(*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (ni < 63) nm[ni++] = *q; q++; }
                     nm[ni] = 0;
                     整 def = pp_guard_exists(nm); /* fix 2026-08-07: 原 macro_exists 在 include 阶段为空 → 守卫永远假 → 重复头重复展开内部 #include */
                     cond = is_ifdef ? def : !def;
                 } 否 若 (is_if || is_elif) {
-                    字 expr[512]; 整 ei = 0; 常 字 *q = p + (is_if ? 3 : 5);
+                    字 expr[512]; 整 ei = 0; 常 字 *q = pd + (is_if ? 2 : 4);
                     循环 (*q == ' ' || *q == '\t') q++;
                     循环 (*q && *q != '\n' && ei < 510) expr[ei++] = *q++;
                     循环 (ei > 0 && (expr[ei-1] == ' ' || expr[ei-1] == '\t')) ei--;
@@ -1024,13 +1025,13 @@ __attribute__((unused))
                 }
                 memcpy(out + oi, p, llen + 1); oi += llen + 1;
             } 否 若 (is_expect && !if_skip) { /* #expect <sha256>: 绝对断言, 编译完对账产物哈希 (Phase4) */
-                常 字 *q = p + 7;
+                常 字 *q = pd + 6;
                 循环 (*q == ' ' || *q == '\t') q++;
                 整 xi = 0;
                 循环 ((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'f') || (*q >= 'A' && *q <= 'F')) { 若 (xi < 64) expect_sha[xi++] = *q; q++; }
                 expect_sha[xi] = 0;
             } 否 若 (is_include && !if_skip) {
-                常 字 *q = p + 8;
+                常 字 *q = pd + 7;
                 循环 (*q == ' ' || *q == '\t') q++;
                 若 (*q != '"') {
                     /* <system header>: try stub/file first (fix 2026-08-23 t35e:
@@ -1089,14 +1090,14 @@ __attribute__((unused))
                 }
             } 否 {
                 /* fix 2026-08-07: 注册 #define 名 → include 守卫生效; #undef 移除 */
-                整 is_def = !strncmp(p, "#define", 7);
-                整 is_undef = !strncmp(p, "#undef", 6);
+                整 is_def = !strncmp(pd, "define", 6) && (pd[6] == 0 || pd[6] == ' ' || pd[6] == '\t' || pd[6] == '\r' || pd[6] == '\n');
+                整 is_undef = !strncmp(pd, "undef", 5) && (pd[5] == 0 || pd[5] == ' ' || pd[5] == '\t' || pd[5] == '\r' || pd[5] == '\n');
                 若 (is_def && !if_skip) {
                     字 mnm[64]; 整 mval = 0;
                     pp_def_parse(p, mnm, &mval); /* fix 2026-08-07: 名字+数值都记 */
                     若 (mnm[0]) pp_guard_add(mnm, mval);
                 } 否 若 (is_undef) {
-                    常 字 *q = p + 6;
+                    常 字 *q = pd + 5;
                     循环 (*q == ' ' || *q == '\t') q++;
                     字 mnm[64]; 整 mi = 0;
                     循环 (isalnum((无 字)*q) || *q == '_' || ((无 字)*q >= 0x80)) { 若 (mi < 63) mnm[mi++] = *q; q++; }
@@ -4154,7 +4155,7 @@ __attribute__((unused))
             若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ-OK] sizeof( chain ) sz=%d tok=%d name=%s\n", sz, tt[tk], tn[tk]); /* tmp */
             整 v = prim(); (空)v; /* 消费 expr (mod.add) */
             若 (getenv("QCC_DBG_SZ")) fprintf(stderr, "[SZ] sizeof-expr tok=%d name=%s sz=%d\n", tt[tk], tn[tk], sz); /* tmp */
-            若 (tt[tk] == KK) tk++; /* ) */
+            若 (sizeof_had_paren && tt[tk] == KK) tk++; /* ) — fix 2026-08-26 libpng: 无括号 sizeof *np 不得消费后续闭括号 (png_realloc_array 最后参数 sizeof *np → 原吞 args 的 ) → token 错位吞 if 关键字 → 语句错位卡死); 有括号 sizeof(*p) 才消费自己的 ) */
             整 n = Nd(0); nv[n] = sz; 返 n;
         }
         若 (tt[tk] == OK) { /* sizeof((expr)[0]): ARRAY_SIZE 宏 → 元素大小 (fix 2026-08-14: 原嵌套 ( 未消费 → ')[' 崩溃) */
