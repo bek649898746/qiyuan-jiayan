@@ -1039,6 +1039,7 @@ static int pp_eval(const char *e) {
 
 /* include 目录栈: #include "x.h" 先相对当前源文件所在目录搜索, 再相对 cwd (fix 2026-08-13 Phase3) */
 static char inc_dir_stack[16][512]; static int inc_dir_n;
+static char g_inc_found_dir[512]; /* fix 2026-08-26 ffmpeg: pp_read_file_inc 实际找到文件的目录 (父链回溯命中时记录), pp_include_expand 用它建 inc_dir_stack — 原按 fname 子目录拼接导致头内相对 include 解析错 */
 static char g_src_dir[512]; /* 顶层源文件目录 */
 static void dir_of_path(const char *path, char *out, int cap) {
     int i = 0, last = -1;
@@ -1062,6 +1063,7 @@ static char *pp_read_file(const char *path) {
     return buf;
 }
 static char *pp_read_file_inc(const char *fname) {
+    g_inc_found_dir[0] = 0; /* fix 2026-08-26 ffmpeg: 每次搜索前清空, 成功点记录实际目录 */
     if (!strcmp(fname, "accctrl.h") || !strcmp(fname, "aclapi.h")) {
         /* Windows SDK 头文件不在源码树内; compat_prelude.h 已提供 ipc-win32.c 所需的类型/宏/API stub (fix 2026-08-15: ipc_get_active_state undefined) */
         char *stub = malloc(2);
@@ -1108,7 +1110,7 @@ static char *pp_read_file_inc(const char *fname) {
         strcat(full, "/");
         strcat(full, fname);
         char *fc = pp_read_file(full);
-        if (fc) return fc;
+        if (fc) { strcpy(g_inc_found_dir, inc_dir_stack[inc_dir_n - 1]); return fc; }
         /* fix 2026-08-16 根治: #include 只搜当前源文件目录 — Git 头文件在根目录 (git-compat-util.h/builtin.h),
            子目录源文件 include 不到 → 224 文件全部 [ERR] 找不到。向上回溯父目录链。 */
         char par[1024];
@@ -1125,7 +1127,7 @@ static char *pp_read_file_inc(const char *fname) {
             strcat(full2, "/");
             strcat(full2, fname);
             char *fc2 = pp_read_file(full2);
-            if (fc2) return fc2;
+            if (fc2) { strcpy(g_inc_found_dir, par); return fc2; }
         }
     }
     return pp_read_file(fname);
@@ -1140,7 +1142,7 @@ static int line_at(const char *s, int pos) {
 static char expect_sha[65] = ""; /* #expect (Phase 4 哈希审判) */
 static char selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
 static char *pp_include_expand(const char *src, int depth) {
-    if (depth > 8) { fprintf(stderr, "[ERR] #include 嵌套超过 8 层\n"); exit(1); }
+    if (depth > 32) { fprintf(stderr, "[ERR] #include 嵌套超过 32 层\n"); exit(1); } /* fix 2026-08-26 ffmpeg: 8→32 — FFmpeg 头链深 (config.h→libavutil/xxx.h→common.h→mem.h→... 15+ 层), 原 8 层爆 */
     if (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; if (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n++; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
     int cap = (int)strlen(src) + 16384;
     char *out = malloc(cap); if (!out) { fprintf(stderr, "[ERR] OOM malloc\n"); exit(1); } int oi = 0;
@@ -1234,12 +1236,8 @@ static char *pp_include_expand(const char *src, int depth) {
                         if (!fc) { fprintf(stderr, "[ERR] 第%d行 #include: 找不到文件 '%s'\n", line_at(src, (int)(p - src)), fname); exit(1); } /* fix 2026-08-06 Task 5.3: 行号定位 */
                         char fdir[512]; dir_of_path(fname, fdir, sizeof(fdir)); /* fix 2026-08-13 Phase3: 子目录 include 相对当前源文件目录 */
                         char newdir[1024]; newdir[0] = 0;
-                        if (inc_dir_n > 0 && inc_dir_stack[inc_dir_n - 1][0]) {
-                            strcpy(newdir, inc_dir_stack[inc_dir_n - 1]); /* 继承父目录 */
-                            if (fdir[0]) { strcat(newdir, "/"); strcat(newdir, fdir); }
-                        } else {
-                            strcpy(newdir, fdir);
-                        }
+                        strcpy(newdir, g_inc_found_dir); /* fix 2026-08-26 ffmpeg: 基于实际找到的目录 (父链回溯命中), 再拼 fname 子目录 — 原从 inc_dir_stack 拼接 (父链找到的头记错位置 → 头内相对 include 解析错); libavutil/common.h 经父链在根找到, 实际目录=根+libavutil */
+                        if (fdir[0]) { strcat(newdir, "/"); strcat(newdir, fdir); }
                         if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir); inc_dir_n++; }
                         char *exp = pp_include_expand(fc, depth + 1);
                         inc_dir_n--;
@@ -3914,7 +3912,7 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cv; ti++; continue;
         }
-        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
+        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 1024) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
     }
     if (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
@@ -7031,10 +7029,12 @@ static int parse(const char *s) {
                     int ffnptr = 0; /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                     while (tk < TS && tt[tk] != UK) {
                         ffnptr = 0; /* per-field reset (fix 2026-08-16) */
+                        int nk0 = tk; /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 字段循环防死循环守卫 (未识别 token 强制 +1) */
                         int tdf_si = -1; /* fix 2026-08-19: typedef struct 字段的 struct 类型索引 (匿名 typedef struct 内 FILETIME 成员) — 原只 fnptr 设大小 → WIN32_FIND_DATAW 的 FILETIME 记 4B → cFileName 偏移 32 错 → FindFirstFileW 数据错位 */
                         int ftkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 (typedef 匿名 struct 同 5402 撞名根因) */
                         if (tt[tk] == VK) { int lc2 = 0; ftkw = 1; fdflt = 4; while (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ if (!strcmp(tn[tk], "unsigned")) funs = 1; else if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; else if (!strcmp(tn[tk], "double")) fdflt = 8; else if (!strcmp(tn[tk], "long")) lc2++; else if (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } if (lc2 >= 2) fdflt = 8; else if (lc2 == 1) fdflt = 4; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
+                        if (tt[tk] == EN) { ftkw = 1; tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; } /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 的 enum 字段 `enum {fir,iir} type;` — 原无 EN 分支 → token 不消费 → 死循环 (dither.c filter_t) */
                         if (tt[tk] == ST) { /* nested struct field */
                             tk++; /* struct */
                             if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: 同 MatchState capture[N] 缺口) */
@@ -7145,6 +7145,7 @@ static int parse(const char *s) {
                             }
                         }
                         if (tt[tk] == CK) { tk++; } if (tt[tk] == SK) tk++;
+                        if (tk == nk0) tk++; /* fix 2026-08-26 ffmpeg: 防死循环守卫 — 未识别 token 强制前进 */
                     }
                     if (tt[tk] == UK) tk++; /* } */
                     /* rename struct to typedef name */
