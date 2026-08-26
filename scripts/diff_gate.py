@@ -31,7 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ---------------- 生成器 (按 bug 族分层) ----------------
 
-FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math']
+FAMILIES = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math', 'vla']
 
 # 非零分母保护: 除法/取模右操作数用 "lit" (安全字面量) 或 "(x)+lit"
 SAFE_INT = [1, 2, 3, 5, 7, 11, 100]
@@ -730,6 +730,58 @@ class Gen:
         lines.append('}')
         return '\n'.join(lines)
 
+    # ---- vla 族: 变长数组 (step31 实现后随机化覆盖; 一维 + 表达式维度 + 传参) ----
+    def gen_vla(self):
+        r = self.r
+        lines = ['#include <stdio.h>']
+        m = []
+        # 传参求和函数 (VLA 参数衰减成指针)
+        lines.append('static int vsum(int n, int arr[n]) { int s = 0, i; for (i = 0; i < n; i++) s += arr[i]; return s; }')
+        lines.append('static int vsumc(char *p, int n) { int s = 0, i; for (i = 0; i < n; i++) s += p[i]; return s; }')
+        lines.append('int main(void) {')
+        for k in range(r.randrange(2, 4)):
+            n = r.randrange(2, 9)
+            m1 = r.randrange(1, 4)
+            m2 = r.randrange(1, 4)
+            ty = r.choice(['int', 'char', 'double', 'long long'])
+            nm = 'VA%d' % k
+            nk = 'n%d' % k  # 每 VLA 独立维度变量 (fix: 原共名 n 重复定义)
+            # 维度: 变量 nk 或表达式 nk+m 或 m*nk (avoid nk-m → 越界写)
+            dim = r.choice(['%s' % nk, '%s + %d' % (nk, m1), '%s * %d' % (nk, m2)])
+            lines.append('    int %s = %d;' % (nk, n))
+            lines.append('    %s %s[%s];' % (ty, nm, dim))
+            if ty == 'char':
+                lines.append('    for (int _i = 0; _i < %s; _i++) %s[_i] = (char)(_i %% 7 + 1);' % (nk, nm))
+            elif ty == 'double':
+                lines.append('    for (int _i = 0; _i < %s; _i++) %s[_i] = _i * 0.5;' % (nk, nm))
+            elif ty == 'long long':
+                lines.append('    for (int _i = 0; _i < %s; _i++) %s[_i] = (long long)_i * 1000;' % (nk, nm))
+            else:
+                lines.append('    for (int _i = 0; _i < %s; _i++) %s[_i] = _i * 3;' % (nk, nm))
+            if ty == 'double':
+                m.append(('    printf("%%.9g\\n", %s[%s - 1]);' % (nm, nk), 'dbl'))
+            elif ty == 'long long':
+                m.append(('    printf("%%lld\\n", %s[%s - 1]);' % (nm, nk), 'll'))
+            elif ty == 'char':
+                m.append(('    printf("%%d\\n", %s[%s - 1]);' % (nm, nk), 'int'))
+            else:
+                m.append(('    printf("%%d\\n", %s[%s - 1] + %s[0]);' % (nm, nk, nm), 'int'))
+            if ty == 'int':
+                m.append(('    printf("%%d\\n", vsum(%s, %s));' % (nk, nm), 'int'))
+            elif ty == 'char':
+                m.append(('    printf("%%d\\n", vsumc(%s, %s));' % (nm, nk), 'int'))
+        # VLA 与普通变量混排 (地址不越界)
+        lines.append('    int ng = 4;')
+        lines.append('    int vb[ng];')
+        lines.append('    int guard = 123;')
+        lines.append('    for (int _i = 0; _i < ng; _i++) vb[_i] = _i;')
+        lines.append('    printf("%d\\n", vb[3] + guard);')
+        m.append(('    return 0;', None))
+        for text, _ in m:
+            lines.append(text)
+        lines.append('}')
+        return '\n'.join(lines)
+
     def gen_program(self, family):
         if family == 'types':
             return self.gen_types()
@@ -749,6 +801,8 @@ class Gen:
             return self.gen_strlib()
         if family == 'math':
             return self.gen_math()
+        if family == 'vla':
+            return self.gen_vla()
         raise ValueError('unknown family: %s' % family)
 
 
@@ -848,7 +902,7 @@ def main():
     rounds = int(args[0]) if len(args) > 0 and args[0].isdigit() else 100
     start_seed = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
     n_seeds = int(args[2]) if len(args) > 2 and args[2].isdigit() else 1
-    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math']
+    families = ['types', 'vararg', 'layout', 'ctrl', 'expr', 'alignas', 'ginit', 'strlib', 'math', 'vla']
     qcc = DEFAULT_QCC
     do_minimize = False
     i = 3
