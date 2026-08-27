@@ -3970,6 +3970,10 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "绝对长整")) strcpy(tn[ti], "labs");
             else if (!strcmp(tn[ti], "找字符集")) strcpy(tn[ti], "strpbrk");
             else if (!strcmp(tn[ti], "转换浮点串")) strcpy(tn[ti], "strtod");
+            /* 接入 2026-08-28 完全中文化 第5批: 格式化/内存扩展映射 (bn 表 + 实测确认; snprintf 的 size 参数未生效已知限制, 不映射) */
+            else if (!strcmp(tn[ti], "格式化到串")) strcpy(tn[ti], "sprintf");
+            else if (!strcmp(tn[ti], "内存比较")) strcpy(tn[ti], "memcmp");
+            else if (!strcmp(tn[ti], "移动内存")) strcpy(tn[ti], "memmove");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
