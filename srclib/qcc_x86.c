@@ -3923,6 +3923,7 @@ static void lex(const char *s) {
                 continue; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
             }
             else if (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { continue; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
+            else if (!strcmp(tn[ti], "可空")) { continue; } /* 接入 2026-08-27: 甲言 Option 类型标记 (可空): 词法层吞掉 = 等价普通声明 (可空 T x == T x), 显式声明可空性 (NULL 合法). 同 __extension__ 吞掉不占 token 位 */
             else if (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step21: C11 对齐声明 — 吐 AG token 携带对齐值 (原吞掉无语义; 语义在 st_field_sz_r 消费: 字段/struct 级显式对齐) */
                 int av = 0;
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
@@ -5780,7 +5781,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6544,6 +6545,24 @@ static int stmt(void) {
         Nc(body2, call2);
         Nc(ifn2, body2);
         return ifn2;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-27: 甲言 Option 解包 (unwrap): 解包 p; → if (p) {} else { printf("解包空值\n"); exit(1); } — 空值终止 (Option.unwrap panic on None). fix 2026-08-27: ①原 if(p==0) Nd(2) T_QK 比较不生效 (同尝试深水区: 生成比较节点对裸变量 codegen 失效), 改 if(p) 非零即真 + else 终止; ②blk() unknown-typedef 检测把 解包 x; 误判为未知类型声明 (解包 后跟裸变量+; 命中 L5785) → L5785 排除 解包 */
+        tk++; /* 解包 */
+        int e_u = expr(); /* 解包表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int ifn_u = Nd(8); Nc(ifn_u, e_u); /* if (e_u) — 非零即真 (同尝试, 已验证模式) */
+        int tb_u = Nd(5); Nc(ifn_u, tb_u); /* 非空: 空块继续 */
+        int eb_u = Nd(5); /* else: 空值终止 */
+        if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+        if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+        strcpy(str_tbl[str_cnt], "解包空值\n");
+        int call_p = Nd(4); { int sn_u = Nd(0); nv[sn_u] = str_cnt; nt[sn_u] = STR; Nc(call_p, sn_u); } { int en_p = Nd(1); memcpy((char*)(nn + en_p), "printf", 7); Nc(call_p, en_p); } /* printf("解包空值\n") — 参数先挂, callee (printf) 最后 (同管道/断言 case 4 反向找) */
+        str_cnt++;
+        Nc(eb_u, call_p);
+        int call_x = Nd(4); { int one = Nd(0); nv[one] = 1; Nc(call_x, one); } { int en_x = Nd(1); memcpy((char*)(nn + en_x), "exit", 5); Nc(call_x, en_x); } /* exit(1) */
+        Nc(eb_u, call_x);
+        n2[ifn_u] = eb_u; /* else 分支挂 n2 (同 select) */
+        return ifn_u;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "锁住")) { /* 接入 2026-08-27 互斥锁临界区: 锁住 m { body } → { mutex_lock(&m); body; mutex_unlock(&m); } — v1 块尾解锁 (提前 return/break 不解锁, 留后续); m 是互斥锁变量, 调用用户定义的 mutex_lock/mutex_unlock */
         tk++; /* 锁住 */
