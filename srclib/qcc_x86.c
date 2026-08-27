@@ -3984,6 +3984,8 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "转时间串2")) strcpy(tn[ti], "ctime");
             else if (!strcmp(tn[ti], "区域比较")) strcpy(tn[ti], "strcoll");
             else if (!strcmp(tn[ti], "区域变换")) strcpy(tn[ti], "strxfrm");
+            /* 接入 2026-08-28 完全中文化 第7批: 格式时间 (ext_fn_names 确认, 实测可用) */
+            else if (!strcmp(tn[ti], "格式时间")) strcpy(tn[ti], "strftime");
             /* 接入 2026-08-28 完全中文化 第5批: 格式化/内存扩展映射 (bn 表 + 实测确认; snprintf 的 size 参数未生效已知限制, 不映射) */
             else if (!strcmp(tn[ti], "格式化到串")) strcpy(tn[ti], "sprintf");
             else if (!strcmp(tn[ti], "内存比较")) strcpy(tn[ti], "memcmp");
