@@ -5792,7 +5792,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6633,6 +6633,30 @@ static int stmt(void) {
             Nc(blk_c, if_c);
         }
         return blk_c;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "线程")) { /* 接入 2026-08-27 线程创建 (库级语法糖, 同通道模式): 线程 t 跑 work, arg; → thread_create(&t, work, arg); — 用户定义 thread_create/thread_join (确定性单线程模拟) */
+        tk++; /* 线程 */
+        char tvar[64]; strcpy(tvar, tn[tk]); tk++; /* 线程变量 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "跑")) tk++; /* 跑 */
+        int e_fn = expr(); /* 任务函数 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_arg = expr(); /* 参数 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int tv = Nd(1); memcpy((char*)(nn + tv), tvar, 32); int addr = Nd(11); Nc(addr, tv); Nc(call, addr); } /* &t */
+        Nc(call, e_fn); /* work */
+        Nc(call, e_arg); /* arg */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "thread_create", 14); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "等待")) { /* 接入 2026-08-27 线程等待 (库级语法糖): 等待 t; → thread_join(&t); */
+        tk++; /* 等待 */
+        int e_t = expr(); /* 线程变量 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int addr = Nd(11); Nc(addr, e_t); Nc(call, addr); } /* &t */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "thread_join", 12); Nc(call, fn); } /* callee 最后 */
+        return call;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "推导")) { /* 接入 2026-08-27 列表推导 (Python/Haskell 推导式, 区间映射): 推导 dst, x*x 于 x 遍 0 到 5; → { __ci=0; x=0; while(x<5){ dst[__ci]=x*x; __ci++; x++; } } — 目标数组 + 迭代变量均须已声明 */
         tk++; /* 推导 */
