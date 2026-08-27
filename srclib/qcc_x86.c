@@ -2918,7 +2918,7 @@ static int lbl_reg(const char *n) {
     lbl_tbl[lbl_n].id = new_label();
     return lbl_tbl[lbl_n++].id;
 }
-enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68, AG=69, PIPE=70 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); AG=_Alignas (fix step21: 携带对齐值, parser 消费); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched) */
+enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68, AG=69, PIPE=70, QA=71 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); AG=_Alignas (fix step21: 携带对齐值, parser 消费); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched); QA=?. 可选链 (接入 2026-08-28) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 static int *tt, *tv; char (*tn)[64]; char (*nn)[64]; int ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
@@ -4013,7 +4013,7 @@ static void lex(const char *s) {
             if (s[i] == '\'') i++;
             tt[ti] = NK; tv[ti] = cv; ti++; continue;
         }
-        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '>' ? (i++, PIPE) : s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; /* 接入 2026-08-27 管道操作符: | > → PIPE (a |> f = f(a)) */ case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = QU; break; case '.': if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
+        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '>' ? (i++, PIPE) : s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; /* 接入 2026-08-27 管道操作符: | > → PIPE (a |> f = f(a)) */ case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = (s[i + 1] == '.') ? (i++, QA) : QU; break; /* ?. 可选链 → QA (接入 2026-08-28); 普通 ? → QU 三目 */ case '.': if (s[i + 1] == '?') { i++; tt[ti] = QA; } /* 可选链 ?. → QA (接入 2026-08-28: a?.b = a 非空 ? a->b : 0) */ else if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
     }
     if (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
@@ -4891,6 +4891,17 @@ static int prim(void) {
                     }
                     n = m;
                 } else break;
+            } else if (tt[tk] == QA) { /* 可选链 (接入 2026-08-28): a?.b → (a!=0) ? a->b : 0 — 三目 Nd(22), 空指针短路 */
+                tk++;
+                if (tt[tk] == VR) {
+                    char fname[64]; strcpy(fname, tn[tk]); tk++;
+                    int cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { int z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
+                    int mem = Nd(15); if (nt[n] == 1) { int v2 = Nd(1); memcpy((char*)(nn + v2), (char*)(nn + n), 32); Nc(mem, v2); } else Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
+                    nv[mem] = 1; memcpy((char*)(nn + mem), fname, 64); /* a->b */
+                    int z2 = Nd(0); nv[z2] = 0;
+                    int tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
+                    n = tern;
+                } else break;
             } else if (tt[tk] == PP || tt[tk] == MM) {
                 /* postfix ++ / -- : return old value, then mutate (simple vars) */
                 int is_dec = (tt[tk] == MM); tk++;
@@ -5032,6 +5043,17 @@ static int prim(void) {
             else if (tt[tk] == DT || tt[tk] == AR) {
                 int ar = (tt[tk] == AR); tk++;
                 if (tt[tk] == VR) { int m = Nd(15); Nc(m, n); nv[m] = ar; memcpy((char*)(nn + m), tn[tk], 64); tk++; n = m; } else break;
+            } else if (tt[tk] == QA) { /* 接入 2026-08-28 可选链 a?.b → (a != 0) ? a->b : 0 — 三目 Nd(22), 空指针短路 (a 为变量时安全) */
+                tk++;
+                if (tt[tk] == VR) {
+                    char fname[64]; strcpy(fname, tn[tk]); tk++;
+                    int cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { int z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
+                    int mem = Nd(15); if (nt[n] == 1) { int v2 = Nd(1); memcpy((char*)(nn + v2), (char*)(nn + n), 32); Nc(mem, v2); } else Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
+                    nv[mem] = 1; memcpy((char*)(nn + mem), fname, 64); /* a->b */
+                    int z2 = Nd(0); nv[z2] = 0;
+                    int tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
+                    n = tern;
+                } else break;
             } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c;
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); math21/step5 time 同 L4233 */
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
