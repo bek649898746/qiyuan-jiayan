@@ -6478,8 +6478,7 @@ static int stmt(void) {
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ds;
         return Nd(5); /* defer 语句本身不生成代码 (函数 epilogue 处执行) */
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "select")) { /* 接入 2026-08-27 select (择收): 多路条件分派 — 择收(e1,e2){例0:b0;例1:b1;缺:bd;} → if(e1)b0 else if(e2)b1 else bd (v1: 条件分派, Go select 简化) */
-        tk++; /* select */
+    if (tt[tk] == VR && !strcmp(tn[tk], "select")) { /* 接入 2026-08-27 select (择收): 多路条件分派 — 择收(e1,e2){例0:b0;例1:b1;缺:bd;} → if(e1)b0 else if(e2)b1 else bd (v1: 条件分派, Go select 简化) */        tk++; /* select */
         int conds[16]; int cn = 0;
         if (tt[tk] == OK) tk++; /* ( */
         while (tt[tk] != KK && tt[tk] != EK && cn < 16) { conds[cn++] = expr(); if (tt[tk] == CK) tk++; } /* 条件用 expr() 非 expr_comma — 逗号分隔条件 (fix 2026-08-27: expr_comma 把逗号当逗号表达式吃掉所有条件) */
@@ -6514,6 +6513,20 @@ static int stmt(void) {
             else_node = ifn;
         }
         return else_node;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "断言")) { /* 接入 2026-08-27 断言: 断言(expr); → if (expr==0) { exit(1); } — 运行时检查失败终止 */
+        tk++;
+        if (tt[tk] == OK) tk++; /* ( */
+        int cond_e = expr();
+        if (tt[tk] == KK) tk++; /* ) */
+        if (tt[tk] == SK) tk++; /* ; */
+        int eq0 = Nd(2); nv[eq0] = T_QK; Nc(eq0, cond_e); { int z = Nd(0); nv[z] = 0; Nc(eq0, z); } /* expr == 0 */
+        int ifn2 = Nd(8); Nc(ifn2, eq0);
+        int body2 = Nd(5);
+        int call2 = Nd(4); { int one = Nd(0); nv[one] = 1; Nc(call2, one); } { int en2 = Nd(1); memcpy((char*)(nn + en2), "exit", 5); Nc(call2, en2); } /* exit(1) — 参数先挂, callee (exit) 最后 (fix 2026-08-27: 原 exit 先挂 n0 → callee 变参数 1 字面量 → 垃圾函数名崩, 同管道) */
+        Nc(body2, call2);
+        Nc(ifn2, body2);
+        return ifn2;
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
