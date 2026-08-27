@@ -53,7 +53,7 @@ Write-Host "  v5: $h5"
 #            ˫ָ���ֶλ���/�������� frow/mem_addr deref fsz/static struct �ֶθ�ֵ/���� struct typedef �ֶ�;
 #            ���� QCC_DBG_VA varargs ���Բ�׮ �� -Wall -Werror �㾯��):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ������)
-$expected = '08885259'
+$expected = 'b52da52e'
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] �Ծ� 1-cycle ���?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
