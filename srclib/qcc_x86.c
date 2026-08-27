@@ -3915,6 +3915,17 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 铸基者 郑宇和 · 种子 828 */
             else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 自举者 郑启元 · 种子 828 */
+            /* 接入 2026-08-27 完全中文化: 常用库函数中文映射 (lexer 层, 零风险) */
+            else if (!strcmp(tn[ti], "退出")) strcpy(tn[ti], "exit");
+            else if (!strcmp(tn[ti], "关文件")) strcpy(tn[ti], "fclose");
+            else if (!strcmp(tn[ti], "取字符")) strcpy(tn[ti], "getchar");
+            else if (!strcmp(tn[ti], "放字符")) strcpy(tn[ti], "putchar");
+            else if (!strcmp(tn[ti], "转整数")) strcpy(tn[ti], "atoi");
+            else if (!strcmp(tn[ti], "转长整")) strcpy(tn[ti], "atol");
+            else if (!strcmp(tn[ti], "转浮点")) strcpy(tn[ti], "atof");
+            else if (!strcmp(tn[ti], "绝对值")) strcpy(tn[ti], "abs");
+            else if (!strcmp(tn[ti], "读行")) strcpy(tn[ti], "fgets");
+            else if (!strcmp(tn[ti], "写行")) strcpy(tn[ti], "fputs");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
