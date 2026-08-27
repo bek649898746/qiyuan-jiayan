@@ -1456,6 +1456,12 @@ __attribute__((unused))
         若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v = 0; memcpy(&v, &stypes[si].fdbls[i], 1); 返 v != 0; } /* fix 2026-08-05: `int v; memcpy(&v,...,1)` left 3 garbage bytes → self-host flagged plain fields as double → comparisons went fp; v=0 zeroes the slot first */
     返 0;
 }
+静 整 st_field_is_dbl_si(整 si, 常 字 *fn) { /* fix 2026-08-27 特性#5: 按索引查 dbl — 匿名 struct/union 名="" 时 st_find 失败/错配 (u.c.r 链) */
+    若 (si < 0) 返 0;
+    遍 (整 i = 0; i < stypes[si].fn; i++)
+        若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v = 0; memcpy(&v, &stypes[si].fdbls[i], 1); 返 v != 0; }
+    返 0;
+}
 静 空 st_field_sz(整 si, 常 字 *fn, 整 fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 静 空 st_union_field(整 si, 常 字 *fn, 整 fsz) {
@@ -4662,7 +4668,7 @@ __attribute__((unused))
                             整 rsi = var_stidx((字*)(nn + q));
                             若 (rsi >= 0) { bsi = rsi; 遍 (整 ci = cn - 1; ci >= 0 && bsi >= 0; ci--) { 整 t2 = st_field_ty_idx(stypes[bsi].name, (字*)(nn + chain[ci])); bsi = t2; } }
                         }
-                        若 (bsi >= 0 && st_field_is_dbl(stypes[bsi].name, (字*)(nn + m))) ndbl[m] = 1;
+                        若 (bsi >= 0 && st_field_is_dbl_si(bsi, (字*)(nn + m))) ndbl[m] = 1; /* fix 2026-08-27 特性#4/5: 嵌套链 double 字段 — 索引查 (匿名 struct 名 "" 按名失败) */
                     }
                     n = m;
                 } 否 断;
@@ -7112,8 +7118,9 @@ __attribute__((unused))
                                 循环 (tk < TS && tt[tk] != UK) {
                                     整 nk0 = tk; /* 安全前进 */
                                     整 nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4, nfdbl = 0; /* fix 2026-08-27 特性#4: union double 字段标记 */
+                                    整 sub_si2 = -1; /* fix 2026-08-27 特性#5: 嵌套 struct/union body 类型 (union 内 struct c → u.c.r 链访问) */
                                     若 (tt[tk] == VK) { 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; 否 若 (!strcmp(tn[tk], "double")) { nsz = 8; nfdbl = 1; } 否 若 (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; 若 (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; 循环 (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
-                                    否 若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { 整 nty = st_find(tn[tk]); 若 (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } 若 (tt[tk] == FK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } 循环 (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    否 若 (tt[tk] == ST) { 整 sub_u2 = !strcmp(tn[tk], "union"); tk++; 若 (tt[tk] == VR) { 整 nty = st_find(tn[tk]); 若 (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; sub_si2 = nty; } tk++; } 否 若 (tt[tk] == FK) { /* fix 2026-08-27 特性#5: 匿名 struct/union body 在 union 内 (struct { double r; } c) — 原跳过 body → 大小 4 → sizeof S=8 (应 24) */ sub_si2 = st_add(""); tk++; 整 last_bsz = 4, last_bdbl = 0; 循环 (tk < TS && tt[tk] != UK) { 整 nk0b = tk; 整 bsz = last_bsz, bdbl = last_bdbl; /* 逗号声明继承上一字段类型 (double w, h; → h 也是 8) */ 若 (tt[tk] == VK) { 循环 (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { bsz = 1; bdbl = 0; } 否 若 (!strcmp(tn[tk], "double")) { bsz = 8; bdbl = 1; } 否 若 (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) bsz = 8; 否 bsz = 4; 若 (!(tt[tk] == ST || tt[tk] == EN)) tk++; 循环 (tt[tk] == DK) { bsz = 8; tk++; } last_bsz = bsz; last_bdbl = bdbl; } 若 (tt[tk] == VR) { 字 bf[64]; strcpy(bf, tn[tk]); tk++; 若 (sub_u2) st_union_field(sub_si2, bf, bsz); 否 st_field_sz_r(sub_si2, bf, bsz, bsz); 若 (bdbl) st_field_dbl(sub_si2, bf); } 若 (tt[tk] == CK) tk++; 若 (tt[tk] == SK) { tk++; last_bsz = 4; last_bdbl = 0; } 若 (tk == nk0b) tk++; } 若 (tt[tk] == UK) tk++; st_finalize(sub_si2); nsz = stypes[sub_si2].sz; nrow = nsz; } 循环 (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == UK) tk++; }
                                     否 若 (tt[tk] == VR && td_is(tn[tk])) { 整 tdv2 = tdef_lookup(tn[tk]); 若 (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; 循环 (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     若 (tt[tk] == VR) {
@@ -7121,6 +7128,7 @@ __attribute__((unused))
                                         循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc2 = e_lookup(tn[tk]); 若 (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); 若 (evc2 != 0x80000000 && evc2 != -1) { 若 (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } 若 (tt[tk] == RB) tk++; }
                                         若 (ndims >= 1) nrow = nsz / nfirst; 否 nrow = nsz;
                                         若 (sub_is_union) st_union_field(anon_si, nf, nsz); 否 st_field_sz_r(anon_si, nf, nsz, nrow); /* fix 2026-08-27 特性#4: union 字段 MAX 布局 (offset 0) */
+                                        若 (sub_si2 >= 0) st_field_ty(anon_si, nf, sub_si2); /* fix 2026-08-27 特性#5: 嵌套 struct 字段类型 (u.c.r 链访问) */
                                         若 (nfdbl) st_field_dbl(anon_si, nf); /* fix 2026-08-27 特性#4: union double 字段 xmm 访问 (v->val.d 原按 int 读 → 0.0) */
                                         若 (npel2 > 0) { 整 nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (字)npel2; }
                                     }
@@ -12185,7 +12193,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     } 否 {
                         整 fszA = 4, siA = -1;
                         mem_addr(mc, &fszA, &siA); /* 探测: 链末字段类型 (emit 一次, 后续 double 分支重取) */
-                        若 ((siA >= 0 && st_field_is_dbl(stypes[siA].name, fname)) || (cg_mem_chain_si >= 0 && st_field_is_dbl(stypes[cg_mem_chain_si].name, fname))) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段写入 (b.val.d = 3.14) — 原 cg+push_r 存 rax (double 在 xmm0) → 0.0; si_out 是字段指向 struct (d=-1), 用 cg_mem_chain_si (字段所在结构体) */
+                        若 ((siA >= 0 && st_field_is_dbl_si(siA, fname)) || (cg_mem_chain_si >= 0 && st_field_is_dbl_si(cg_mem_chain_si, fname))) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段写入 (b.val.d = 3.14) — 原 cg+push_r 存 rax (double 在 xmm0) → 0.0; si_out 是字段指向 struct (d=-1), 用 cg_mem_chain_si (字段所在结构体); 特性#5: 匿名 struct 用索引查 (st_field_is_dbl 按名 "" 失败) */
                             cg_f(n1[n]); push_xmm0();
                             若 (mem_addr(mc, &fsz, &si_out) == 0) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); }
                         } 否 {

@@ -1456,6 +1456,12 @@ static int st_field_is_dbl(const char *sn, const char *fn) {
         if (!strcmp(stypes[si].fnames[i], fn)) { int v = 0; memcpy(&v, &stypes[si].fdbls[i], 1); return v != 0; } /* fix 2026-08-05: `int v; memcpy(&v,...,1)` left 3 garbage bytes → self-host flagged plain fields as double → comparisons went fp; v=0 zeroes the slot first */
     return 0;
 }
+static int st_field_is_dbl_si(int si, const char *fn) { /* fix 2026-08-27 特性#5: 按索引查 dbl — 匿名 struct/union 名="" 时 st_find 失败/错配 (u.c.r 链) */
+    if (si < 0) return 0;
+    for (int i = 0; i < stypes[si].fn; i++)
+        if (!strcmp(stypes[si].fnames[i], fn)) { int v = 0; memcpy(&v, &stypes[si].fdbls[i], 1); return v != 0; }
+    return 0;
+}
 static void st_field_sz(int si, const char *fn, int fsz) { st_field_sz_r(si, fn, fsz, 1); }
 /* union field: offset 0, size = MAX of all fields */
 static void st_union_field(int si, const char *fn, int fsz) {
@@ -4662,7 +4668,7 @@ static int prim(void) {
                             int rsi = var_stidx((char*)(nn + q));
                             if (rsi >= 0) { bsi = rsi; for (int ci = cn - 1; ci >= 0 && bsi >= 0; ci--) { int t2 = st_field_ty_idx(stypes[bsi].name, (char*)(nn + chain[ci])); bsi = t2; } }
                         }
-                        if (bsi >= 0 && st_field_is_dbl(stypes[bsi].name, (char*)(nn + m))) ndbl[m] = 1;
+                        if (bsi >= 0 && st_field_is_dbl_si(bsi, (char*)(nn + m))) ndbl[m] = 1; /* fix 2026-08-27 特性#4/5: 嵌套链 double 字段 — 索引查 (匿名 struct 名 "" 按名失败) */
                     }
                     n = m;
                 } else break;
@@ -7112,8 +7118,9 @@ static int parse(const char *s) {
                                 while (tk < TS && tt[tk] != UK) {
                                     int nk0 = tk; /* 安全前进 */
                                     int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4, nfdbl = 0; /* fix 2026-08-27 特性#4: union double 字段标记 */
+                                    int sub_si2 = -1; /* fix 2026-08-27 特性#5: 嵌套 struct/union body 类型 (union 内 struct c → u.c.r 链访问) */
                                     if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) { nsz = 8; nfdbl = 1; } else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
-                                    else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    else if (tt[tk] == ST) { int sub_u2 = !strcmp(tn[tk], "union"); tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; sub_si2 = nty; } tk++; } else if (tt[tk] == FK) { /* fix 2026-08-27 特性#5: 匿名 struct/union body 在 union 内 (struct { double r; } c) — 原跳过 body → 大小 4 → sizeof S=8 (应 24) */ sub_si2 = st_add(""); tk++; int last_bsz = 4, last_bdbl = 0; while (tk < TS && tt[tk] != UK) { int nk0b = tk; int bsz = last_bsz, bdbl = last_bdbl; /* 逗号声明继承上一字段类型 (double w, h; → h 也是 8) */ if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { bsz = 1; bdbl = 0; } else if (!strcmp(tn[tk], "double")) { bsz = 8; bdbl = 1; } else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) bsz = 8; else bsz = 4; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; while (tt[tk] == DK) { bsz = 8; tk++; } last_bsz = bsz; last_bdbl = bdbl; } if (tt[tk] == VR) { char bf[64]; strcpy(bf, tn[tk]); tk++; if (sub_u2) st_union_field(sub_si2, bf, bsz); else st_field_sz_r(sub_si2, bf, bsz, bsz); if (bdbl) st_field_dbl(sub_si2, bf); } if (tt[tk] == CK) tk++; if (tt[tk] == SK) { tk++; last_bsz = 4; last_bdbl = 0; } if (tk == nk0b) tk++; } if (tt[tk] == UK) tk++; st_finalize(sub_si2); nsz = stypes[sub_si2].sz; nrow = nsz; } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
                                     else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     if (tt[tk] == VR) {
@@ -7121,6 +7128,7 @@ static int parse(const char *s) {
                                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
                                         if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
                                         if (sub_is_union) st_union_field(anon_si, nf, nsz); else st_field_sz_r(anon_si, nf, nsz, nrow); /* fix 2026-08-27 特性#4: union 字段 MAX 布局 (offset 0) */
+                                        if (sub_si2 >= 0) st_field_ty(anon_si, nf, sub_si2); /* fix 2026-08-27 特性#5: 嵌套 struct 字段类型 (u.c.r 链访问) */
                                         if (nfdbl) st_field_dbl(anon_si, nf); /* fix 2026-08-27 特性#4: union double 字段 xmm 访问 (v->val.d 原按 int 读 → 0.0) */
                                         if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
                                     }
@@ -12185,7 +12193,7 @@ static void cg(int n) {
                     } else {
                         int fszA = 4, siA = -1;
                         mem_addr(mc, &fszA, &siA); /* 探测: 链末字段类型 (emit 一次, 后续 double 分支重取) */
-                        if ((siA >= 0 && st_field_is_dbl(stypes[siA].name, fname)) || (cg_mem_chain_si >= 0 && st_field_is_dbl(stypes[cg_mem_chain_si].name, fname))) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段写入 (b.val.d = 3.14) — 原 cg+push_r 存 rax (double 在 xmm0) → 0.0; si_out 是字段指向 struct (d=-1), 用 cg_mem_chain_si (字段所在结构体) */
+                        if ((siA >= 0 && st_field_is_dbl_si(siA, fname)) || (cg_mem_chain_si >= 0 && st_field_is_dbl_si(cg_mem_chain_si, fname))) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段写入 (b.val.d = 3.14) — 原 cg+push_r 存 rax (double 在 xmm0) → 0.0; si_out 是字段指向 struct (d=-1), 用 cg_mem_chain_si (字段所在结构体); 特性#5: 匿名 struct 用索引查 (st_field_is_dbl 按名 "" 失败) */
                             cg_f(n1[n]); push_xmm0();
                             if (mem_addr(mc, &fsz, &si_out) == 0) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); }
                         } else {
