@@ -4229,8 +4229,17 @@ __attribute__((unused))
 静 整 blk(空); /* 语句表达式 ({ ... }) 复用块解析 (fix 2026-08-25 step19) */
 静 整 stmt(空);
 静 整 expr(空);
+静 整 const_expr_eval(整 *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
 静 整 prim(空) {
+        若 (tt[tk] == VR && !strcmp(tn[tk], "编译期")) { /* 接入 2026-08-27: 甲言 编译期执行 (Zig comptime): 编译期(expr) → const_expr_eval 求值 → 常量节点 — 运行时零计算 */
+        tk++; /* 编译期 */
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 cval = 0;
+        const_expr_eval(&cval);
+        若 (tt[tk] == KK) tk++; /* ) */
+        整 n = Nd(0); nv[n] = cval; 返 n; /* 编译期常量 */
+    }
         若 (tt[tk] == GN) { /* _Generic(ctrl, type: expr, ..., default: expr) — C11 泛型选择 (fix 2026-08-25 step6) */
         tk++; /* _Generic */
         若 (tt[tk] == OK) tk++; /* ( */

@@ -4229,8 +4229,17 @@ static int prim(void);
 static int blk(void); /* 语句表达式 ({ ... }) 复用块解析 (fix 2026-08-25 step19) */
 static int stmt(void);
 static int expr(void);
+static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
 static int prim(void) {
+        if (tt[tk] == VR && !strcmp(tn[tk], "编译期")) { /* 接入 2026-08-27: 甲言 编译期执行 (Zig comptime): 编译期(expr) → const_expr_eval 求值 → 常量节点 — 运行时零计算 */
+        tk++; /* 编译期 */
+        if (tt[tk] == OK) tk++; /* ( */
+        int cval = 0;
+        const_expr_eval(&cval);
+        if (tt[tk] == KK) tk++; /* ) */
+        int n = Nd(0); nv[n] = cval; return n; /* 编译期常量 */
+    }
         if (tt[tk] == GN) { /* _Generic(ctrl, type: expr, ..., default: expr) — C11 泛型选择 (fix 2026-08-25 step6) */
         tk++; /* _Generic */
         if (tt[tk] == OK) tk++; /* ( */
