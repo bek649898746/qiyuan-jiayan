@@ -6528,6 +6528,19 @@ static int stmt(void) {
         Nc(ifn2, body2);
         return ifn2;
     }
+    if (tt[tk] == VR && !strcmp(tn[tk], "锁住")) { /* 接入 2026-08-27 互斥锁临界区: 锁住 m { body } → { mutex_lock(&m); body; mutex_unlock(&m); } — v1 块尾解锁 (提前 return/break 不解锁, 留后续); m 是互斥锁变量, 调用用户定义的 mutex_lock/mutex_unlock */
+        tk++; /* 锁住 */
+        int mx = expr(); /* 互斥锁表达式 */
+        int body_lk = (tt[tk] == FK) ? blk() : stmt(); /* 临界区体 — blk() 整体消费 {..} (fix 2026-08-27: 原 tk++ 吃 { 后 stmt() 不消费 } → UK 残留解析错乱) */
+        int blk_lk = Nd(5);
+        int addr_lk = Nd(11); Nc(addr_lk, mx); /* &m */
+        int lk_call = Nd(4); Nc(lk_call, addr_lk); { int lkf = Nd(1); memcpy((char*)(nn + lkf), "mutex_lock", 11); Nc(lk_call, lkf); }
+        Nc(blk_lk, lk_call);
+        Nc(blk_lk, body_lk);
+        int ulk_call = Nd(4); { int addr2 = Nd(11); Nc(addr2, mx); Nc(ulk_call, addr2); } { int ulkf = Nd(1); memcpy((char*)(nn + ulkf), "mutex_unlock", 13); Nc(ulk_call, ulkf); }
+        Nc(blk_lk, ulk_call);
+        return blk_lk;
+    }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
     { int e = expr(); tk++; return e; }
