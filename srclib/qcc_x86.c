@@ -5873,7 +5873,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6714,6 +6714,38 @@ static int stmt(void) {
             Nc(blk_c, if_c);
         }
         return blk_c;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "抛出")) { /* 接入 2026-08-27 确定性异常 (C 模拟约定, 语句级): 抛出 码; → throw_ex(1, 码, ""); — 用户定义 Ex/cur_ex/ex_pending/throw_ex; 配合 若错/捕获 形成异常链 */
+        tk++; /* 抛出 */
+        int e_c = expr(); /* 错误码 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int ty = Nd(0); nv[ty] = 1; Nc(call, ty); } /* EX_GEN=1 */
+        Nc(call, e_c); /* 码 */
+        if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+        if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+        str_tbl[str_cnt][0] = 0; /* 空消息串 */
+        { int sn = Nd(0); nv[sn] = str_cnt; nt[sn] = STR; Nc(call, sn); }
+        str_cnt++;
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "throw_ex", 9); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "若错")) { /* 接入 2026-08-27 异常传播检查: 若错 <语句>; → if (ex_pending) <语句>; — 中间层传播 (C 模拟栈回卷) */
+        tk++; /* 若错 */
+        int ifn = Nd(8);
+        { int vp = Nd(1); memcpy((char*)(nn + vp), "ex_pending", 11); Nc(ifn, vp); } /* if (ex_pending) 非零即真 */
+        Nc(ifn, stmt()); /* 传播语句 */
+        return ifn;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "捕获")) { /* 接入 2026-08-27 异常捕获吞掉: 捕获; → if (ex_pending) { ex_pending = 0; } — 清除异常状态继续执行 (catch-all 吞异常, 异常码留 cur_ex.code 供判断); 配合 抛出/若错 形成异常链 */
+        tk++; /* 捕获 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int vp = Nd(1); memcpy((char*)(nn + vp), "ex_pending", 11);
+        int ifn = Nd(8); Nc(ifn, vp);
+        int blk = Nd(5);
+        { int z = Nd(0); nv[z] = 0; int asg = Nd(10); Nc(asg, vp); Nc(asg, z); Nc(blk, asg); } /* ex_pending = 0 */
+        Nc(ifn, blk);
+        return ifn;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "格式化")) { /* 接入 2026-08-27 字符串插值 (模板字符串): 格式化 "x={} y={}", x, y; → printf("x=%d y=%d", x, y); — {} 占位符按参数类型自动转格式符 (%d/%u/%f/%lld/%c/%s), 先解析参数收集类型再拼新格式串 */
         tk++; /* 格式化 */
