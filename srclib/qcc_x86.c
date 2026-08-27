@@ -4033,6 +4033,30 @@ static void lex(const char *s) {
                 tt[ti] = AG; tv[ti] = av; ti++; i = aj; continue;
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
+            else if (!strcmp(tn[ti], "原串") && (s[i] == '"' || s[i] == '#')) { /* 接入 2026-08-28 原始/多行字符串 (蓝图 §五 字面量扩展): 原串"..." 或 原串#"..."# (N 个 # 定界) — 不处理转义 (\n 保持字面), 可跨行, 内部可含定界符 */
+                int nh = 0;
+                while (s[i] == '#') { nh++; i++; }
+                if (s[i] != '"') { /* 非原始字符串形态, 原串 当普通标识符 */ }
+                else {
+                    i++; /* 跳过 " */
+                    if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+                    if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+                    int j = 0;
+                    while (1) {
+                        if (!s[i]) { fprintf(stderr, "[ERR] 原始字符串未闭合 (fix 2026-08-28)\n"); exit(1); }
+                        if (s[i] == '"') {
+                            int ok = 1;
+                            for (int h = 0; h < nh; h++) if (s[i + 1 + h] != '#') { ok = 0; break; }
+                            if (ok) { i += 1 + nh; break; }
+                        }
+                        if (j < 12286) str_tbl[str_cnt][j++] = s[i];
+                        i++;
+                    }
+                    str_tbl[str_cnt][j] = 0;
+                    { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* interning 同普通字符串 */
+                    tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; continue;
+                }
+            }
             int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
         if (s[i] == '"') { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 12286) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else if (s[i] == 'r') str_tbl[str_cnt][j++] = '\r'; else if (s[i] == 'f') str_tbl[str_cnt][j++] = '\f'; else if (s[i] == 'v') str_tbl[str_cnt][j++] = '\v'; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 12286 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 12286 字符上限 j=%d cnt=%d strt='%.50s' around='%.40s' (fix 2026-08-13 全量链接: Git 超长拼接 help 文本; fix 2026-08-26 cpython)\n", j, str_cnt, str_tbl[str_cnt], s + i - j); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + j < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], j + 1); i = i; continue; } } { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* fix step27: 字符串字面量 interning — 相同内容复用 si (gcc 合并相同字面量 → 指针比较/差一致; 原每字面量独立 si → strchr("hello",104)-"hello" 差 -6) */ tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
