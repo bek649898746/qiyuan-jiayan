@@ -5792,7 +5792,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6633,6 +6633,37 @@ __attribute__((unused))
             Nc(blk_c, if_c);
         }
         返 blk_c;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "推导")) { /* 接入 2026-08-27 列表推导 (Python/Haskell 推导式, 区间映射): 推导 dst, x*x 于 x 遍 0 到 5; → { __ci=0; x=0; while(x<5){ dst[__ci]=x*x; __ci++; x++; } } — 目标数组 + 迭代变量均须已声明 */
+        tk++; /* 推导 */
+        字 darr[64]; strcpy(darr, tn[tk]); tk++; /* 目标数组名 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 elem_e = expr(); /* 元素表达式 (停在 于) */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
+        字 ivar[64]; strcpy(ivar, tn[tk]); tk++; /* 迭代变量 */
+        若 (tt[tk] == JK) tk++; /* 遍 — lexer 映射到 for/JK (非 VR, fix 2026-08-27) */
+        整 lo_e = expr(); /* 下界 (停在 到) */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "到")) tk++; /* 到 */
+        整 hi_e = expr(); /* 上界 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        静 整 dc_seq = 0; 字 ciname[64]; sprintf(ciname, "__ci_%d_", dc_seq++);
+        var_offset(ciname); /* 内部计数器 */
+        整 blk_d = Nd(5);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), ciname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk_d, d); } /* int __ci = 0; */
+        整 v_iv = Nd(1); memcpy((字*)(nn + v_iv), ivar, 32);
+        { 整 asg0 = Nd(10); Nc(asg0, v_iv); Nc(asg0, lo_e); Nc(blk_d, asg0); } /* x = lo; */
+        整 wh_d = Nd(9);
+        { 整 cmp_d = Nd(2); nv[cmp_d] = T_LK; Nc(cmp_d, v_iv); Nc(cmp_d, hi_e); Nc(wh_d, cmp_d); } /* while (x < hi) */
+        整 bd_d = Nd(5);
+        整 v_ci = Nd(1); memcpy((字*)(nn + v_ci), ciname, 32);
+        整 v_da = Nd(1); memcpy((字*)(nn + v_da), darr, 32);
+        整 idx_d = Nd(14); Nc(idx_d, v_da); Nc(idx_d, v_ci); /* dst[__ci] */
+        { 整 asg_d = Nd(10); Nc(asg_d, idx_d); Nc(asg_d, elem_e); Nc(bd_d, asg_d); } /* dst[__ci] = elem; */
+        { 整 pl_d = Nd(2); nv[pl_d] = PK; Nc(pl_d, v_ci); { 整 one = Nd(0); nv[one] = 1; Nc(pl_d, one); } 整 asg_ci = Nd(10); Nc(asg_ci, v_ci); Nc(asg_ci, pl_d); Nc(bd_d, asg_ci); } /* __ci = __ci + 1; */
+        { 整 pl_x = Nd(2); nv[pl_x] = PK; Nc(pl_x, v_iv); { 整 one = Nd(0); nv[one] = 1; Nc(pl_x, one); } 整 asg_x = Nd(10); Nc(asg_x, v_iv); Nc(asg_x, pl_x); Nc(bd_d, asg_x); } /* x = x + 1; */
+        Nc(wh_d, bd_d);
+        Nc(blk_d, wh_d);
+        返 blk_d;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "重载")) { /* 接入 2026-08-27 运算符重载注册: 重载 + 点 = 点_add; → ov 表注册 (运算符 + 类型名 → 函数名), add() 分派 — 用户先定义普通函数再注册 */
         tk++; /* 重载 */
