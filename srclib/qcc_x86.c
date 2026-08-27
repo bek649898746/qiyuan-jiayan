@@ -4234,6 +4234,34 @@ static int expr(void);
 static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
 static int prim(void) {
+        if (tt[tk] == VR && !strcmp(tn[tk], "生成")) { /* 接入 2026-08-27 生成器 (表达式层, 函数式): 生成(g, 0, 5) → gen_init(&g, 0, 5); — 用户定义 gen_init/gen_next (惰性 range 迭代器) */
+        tk++; /* 生成 */
+        if (tt[tk] == OK) tk++; /* ( */
+        int e_g = expr(); /* 生成器 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_lo = expr(); /* 下界 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_hi = expr(); /* 上界 */
+        if (tt[tk] == KK) tk++; /* ) */
+        int call = Nd(4);
+        { int addr = Nd(11); Nc(addr, e_g); Nc(call, addr); } /* &g */
+        Nc(call, e_lo); Nc(call, e_hi);
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "gen_init", 9); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+        if (tt[tk] == VR && !strcmp(tn[tk], "下一个")) { /* 接入 2026-08-27 生成器取值 (表达式层, 可作 while 条件): 下一个(g, x) → gen_next(&g, &x); — 返回 1 有值 0 结束 */
+        tk++; /* 下一个 */
+        if (tt[tk] == OK) tk++; /* ( */
+        int e_g = expr(); /* 生成器 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_x = expr(); /* 输出变量 */
+        if (tt[tk] == KK) tk++; /* ) */
+        int call = Nd(4);
+        { int addr1 = Nd(11); Nc(addr1, e_g); Nc(call, addr1); } /* &g */
+        { int addr2 = Nd(11); Nc(addr2, e_x); Nc(call, addr2); } /* &x */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "gen_next", 9); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
         if (tt[tk] == VR && !strcmp(tn[tk], "区域")) { /* 接入 2026-08-27 Arena 区域分配 (表达式层, 用于声明初始化/赋值): 区域 分配(arena, 100); → arena_alloc(&arena, 100); — 操作名映射 分配/重置/释放 → arena_alloc/reset/free */
         tk++; /* 区域 */
         char opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 分配/重置/释放 — ⚠️ 分配→malloc 释放→free 已被 lexer 映射, 比较用映射后英文 (fix 2026-08-27) */
@@ -5809,7 +5837,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
