@@ -3917,6 +3917,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "字")) strcpy(tn[ti], "char");
             else if (!strcmp(tn[ti], "空")) strcpy(tn[ti], "void");
             else if (!strcmp(tn[ti], "短")) strcpy(tn[ti], "short");
+            else if (!strcmp(tn[ti], "长整")) strcpy(tn[ti], "long long"); /* 接入 2026-08-28: 长整 双字 = 64 位 (原 长+整 = long int 32 位, 语义不符) */
             else if (!strcmp(tn[ti], "长")) strcpy(tn[ti], "long");
             else if (!strcmp(tn[ti], "常")) strcpy(tn[ti], "const");
             else if (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
@@ -4936,7 +4937,7 @@ static int prim(void) {
                   else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                 Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
-                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
+                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1 || !strcmp((char*)(nn + callee), "复数") || !strcmp((char*)(nn + callee), "复加"))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回; 2026-08-28: 复数/复加 builtin 64 位打包返回 */
             } else break;
         }
         return n; }
@@ -5096,7 +5097,7 @@ static int prim(void) {
                   else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                 Nc(c, n); n = c;
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); math21/step5 time 同 L4233 */
-                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
+                if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1 || !strcmp((char*)(nn + callee), "复数") || !strcmp((char*)(nn + callee), "复加"))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll; 2026-08-28: 复数/复加 builtin 64 位打包返回 */
             } else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
                 int is_dec = (tt[tk] == MM); tk++;
                 int m = Nd(23); nv[m] = is_dec;
@@ -13990,6 +13991,28 @@ static void cg(int n) {
                 asm_emit("    自增 r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xFF); b(0xC0); /* inc eax */
                 jmp_rel(-1); patch_label(cp-4, ls, 2);
                 set_label(ld);
+            } else if (!strcmp(fname, "复数")) { /* 接入 2026-08-28 复数 (蓝图 §一 数值类型族): 复数(a,b) → rax = (long long)b << 32 | a (64 位打包, 复用多返回值方案); 实部=低32 虚部=高32 */
+                mov_rr64(0, 2); /* rax = rdx = b (arg1, 32 位参数高 32 已清 0) */
+                asm_emit("    左移64 r0, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 4, 0); b(32); /* SHL rax, 32 (C1 /4=SHL) */
+                asm_emit("    或64 r0, r1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 1, 0); /* OR rax, rcx (a=arg0 低 32, rcx 高 32 已清 0; 不用 r11 避 REX 坑) */
+            } else if (!strcmp(fname, "实部")) { /* 实部(z) → z 低 32 */
+                mov_rr(0, 1); /* eax = ecx = z 低 32 */
+            } else if (!strcmp(fname, "虚部")) { /* 虚部(z) → z 高 32 */
+                mov_rr64(0, 1); /* rax = rcx = z */
+                asm_emit("    逻辑右移64 r0, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 5, 0); b(32); /* SHR rax, 32 (C1 /5=SHR 逻辑) */
+            } else if (!strcmp(fname, "复加")) { /* 复加(a,b): a=rcx b=rdx → (ia+ib)<<32 | (ra+rb) */
+                mov_rr(0, 1); /* eax = ecx (a 实部) */
+                mov_rr(11, 2); /* r11d = edx (b 实部) */
+                alu_rr(T_PK, 0, 11); /* eax += r11d (ra+rb) */
+                mov_rr(3, 0); /* ebx = 实部和 (低寄存器, 避 REX) */
+                mov_rr64(0, 1); /* rax = rcx (a) */
+                asm_emit("    逻辑右移64 r0, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 5, 0); b(32); /* SHR rax, 32 */
+                mov_rr(10, 0); /* r10d = ia */
+                mov_rr64(0, 2); /* rax = rdx (b) */
+                asm_emit("    逻辑右移64 r0, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 5, 0); b(32); /* SHR rax, 32 */
+                alu_rr(T_PK, 0, 10); /* eax += r10d (ia+ib) */
+                asm_emit("    左移64 r0, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 4, 0); b(32); /* SHL rax, 32 */
+                asm_emit("    或64 r0, r3\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 3, 0); /* OR rax, rbx (实部和; 低寄存器无 REX.B) */
             } else if (!strcmp(fname, "inb")) {
                 /* inb(port): port in rcx; 返回 eax = al (键盘 0x60/0x64) */
                 mov_rr(2, 1);   /* mov edx, ecx (port) */
