@@ -5925,7 +5925,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6913,6 +6913,41 @@ __attribute__((unused))
         Nc(wh_d, bd_d);
         Nc(blk_d, wh_d);
         返 blk_d;
+    }
+    若 (tt[tk] == VR && (!strcmp(tn[tk], "最大") || !strcmp(tn[tk], "最小"))) { /* 接入 2026-08-27 最大/最小 (数组极值): 最大 m, arr, n; → { m=arr[0]; __mi=1; while(__mi<n){ if(arr[__mi] > m){ m=arr[__mi]; } __mi++; } } — if 体包块 (深水区教训) */
+        整 is_max = !strcmp(tn[tk], "最大");
+        tk++; /* 最大/最小 */
+        字 accn[64]; strcpy(accn, tn[tk]); tk++; /* 极值变量 */
+        若 (tt[tk] == CK) tk++; /* , */
+        字 arrn[64]; strcpy(arrn, tn[tk]); tk++; /* 数组 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_n = expr(); /* 长度 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        静 整 mn_seq = 0; 字 iname[64]; sprintf(iname, "__mn_%d_", mn_seq++);
+        var_offset(iname);
+        整 blk = Nd(5);
+        整 v_a = Nd(1); memcpy((字*)(nn + v_a), accn, 32);
+        整 v_r = Nd(1); memcpy((字*)(nn + v_r), arrn, 32);
+        { 整 z = Nd(0); nv[z] = 0; 整 idx0 = Nd(14); Nc(idx0, v_r); Nc(idx0, z); 整 asg = Nd(10); Nc(asg, v_a); Nc(asg, idx0); Nc(blk, asg); } /* m = arr[0]; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), iname, 32); { 整 one = Nd(0); nv[one] = 1; Nc(d, one); } Nc(blk, d); } /* int __mn = 1; */
+        整 wh = Nd(9);
+        { 整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32); 整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_n); Nc(wh, cmp); } /* while (__mn < n) */
+        整 bd = Nd(5);
+        { 整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32);
+          整 idx1 = Nd(14); Nc(idx1, v_r); Nc(idx1, v_i); /* arr[__mn] */
+          整 cmp = Nd(2); nv[cmp] = is_max ? T_GK : T_LK; Nc(cmp, idx1); Nc(cmp, v_a); /* arr[__mn] >/< m */
+          整 ifn = Nd(8); Nc(ifn, cmp);
+          整 ibd = Nd(5);
+          { 整 asg = Nd(10); Nc(asg, v_a); Nc(asg, idx1); Nc(ibd, asg); } /* m = arr[__mn]; */
+          Nc(ifn, ibd);
+          Nc(bd, ifn); }
+        { 整 v_i2 = Nd(1); memcpy((字*)(nn + v_i2), iname, 32);
+          整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_i2); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+          整 asg = Nd(10); Nc(asg, v_i2); Nc(asg, pl); Nc(bd, asg); } /* __mn++; */
+        { 整 cl_m = new_label(); 整 setl_m = Nd(20); nv[setl_m] = cl_m + 1; Nc(bd, setl_m); nv[wh] = cl_m + 1; }
+        Nc(wh, bd);
+        Nc(blk, wh);
+        返 blk;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "排序")) { /* 接入 2026-08-27 排序 (冒泡): 排序 arr, n; → 双 while + if(arr[j]>arr[j+1]){三步交换} — 就地升序. fix 2026-08-27: ①n 存内部变量 __sn 防共享节点 ②交换包块 Nd(5) 挂 if then (直接挂 if 只处理 n1, n2 当 else) */
         tk++; /* 排序 */
