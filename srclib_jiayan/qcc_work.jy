@@ -4280,6 +4280,51 @@ __attribute__((unused))
         整 sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
         若 (tt[tk] == OK) tk++; /* skip ( */
         
+        /* fix 2026-08-27 特性反射: sizeof(((T*)0)->field) — cast 指针取字段 → 字段类型大小; sizeof((T*)0) → 指针 8.
+           token 流是 ( TYPE * ) 0 -> field — 原落 [0] 分支把类型名当变量 (找不到) → * 残留 → 字段名报"未定义函数" (offsetof 宏/反射 sizeof) */
+        {
+            整 pk = tk; 循环 (tt[pk] == OK) pk++; /* 吃连续括号 ((T*)0) 多重 */
+            若 (tt[pk] < TS && (tt[pk] == VR || tt[pk] == VK) && tt[pk + 1] == DK) {
+                整 csi = -1; 整 csz = 8;
+                若 (tt[pk] == VR) { csi = td_st_index(tn[pk]); 若 (csi < 0) csi = st_find(tn[pk]); }
+                否 若 (tt[pk] == VK) { /* 基础类型: sizeof(((int*)0)->x) */
+                    若 (!strcmp(tn[pk], "char") || !strcmp(tn[pk], "_Bool")) csz = 1;
+                    否 若 (!strcmp(tn[pk], "short")) csz = 2;
+                    否 若 (!strcmp(tn[pk], "double")) csz = 8;
+                    否 若 (!strcmp(tn[pk], "void")) csz = 1;
+                    否 csz = 4;
+                }
+                整 idx = pk + 2; /* 指向 (T*) 的 ) */
+                循环 (tt[idx] == VK) idx++; /* const/volatile 限定符 */
+                若 (tt[idx] == KK) idx++; /* (T*) 类型括号结束 */
+                若 (tt[idx] == NK || tt[idx] == MK) idx++; /* 0 字面量 */
+                整 cast_done = (tt[idx] == KK); /* cast 表达式外层括号结束 */
+                若 (tt[idx] == KK) idx++;
+                若 (tt[idx] == AR || tt[idx] == DT) { /* -> field */
+                    idx++;
+                    若 (tt[idx] == VR) {
+                        常 字 *fn = tn[idx];
+                        若 (csi >= 0) { 整 fsz = st_field_size(stypes[csi].name, fn); 若 (fsz > 0) csz = fsz; }
+                        idx++; /* field */
+                        整 d = 0;
+                        循环 (tk < TS && tt[idx] != EK) { /* 跳到 sizeof 的外层 ) */
+                            若 (tt[idx] == OK || tt[idx] == LB) d++;
+                            否 若 (tt[idx] == KK || tt[idx] == RB) { 若 (d <= 0) { idx++; 断; } d--; }
+                            idx++;
+                        }
+                        若 (tt[idx] == KK) idx++;
+                        若 (sizeof_had_paren && tt[idx] == KK) idx++;
+                        tk = idx; /* fix 2026-08-27 特性反射: 局部 idx 推进必须写回 tk — 原未更新 → 调用者重解析 (Point*)0)->y → y 当函数报"未定义函数" */
+                        整 n = Nd(0); nv[n] = csz; 返 n;
+                    }
+                } 否 若 (cast_done && sizeof_had_paren) { /* sizeof((T*)0) → 指针 8 */
+                    若 (tt[idx] == KK) idx++;
+                    tk = idx; /* fix 2026-08-27: 同写回 */
+                    整 n = Nd(0); nv[n] = 8; 返 n;
+                }
+            }
+        }
+        
         若 (tt[tk] == DK) { /* sizeof(*expr): deref → pointee size (struct T *p → sizeof(T); int *p → 4; char *p → 1) (fix 2026-08-15: strvec_init copied only 8 bytes, nr/alloc garbage) */
             整 deref_n = 1; /* 解引用层级: *p=1, **p=2 (fix 2026-08-24 t35v: CALLOC_ARRAY(*info,1) 的 sizeof(*(*info)) 原只解一层 → 8 → xcalloc 只分 8B → reflog_walk_info 越界 → reflog 崩) */
             tk++; /* * */
