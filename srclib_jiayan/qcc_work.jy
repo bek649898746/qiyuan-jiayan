@@ -5792,7 +5792,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6633,6 +6633,35 @@ __attribute__((unused))
             Nc(blk_c, if_c);
         }
         返 blk_c;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "格式化")) { /* 接入 2026-08-27 字符串插值 (模板字符串): 格式化 "x={} y={}", x, y; → printf("x=%d y=%d", x, y); — {} 占位符按参数类型自动转格式符 (%d/%u/%f/%lld/%c/%s), 先解析参数收集类型再拼新格式串 */
+        tk++; /* 格式化 */
+        若 (tt[tk] != STR) { 整 nz = Nd(0); nv[nz] = 0; 返 nz; } /* 缺格式串: 空 */
+        字 *fmts = str_tbl[tv[tk]]; tk++; /* 格式串字面量 */
+        整 args[16]; 整 an = 0; /* 参数列表 */
+        循环 (tt[tk] == CK && an < 16) { tk++; args[an++] = expr(); } /* 逗号分隔参数 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        字 nfmt[512]; 整 ni = 0; 整 ai = 0; /* 新格式串缓冲 */
+        遍 (字 *p = fmts; *p && ni < 500; p++) {
+            若 (p[0] == '{' && p[1] == '}') { /* 占位符 → 参数类型格式符 */
+                常 字 *ff = "%d";
+                整 ty = (ai < an) ? expr_type_of(args[ai]) : 0;
+                若 (ty == 5) ff = "%u"; 否 若 (ty == 4) ff = "%f"; 否 若 (ty == 3) ff = "%lld"; 否 若 (ty == 1) ff = "%c"; 否 若 (ty == 6) ff = "%s";
+                ai++;
+                循环 (*ff && ni < 500) nfmt[ni++] = *ff++;
+                p++; /* 跳过 } */
+            } 否 nfmt[ni++] = *p;
+        }
+        nfmt[ni] = 0;
+        若 (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+        若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+        strcpy(str_tbl[str_cnt], nfmt);
+        整 nfmt_idx = str_cnt; str_cnt++;
+        整 call = Nd(4);
+        { 整 sn = Nd(0); nv[sn] = nfmt_idx; nt[sn] = STR; Nc(call, sn); } /* 新格式串 */
+        遍 (整 i = 0; i < an; i++) Nc(call, args[i]); /* 参数 */
+        { 整 fn = Nd(1); memcpy((字*)(nn + fn), "printf", 7); Nc(call, fn); } /* callee 最后 */
+        返 call;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "投递")) { /* 接入 2026-08-27 actor 消息投递 (Erlang 风格, 同送/收模式): 投递 m, v; → actor_send(&m, v); — 用户定义 actor_send/actor_recv (邮箱+类型分派) */
         tk++; /* 投递 */
