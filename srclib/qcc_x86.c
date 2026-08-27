@@ -5925,7 +5925,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6913,6 +6913,34 @@ static int stmt(void) {
         Nc(wh_d, bd_d);
         Nc(blk_d, wh_d);
         return blk_d;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "折叠")) { /* 接入 2026-08-27 高阶函数 折叠 (编译成循环): 折叠 arr, n, acc, fn; → { __fd=0; while(__fd<n){ acc = fn(acc, arr[__fd]); __fd++; } } — 数组折叠 (Python reduce 风格, acc 须已声明) */
+        tk++; /* 折叠 */
+        char arrn[64]; strcpy(arrn, tn[tk]); tk++; /* 源数组 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_n = expr(); /* 长度 */
+        if (tt[tk] == CK) tk++; /* , */
+        char accn[64]; strcpy(accn, tn[tk]); tk++; /* 累加器 (须已声明) */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_fn = expr(); /* 二元折叠函数 */
+        if (tt[tk] == SK) tk++; /* ; */
+        static int fd_seq = 0; char iname[64]; sprintf(iname, "__fd_%d_", fd_seq++);
+        var_offset(iname); /* 内部计数器 */
+        int blk = Nd(5);
+        { int d = Nd(7); memcpy((char*)(nn + d), iname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __fd = 0; */
+        int wh = Nd(9);
+        { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32); int cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_n); Nc(wh, cmp); } /* while (__fd < n) */
+        int bd = Nd(5);
+        int v_a = Nd(1); memcpy((char*)(nn + v_a), accn, 32);
+        int v_r = Nd(1); memcpy((char*)(nn + v_r), arrn, 32);
+        int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
+        int idx_r = Nd(14); Nc(idx_r, v_r); Nc(idx_r, v_i); /* arr[__fd] */
+        int call = Nd(4); Nc(call, v_a); Nc(call, idx_r); Nc(call, e_fn); /* fn(acc, arr[__fd]) — 参数先挂, callee 最后 */
+        int asg = Nd(10); Nc(asg, v_a); Nc(asg, call); Nc(bd, asg); /* acc = fn(...); */
+        { int pl = Nd(2); nv[pl] = PK; Nc(pl, v_i); { int one = Nd(0); nv[one] = 1; Nc(pl, one); } int asg_i = Nd(10); Nc(asg_i, v_i); Nc(asg_i, pl); Nc(bd, asg_i); } /* __fd++; */
+        Nc(wh, bd);
+        Nc(blk, wh);
+        return blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "过滤")) { /* 接入 2026-08-27 高阶函数 过滤 (编译成循环): 过滤 dst, src, n, cond; → { __fi=0; __fk=0; while(__fi<n){ if(cond(src[__fi])){ dst[__fk]=src[__fi]; __fk++; } __fi++; } } — 数组筛选 (Python filter 风格) */
         tk++; /* 过滤 */
