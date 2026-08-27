@@ -7107,8 +7107,10 @@ __attribute__((unused))
                         整 tdf_si = -1; /* fix 2026-08-19: typedef struct 字段的 struct 类型索引 (匿名 typedef struct 内 FILETIME 成员) — 原只 fnptr 设大小 → WIN32_FIND_DATAW 的 FILETIME 记 4B → cFileName 偏移 32 错 → FindFirstFileW 数据错位 */
                         整 ftkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 (typedef 匿名 struct 同 5402 撞名根因) */
                         整 tf_dbl = 0; /* fix 2026-08-27 特性#4: 匿名 typedef struct 普通字段 double 标记 (跨 VK 处理) */
-                        若 (tt[tk] == VK) { 整 lc2 = 0; ftkw = 1; fdflt = 4; tf_dbl = 0; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) { fdflt = 8; tf_dbl = 1; } 否 若 (!strcmp(tn[tk], "long")) lc2++; 否 若 (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } 若 (lc2 >= 2) fdflt = 8; 否 若 (lc2 == 1) fdflt = 4; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
-                        循环 (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
+                        整 npel = 0; 整 nbase = 4; /* fix 2026-08-27 第三批#2: 匿名 typedef struct 指针字段指针层级/指向元素大小 — 原只把 fdflt=8, 不设 fptrs 标记 → st_field_is_ptr=0 → var.ptrfield[i] 数组基不解引用取指针值 → 读结构体槽本身 (feat_sret11/15) */
+                        若 (tt[tk] == VK) { 整 lc2 = 0; ftkw = 1; fdflt = 4; tf_dbl = 0; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) { fdflt = 8; tf_dbl = 1; } 否 若 (!strcmp(tn[tk], "long")) lc2++; 否 若 (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } 若 (lc2 >= 2) fdflt = 8; 否 若 (lc2 == 1) fdflt = 4; }
+                        nbase = fdflt; /* 指针前的指向元素大小 (int*→4, char*→1, double*→8) */
+                        循环 (tt[tk] == DK) { npel++; fdflt = 8; tk++; } /* pointer field — 计数指针层级 (fix 2026-08-27 第三批#2) */
                         若 (tt[tk] == EN) { ftkw = 1; tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == UK) tk++; } /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 的 enum 字段 `enum {fir,iir} type;` — 原无 EN 分支 → token 不消费 → 死循环 (dither.c filter_t) */
                         若 (tt[tk] == ST) { /* nested struct field */
                             整 sub_is_union = !strcmp(tn[tk], "union"); /* fix 2026-08-27 特性#4: typedef 匿名 struct 内 union — 原按 struct 求和布局 → sizeof(含union struct)=32 (应16) */
@@ -7182,6 +7184,7 @@ __attribute__((unused))
                                     字 fn[64]; strcpy(fn, tn[tk]); tk++;
                                     st_field_sz_r(si, fn, fptr ? 8 : stypes[inner_si].sz, fptr ? 8 : 1); /* fix 2026-08-07: 指针字段 frow=8 (typedef 匿名结构体) */
                                     st_field_ty(si, fn, inner_si);
+                                    若 (fptr) { 整 fidx = stypes[si].fn - 1; stypes[si].fptrs[fidx] = 1; stypes[si].fels[fidx] = 8; stypes[si].fpels[fidx] = stypes[inner_si].sz > 0 ? stypes[inner_si].sz : 4; stypes[si].ffins[fidx] = stypes[inner_si].sz > 0 ? stypes[inner_si].sz : 4; stypes[si].fdeep[fidx] = 1; } /* fix 2026-08-27 第三批#2: 匿名 typedef struct 内 struct X *field 指针标记 — 原缺 fptrs → 同 VK 指针字段缺口 */
                                 }
                             }
                             若 (tt[tk] == SK) tk++;
@@ -7222,6 +7225,7 @@ __attribute__((unused))
                             st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz); /* frow = ELEMENT size (fix 2026-08-03: was fsz, so char name[128] scaled indices by 128) */
                             若 (fdbl) st_field_dbl(si, fn); /* fix 2026-08-27 特性#4: 匿名 typedef struct 普通 double 字段 (Circle.r — 箭头链 c->r 原读 0) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
+                            若 (npel > 0) { 整 fidx = stypes[si].fn - 1; stypes[si].fptrs[fidx] = 1; stypes[si].fpels[fidx] = npel > 1 ? 8 : nbase; stypes[si].fels[fidx] = 8; stypes[si].ffins[fidx] = nbase; stypes[si].fdeep[fidx] = (字)npel; } /* fix 2026-08-27 第三批#2: 匿名 typedef struct 指针字段标记 (int *data → fptrs=1/fpels=4/fels=8) — 镜像主解析器 L6828; 原缺 → st_field_is_ptr=0 → var.ptrfield[i] 数组基不解引用 → 读结构体槽 (feat_sret11/15) */
                             若 (tdf_si >= 0) st_field_ty(si, fn, tdf_si); /* fix 2026-08-19: typedef struct 成员类型 (FILETIME 等 → 嵌套链解析) */
                             若 (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
                             }
@@ -7977,7 +7981,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         整 fn_ret_depth = 0; /* fix 2026-08-20: 返回指针层数计数 (*=1, **=2) — case-12 *f() 解引用宽度 */
         若 (tt[tk] == ST) { tk++; 若 (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
         否 若 (tt[tk] == EN) { tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { tk++; 整 ev = 0; 循环 (tk < TS && tt[tk] != UK && tt[tk] != EK) { 整 tk0 = tk; 若 (tt[tk] == VR) { 字 ename[64]; strcpy(ename, tn[tk]); tk++; 若 (tt[tk] == AK) { tk++; 整 evv = 0; 若 (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } 若 (tt[tk] == CK) tk++; 若 (tt[tk] == SK) tk++; 若 (tk == tk0) tk++; } 若 (tt[tk] == UK) tk++; } } /* fix 2026-08-15: 匿名/带体 enum 返回类型 static enum { ... } fn(...) — 原只跳 enum 名, 见 { 落 fn 检测 break → ls_refs_advertise 被吞 */
-        否 若 (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; 若 (tdx >= 0 && !tdefs[tdx].is_dbl && !tdefs[tdx].is_struct && !tdefs[tdx].is_fnptr && tdefs[tdx].sz == 8) fn_ret_ll = 1; tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
+        否 若 (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { 整 tdx = tdef_lookup(tn[tk]); 若 (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; 若 (tdx >= 0 && !tdefs[tdx].is_dbl && !tdefs[tdx].is_struct && !tdefs[tdx].is_fnptr && tdefs[tdx].sz == 8) fn_ret_ll = 1; 若 (tdx >= 0 && tdefs[tdx].is_struct) fn_ret_si = td_st_index(tn[tk]); /* fix 2026-08-27 第三批#2: typedef struct 返回类型 (Buffer) — 原 fn_ret_si 恒 -1 → >8B 结构走普通 ABI 返回损坏; 指针返回由下方 fn_ret_ptr 守卫剔除 */ tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         否 若 (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         若 (tt[tk] == VK) tk++; /* skip 2nd keyword */
         循环 (tt[tk] == DK || (tt[tk] == VK && !strcmp(tn[tk], "const"))) { 若 (tt[tk] == DK) { fn_ret_ptr = 1; fn_ret_depth++; } tk++; } /* skip pointer(s) and interspersed const (fix 2026-08-15: `static const char * const *fn(...)` broke parse -> revert.c/cmd_cherry_pick missing; fix 2026-08-20: 计数指针层数) */
@@ -11780,7 +11784,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             cg_blk_end = saved_blk_end;
             cg_blk_start = saved_blk_start;
         } 断;
-        例 6: { /* return �?epilogue */
+        例 6: { /* return — epilogue */
             若 (cur_fn_sret) {
                 /* sret: copy the returned struct to [rcx] (hidden pointer), return rcx.
                    The return expression must be a struct var/param (or chain) — use its base. */
@@ -13667,7 +13671,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         整 fn_frame = (fr_end[gfn] - fr_start[gfn]) + 4368 + 8; /* fix 2026-08-07 Gate-1: +8 → fn_frame≡8(mod16)。入口 rsp≡8(标准) → 2 push(rbp,rbx) 仍 ≡8 → 帧后 rsp≡0 → 调用点 Win64 ABI 16 对齐（gcc sqlite3 混链 movaps 崩溃根因）。fr_end-fr_start 恒 16 对齐 */
         cur_frame_sz = fr_start[gfn] + fn_frame; /* 51 sites `off - cur_frame_sz` untouched */
         scratch_base = cur_frame_sz - 272; /* 状态区 [rbp-272..]，printf 缓冲在其下 [rbp-4368..rbp-273]（emit_print 里 lea -4096） */
-        sret_ptr_off = cur_frame_sz - 8;   /* sret slot at [rbp-8] */
+        sret_ptr_off = cur_frame_sz - 4376; /* sret slot at [rbp-4376] — 内联 printf 格式解释器把 [rbp-8] 当 '#' 标志/清零 scratch (emit_print 状态位), 与 sret 槽冲突 → sret 函数内调 printf 后返回指针被毁 → rcx 垃圾写崩 (fix 2026-08-27 第三批#2: feat_sret10 makeA 崩 0xC0000005). 移入局部区与 printf 缓冲间的恒空闲 +8 填充 (fn_frame 必含 +8), 局部区顶 [rbp-4376) 永不被占用 */
 
         /* fix 2026-08-08 -bin: _start 设裸机栈 + 正常序言 (完整帧, 函数体帧访问有效) */
         整 no_frame = (bin_mode && i == 0 && !strcmp(fname, "_start"));
