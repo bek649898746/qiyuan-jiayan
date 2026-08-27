@@ -6378,6 +6378,8 @@ static int stmt(void) {
                     else if(tt[tk]==MK){ tk++; if (tt[tk]==NK) { cv2 = -tv[tk]; tk++; } }
                     is_range = 1;
                 }
+                int guard_node = -1; /* 接入 2026-08-27 守卫条件: case CONST 若 expr: — 守卫并进 case 条件 (sw==cv && guard) */
+                if(tt[tk]==IK) { tk++; guard_node = expr_comma(); } /* 若→if→IK token (fix 2026-08-27: 原检测 VR 漏 IK → 守卫未解析 → if 当 body 语句) */
                 if(tt[tk]==CL)tk++; /* : */
                 int body=Nd(5); /* case body */
                 int had_br=0; /* fix 2026-08-18: case 内 break 已消费 → 不是 fall-through */
@@ -6401,6 +6403,7 @@ static int stmt(void) {
                 } else {
                     int cvn=Nd(0);nv[cvn]=cv;
                     int eq=Nd(2);nv[eq]=T_QK;Nc(eq,sw_var);Nc(eq,cvn);
+                    if (guard_node >= 0) { int andn=Nd(2);nv[andn]=LA;Nc(andn,eq);Nc(andn,guard_node); eq=andn; } /* 守卫并入: sw==cv && guard */
                     ifn=Nd(8);Nc(ifn,eq);Nc(ifn,body);
                 }
                 if(!had_br){ if(n0[body]<0){ if(ft_n<256) ft_ifn[ft_n++]=ifn; } else if(ft2_n<256) ft2_ifn[ft2_n++]=ifn; } /* 空 body 未 break → 共享下一 case body; 带 body 未 break → 追加下一 case 语句 (fix 2026-08-18: 原只登记空 body — case '\\' 带 body 落 default 丢失) */
