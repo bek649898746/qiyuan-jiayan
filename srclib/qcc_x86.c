@@ -6555,7 +6555,7 @@ static int stmt(void) {
         Nc(blk_lk, lk_call);
         Nc(blk_lk, body_lk);
         int ulk_call = Nd(4); { int addr2 = Nd(11); Nc(addr2, mx); Nc(ulk_call, addr2); } { int ulkf = Nd(1); memcpy((char*)(nn + ulkf), "mutex_unlock", 13); Nc(ulk_call, ulkf); }
-        Nc(blk_lk, ulk_call);
+        if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         return blk_lk;
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
