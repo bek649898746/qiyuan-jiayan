@@ -2573,6 +2573,12 @@ static int var_array(const char *n, int count, int esz) {
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     return vars[vcnt++].rsp_off;
 }
+/* 接入 2026-08-28 真具名参数: 函数参数名表 (名-keyed, 同 fn_ret_name_map 模式), var_param 收集, 调用处重排 (定义须在 var_param 前) */
+static struct { char fname[64]; char pnames[32][64]; int pn; } fn_param_map[2048]; static int fn_param_map_n; static int cur_fn_pmap = -1; /* 当前解析函数在参数名表的索引 (-1=非函数参数上下文) */
+static int fn_param_find(const char *fname) { for (int i = 0; i < fn_param_map_n; i++) if (!strcmp(fn_param_map[i].fname, fname)) return i; return -1; }
+static int fn_param_pos(const char *fname, const char *pname) { int fi = fn_param_find(fname); if (fi < 0) return -1; for (int i = 0; i < fn_param_map[fi].pn; i++) if (!strcmp(fn_param_map[fi].pnames[i], pname)) return i; return -1; }
+static void fn_param_begin(const char *fname) { int fi = fn_param_find(fname); if (fi < 0) { if (fn_param_map_n >= 2048) return; fi = fn_param_map_n++; strcpy(fn_param_map[fi].fname, fname); } fn_param_map[fi].pn = 0; cur_fn_pmap = fi; } /* 函数定义/原型: 清空重收集 */
+static void fn_param_end(void) { cur_fn_pmap = -1; }
 static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int is_dbl, int is_ll) { /* is_ll: long long param -> 8-byte slot (fix 2026-08-05) */
     
     /* always allocate a fresh frame slot; incoming value copied in function prologue.
@@ -2616,6 +2622,7 @@ static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int 
         /* 5th+ arg on stack: [rbp + 56 + 8*(slot-4)] (real ABI: arg5 at [rsp+32] at the call; rbp = call_rsp-24 after 2 pushes) */
         vars[vcnt].preg = -1; vars[vcnt].pstk = 1; vars[vcnt].pdisp = 56 + 8 * (slot - 4);
     }
+    if (cur_fn_pmap >= 0 && slot >= 0 && slot < 32) { strcpy(fn_param_map[cur_fn_pmap].pnames[slot], n); if (slot + 1 > fn_param_map[cur_fn_pmap].pn) fn_param_map[cur_fn_pmap].pn = slot + 1; } /* 接入 2026-08-28: 收集参数名 (真具名参数重排用) */
     return vars[vcnt++].rsp_off;
 }
 static char cur_fn_name[64]; /* fwd for debug (defined later) */
@@ -4913,7 +4920,21 @@ static int prim(void) {
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                int callee = n;  tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; if (tt[tk] == VR && tt[tk + 1] == CL) { tk += 2; } /* 接入 2026-08-28 标注参数: f(x: 1, y: 2) — 跳过 名: 前缀 (顺序须与签名一致, 蓝图 §七 具名参数简化) */ Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                int callee = n;  tk++; int c = Nd(4);
+                int nargs[256]; int argpos[256]; int an = 0; /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
+                while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } /* 标注/具名: 名: 前缀 → 查签名位置 */ int ev = expr(); if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
+                if (tt[tk] == KK) tk++;
+                { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
+                  if (has_n && nt[callee] == 1) { int fi = fn_param_find((char*)(nn + callee)); int pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
+                    if (pn > 0) { int placed[256]; for (int i = 0; i < 256; i++) placed[i] = -1; int ok = 1;
+                        for (int i = 0; i < an && ok; i++) { int p = argpos[i];
+                            if (p >= 0) { if (p >= pn || placed[p] >= 0) { ok = 0; break; } placed[p] = nargs[i]; }
+                            else { int q = 0; while (q < pn && placed[q] >= 0) q++; if (q >= pn) { ok = 0; break; } placed[q] = nargs[i]; } }
+                        if (ok) { for (int j = 0; j < pn; j++) { int ev2; if (placed[j] >= 0) ev2 = placed[j]; else { ev2 = Nd(0); nv[ev2] = 0; } Nc(c, ev2); } }
+                        else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                    else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                  else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
             } else break;
@@ -5059,7 +5080,21 @@ static int prim(void) {
                     int tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
                 } else break;
-            } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; if (tt[tk] == VR && tt[tk + 1] == CL) { tk += 2; } /* 标注参数: (expr)(x: 1) 同主调用 (接入 2026-08-28) */ Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c;
+            } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4);
+                int nargs[256]; int argpos[256]; int an = 0; /* 真具名参数: 收集后重排 (同主调用) */
+                while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } int ev = expr(); if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
+                if (tt[tk] == KK) tk++;
+                { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
+                  if (has_n && nt[callee] == 1) { int fi = fn_param_find((char*)(nn + callee)); int pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
+                    if (pn > 0) { int placed[256]; for (int i = 0; i < 256; i++) placed[i] = -1; int ok = 1;
+                        for (int i = 0; i < an && ok; i++) { int p = argpos[i];
+                            if (p >= 0) { if (p >= pn || placed[p] >= 0) { ok = 0; break; } placed[p] = nargs[i]; }
+                            else { int q = 0; while (q < pn && placed[q] >= 0) q++; if (q >= pn) { ok = 0; break; } placed[q] = nargs[i]; } }
+                        if (ok) { for (int j = 0; j < pn; j++) { int ev2; if (placed[j] >= 0) ev2 = placed[j]; else { ev2 = Nd(0); nv[ev2] = 0; } Nc(c, ev2); } }
+                        else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                    else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                  else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                Nc(c, n); n = c;
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); math21/step5 time 同 L4233 */
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
             } else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
@@ -10302,6 +10337,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         }
         if (fn_ok) {
             int tfi = func_find((char*)(nn + fdef)); /* register return type BEFORE parsing params */
+            fn_param_begin((char*)(nn + fdef)); /* 接入 2026-08-28 真具名参数: 注册参数名收集 (清空重收) */
             if (fn_is_static) fn_static_mark((char*)(nn + fdef)); else fn_static_unmark((char*)(nn + fdef)); /* fix 2026-08-15: 非 static 定义覆盖同名 static 标记 */
             func_tbl[tfi].ret_si = fn_ret_si;
             fn_ret_si_map[tfi] = fn_ret_si; /* survives gen_code's func_n=0 reset */
@@ -10411,8 +10447,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 else va_home = (pr < 4) ? 24 + 8 * pr : 56 + 8 * (pr - 4);
                 fn_va_put((char*)(nn + fdef), va_home);
             }
-            if (tt[tk] == SK) { parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
+            if (tt[tk] == SK) { fn_param_end(); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
+            fn_param_end(); /* 接入 2026-08-28 真具名参数: 参数收集完成复位 (防函数体 var_param 误收集) */
             if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* 声明尾真实 __attribute__((format(...))) 跳过 (空宏后 __attribute__ 是 tt=SK 的「分号」, 不能跳 — 否则原型判定丢失) */
             if (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 if (tt[tk] == KK) tk++;

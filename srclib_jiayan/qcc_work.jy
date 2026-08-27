@@ -2573,6 +2573,12 @@ __attribute__((unused))
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     返 vars[vcnt++].rsp_off;
 }
+/* 接入 2026-08-28 真具名参数: 函数参数名表 (名-keyed, 同 fn_ret_name_map 模式), var_param 收集, 调用处重排 (定义须在 var_param 前) */
+静 构 { 字 fname[64]; 字 pnames[32][64]; 整 pn; } fn_param_map[2048]; 静 整 fn_param_map_n; 静 整 cur_fn_pmap = -1; /* 当前解析函数在参数名表的索引 (-1=非函数参数上下文) */
+静 整 fn_param_find(常 字 *fname) { 遍 (整 i = 0; i < fn_param_map_n; i++) 若 (!strcmp(fn_param_map[i].fname, fname)) 返 i; 返 -1; }
+静 整 fn_param_pos(常 字 *fname, 常 字 *pname) { 整 fi = fn_param_find(fname); 若 (fi < 0) 返 -1; 遍 (整 i = 0; i < fn_param_map[fi].pn; i++) 若 (!strcmp(fn_param_map[fi].pnames[i], pname)) 返 i; 返 -1; }
+静 空 fn_param_begin(常 字 *fname) { 整 fi = fn_param_find(fname); 若 (fi < 0) { 若 (fn_param_map_n >= 2048) 返; fi = fn_param_map_n++; strcpy(fn_param_map[fi].fname, fname); } fn_param_map[fi].pn = 0; cur_fn_pmap = fi; } /* 函数定义/原型: 清空重收集 */
+静 空 fn_param_end(空) { cur_fn_pmap = -1; }
 静 整 var_param(常 字 *n, 整 slot, 整 pesz, 整 esz, 整 stidx, 整 is_dbl, 整 is_ll) { /* is_ll: long long param -> 8-byte slot (fix 2026-08-05) */
     
     /* always allocate a fresh frame slot; incoming value copied in function prologue.
@@ -2616,6 +2622,7 @@ __attribute__((unused))
         /* 5th+ arg on stack: [rbp + 56 + 8*(slot-4)] (real ABI: arg5 at [rsp+32] at the call; rbp = call_rsp-24 after 2 pushes) */
         vars[vcnt].preg = -1; vars[vcnt].pstk = 1; vars[vcnt].pdisp = 56 + 8 * (slot - 4);
     }
+    若 (cur_fn_pmap >= 0 && slot >= 0 && slot < 32) { strcpy(fn_param_map[cur_fn_pmap].pnames[slot], n); 若 (slot + 1 > fn_param_map[cur_fn_pmap].pn) fn_param_map[cur_fn_pmap].pn = slot + 1; } /* 接入 2026-08-28: 收集参数名 (真具名参数重排用) */
     返 vars[vcnt++].rsp_off;
 }
 静 字 cur_fn_name[64]; /* fwd for debug (defined later) */
@@ -4913,7 +4920,21 @@ __attribute__((unused))
                 整 m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } 否 若 (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                整 callee = n;  tk++; 整 c = Nd(4); 循环 (tt[tk] != KK && tt[tk] != EK) { 若 (tt[tk] == VR && !strcmp(tn[tk], "或返"))断; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ 整 t0 = tk; 若 (tt[tk] == CK) tk++; 若 (tt[tk] == VR && tt[tk + 1] == CL) { tk += 2; } /* 接入 2026-08-28 标注参数: f(x: 1, y: 2) — 跳过 名: 前缀 (顺序须与签名一致, 蓝图 §七 具名参数简化) */ Nc(c, expr()); 若 (tk == t0) 断; } 若 (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                整 callee = n;  tk++; 整 c = Nd(4);
+                整 nargs[256]; 整 argpos[256]; 整 an = 0; /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
+                循环 (tt[tk] != KK && tt[tk] != EK) { 若 (tt[tk] == VR && !strcmp(tn[tk], "或返"))断; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ 整 t0 = tk; 若 (tt[tk] == CK) tk++; 整 pos = -1; 若 (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((字*)(nn + callee), tn[tk]) : -1; tk += 2; } /* 标注/具名: 名: 前缀 → 查签名位置 */ 整 ev = expr(); 若 (tk == t0) 断; 若 (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
+                若 (tt[tk] == KK) tk++;
+                { 整 has_n = 0; 遍 (整 i = 0; i < an; i++) 若 (argpos[i] >= 0) { has_n = 1; 断; }
+                  若 (has_n && nt[callee] == 1) { 整 fi = fn_param_find((字*)(nn + callee)); 整 pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
+                    若 (pn > 0) { 整 placed[256]; 遍 (整 i = 0; i < 256; i++) placed[i] = -1; 整 ok = 1;
+                        遍 (整 i = 0; i < an && ok; i++) { 整 p = argpos[i];
+                            若 (p >= 0) { 若 (p >= pn || placed[p] >= 0) { ok = 0; 断; } placed[p] = nargs[i]; }
+                            否 { 整 q = 0; 循环 (q < pn && placed[q] >= 0) q++; 若 (q >= pn) { ok = 0; 断; } placed[q] = nargs[i]; } }
+                        若 (ok) { 遍 (整 j = 0; j < pn; j++) { 整 ev2; 若 (placed[j] >= 0) ev2 = placed[j]; 否 { ev2 = Nd(0); nv[ev2] = 0; } Nc(c, ev2); } }
+                        否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                    否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                  否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 若 (nt[callee] == 1 && (fn_dbl_get_ret((字*)(nn + callee)) || fn_math_iat((字*)(nn + callee)) >= 0 || ext_fn_ret((字*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
                 若 (nt[callee] == 1 && (fn_ll_get_ret((字*)(nn + callee)) || ext_fn_ret((字*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
             } 否 断;
@@ -5059,7 +5080,21 @@ __attribute__((unused))
                     整 tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
                 } 否 断;
-            } 否 若 (tt[tk] == OK) { 整 callee = n; tk++; 整 c = Nd(4); 循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; 若 (tt[tk] == VR && tt[tk + 1] == CL) { tk += 2; } /* 标注参数: (expr)(x: 1) 同主调用 (接入 2026-08-28) */ Nc(c, expr()); 若 (tk == t0) 断; } 若 (tt[tk] == KK) tk++; Nc(c, n); n = c;
+            } 否 若 (tt[tk] == OK) { 整 callee = n; tk++; 整 c = Nd(4);
+                整 nargs[256]; 整 argpos[256]; 整 an = 0; /* 真具名参数: 收集后重排 (同主调用) */
+                循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; 整 pos = -1; 若 (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((字*)(nn + callee), tn[tk]) : -1; tk += 2; } 整 ev = expr(); 若 (tk == t0) 断; 若 (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
+                若 (tt[tk] == KK) tk++;
+                { 整 has_n = 0; 遍 (整 i = 0; i < an; i++) 若 (argpos[i] >= 0) { has_n = 1; 断; }
+                  若 (has_n && nt[callee] == 1) { 整 fi = fn_param_find((字*)(nn + callee)); 整 pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
+                    若 (pn > 0) { 整 placed[256]; 遍 (整 i = 0; i < 256; i++) placed[i] = -1; 整 ok = 1;
+                        遍 (整 i = 0; i < an && ok; i++) { 整 p = argpos[i];
+                            若 (p >= 0) { 若 (p >= pn || placed[p] >= 0) { ok = 0; 断; } placed[p] = nargs[i]; }
+                            否 { 整 q = 0; 循环 (q < pn && placed[q] >= 0) q++; 若 (q >= pn) { ok = 0; 断; } placed[q] = nargs[i]; } }
+                        若 (ok) { 遍 (整 j = 0; j < pn; j++) { 整 ev2; 若 (placed[j] >= 0) ev2 = placed[j]; 否 { ev2 = Nd(0); nv[ev2] = 0; } Nc(c, ev2); } }
+                        否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                    否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                  否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
+                Nc(c, n); n = c;
                 若 (nt[callee] == 1 && (fn_dbl_get_ret((字*)(nn + callee)) || fn_math_iat((字*)(nn + callee)) >= 0 || ext_fn_ret((字*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: double 返回调用 parse 时标记 (镜像 2737); math21/step5 time 同 L4233 */
                 若 (nt[callee] == 1 && (fn_ll_get_ret((字*)(nn + callee)) || ext_fn_ret((字*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll */
             } 否 若 (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
@@ -10302,6 +10337,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         }
         若 (fn_ok) {
             整 tfi = func_find((字*)(nn + fdef)); /* register return type BEFORE parsing params */
+            fn_param_begin((字*)(nn + fdef)); /* 接入 2026-08-28 真具名参数: 注册参数名收集 (清空重收) */
             若 (fn_is_static) fn_static_mark((字*)(nn + fdef)); 否 fn_static_unmark((字*)(nn + fdef)); /* fix 2026-08-15: 非 static 定义覆盖同名 static 标记 */
             func_tbl[tfi].ret_si = fn_ret_si;
             fn_ret_si_map[tfi] = fn_ret_si; /* survives gen_code's func_n=0 reset */
@@ -10411,8 +10447,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 否 va_home = (pr < 4) ? 24 + 8 * pr : 56 + 8 * (pr - 4);
                 fn_va_put((字*)(nn + fdef), va_home);
             }
-            若 (tt[tk] == SK) { parse_base = 0; tk++; 续; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
+            若 (tt[tk] == SK) { fn_param_end(); parse_base = 0; tk++; 续; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
+            fn_param_end(); /* 接入 2026-08-28 真具名参数: 参数收集完成复位 (防函数体 var_param 误收集) */
             若 (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; 若 (tt[tk] == OK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == OK) d++; 否 若 (tt[tk] == KK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } } /* 声明尾真实 __attribute__((format(...))) 跳过 (空宏后 __attribute__ 是 tt=SK 的「分号」, 不能跳 — 否则原型判定丢失) */
             若 (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
                 若 (tt[tk] == KK) tk++;
