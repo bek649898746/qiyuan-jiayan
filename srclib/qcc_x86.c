@@ -3963,6 +3963,13 @@ static void lex(const char *s) {
             /* 接入 2026-08-28 完全中文化 第3批: 时间函数映射 (msvcrt 导入 ext_fn_names 确认) */
             else if (!strcmp(tn[ti], "取时间")) strcpy(tn[ti], "time");
             else if (!strcmp(tn[ti], "时钟")) strcpy(tn[ti], "clock");
+            /* 接入 2026-08-28 完全中文化 第4批: 时间/字符串/数学扩展映射 (ext_fn_names 确认, mktime 因 struct tm 支持问题跳过) */
+            else if (!strcmp(tn[ti], "求时间差")) strcpy(tn[ti], "difftime");
+            else if (!strcmp(tn[ti], "取本地时间")) strcpy(tn[ti], "localtime");
+            else if (!strcmp(tn[ti], "取格林威治")) strcpy(tn[ti], "gmtime");
+            else if (!strcmp(tn[ti], "绝对长整")) strcpy(tn[ti], "labs");
+            else if (!strcmp(tn[ti], "找字符集")) strcpy(tn[ti], "strpbrk");
+            else if (!strcmp(tn[ti], "转换浮点串")) strcpy(tn[ti], "strtod");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
