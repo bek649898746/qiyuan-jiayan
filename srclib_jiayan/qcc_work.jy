@@ -7106,7 +7106,8 @@ __attribute__((unused))
                         整 nk0 = tk; /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 字段循环防死循环守卫 (未识别 token 强制 +1) */
                         整 tdf_si = -1; /* fix 2026-08-19: typedef struct 字段的 struct 类型索引 (匿名 typedef struct 内 FILETIME 成员) — 原只 fnptr 设大小 → WIN32_FIND_DATAW 的 FILETIME 记 4B → cFileName 偏移 32 错 → FindFirstFileW 数据错位 */
                         整 ftkw = 0; /* fix 2026-08-19: 本次迭代是否消费过类型关键字 (typedef 匿名 struct 同 5402 撞名根因) */
-                        若 (tt[tk] == VK) { 整 lc2 = 0; ftkw = 1; fdflt = 4; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) fdflt = 8; 否 若 (!strcmp(tn[tk], "long")) lc2++; 否 若 (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } 若 (lc2 >= 2) fdflt = 8; 否 若 (lc2 == 1) fdflt = 4; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
+                        整 tf_dbl = 0; /* fix 2026-08-27 特性#4: 匿名 typedef struct 普通字段 double 标记 (跨 VK 处理) */
+                        若 (tt[tk] == VK) { 整 lc2 = 0; ftkw = 1; fdflt = 4; tf_dbl = 0; 循环 (tt[tk] == VK) { /* fix 2026-08-22 #36: typedef 匿名 struct 字段 unsigned long long 原只消费一个 VK → long long 漏掉 → 字段算 4 字节 (blk_SHA_CTX.size 4B → sha1 块偏移错 → 长对象哈希全错) */ 若 (!strcmp(tn[tk], "unsigned")) funs = 1; 否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fdflt = 1; 否 若 (!strcmp(tn[tk], "double")) { fdflt = 8; tf_dbl = 1; } 否 若 (!strcmp(tn[tk], "long")) lc2++; 否 若 (!strcmp(tn[tk], "short")) fdflt = 2; tk++; } 若 (lc2 >= 2) fdflt = 8; 否 若 (lc2 == 1) fdflt = 4; } /* reset default per field (fix 2026-08-03: fdflt leaked from a char field into the next int field) */
                         循环 (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         若 (tt[tk] == EN) { ftkw = 1; tk++; 若 (tt[tk] == VR) tk++; 若 (tt[tk] == FK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == UK) tk++; } /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 的 enum 字段 `enum {fir,iir} type;` — 原无 EN 分支 → token 不消费 → 死循环 (dither.c filter_t) */
                         若 (tt[tk] == ST) { /* nested struct field */
@@ -7209,6 +7210,8 @@ __attribute__((unused))
                         若 (tt[tk] == VR) {
                             字 fn[64]; strcpy(fn, tn[tk]); tk++;
                             整 fsz = fdflt, first = 1, dims = 0; /* fdflt = 1/4/8 from the VK type (fix 2026-08-03: was fixed 4 → char name[128] became 512) */
+                            整 fdbl = 0; /* fix 2026-08-27 特性#4: 匿名 typedef struct 普通 double 字段标记 (Circle.r — 原缺 → 箭头链 c->r 读 0) */
+                            若 (tf_dbl) fdbl = 1; /* fix 2026-08-27: 跨迭代 double 标记传递 */
                             整 bitw = 0;
                             若 (tt[tk] == CL) { tk++; 若 (tt[tk] == NK) { bitw = tv[tk]; tk++; } } /* : N bit-field (fix 2026-08-05: typedef anon struct loop) */
                             若 (bitw > 0) { st_field_bit(si, fn, fdflt, fdflt, bitw, funs); funs = 0; }
@@ -7217,6 +7220,7 @@ __attribute__((unused))
                             循环 (tt[tk] == LB) { tk++; 若 (tt[tk] == NK) { 若 (dims == 0) first = tv[tk]; dims++; fsz *= tv[tk]; tk++; } 否 若 (tt[tk] == VR) { 整 evc = e_lookup(tn[tk]); 若 (evc == 0x80000000) evc = macro_find(tn[tk]); 若 (evc != 0x80000000 && evc != -1) { 若 (dims == 0) first = evc; dims++; fsz *= evc; } tk++; } 否 { dims++; 整 bd = 1; 循环 (tk < TS && bd > 0) { 若 (tt[tk] == LB) bd++; 否 若 (tt[tk] == RB) { bd--; 若 (bd == 0) { tk++; 断; } } tk++; } } 若 (tt[tk] == PK || tt[tk] == MK) { 整 op = tt[tk]; tk++; 若 (tt[tk] == NK) { 若 (op == PK) fsz += tv[tk]; 否 fsz -= tv[tk]; tk++; } } 若 (tt[tk] == RB) tk++; /* fix 2026-08-13 Phase3: 复杂维度跳过 + NK/VR 后消费 ] */ }
                             若 (tdf_si >= 0) st_cur_struct_align = stypes[tdf_si].algn; /* fix 2026-08-19: struct 成员按自身对齐 */
                             st_field_sz_r(si, fn, fsz, dims >= 1 ? fsz / first : fsz); /* frow = ELEMENT size (fix 2026-08-03: was fsz, so char name[128] scaled indices by 128) */
+                            若 (fdbl) st_field_dbl(si, fn); /* fix 2026-08-27 特性#4: 匿名 typedef struct 普通 double 字段 (Circle.r — 箭头链 c->r 原读 0) */
                             stypes[si].fels[stypes[si].fn - 1] = fel; /* fix 2026-08-07 */
                             若 (tdf_si >= 0) st_field_ty(si, fn, tdf_si); /* fix 2026-08-19: typedef struct 成员类型 (FILETIME 等 → 嵌套链解析) */
                             若 (ffnptr) st_field_ty(si, fn, -2); /* typedef'd fnptr 字段标记 (fix 2026-08-16) */
@@ -12993,7 +12997,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; /* 仅双指针字段 (fix 2026-08-22 t41b) */
                         }
                     }
-                    否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); 若 (st_field_is_ptr(s, fn)) { 整 pel = st_field_pel(s, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; } } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址; fix 2026-08-19: 指针字段解引用后设 cg_mem_frow=pel — is_array_idx 排除指针字段后值读取路径需给 case-14 提供元素大小 → s->next_out[i] 按 1 缩放 (原残留 frow=8 → 8 字节步长写坏结构体) */ }
+                    否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { 若 (st_field_is_dbl_si(s, fn)) asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); /* fix 2026-08-27 特性#4: 简单箭头 double 字段读取 (c->r 原只 DEREF64 rax → xmm0 未设 → 0.0) */ ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); 若 (st_field_is_ptr(s, fn)) { 整 pel = st_field_pel(s, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; } } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址; fix 2026-08-19: 指针字段解引用后设 cg_mem_frow=pel — is_array_idx 排除指针字段后值读取路径需给 case-14 提供元素大小 → s->next_out[i] 按 1 缩放 (原残留 frow=8 → 8 字节步长写坏结构体) */ }
                     否 若 (afsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field char */
 否 若 (afsz == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field short */
                     否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: ptr->field dword + bit-field */
