@@ -4245,6 +4245,31 @@ __attribute__((unused))
 静 整 const_expr_eval(整 *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
 静 整 prim(空) {
+        若 (tt[tk] == VR && !strcmp(tn[tk], "协程")) { /* 接入 2026-08-27 协程初始化 (表达式层, 同生成器模式): 协程(c, fn, ctx) → coro_init(&c, fn, ctx); — 用户定义 coro_init/coro_step (确定性 stackless 状态机协程) */
+        tk++; /* 协程 */
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 e_c = expr(); /* 协程对象 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_fn = expr(); /* 协程函数 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_ctx = expr(); /* 上下文 */
+        若 (tt[tk] == KK) tk++; /* ) */
+        整 call = Nd(4);
+        { 整 addr = Nd(11); Nc(addr, e_c); Nc(call, addr); } /* &c */
+        Nc(call, e_fn); Nc(call, e_ctx);
+        { 整 fn = Nd(1); memcpy((字*)(nn + fn), "coro_init", 10); Nc(call, fn); } /* callee 最后 */
+        返 call;
+    }
+        若 (tt[tk] == VR && !strcmp(tn[tk], "步进")) { /* 接入 2026-08-27 协程步进 (表达式层): 步进(c) → coro_step(&c); — 返回 1 运行中 0 完成 */
+        tk++; /* 步进 */
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 e_c = expr(); /* 协程对象 */
+        若 (tt[tk] == KK) tk++; /* ) */
+        整 call = Nd(4);
+        { 整 addr = Nd(11); Nc(addr, e_c); Nc(call, addr); } /* &c */
+        { 整 fn = Nd(1); memcpy((字*)(nn + fn), "coro_step", 10); Nc(call, fn); } /* callee 最后 */
+        返 call;
+    }
         若 (tt[tk] == VR && !strcmp(tn[tk], "生成")) { /* 接入 2026-08-27 生成器 (表达式层, 函数式): 生成(g, 0, 5) → gen_init(&g, 0, 5); — 用户定义 gen_init/gen_next (惰性 range 迭代器) */
         tk++; /* 生成 */
         若 (tt[tk] == OK) tk++; /* ( */
@@ -5848,7 +5873,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
