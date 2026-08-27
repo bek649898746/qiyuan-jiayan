@@ -6262,22 +6262,34 @@ static int stmt(void) {
         return n;
     }
     if (tt[tk] == JK) { /* for(init;cond;step)body �?{init; while(cond){body;step;}} */
-        if (tt[tk + 1] == VR && tt[tk + 2] == VR && !strcmp(tn[tk + 2], "于")) { /* 接入 2026-08-27 for-range: 遍 x 于 arr {body} → { _i=0; while(_i<len){x=arr[_i];body;_i++;} } (v1: 数组) */
+        if (tt[tk + 1] == VR && tt[tk + 2] == VR && !strcmp(tn[tk + 2], "于")) { /* 接入 2026-08-27 for-range: 遍 x 于 arr {body} / 遍 x 于 sl {body}(切片) → { _i=0; while(_i<len){x=arr[_i]或sl.data[_i];body;_i++;} } */
             tk++; /* for */
             char rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代变量 */
             tk++; /* 于 */
-            int arrn = expr(); /* 数组表达式 */
-            char *avn = NULL; int arr_len = -1;
-            if (arrn >= 0 && nt[arrn] == 1) { avn = (char*)(nn + arrn); arr_len = var_arrsz(avn); }
-            if (!avn || arr_len <= 0) { fprintf(stderr, "[ERR] for-range 需要数组: 遍 x 于 arr\n"); exit(1); }
+            int arrn = expr(); /* 数组/切片表达式 */
+            char *avn = NULL; int arr_len = -1; int slice_si = -1;
+            if (arrn >= 0 && nt[arrn] == 1) {
+                avn = (char*)(nn + arrn);
+                arr_len = var_arrsz(avn);
+                if (arr_len <= 0) { int si = var_stidx(avn); if (si >= 0 && st_field_size(stypes[si].name, "len") > 0 && st_field_is_ptr(si, "data")) slice_si = si; }
+            }
+            if (!avn || (arr_len <= 0 && slice_si < 0)) { fprintf(stderr, "[ERR] for-range 需要数组或切片: 遍 x 于 arr/sl\n"); exit(1); }
             static int rng_seq = 0; char iname[32]; sprintf(iname, "_r_%d_", rng_seq++);
             var_offset(iname);
             int blk2 = Nd(5);
             { int d_it = Nd(7); memcpy((char*)(nn + d_it), iname, 32); { int z = Nd(0); nv[z] = 0; Nc(d_it, z); } Nc(blk2, d_it); }
             int wh2 = Nd(9);
-            { int cmp = Nd(2); nv[cmp] = T_LK; { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(cmp, v_it); } { int n_len = Nd(0); nv[n_len] = arr_len; Nc(cmp, n_len); } Nc(wh2, cmp); }
+            { int cmp = Nd(2); nv[cmp] = T_LK; { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(cmp, v_it); }
+              if (slice_si >= 0) { int mc = Nd(15); { int v_sl = Nd(1); memcpy((char*)(nn + v_sl), avn, 32); Nc(mc, v_sl); } nv[mc] = 0; memcpy((char*)(nn + mc), "len", 4); Nc(cmp, mc); } /* _i < sl.len */
+              else { int n_len = Nd(0); nv[n_len] = arr_len; Nc(cmp, n_len); }
+              Nc(wh2, cmp); }
             int bd2 = Nd(5);
-            { int assign = Nd(10); { int v_x = Nd(1); memcpy((char*)(nn + v_x), rvn, 32); Nc(assign, v_x); } { int idx = Nd(14); { int v_arr = Nd(1); memcpy((char*)(nn + v_arr), avn, 32); Nc(idx, v_arr); } { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(idx, v_it); } Nc(assign, idx); } Nc(bd2, assign); }
+            { int assign = Nd(10); { int v_x = Nd(1); memcpy((char*)(nn + v_x), rvn, 32); Nc(assign, v_x); }
+              { int idx = Nd(14);
+                if (slice_si >= 0) { int mc2 = Nd(15); { int v_sl = Nd(1); memcpy((char*)(nn + v_sl), avn, 32); Nc(mc2, v_sl); } nv[mc2] = 0; memcpy((char*)(nn + mc2), "data", 5); Nc(idx, mc2); } /* sl.data[_i] */
+                else { int v_arr = Nd(1); memcpy((char*)(nn + v_arr), avn, 32); Nc(idx, v_arr); }
+                { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(idx, v_it); } Nc(assign, idx); }
+              Nc(bd2, assign); }
             { int body2 = stmt(); Nc(bd2, body2); }
             { int cl = new_label(); int setl = Nd(20); nv[setl] = cl + 1; Nc(bd2, setl); nv[wh2] = cl + 1; } /* continue → step (照标准 for L6334) */
             { int step2 = Nd(23); nv[step2] = 0; { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(step2, v_it); } Nc(bd2, step2); }
