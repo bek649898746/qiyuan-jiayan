@@ -5970,7 +5970,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -7741,6 +7741,63 @@ static int stmt(void) {
         { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
           int pl = Nd(2); nv[pl] = PK; Nc(pl, v_i); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
           int asg = Nd(10); Nc(asg, v_i); Nc(asg, pl); Nc(bd, asg); } /* __sl++; */
+        { int cl = new_label(); int setl = Nd(20); nv[setl] = cl + 1; Nc(bd, setl); nv[wh] = cl + 1; }
+        Nc(wh, bd);
+        Nc(blk, wh);
+        return blk;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "转置")) { /* 接入 2026-08-28 矩阵转置 (transpose): 转置 dst, src, rows, cols; → { __rr=rows; __cc=cols; __tr=0; while(__tr<__rr){ __tc=0; while(__tc<__cc){ dst[__tc*__rr+__tr]=src[__tr][__tc]; __tc++; } __tr++; } } — dst 是 cols×rows 平铺视图, src 是 rows×cols 二维; 复用展平两级下标 */
+        tk++; /* 转置 */
+        char dstn[64]; strcpy(dstn, tn[tk]); tk++; /* 目标 (cols×rows) */
+        if (tt[tk] == CK) tk++; /* , */
+        char srcn[64]; strcpy(srcn, tn[tk]); tk++; /* 源 (rows×cols) */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_r = expr(); /* 行数 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_c = expr(); /* 列数 */
+        if (tt[tk] == SK) tk++; /* ; */
+        static int tp_seq = 0; char rname[64]; sprintf(rname, "__tr_%d_", tp_seq++);
+        static int tp_seq2 = 0; char cname[64]; sprintf(cname, "__tc_%d_", tp_seq2++);
+        static int tp_seq3 = 0; char rrname[64]; sprintf(rrname, "__rr_%d_", tp_seq3++);
+        static int tp_seq4 = 0; char ccname[64]; sprintf(ccname, "__cc_%d_", tp_seq4++);
+        var_offset(rname); var_offset(cname); var_offset(rrname); var_offset(ccname);
+        int blk = Nd(5);
+        int v_d = Nd(1); memcpy((char*)(nn + v_d), dstn, 32);
+        int v_s = Nd(1); memcpy((char*)(nn + v_s), srcn, 32);
+        { int d = Nd(7); memcpy((char*)(nn + d), rrname, 32); Nc(d, e_r); Nc(blk, d); } /* int __rr = rows; */
+        { int d = Nd(7); memcpy((char*)(nn + d), ccname, 32); Nc(d, e_c); Nc(blk, d); } /* int __cc = cols; */
+        { int d = Nd(7); memcpy((char*)(nn + d), rname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __tr = 0; */
+        int wh = Nd(9);
+        { int v_r = Nd(1); memcpy((char*)(nn + v_r), rname, 32);
+          int v_rr = Nd(1); memcpy((char*)(nn + v_rr), rrname, 32);
+          int cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_r); Nc(cmp, v_rr); Nc(wh, cmp); } /* while (__tr < __rr) */
+        int bd = Nd(5);
+        { int d = Nd(7); memcpy((char*)(nn + d), cname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(bd, d); } /* int __tc = 0; */
+        int wh2 = Nd(9);
+        { int v_c = Nd(1); memcpy((char*)(nn + v_c), cname, 32);
+          int v_cc = Nd(1); memcpy((char*)(nn + v_cc), ccname, 32);
+          int cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_c); Nc(cmp, v_cc); Nc(wh2, cmp); } /* while (__tc < __cc) */
+        int bd2 = Nd(5);
+        { int v_c = Nd(1); memcpy((char*)(nn + v_c), cname, 32);
+          int v_rr = Nd(1); memcpy((char*)(nn + v_rr), rrname, 32);
+          int mul = Nd(2); nv[mul] = DK; Nc(mul, v_c); Nc(mul, v_rr); /* __tc*__rr */
+          int v_r = Nd(1); memcpy((char*)(nn + v_r), rname, 32);
+          int add = Nd(2); nv[add] = PK; Nc(add, mul); Nc(add, v_r); /* +__tr */
+          int idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, add); /* dst[__tc*__rr+__tr] */
+          { int v_r2 = Nd(1); memcpy((char*)(nn + v_r2), rname, 32);
+            int idx_r = Nd(14); Nc(idx_r, v_s); Nc(idx_r, v_r2); /* src[__tr] */
+            { int v_c2 = Nd(1); memcpy((char*)(nn + v_c2), cname, 32);
+              int idx_s = Nd(14); Nc(idx_s, idx_r); Nc(idx_s, v_c2); /* src[__tr][__tc] */
+              int asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_s); Nc(bd2, asg); } } }
+        { int v_c = Nd(1); memcpy((char*)(nn + v_c), cname, 32);
+          int pl = Nd(2); nv[pl] = PK; Nc(pl, v_c); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+          int asg = Nd(10); Nc(asg, v_c); Nc(asg, pl); Nc(bd2, asg); } /* __tc++; */
+        { int cl = new_label(); int setl = Nd(20); nv[setl] = cl + 1; Nc(bd2, setl); nv[wh2] = cl + 1; }
+        Nc(wh2, bd2);
+        Nc(bd, wh2);
+        { int v_r = Nd(1); memcpy((char*)(nn + v_r), rname, 32);
+          int pl = Nd(2); nv[pl] = PK; Nc(pl, v_r); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+          int asg = Nd(10); Nc(asg, v_r); Nc(asg, pl); Nc(bd, asg); } /* __tr++; */
         { int cl = new_label(); int setl = Nd(20); nv[setl] = cl + 1; Nc(bd, setl); nv[wh] = cl + 1; }
         Nc(wh, bd);
         Nc(blk, wh);
