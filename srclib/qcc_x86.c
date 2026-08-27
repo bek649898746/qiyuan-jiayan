@@ -3893,6 +3893,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "断")) strcpy(tn[ti], "break");
             else if (!strcmp(tn[ti], "续")) strcpy(tn[ti], "continue");
             else if (!strcmp(tn[ti], "继续")) strcpy(tn[ti], "continue"); /* fix 2026-08-27: 两字继续未映射 → 当标识符报"未定义函数" (缺啥补啥) */
+            else if (!strcmp(tn[ti], "择收")) strcpy(tn[ti], "select"); /* 接入 2026-08-27 select: 多路条件分派 (Go select 简化) */
             else if (!strcmp(tn[ti], "延迟")) strcpy(tn[ti], "defer"); /* 接入 2026-08-27: 甲言 defer — Go 式函数退出延迟执行 (LIFO), parse 收集到函数级 defer 列表, epi_label 处逆序执行 */
             else if (!strcmp(tn[ti], "择")) strcpy(tn[ti], "switch");
             else if (!strcmp(tn[ti], "例")) strcpy(tn[ti], "case");
@@ -6458,6 +6459,43 @@ static int stmt(void) {
         int ds = stmt(); /* 延迟的语句 */
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ds;
         return Nd(5); /* defer 语句本身不生成代码 (函数 epilogue 处执行) */
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "select")) { /* 接入 2026-08-27 select (择收): 多路条件分派 — 择收(e1,e2){例0:b0;例1:b1;缺:bd;} → if(e1)b0 else if(e2)b1 else bd (v1: 条件分派, Go select 简化) */
+        tk++; /* select */
+        int conds[16]; int cn = 0;
+        if (tt[tk] == OK) tk++; /* ( */
+        while (tt[tk] != KK && tt[tk] != EK && cn < 16) { conds[cn++] = expr(); if (tt[tk] == CK) tk++; } /* 条件用 expr() 非 expr_comma — 逗号分隔条件 (fix 2026-08-27: expr_comma 把逗号当逗号表达式吃掉所有条件) */
+        if (tt[tk] == KK) tk++; /* ) */
+        if (tt[tk] == FK) tk++; /* { */
+        int bodies[16]; int bn = 0; int def_body = -1;
+        for (int bi = 0; bi < 16; bi++) bodies[bi] = -1;
+        while (tt[tk] != UK && tt[tk] != EK) {
+            if (tt[tk] == CA) { /* 例 N: */
+                tk++;
+                int idx = 0;
+                if (tt[tk] == NK) { idx = tv[tk]; tk++; }
+                if (tt[tk] == CL) tk++; /* : */
+                int b = Nd(5);
+                while (tt[tk] != CA && tt[tk] != DF && tt[tk] != UK && tt[tk] != EK) { if (tt[tk] == SK) { tk++; continue; } Nc(b, stmt()); }
+                if (idx >= 0 && idx < 16) { bodies[idx] = b; bn++; }
+            } else if (tt[tk] == DF) { /* 缺: */
+                tk++;
+                if (tt[tk] == CL) tk++;
+                def_body = Nd(5);
+                while (tt[tk] != CA && tt[tk] != DF && tt[tk] != UK && tt[tk] != EK) { if (tt[tk] == SK) { tk++; continue; } Nc(def_body, stmt()); }
+            } else { tk++; }
+        }
+        if (tt[tk] == UK) tk++; /* } */
+        int else_node = def_body;
+        for (int i = cn - 1; i >= 0; i--) {
+            int ifn = Nd(8);
+            Nc(ifn, conds[i]);
+            int tb = (i < bn && bodies[i] >= 0) ? bodies[i] : Nd(5);
+            Nc(ifn, tb);
+            if (else_node >= 0) n2[ifn] = else_node;
+            else_node = ifn;
+        }
+        return else_node;
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
