@@ -5970,7 +5970,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -7801,6 +7801,49 @@ static int stmt(void) {
         { int cl = new_label(); int setl = Nd(20); nv[setl] = cl + 1; Nc(bd, setl); nv[wh] = cl + 1; }
         Nc(wh, bd);
         Nc(blk, wh);
+        return blk;
+    }
+    if (tt[tk] == VR && (!strcmp(tn[tk], "峰值") || !strcmp(tn[tk], "谷值"))) { /* 接入 2026-08-28 峰值/谷值 (argmax/argmin): 峰值 idx, arr, n; → { idx=0; __pk=0; __pi=1; while(__pi<n){ if(arr[__pi] > arr[__pk]){ __pk=__pi; } __pi++; } idx=__pk; } — 返回极值下标, 复用最大/最小比较模式 */
+        int is_max = !strcmp(tn[tk], "峰值");
+        tk++; /* 峰值/谷值 */
+        char idxn[64]; strcpy(idxn, tn[tk]); tk++; /* 下标变量 */
+        if (tt[tk] == CK) tk++; /* , */
+        char arrn[64]; strcpy(arrn, tn[tk]); tk++; /* 数组 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_n = expr(); /* 长度 */
+        if (tt[tk] == SK) tk++; /* ; */
+        static int pk_seq = 0; char kname[64]; sprintf(kname, "__pk_%d_", pk_seq++);
+        static int pk_seq2 = 0; char iname[64]; sprintf(iname, "__pi_%d_", pk_seq2++);
+        var_offset(kname); var_offset(iname);
+        int blk = Nd(5);
+        int v_ix = Nd(1); memcpy((char*)(nn + v_ix), idxn, 32); /* 用户下标变量 */
+        int v_r = Nd(1); memcpy((char*)(nn + v_r), arrn, 32);
+        { int z = Nd(0); nv[z] = 0; int asg = Nd(10); Nc(asg, v_ix); Nc(asg, z); Nc(blk, asg); } /* idx = 0; */
+        { int d = Nd(7); memcpy((char*)(nn + d), kname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __pk = 0; */
+        { int d = Nd(7); memcpy((char*)(nn + d), iname, 32); { int one = Nd(0); nv[one] = 1; Nc(d, one); } Nc(blk, d); } /* int __pi = 1; */
+        int wh = Nd(9);
+        { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32); int cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_n); Nc(wh, cmp); } /* while (__pi < n) */
+        int bd = Nd(5);
+        { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
+          int idx1 = Nd(14); Nc(idx1, v_r); Nc(idx1, v_i); /* arr[__pi] */
+          { int v_k = Nd(1); memcpy((char*)(nn + v_k), kname, 32);
+            int idxk = Nd(14); Nc(idxk, v_r); Nc(idxk, v_k); /* arr[__pk] */
+            int cmp = Nd(2); nv[cmp] = is_max ? T_GK : T_LK; Nc(cmp, idx1); Nc(cmp, idxk); /* arr[__pi] >/< arr[__pk] */
+            int ifn = Nd(8); Nc(ifn, cmp);
+            int ibd = Nd(5);
+            { int v_k2 = Nd(1); memcpy((char*)(nn + v_k2), kname, 32);
+              int v_i2 = Nd(1); memcpy((char*)(nn + v_i2), iname, 32);
+              int asg = Nd(10); Nc(asg, v_k2); Nc(asg, v_i2); Nc(ibd, asg); } /* __pk = __pi; */
+            Nc(ifn, ibd);
+            Nc(bd, ifn); } }
+        { int v_i2 = Nd(1); memcpy((char*)(nn + v_i2), iname, 32);
+          int pl = Nd(2); nv[pl] = PK; Nc(pl, v_i2); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+          int asg = Nd(10); Nc(asg, v_i2); Nc(asg, pl); Nc(bd, asg); } /* __pi++; */
+        { int cl_p = new_label(); int setl_p = Nd(20); nv[setl_p] = cl_p + 1; Nc(bd, setl_p); nv[wh] = cl_p + 1; }
+        Nc(wh, bd);
+        Nc(blk, wh);
+        { int v_k = Nd(1); memcpy((char*)(nn + v_k), kname, 32);
+          int asg = Nd(10); Nc(asg, v_ix); Nc(asg, v_k); Nc(blk, asg); } /* idx = __pk; */
         return blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "累积")) { /* 接入 2026-08-27 前缀和 (scan): 累积 dst, src, n, acc; → { acc=0; __sc=0; while(__sc<n){ acc = acc+src[__sc]; dst[__sc]=acc; __sc++; } } — 前缀和, acc 须已声明 */
