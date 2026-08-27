@@ -3947,6 +3947,19 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "判字母")) strcpy(tn[ti], "isalpha");
             否 若 (!strcmp(tn[ti], "取字长")) strcpy(tn[ti], "strlen");
             否 若 (!strcmp(tn[ti], "倒序")) strcpy(tn[ti], "strrev");
+            /* 接入 2026-08-28 完全中文化 第2批: 字符串/数学/内存 扩展映射 (lexer 层, 零风险, 全部实测可用) */
+            否 若 (!strcmp(tn[ti], "查字符")) strcpy(tn[ti], "strchr");
+            否 若 (!strcmp(tn[ti], "反向查")) strcpy(tn[ti], "strrchr");
+            否 若 (!strcmp(tn[ti], "拆分")) strcpy(tn[ti], "strtok");
+            否 若 (!strcmp(tn[ti], "拷贝前n")) strcpy(tn[ti], "strncpy");
+            否 若 (!strcmp(tn[ti], "拼前n")) strcpy(tn[ti], "strncat");
+            否 若 (!strcmp(tn[ti], "比前n")) strcpy(tn[ti], "strncmp");
+            否 若 (!strcmp(tn[ti], "取限长")) strcpy(tn[ti], "strnlen");
+            否 若 (!strcmp(tn[ti], "字符串转长整")) strcpy(tn[ti], "strtol");
+            否 若 (!strcmp(tn[ti], "字符串转无符号")) strcpy(tn[ti], "strtoul");
+            否 若 (!strcmp(tn[ti], "四舍五入")) strcpy(tn[ti], "round");
+            否 若 (!strcmp(tn[ti], "截断")) strcpy(tn[ti], "trunc");
+            否 若 (!strcmp(tn[ti], "重分配")) strcpy(tn[ti], "realloc");
             否 若 (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; 续; } /* 审计者 郑启灵 · 种子 828 */
             否 若 (!strcmp(tn[ti], "__FILE__")) { 若 (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             否 若 (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; 续; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
