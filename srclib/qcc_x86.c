@@ -3999,6 +3999,15 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "比较字符串")) strcpy(tn[ti], "strcmp");
             else if (!strcmp(tn[ti], "复制字符串")) strcpy(tn[ti], "strcpy");
             else if (!strcmp(tn[ti], "终止程序")) strcpy(tn[ti], "abort");
+            /* 接入 2026-08-28 完全中文化 第9批: bn 内置文件 IO 映射 (实测可用; 含 feof r10-volatile bug 修复) */
+            else if (!strcmp(tn[ti], "打开文件")) strcpy(tn[ti], "fopen");
+            else if (!strcmp(tn[ti], "读字符")) strcpy(tn[ti], "fgetc");
+            else if (!strcmp(tn[ti], "写字符")) strcpy(tn[ti], "fputc");
+            else if (!strcmp(tn[ti], "定位文件")) strcpy(tn[ti], "fseek");
+            else if (!strcmp(tn[ti], "取文件位置")) strcpy(tn[ti], "ftell");
+            else if (!strcmp(tn[ti], "倒带")) strcpy(tn[ti], "rewind");
+            else if (!strcmp(tn[ti], "判文件结束")) strcpy(tn[ti], "feof");
+            else if (!strcmp(tn[ti], "刷新缓冲")) strcpy(tn[ti], "fflush");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
@@ -12827,10 +12836,11 @@ static void emit_fileio(const char *fname) {
            (fix 2026-08-24 t35t: strbuf_getwholeline 的 feof(句柄) 原走 msvcrt 崩) */
         int lfe0 = new_label(), lfe1 = new_label();
         mov_rr64(10, 1); test_rr(10, 10); jz_rel(-1); patch_label(cp - 4, lfe0, 1);
+        mov_mbrp_reg(scratch_base + 256 - cur_frame_sz, 10); /* 存 handle 到栈 (fix 2026-08-28: r10 是 volatile, SetFilePointer 调用后破坏 → size 查询用垃圾 handle 返 0xFFFFFFFF → feof 恒 0) */
         /* cur */
         mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
         sub_rsp_imm(48);
-        mov_rr64(1, 10); mov_r_imm(2, 0);
+        mov_reg_mbrp(1, scratch_base + 256 - cur_frame_sz); mov_r_imm(2, 0);
         mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
         mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
         mov_ri_ext(9, 1); /* r9 method (mov_r_imm 不支持 r9, fix 2026-08-24 t35t) */ call_iat(5);
@@ -12839,7 +12849,7 @@ static void emit_fileio(const char *fname) {
         /* size */
         mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
         sub_rsp_imm(48);
-        mov_rr64(1, 10); mov_r_imm(2, 0);
+        mov_reg_mbrp(1, scratch_base + 256 - cur_frame_sz); mov_r_imm(2, 0);
         mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
         mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
         mov_ri_ext(9, 2); /* r9 method (mov_r_imm 不支持 r9) */ call_iat(5); /* FILE_END */
@@ -12848,7 +12858,7 @@ static void emit_fileio(const char *fname) {
         /* 恢复 cur */
         mov_rr64(15, 4); asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
         sub_rsp_imm(48);
-        mov_rr64(1, 10);
+        mov_reg_mbrp(1, scratch_base + 256 - cur_frame_sz);
         mov_reg_mbrp(2, scratch_base + 240 - cur_frame_sz);
         mov_ri_ext(8, 0); /* r8 = high = NULL (fix 2026-08-24 t35t: SetFilePointer 4 参数 r8 漏设 → 垃圾指针崩; mov_r_imm 不支持 r8-r15, 用 mov_ri_ext) */
         mov_r_imm(0, 0); mov_mrsp_reg64(32, 0);
