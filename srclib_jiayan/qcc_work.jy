@@ -3599,7 +3599,7 @@ __attribute__((unused))
     若 (n < 0) 返 8;
     整 t = nt[n];
     若 (t == FP) 返 4; /* double literal */
-    若 (t == 0) { 若 (tll[n]) 返 3; 若 (nuns[n]) 返 5; 返 0; } /* int literal */
+    若 (t == 0) { 若 (nll[n]) 返 3; 若 (nuns[n]) 返 5; 返 0; } /* int literal — fix 2026-08-27 特性#5: LL 字面量节点标记是 nll[n] (原 tll[n] 是 lexer token 数组, 恒 0 → 42LL 选成 int) */
     若 (t == 1) {
         字 *vn = (字*)(nn + n);
         若 (var_is_dbl(vn)) 返 4;
@@ -3608,6 +3608,7 @@ __attribute__((unused))
         若 (var_is_char(vn)) 返 1;
         若 (var_is_short(vn)) 返 2;
         若 (var_pesz(vn) > 0) 返 6;   /* pointer */
+        若 (var_arrsz(vn) > 0) 返 6; /* fix 2026-08-27 特性#5: 数组名衰减为指针 (_Generic 匹配 char* 分支) */
         若 (var_stidx(vn) >= 0) 返 7; /* struct var */
         返 0;
     }

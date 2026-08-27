@@ -3599,7 +3599,7 @@ static int expr_type_of(int n) {
     if (n < 0) return 8;
     int t = nt[n];
     if (t == FP) return 4; /* double literal */
-    if (t == 0) { if (tll[n]) return 3; if (nuns[n]) return 5; return 0; } /* int literal */
+    if (t == 0) { if (nll[n]) return 3; if (nuns[n]) return 5; return 0; } /* int literal — fix 2026-08-27 特性#5: LL 字面量节点标记是 nll[n] (原 tll[n] 是 lexer token 数组, 恒 0 → 42LL 选成 int) */
     if (t == 1) {
         char *vn = (char*)(nn + n);
         if (var_is_dbl(vn)) return 4;
@@ -3608,6 +3608,7 @@ static int expr_type_of(int n) {
         if (var_is_char(vn)) return 1;
         if (var_is_short(vn)) return 2;
         if (var_pesz(vn) > 0) return 6;   /* pointer */
+        if (var_arrsz(vn) > 0) return 6; /* fix 2026-08-27 特性#5: 数组名衰减为指针 (_Generic 匹配 char* 分支) */
         if (var_stidx(vn) >= 0) return 7; /* struct var */
         return 0;
     }
