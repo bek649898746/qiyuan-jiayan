@@ -3886,6 +3886,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "构")) strcpy(tn[ti], "struct");
             else if (!strcmp(tn[ti], "联")) strcpy(tn[ti], "union");
             else if (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
+            else if (!strcmp(tn[ti], "返回")) strcpy(tn[ti], "return"); /* 接入 2026-08-28: 双字 返回 (原只单字 返) — 多返回值 返回(a,b) 需 RK 关键字; c_to_jy 把 return 翻成单字 返, 必须保留 */
             else if (!strcmp(tn[ti], "返")) strcpy(tn[ti], "return");
             else if (!strcmp(tn[ti], "若")) strcpy(tn[ti], "if");
             else if (!strcmp(tn[ti], "否") || !strcmp(tn[ti], "否则")) strcpy(tn[ti], "else"); /* fix 2026-08-08: 否则(两字) 未被映射 → 被当标识符, 吞掉后续函数定义 */
@@ -6444,7 +6445,11 @@ static int stmt(void) {
         int n = Nd(20); nv[n] = li + 1; /* SET_LABEL(li) */
         return n;
     }
-    if (tt[tk] == RK) { tk++; int r = Nd(6); Nc(r, expr()); tk++; return r; }
+    if (tt[tk] == RK) { tk++; int r = Nd(6); /* 接入 2026-08-28 多返回值: 返回(a, b) → 打包 64 位 (nv[r]=9001 标记, case 6 拆 e1=低32 e2=高32) */
+        if (tt[tk] == OK) { int stk_r = tk; tk++; int e1 = expr();
+            if (tt[tk] == CK) { tk++; int e2 = expr(); if (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); if (tt[tk] == SK) tk++; return r; }
+            tk = stk_r; Nc(r, expr()); tk++; return r; }
+        Nc(r, expr()); tk++; return r; }
     if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  if (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  return n; }
     if (tt[tk] == WK) { tk++; tk++; int n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); return n; }
     if (tt[tk] == DW) { /* do stmt while (cond); */
@@ -7651,6 +7656,20 @@ static int stmt(void) {
         if (tt[tk] == SK) tk++; /* ; */
         static int dc_seq = 0;
         int blk = Nd(5);
+        /* 接入 2026-08-28 多返回值拆包: 解构(a, b) = f(); → { long long __dp=f(); a=(int)__dp; b=(int)(__dp>>32); } — RHS 单调用 + LHS≥2 时拆 64 位打包 */
+        if (rn == 1 && rhsv[0] >= 0 && nt[rhsv[0]] == 4 && ln >= 2) {
+            static int dp_seq = 0; char dpn[64]; sprintf(dpn, "__dp_%d_", dp_seq++);
+            var_ll(dpn);
+            { int d = Nd(7); memcpy((char*)(nn + d), dpn, 32); Nc(d, rhsv[0]); Nc(blk, d); } /* long long __dp = f(); */
+            { int v_p = Nd(1); memcpy((char*)(nn + v_p), dpn, 32);
+              int v_l = Nd(1); memcpy((char*)(nn + v_l), lnames[0], 32);
+              int asg = Nd(10); Nc(asg, v_l); Nc(asg, v_p); Nc(blk, asg); } /* a = __dp (低 32 隐式截断); */
+            { int v_p = Nd(1); memcpy((char*)(nn + v_p), dpn, 32);
+              int sh = Nd(2); nv[sh] = SR; nll[sh] = 1; Nc(sh, v_p); { int c32 = Nd(0); nv[c32] = 32; Nc(sh, c32); } /* __dp >> 32 */
+              int v_l = Nd(1); memcpy((char*)(nn + v_l), lnames[1], 32);
+              int asg = Nd(10); Nc(asg, v_l); Nc(asg, sh); Nc(blk, asg); } /* b = __dp >> 32; */
+            return blk;
+        }
         for (int i = 0; i < rn; i++) { /* RHS 存临时 */
             char tmpn[64]; sprintf(tmpn, "__dc_%d_%d_", dc_seq, i);
             var_offset(tmpn);
@@ -14096,6 +14115,14 @@ static void cg(int n) {
             } else if (fn_dbl_get_ret(cur_fn_name)) {
                 if (n0[n] >= 0 && nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double fnptr/int call: leave xmm0 as-is (fix 2026-08-16: n0[n]=-1 守卫) */
                 cg_f(n0[n]); /* double return: result goes in xmm0 */
+            } else if (nv[n] == 9001) { /* 接入 2026-08-28 多返回值打包: 返回(a,b) → rax = (long long)b << 32 | a (手发机器码; cg 后必须 ir_flush 防 IR 延迟乱序) */
+                ir_flush(); /* 清 case 6 前残留 IR (防 shl/or 字节被 IR 回放覆盖) */
+                cg(n1[n]); ir_flush(); /* eax = b (e2), 先清 IR */
+                push_r(0); /* push rax (b 零扩展 32 位) */
+                cg(n0[n]); ir_flush(); /* eax = a (e1) */
+                pop_r(2);  /* rdx = b (64 位) */
+                asm_emit("    左移64 r2, 32\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0xC1); modrm(3, 4, 2); b(32); /* SHL rdx, 32 (C1 /4=SHL, /5=SHR — 原 /5 右移 32 → b 归零) */
+                asm_emit("    或64 r0, r2\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x09); modrm(3, 2, 0); /* OR rax, rdx (reg=源 rdx=2, rm=目标 rax=0) */
             } else {
                 cg(n0[n]);
             }
