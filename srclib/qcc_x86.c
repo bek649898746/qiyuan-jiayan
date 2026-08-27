@@ -5781,7 +5781,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6603,6 +6603,30 @@ static int stmt(void) {
             Nc(blk_r, if_r);
         }
         return blk_r;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "送")) { /* 接入 2026-08-27: 甲言 通道发送 (Go channel send 语法糖): 送 ch, v; → chan_send(&ch, v); — 参数先挂, callee (chan_send) 最后 (同管道/断言) */
+        tk++; /* 送 */
+        int e_ch = expr(); /* 通道表达式 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_v = expr(); /* 值表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int addr = Nd(11); Nc(addr, e_ch); Nc(call, addr); } /* &ch */
+        Nc(call, e_v); /* v */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "chan_send", 10); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "收")) { /* 接入 2026-08-27: 甲言 通道接收 (Go channel recv 语法糖): 收 ch, v; → chan_recv(&ch, &v); — 两参都取址, callee 最后 */
+        tk++; /* 收 */
+        int e_ch = expr(); /* 通道表达式 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_v = expr(); /* 目标表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int addr1 = Nd(11); Nc(addr1, e_ch); Nc(call, addr1); } /* &ch */
+        { int addr2 = Nd(11); Nc(addr2, e_v); Nc(call, addr2); } /* &v */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "chan_recv", 10); Nc(call, fn); } /* callee 最后 */
+        return call;
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
