@@ -3960,6 +3960,9 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "四舍五入")) strcpy(tn[ti], "round");
             否 若 (!strcmp(tn[ti], "截断")) strcpy(tn[ti], "trunc");
             否 若 (!strcmp(tn[ti], "重分配")) strcpy(tn[ti], "realloc");
+            /* 接入 2026-08-28 完全中文化 第3批: 时间函数映射 (msvcrt 导入 ext_fn_names 确认) */
+            否 若 (!strcmp(tn[ti], "取时间")) strcpy(tn[ti], "time");
+            否 若 (!strcmp(tn[ti], "时钟")) strcpy(tn[ti], "clock");
             否 若 (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; 续; } /* 审计者 郑启灵 · 种子 828 */
             否 若 (!strcmp(tn[ti], "__FILE__")) { 若 (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } 若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; 续; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             否 若 (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; 续; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
@@ -5938,7 +5941,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6753,6 +6756,18 @@ __attribute__((unused))
         整 ulk_call = Nd(4); { 整 addr2 = Nd(11); Nc(addr2, mx); Nc(ulk_call, addr2); } { 整 ulkf = Nd(1); memcpy((字*)(nn + ulkf), "mutex_unlock", 13); Nc(ulk_call, ulkf); }
         若 (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         返 blk_lk;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "使用")) { /* 接入 2026-08-28 with/using 上下文管理 (蓝图 §二): 使用 前置, 后置 { body } → { 前置; body; 后置(defer) } — 进入执行前置 (如 打开文件), 退出自动执行后置 (如 关文件, defer 收集同锁住升级, 提前 return 也执行) */
+        tk++; /* 使用 */
+        整 e_enter = expr(); /* 进入表达式 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_exit = expr(); /* 退出表达式 */
+        整 body_use = (tt[tk] == FK) ? blk() : stmt(); /* 块体 — blk() 整体消费 {..} (同锁住) */
+        整 blk_u = Nd(5);
+        Nc(blk_u, e_enter); /* 前置 */
+        Nc(blk_u, body_use); /* body */
+        若 (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = e_exit; /* 后置走 defer — 函数退出 epi_label 自动执行 (同锁住升级) */
+        返 blk_u;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "范围")) { /* 接入 2026-08-27: 甲言 范围检查 (Ada range 约束的运行时检查): 范围 x 于 1 到 10; → if (x < 1) { printf("范围越界\n"); exit(1); } if (x > 10) { printf("范围越界\n"); exit(1); } — 越界终止; 下/上界用 T_LK/T_GK 比较节点 (断言裸变量验证: 手构造比较节点可用, 上次解包根因是 blk unknown-typedef 误吞非比较节点) */
         tk++; /* 范围 */
