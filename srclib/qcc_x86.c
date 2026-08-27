@@ -5792,7 +5792,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6633,6 +6633,30 @@ static int stmt(void) {
             Nc(blk_c, if_c);
         }
         return blk_c;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "投递")) { /* 接入 2026-08-27 actor 消息投递 (Erlang 风格, 同送/收模式): 投递 m, v; → actor_send(&m, v); — 用户定义 actor_send/actor_recv (邮箱+类型分派) */
+        tk++; /* 投递 */
+        int e_m = expr(); /* 邮箱表达式 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_v = expr(); /* 消息表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int addr = Nd(11); Nc(addr, e_m); Nc(call, addr); } /* &m */
+        Nc(call, e_v); /* v */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "actor_send", 11); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "接收")) { /* 接入 2026-08-27 actor 消息接收: 接收 m, v; → actor_recv(&m, &v); — 双取址, callee 最后 */
+        tk++; /* 接收 */
+        int e_m = expr(); /* 邮箱表达式 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_v = expr(); /* 目标表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        { int addr1 = Nd(11); Nc(addr1, e_m); Nc(call, addr1); } /* &m */
+        { int addr2 = Nd(11); Nc(addr2, e_v); Nc(call, addr2); } /* &v */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "actor_recv", 11); Nc(call, fn); } /* callee 最后 */
+        return call;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "线程")) { /* 接入 2026-08-27 线程创建 (库级语法糖, 同通道模式): 线程 t 跑 work, arg; → thread_create(&t, work, arg); — 用户定义 thread_create/thread_join (确定性单线程模拟) */
         tk++; /* 线程 */
