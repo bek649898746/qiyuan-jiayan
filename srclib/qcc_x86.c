@@ -13095,6 +13095,18 @@ else if (fsz == 2) { if (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RA
 else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                         else if (bsz == 8) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param 64 */
                         else { mov_reg_mreg(0, 0); if (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* bit-field extract (fix 2026-08-05) */
+                    } else { /* fix 2026-08-27 第八批#5: big-param struct 指针字段作数组基 (Slice s; s.data[i]) — 原 cg_no_deref 只返回字段地址 &s.data → s.data[i] 数组基错读垃圾; 镜像局部 var 分支 L13104 解引用取指针值 + 按指向元素缩放 */
+                        int afsz4 = st_field_size(stypes[s].name, fn);
+                        if (!cg_incdec_target && !cg_addr_of && afsz4 == 8 && st_field_is_ptr(s, fn)) {
+                            ir_emit(I_DEREF64, 0, 0, 0); ir_flush();
+                            int pel4 = st_field_pel(s, fn);
+                            cg_mem_frow = pel4;
+                            cg_fdepth = 0;
+                            cg_frows[0] = pel4;
+                            cg_frows[1] = st_field_ffin(s, fn);
+                            if (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2;
+                            if (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1;
+                        }
                     }
                 } else {
                     if (cg_no_deref) {
