@@ -5790,7 +5790,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6612,6 +6612,25 @@ static int stmt(void) {
             Nc(blk_r, if_r);
         }
         return blk_r;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "夹取")) { /* 接入 2026-08-27: 甲言 夹取 (clamp, 范围修正): 夹取 x, 1, 10; → if (x < 1) x = 1; if (x > 10) x = 10; — 越界修正不回退 (与范围检查"越界终止"互补); 复用 T_LK/T_GK 比较 + Nd(10) 赋值 */
+        tk++; /* 夹取 */
+        int e_v = expr(); /* 变量/左值 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_lo = expr(); /* 下界 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_hi = expr(); /* 上界 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int blk_c = Nd(5);
+        for (int ci = 0; ci < 2; ci++) { /* 0=低于下界→赋下界, 1=高于上界→赋上界 */
+            int cmp_c = Nd(2); nv[cmp_c] = (ci == 0) ? T_LK : T_GK; /* < 或 > */
+            Nc(cmp_c, e_v); Nc(cmp_c, (ci == 0) ? e_lo : e_hi);
+            int if_c = Nd(8); Nc(if_c, cmp_c);
+            int asg_c = Nd(10); Nc(asg_c, e_v); Nc(asg_c, (ci == 0) ? e_lo : e_hi); /* var = lo/hi */
+            Nc(if_c, asg_c);
+            Nc(blk_c, if_c);
+        }
+        return blk_c;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "送")) { /* 接入 2026-08-27: 甲言 通道发送 (Go channel send 语法糖): 送 ch, v; → chan_send(&ch, v); — 参数先挂, callee (chan_send) 最后 (同管道/断言) */
         tk++; /* 送 */
