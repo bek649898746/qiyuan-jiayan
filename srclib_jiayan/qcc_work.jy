@@ -5925,7 +5925,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6933,6 +6933,130 @@ __attribute__((unused))
         Nc(wh_d, bd_d);
         Nc(blk_d, wh_d);
         返 blk_d;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "归并")) { /* 接入 2026-08-27 归并 (merge 有序数组合并): 归并 dst, a, na, b, nb; → 双指针合并两个有序数组到 dst (升序, 输出数组须够大). 结构: 主 while(__mi<na){ if(__mj<nb && a[__mi]<b[__mj]) 取a else 取b } + 剩余 a + 剩余 b */
+        tk++; /* 归并 */
+        字 dstn[64]; strcpy(dstn, tn[tk]); tk++; /* 目标数组 */
+        若 (tt[tk] == CK) tk++; /* , */
+        字 an2[64]; strcpy(an2, tn[tk]); tk++; /* 数组 a */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_na = expr(); /* a 长度 */
+        若 (tt[tk] == CK) tk++; /* , */
+        字 bn2[64]; strcpy(bn2, tn[tk]); tk++; /* 数组 b */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_nb = expr(); /* b 长度 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        静 整 mg_seq = 0; 字 iname[64]; sprintf(iname, "__mi_%d_", mg_seq++);
+        静 整 mg_seq2 = 0; 字 jname[64]; sprintf(jname, "__mj_%d_", mg_seq2++);
+        静 整 mg_seq3 = 0; 字 kname[64]; sprintf(kname, "__mk_%d_", mg_seq3++);
+        var_offset(iname); var_offset(jname); var_offset(kname); /* 三指针 */
+        整 blk = Nd(5);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), iname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __mi = 0; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), jname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __mj = 0; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), kname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __mk = 0; */
+        整 v_d = Nd(1); memcpy((字*)(nn + v_d), dstn, 32);
+        整 v_a = Nd(1); memcpy((字*)(nn + v_a), an2, 32);
+        整 v_b = Nd(1); memcpy((字*)(nn + v_b), bn2, 32);
+        /* 主 while: __mi < na */
+        整 wh = Nd(9);
+        { 整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32); 整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_na); Nc(wh, cmp); }
+        整 bd = Nd(5);
+        /* if (__mj < nb) { if (a[__mi] < b[__mj]) { 取a } else { 取b } } else { 取a } */
+        { 整 v_j = Nd(1); memcpy((字*)(nn + v_j), jname, 32);
+          整 cmpj = Nd(2); nv[cmpj] = T_LK; Nc(cmpj, v_j); Nc(cmpj, e_nb); /* __mj < nb */
+          整 if_j = Nd(8); Nc(if_j, cmpj);
+          整 if_j_t = Nd(5);
+          { 整 v_i2 = Nd(1); memcpy((字*)(nn + v_i2), iname, 32);
+            整 idx_a = Nd(14); Nc(idx_a, v_a); Nc(idx_a, v_i2); /* a[__mi] */
+            整 v_j2 = Nd(1); memcpy((字*)(nn + v_j2), jname, 32);
+            整 idx_b = Nd(14); Nc(idx_b, v_b); Nc(idx_b, v_j2); /* b[__mj] */
+            整 cmpl = Nd(2); nv[cmpl] = T_LK; Nc(cmpl, idx_a); Nc(cmpl, idx_b); /* a[__mi] < b[__mj] */
+            整 if_a = Nd(8); Nc(if_a, cmpl);
+            整 if_a_t = Nd(5);
+            { 整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+              整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k);
+              整 v_i3 = Nd(1); memcpy((字*)(nn + v_i3), iname, 32);
+              整 idx_a2 = Nd(14); Nc(idx_a2, v_a); Nc(idx_a2, v_i3);
+              整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_a2); Nc(if_a_t, asg); /* dst[__mk]=a[__mi]; */
+              整 v_i4 = Nd(1); memcpy((字*)(nn + v_i4), iname, 32);
+              整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_i4); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+              整 asg2 = Nd(10); Nc(asg2, v_i4); Nc(asg2, pl); Nc(if_a_t, asg2); /* __mi++; */
+            }
+            Nc(if_a, if_a_t);
+            整 if_a_e = Nd(5);
+            { 整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+              整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k);
+              整 v_j3 = Nd(1); memcpy((字*)(nn + v_j3), jname, 32);
+              整 idx_b2 = Nd(14); Nc(idx_b2, v_b); Nc(idx_b2, v_j3);
+              整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_b2); Nc(if_a_e, asg); /* dst[__mk]=b[__mj]; */
+              整 v_j4 = Nd(1); memcpy((字*)(nn + v_j4), jname, 32);
+              整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_j4); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+              整 asg2 = Nd(10); Nc(asg2, v_j4); Nc(asg2, pl); Nc(if_a_e, asg2); /* __mj++; */
+            }
+            n2[if_a] = if_a_e;
+            Nc(if_j_t, if_a);
+            整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+            整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_k); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            整 asg3 = Nd(10); Nc(asg3, v_k); Nc(asg3, pl); Nc(if_j_t, asg3); /* __mk++; */
+          }
+          Nc(if_j, if_j_t);
+          整 if_j_e = Nd(5);
+          { 整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+            整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k);
+            整 v_i5 = Nd(1); memcpy((字*)(nn + v_i5), iname, 32);
+            整 idx_a3 = Nd(14); Nc(idx_a3, v_a); Nc(idx_a3, v_i5);
+            整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_a3); Nc(if_j_e, asg); /* dst[__mk]=a[__mi]; */
+            整 v_i6 = Nd(1); memcpy((字*)(nn + v_i6), iname, 32);
+            整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_i6); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            整 asg2 = Nd(10); Nc(asg2, v_i6); Nc(asg2, pl); Nc(if_j_e, asg2); /* __mi++; */
+            整 v_k2 = Nd(1); memcpy((字*)(nn + v_k2), kname, 32);
+            整 pl2 = Nd(2); nv[pl2] = PK; Nc(pl2, v_k2); { 整 one = Nd(0); nv[one] = 1; Nc(pl2, one); }
+            整 asg3 = Nd(10); Nc(asg3, v_k2); Nc(asg3, pl2); Nc(if_j_e, asg3); /* __mk++; */
+          }
+          n2[if_j] = if_j_e;
+          Nc(bd, if_j); }
+        { 整 cl = new_label(); 整 setl = Nd(20); nv[setl] = cl + 1; Nc(bd, setl); nv[wh] = cl + 1; }
+        Nc(wh, bd);
+        Nc(blk, wh);
+        /* 剩余 a */
+        { 整 wh_a = Nd(9);
+          { 整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32); 整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_na); Nc(wh_a, cmp); }
+          整 bd_a = Nd(5);
+          { 整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+            整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k);
+            整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32);
+            整 idx_a = Nd(14); Nc(idx_a, v_a); Nc(idx_a, v_i);
+            整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_a); Nc(bd_a, asg);
+            整 v_i2 = Nd(1); memcpy((字*)(nn + v_i2), iname, 32);
+            整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_i2); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            整 asg2 = Nd(10); Nc(asg2, v_i2); Nc(asg2, pl); Nc(bd_a, asg2);
+            整 v_k2 = Nd(1); memcpy((字*)(nn + v_k2), kname, 32);
+            整 pl2 = Nd(2); nv[pl2] = PK; Nc(pl2, v_k2); { 整 one = Nd(0); nv[one] = 1; Nc(pl2, one); }
+            整 asg3 = Nd(10); Nc(asg3, v_k2); Nc(asg3, pl2); Nc(bd_a, asg3);
+          }
+          { 整 cl = new_label(); 整 setl = Nd(20); nv[setl] = cl + 1; Nc(bd_a, setl); nv[wh_a] = cl + 1; }
+          Nc(wh_a, bd_a);
+          Nc(blk, wh_a); }
+        /* 剩余 b */
+        { 整 wh_b = Nd(9);
+          { 整 v_j = Nd(1); memcpy((字*)(nn + v_j), jname, 32); 整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_j); Nc(cmp, e_nb); Nc(wh_b, cmp); }
+          整 bd_b = Nd(5);
+          { 整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+            整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k);
+            整 v_j = Nd(1); memcpy((字*)(nn + v_j), jname, 32);
+            整 idx_b = Nd(14); Nc(idx_b, v_b); Nc(idx_b, v_j);
+            整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_b); Nc(bd_b, asg);
+            整 v_j2 = Nd(1); memcpy((字*)(nn + v_j2), jname, 32);
+            整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_j2); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            整 asg2 = Nd(10); Nc(asg2, v_j2); Nc(asg2, pl); Nc(bd_b, asg2);
+            整 v_k2 = Nd(1); memcpy((字*)(nn + v_k2), kname, 32);
+            整 pl2 = Nd(2); nv[pl2] = PK; Nc(pl2, v_k2); { 整 one = Nd(0); nv[one] = 1; Nc(pl2, one); }
+            整 asg3 = Nd(10); Nc(asg3, v_k2); Nc(asg3, pl2); Nc(bd_b, asg3);
+          }
+          { 整 cl = new_label(); 整 setl = Nd(20); nv[setl] = cl + 1; Nc(bd_b, setl); nv[wh_b] = cl + 1; }
+          Nc(wh_b, bd_b);
+          Nc(blk, wh_b); }
+        返 blk;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "去重")) { /* 接入 2026-08-27 去重 (unique 相邻去重): 去重 dst, src, n; → { __uq=0; __k=0; while(__uq<n){ if(__k==0 || dst[__k-1]!=src[__uq]){ dst[__k]=src[__uq]; __k++; } __uq++; } } — 去除相邻重复 (须排序后), 双指针 */
         tk++; /* 去重 */
