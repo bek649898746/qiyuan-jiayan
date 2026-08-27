@@ -2028,6 +2028,8 @@ static int label_set[MAX_LABELS];
 static int defer_stmts[4096][64]; /* 接入 2026-08-27 defer: 每函数 defer 语句节点 (按函数序号 fvn, LIFO — epi_label 处逆序执行) */
 static int defer_cnt[4096];
 static int cur_fn_defer_idx = -1; /* parse 时当前函数序号 (defer 收集目标) */
+/* 接入 2026-08-27 运算符重载: 重载 + 点 = 点_add; → ov 表注册, add() 分派 (左操作数是 struct 变量且类型匹配 → 函数调用) */
+static char ov_op[32]; static char ov_ty[32][64]; static char ov_fn[32][64]; static int ov_n;
 static struct { int patch_at; int target_label; int is_jmp; } patches[131072]; int patch_n; /* fix 2026-08-06: 16384→65536; 2026-08-16 自举回归: 65536→131072 — 同步镜像后 patch_n 贴上限 */
 static struct { int patch_at; int str_idx; } str_patches[32768]; int strpn; /* fix 2026-08-16 自举回归: 2048→8192 — 同步镜像后字符串引用超 2048; fix 2026-08-26 redis: 8192→32768 — redis-benchmark.c 1.6 万字符串字面量引用超 8192 */
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
@@ -4916,7 +4918,7 @@ static int prim(void) {
 }
 
 static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
-static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } return n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
+static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK) { int o = tt[tk++]; int ovf = -1; if (ov_n > 0 && nt[n] == 1) { /* 接入 2026-08-27 运算符重载: 左操作数是 struct 变量且注册过该运算符+类型 → 生成函数调用 (重载表空则零影响原路径) */ int si = var_stidx((char*)(nn + n)); if (si >= 0) { char *tyn = stypes[si].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == (char)o && !strcmp(ov_ty[k], tyn)) { ovf = k; break; } } } if (ovf >= 0) { int r = mul(); int c = Nd(4); Nc(c, n); Nc(c, r); { int fn = Nd(1); memcpy((char*)(nn + fn), ov_fn[ovf], 64); Nc(c, fn); } n = c; } else { int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } } return n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
 static int band(void) { int n = add(); while (tt[tk] == PT) { tk++; int a = Nd(2); nv[a] = PT; int r = add(); Nc(a, n); Nc(a, r); n = a; } return n; }
 static int bxor(void) { int n = band(); while (tt[tk] == XR) { tk++; int a = Nd(2); nv[a] = XR; int r = band(); Nc(a, n); Nc(a, r); n = a; } return n; }
 static int bor(void) { int n = bxor(); while (tt[tk] == OR) { tk++; int a = Nd(2); nv[a] = OR; int r = bxor(); Nc(a, n); Nc(a, r); n = a; } return n; }
@@ -5790,7 +5792,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6631,6 +6633,18 @@ static int stmt(void) {
             Nc(blk_c, if_c);
         }
         return blk_c;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "重载")) { /* 接入 2026-08-27 运算符重载注册: 重载 + 点 = 点_add; → ov 表注册 (运算符 + 类型名 → 函数名), add() 分派 — 用户先定义普通函数再注册 */
+        tk++; /* 重载 */
+        int op_r = 0;
+        if (tt[tk] == PK) { op_r = PK; tk++; } /* + */
+        else if (tt[tk] == MK) { op_r = MK; tk++; } /* - */
+        char ty_r[64] = ""; if (tt[tk] == VR) { strcpy(ty_r, tn[tk]); tk++; } /* 类型名 */
+        if (tt[tk] == AK) tk++; /* = */
+        char fn_r[64] = ""; if (tt[tk] == VR) { strcpy(fn_r, tn[tk]); tk++; } /* 函数名 */
+        if (tt[tk] == SK) tk++; /* ; */
+        if (ov_n < 32 && op_r && ty_r[0] && fn_r[0]) { ov_op[ov_n] = (char)op_r; strcpy(ov_ty[ov_n], ty_r); strcpy(ov_fn[ov_n], fn_r); ov_n++; }
+        return Nd(5);
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "送")) { /* 接入 2026-08-27: 甲言 通道发送 (Go channel send 语法糖): 送 ch, v; → chan_send(&ch, v); — 参数先挂, callee (chan_send) 最后 (同管道/断言) */
         tk++; /* 送 */
