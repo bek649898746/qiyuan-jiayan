@@ -5925,7 +5925,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6933,6 +6933,71 @@ static int stmt(void) {
         Nc(wh_d, bd_d);
         Nc(blk_d, wh_d);
         return blk_d;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "去重")) { /* 接入 2026-08-27 去重 (unique 相邻去重): 去重 dst, src, n; → { __uq=0; __k=0; while(__uq<n){ if(__k==0 || dst[__k-1]!=src[__uq]){ dst[__k]=src[__uq]; __k++; } __uq++; } } — 去除相邻重复 (须排序后), 双指针 */
+        tk++; /* 去重 */
+        char dstn[64]; strcpy(dstn, tn[tk]); tk++; /* 目标数组 */
+        if (tt[tk] == CK) tk++; /* , */
+        char srcn[64]; strcpy(srcn, tn[tk]); tk++; /* 源数组 */
+        if (tt[tk] == CK) tk++; /* , */
+        int e_n = expr(); /* 长度 */
+        if (tt[tk] == SK) tk++; /* ; */
+        static int uq_seq = 0; char iname[64]; sprintf(iname, "__uq_%d_", uq_seq++);
+        static int uq_seq2 = 0; char kname[64]; sprintf(kname, "__uk_%d_", uq_seq2++);
+        var_offset(iname); var_offset(kname); /* 遍历/输出 双指针 */
+        int blk = Nd(5);
+        { int d = Nd(7); memcpy((char*)(nn + d), iname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __uq = 0; */
+        { int d = Nd(7); memcpy((char*)(nn + d), kname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __uk = 0; */
+        int wh = Nd(9);
+        { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32); int cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_n); Nc(wh, cmp); } /* while (__uq < n) */
+        int bd = Nd(5);
+        int v_d = Nd(1); memcpy((char*)(nn + v_d), dstn, 32);
+        int v_s = Nd(1); memcpy((char*)(nn + v_s), srcn, 32);
+        { int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
+          int v_k = Nd(1); memcpy((char*)(nn + v_k), kname, 32);
+          int idx_s = Nd(14); Nc(idx_s, v_s); Nc(idx_s, v_i); /* src[__uq] */
+          /* cond: __k==0 || dst[__k-1]!=src[__uq] — 简化为 dst[__k-1]==src[__uq] 且 __k>0 才跳过, 用嵌套 if: if(__k>0){ if(dst[__k-1]==src){ 跳过 } else { 保留 } } else { 保留 } — v1 用"非重复才保留"简化: if(!(__k>0 && dst[__k-1]==src)) */
+          int v_k2 = Nd(1); memcpy((char*)(nn + v_k2), kname, 32);
+          int zero = Nd(0); nv[zero] = 0;
+          int gt0 = Nd(2); nv[gt0] = T_GK; Nc(gt0, v_k2); Nc(gt0, zero); /* __k > 0 */
+          int v_k3 = Nd(1); memcpy((char*)(nn + v_k3), kname, 32);
+          int one1 = Nd(0); nv[one1] = 1;
+          int km1 = Nd(2); nv[km1] = MK; Nc(km1, v_k3); Nc(km1, one1); /* __k-1 */
+          int idx_p = Nd(14); Nc(idx_p, v_d); Nc(idx_p, km1); /* dst[__k-1] */
+          int eq = Nd(2); nv[eq] = T_QK; Nc(eq, idx_p); Nc(eq, idx_s); /* dst[__k-1] == src[__uq] */
+          int if_gt = Nd(8); Nc(if_gt, gt0); /* 用 if 嵌套: if(__k>0) { if(相等) 跳过 else 保留 } else 保留 */
+          int if_gt_b = Nd(5);
+          int if_eq = Nd(8); Nc(if_eq, eq);
+          int if_eq_t = Nd(5); /* 相等: 跳过 (空块) */
+          Nc(if_eq, if_eq_t);
+          int if_eq_e = Nd(5);
+          { int v_k4 = Nd(1); memcpy((char*)(nn + v_k4), kname, 32);
+            int idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k4); /* dst[__uk] */
+            int asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_s); Nc(if_eq_e, asg); /* dst[__uk] = src[__uq]; */
+            int v_k5 = Nd(1); memcpy((char*)(nn + v_k5), kname, 32);
+            int pl = Nd(2); nv[pl] = PK; Nc(pl, v_k5); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            int asg2 = Nd(10); Nc(asg2, v_k5); Nc(asg2, pl); Nc(if_eq_e, asg2); /* __uk++; */
+          }
+          n2[if_eq] = if_eq_e;
+          Nc(if_gt_b, if_eq);
+          Nc(if_gt, if_gt_b);
+          int if_gt_e = Nd(5);
+          { int v_k4 = Nd(1); memcpy((char*)(nn + v_k4), kname, 32);
+            int idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k4);
+            int asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_s); Nc(if_gt_e, asg); /* dst[__uk] = src[__uq]; */
+            int v_k5 = Nd(1); memcpy((char*)(nn + v_k5), kname, 32);
+            int pl = Nd(2); nv[pl] = PK; Nc(pl, v_k5); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+            int asg2 = Nd(10); Nc(asg2, v_k5); Nc(asg2, pl); Nc(if_gt_e, asg2); /* __uk++; */
+          }
+          n2[if_gt] = if_gt_e;
+          Nc(bd, if_gt); }
+        { int v_i2 = Nd(1); memcpy((char*)(nn + v_i2), iname, 32);
+          int pl = Nd(2); nv[pl] = PK; Nc(pl, v_i2); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
+          int asg = Nd(10); Nc(asg, v_i2); Nc(asg, pl); Nc(bd, asg); } /* __uq++; */
+        { int cl_u = new_label(); int setl_u = Nd(20); nv[setl_u] = cl_u + 1; Nc(bd, setl_u); nv[wh] = cl_u + 1; }
+        Nc(wh, bd);
+        Nc(blk, wh);
+        return blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "计数")) { /* 接入 2026-08-27 计数 (匹配元素数): 计数 c, arr, n, cond; → { c=0; __ct=0; while(__ct<n){ if(cond(arr[__ct])){ c++; } __ct++; } } — 统计满足条件元素数, if 包块 */
         tk++; /* 计数 */
