@@ -3893,6 +3893,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "断")) strcpy(tn[ti], "break");
             否 若 (!strcmp(tn[ti], "续")) strcpy(tn[ti], "continue");
             否 若 (!strcmp(tn[ti], "继续")) strcpy(tn[ti], "continue"); /* fix 2026-08-27: 两字继续未映射 → 当标识符报"未定义函数" (缺啥补啥) */
+            否 若 (!strcmp(tn[ti], "择收")) strcpy(tn[ti], "select"); /* 接入 2026-08-27 select: 多路条件分派 (Go select 简化) */
             否 若 (!strcmp(tn[ti], "延迟")) strcpy(tn[ti], "defer"); /* 接入 2026-08-27: 甲言 defer — Go 式函数退出延迟执行 (LIFO), parse 收集到函数级 defer 列表, epi_label 处逆序执行 */
             否 若 (!strcmp(tn[ti], "择")) strcpy(tn[ti], "switch");
             否 若 (!strcmp(tn[ti], "例")) strcpy(tn[ti], "case");
@@ -6458,6 +6459,43 @@ __attribute__((unused))
         整 ds = stmt(); /* 延迟的语句 */
         若 (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ds;
         返 Nd(5); /* defer 语句本身不生成代码 (函数 epilogue 处执行) */
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "select")) { /* 接入 2026-08-27 select (择收): 多路条件分派 — 择收(e1,e2){例0:b0;例1:b1;缺:bd;} → if(e1)b0 else if(e2)b1 else bd (v1: 条件分派, Go select 简化) */
+        tk++; /* select */
+        整 conds[16]; 整 cn = 0;
+        若 (tt[tk] == OK) tk++; /* ( */
+        循环 (tt[tk] != KK && tt[tk] != EK && cn < 16) { conds[cn++] = expr(); 若 (tt[tk] == CK) tk++; } /* 条件用 expr() 非 expr_comma — 逗号分隔条件 (fix 2026-08-27: expr_comma 把逗号当逗号表达式吃掉所有条件) */
+        若 (tt[tk] == KK) tk++; /* ) */
+        若 (tt[tk] == FK) tk++; /* { */
+        整 bodies[16]; 整 bn = 0; 整 def_body = -1;
+        遍 (整 bi = 0; bi < 16; bi++) bodies[bi] = -1;
+        循环 (tt[tk] != UK && tt[tk] != EK) {
+            若 (tt[tk] == CA) { /* 例 N: */
+                tk++;
+                整 idx = 0;
+                若 (tt[tk] == NK) { idx = tv[tk]; tk++; }
+                若 (tt[tk] == CL) tk++; /* : */
+                整 b = Nd(5);
+                循环 (tt[tk] != CA && tt[tk] != DF && tt[tk] != UK && tt[tk] != EK) { 若 (tt[tk] == SK) { tk++; 续; } Nc(b, stmt()); }
+                若 (idx >= 0 && idx < 16) { bodies[idx] = b; bn++; }
+            } 否 若 (tt[tk] == DF) { /* 缺: */
+                tk++;
+                若 (tt[tk] == CL) tk++;
+                def_body = Nd(5);
+                循环 (tt[tk] != CA && tt[tk] != DF && tt[tk] != UK && tt[tk] != EK) { 若 (tt[tk] == SK) { tk++; 续; } Nc(def_body, stmt()); }
+            } 否 { tk++; }
+        }
+        若 (tt[tk] == UK) tk++; /* } */
+        整 else_node = def_body;
+        遍 (整 i = cn - 1; i >= 0; i--) {
+            整 ifn = Nd(8);
+            Nc(ifn, conds[i]);
+            整 tb = (i < bn && bodies[i] >= 0) ? bodies[i] : Nd(5);
+            Nc(ifn, tb);
+            若 (else_node >= 0) n2[ifn] = else_node;
+            else_node = ifn;
+        }
+        返 else_node;
     }
     若 (tt[tk] == SK) { tk++; 返 Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
