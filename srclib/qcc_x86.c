@@ -6264,9 +6264,11 @@ static int stmt(void) {
         return n;
     }
     if (tt[tk] == JK) { /* for(init;cond;step)body �?{init; while(cond){body;step;}} */
-        if (tt[tk + 1] == VR && tt[tk + 2] == VR && !strcmp(tn[tk + 2], "于")) { /* 接入 2026-08-27 for-range: 遍 x 于 arr {body} / 遍 x 于 sl {body}(切片) → { _i=0; while(_i<len){x=arr[_i]或sl.data[_i];body;_i++;} } */
+        if ((tt[tk + 1] == VR && tt[tk + 2] == VR && !strcmp(tn[tk + 2], "于")) || (tt[tk + 1] == VR && tt[tk + 2] == CK && tt[tk + 3] == VR && tt[tk + 4] == VR && !strcmp(tn[tk + 4], "于"))) { /* 接入 2026-08-27 for-range: 遍 x 于 arr / 遍 i, x 于 arr (索引+值) → { _i=0; while(_i<len){[i=_i;]x=arr[_i];body;_i++;} } */
             tk++; /* for */
-            char rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代变量 */
+            char idxv[64]; int has_idx = 0;
+            if (tt[tk + 1] == CK) { strcpy(idxv, tn[tk]); tk++; tk++; has_idx = 1; } /* 接入 2026-08-27 for-range 索引: 遍 i, x 于 arr — i 索引, x 值 */
+            char rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代值变量 */
             tk++; /* 于 */
             { int save_tk = tk; int start_e = expr(); /* 区间检测: 遍 x 于 a 到 b — 迭代表达式 */
               if (tt[tk] == VR && !strcmp(tn[tk], "到")) { /* 接入 2026-08-27 for-range 区间: { x=a; while(x<b){body;x++;} } */
@@ -6305,6 +6307,7 @@ static int stmt(void) {
               else { int n_len = Nd(0); nv[n_len] = str_len >= 0 ? str_len : arr_len; Nc(cmp, n_len); }
               Nc(wh2, cmp); }
             int bd2 = Nd(5);
+            if (has_idx) { int ia = Nd(10); { int v_iv = Nd(1); memcpy((char*)(nn + v_iv), idxv, 32); Nc(ia, v_iv); } { int v_it = Nd(1); memcpy((char*)(nn + v_it), iname, 32); Nc(ia, v_it); } Nc(bd2, ia); } /* 索引赋值: i = _i */
             { int assign = Nd(10); { int v_x = Nd(1); memcpy((char*)(nn + v_x), rvn, 32); Nc(assign, v_x); }
               { int idx = Nd(14);
                 if (slice_si >= 0) { int mc2 = Nd(15); { int v_sl = Nd(1); memcpy((char*)(nn + v_sl), avn, 32); Nc(mc2, v_sl); } nv[mc2] = 0; memcpy((char*)(nn + mc2), "data", 5); Nc(idx, mc2); } /* sl.data[_i] */
