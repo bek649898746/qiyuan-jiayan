@@ -3948,6 +3948,7 @@ static void lex(const char *s) {
             }
             else if (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { continue; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
             else if (!strcmp(tn[ti], "可空")) { continue; } /* 接入 2026-08-27: 甲言 Option 类型标记 (可空): 词法层吞掉 = 等价普通声明 (可空 T x == T x), 显式声明可空性 (NULL 合法). 同 __extension__ 吞掉不占 token 位 */
+            else if (!strcmp(tn[ti], "借用")) { continue; } /* 接入 2026-08-27: 甲言 借用标记 (简化借用, Rust 风格): 借用 const T *p = &x / 借用 T *p = &x — 词法层吞掉 = 等价普通声明, 显式标记借用契约 (共享只读/独占可变), 借用检查留未来诊断 */
             else if (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step21: C11 对齐声明 — 吐 AG token 携带对齐值 (原吞掉无语义; 语义在 st_field_sz_r 消费: 字段/struct 级显式对齐) */
                 int av = 0;
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
