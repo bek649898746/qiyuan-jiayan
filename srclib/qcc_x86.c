@@ -3926,6 +3926,17 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "绝对值")) strcpy(tn[ti], "abs");
             else if (!strcmp(tn[ti], "读行")) strcpy(tn[ti], "fgets");
             else if (!strcmp(tn[ti], "写行")) strcpy(tn[ti], "fputs");
+            /* 接入 2026-08-27 完全中文化: 数学库函数中文映射 (lexer 层, 零风险) */
+            else if (!strcmp(tn[ti], "取平方根")) strcpy(tn[ti], "sqrt");
+            else if (!strcmp(tn[ti], "取幂")) strcpy(tn[ti], "pow");
+            else if (!strcmp(tn[ti], "上限")) strcpy(tn[ti], "ceil");
+            else if (!strcmp(tn[ti], "下限")) strcpy(tn[ti], "floor");
+            else if (!strcmp(tn[ti], "取正弦")) strcpy(tn[ti], "sin");
+            else if (!strcmp(tn[ti], "取余弦")) strcpy(tn[ti], "cos");
+            else if (!strcmp(tn[ti], "取正切")) strcpy(tn[ti], "tan");
+            else if (!strcmp(tn[ti], "取余数")) strcpy(tn[ti], "fmod");
+            else if (!strcmp(tn[ti], "取随机")) strcpy(tn[ti], "rand");
+            else if (!strcmp(tn[ti], "设种子")) strcpy(tn[ti], "srand");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
