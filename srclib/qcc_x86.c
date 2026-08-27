@@ -3605,7 +3605,7 @@ static int expr_type_of(int n) {
     if (n < 0) return 8;
     int t = nt[n];
     if (t == FP) return 4; /* double literal */
-    if (t == 0) { if (nll[n]) return 3; if (nuns[n]) return 5; return 0; } /* int literal — fix 2026-08-27 特性#5: LL 字面量节点标记是 nll[n] (原 tll[n] 是 lexer token 数组, 恒 0 → 42LL 选成 int) */
+    if (t == 0) { if (pesz[n] > 0) return 6; if (ndbl[n]) return 4; if (nll[n]) return 3; if (nuns[n]) return 5; return 0; } /* int literal — fix 2026-08-27 特性#5: LL 字面量节点标记是 nll[n] (原 tll[n] 是 lexer token 数组, 恒 0 → 42LL 选成 int); fix 2026-08-27 特性#concepts: ndbl[n] → (double)0 cast 后字面量节点判 double; pesz[n]>0 → (T*)0 cast 后字面量判指针 */
     if (t == 1) {
         char *vn = (char*)(nn + n);
         if (var_is_dbl(vn)) return 4;
@@ -3625,7 +3625,7 @@ static int expr_type_of(int n) {
         if (fn_ll_get_ret(fn) || ext_fn_ret(fn) == 1) return 3;
         return 0;
     }
-    if (t == 19) { if (nll[n]) return 3; if (nuns[n]) return 5; return 0; } /* cast */
+    if (t == 19) { if (pesz[n] > 0) return 6; if (ndbl[n]) return 4; if (nll[n]) return 3; if (nuns[n]) return 5; return 0; } /* cast — fix 2026-08-27 特性#concepts: ndbl[n] → (double) cast 判 double; pesz[n]>0 → (T*) cast 判指针 */
     if (t == 10) return expr_type_of(n0[n]); /* assign: lhs 类型 */
     if (t == 14) return expr_type_of(n0[n]); /* arr[i]: 元素类型 (近似) */
     if (t == 2) { /* binop 结果类型 */
@@ -4843,6 +4843,7 @@ static int prim(void) {
                 if (cpe && ce >= 0) pesz[ce] = cpe; /* struct/typedef/void ptr: cpe=0 -> keep old behavior (fix 2026-08-16: ce=-1 时 pesz[-1] 越界写) */
             }
             if (cast_nstar == 0 && ce >= 0) pesz[ce] = -1; /* t35k 2026-08-23: 非指针 cast (uintptr_t/size_t/int/long) → 整数语义 — 原无操作 cast 保留指针属性 → (uintptr_t)p-1 按 node_psz(p)=4 缩放 → cb_node_of 返回 p-4 → cbtree 多节点树崩 (short_sha 修复后暴露: %cI 等 log 格式 SIGSEGV) */
+            if (cast_nstar == 0 && cast_ty && !strcmp(cast_ty, "double") && ce >= 0) ndbl[ce] = 1; /* fix 2026-08-27 特性#concepts: (double)0 cast 标记 double — 原无操作 cast 不设标记 → _Generic((double)0,...) expr_type_of 判 int → 概念分派选错分支 */
             return ce; /* cast is no-op: value unchanged */
         }
         tk++; int n = expr();
