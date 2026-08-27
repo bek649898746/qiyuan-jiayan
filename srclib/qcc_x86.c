@@ -4729,7 +4729,7 @@ static int prim(void) {
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
-                int callee = n;  tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                int callee = n;  tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1)) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回 */
             } else break;
@@ -6480,6 +6480,20 @@ static int stmt(void) {
         int ds = stmt(); /* 延迟的语句 */
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ds;
         return Nd(5); /* defer 语句本身不生成代码 (函数 epilogue 处执行) */
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "尝试")) { /* 接入 2026-08-27 错误传播: 尝试 f(); → { int __e=f(); if(__e!=0) return __e; } (Go if err!=nil return err) — f 返回错误码 0=成功; 前缀语法避免调用参数歧义 */
+        tk++; /* 尝试 */
+        int e2 = expr(); /* 调用表达式 */
+        if (tt[tk] == SK) tk++; /* ; */
+        static int er_seq = 0; char iname[64]; sprintf(iname, "__e_%d_", er_seq++);
+        var_offset(iname);
+        int blk_e = Nd(5);
+        { int d = Nd(7); memcpy((char*)(nn + d), iname, 32); Nc(d, e2); Nc(blk_e, d); } /* int __e = f(); */
+        int v_e = Nd(1); memcpy((char*)(nn + v_e), iname, 32);
+        int ifn_e = Nd(8); Nc(ifn_e, v_e); /* if (__e) — 非零即真 (fix 2026-08-27: 原 cond __e != 0 的比较节点生成后不生效, 简化) */
+        int retn_e = Nd(6); { int v_e2 = Nd(1); memcpy((char*)(nn + v_e2), iname, 32); Nc(retn_e, v_e2); } Nc(ifn_e, retn_e);
+        Nc(blk_e, ifn_e);
+        return blk_e;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "select")) { /* 接入 2026-08-27 select (择收): 多路条件分派 — 择收(e1,e2){例0:b0;例1:b1;缺:bd;} → if(e1)b0 else if(e2)b1 else bd (v1: 条件分派, Go select 简化) */        tk++; /* select */
         int conds[16]; int cn = 0;
