@@ -3990,6 +3990,15 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "格式化到串")) strcpy(tn[ti], "sprintf");
             else if (!strcmp(tn[ti], "内存比较")) strcpy(tn[ti], "memcmp");
             else if (!strcmp(tn[ti], "移动内存")) strcpy(tn[ti], "memmove");
+            /* 接入 2026-08-28 完全中文化 第8批: bn 内置内存/字符串/程序控制映射 (全部实测可用; abort 仅编译验证) */
+            else if (!strcmp(tn[ti], "内存设置")) strcpy(tn[ti], "memset");
+            else if (!strcmp(tn[ti], "复制内存")) strcpy(tn[ti], "memcpy");
+            else if (!strcmp(tn[ti], "内存分配")) strcpy(tn[ti], "malloc");
+            else if (!strcmp(tn[ti], "释放内存")) strcpy(tn[ti], "free");
+            else if (!strcmp(tn[ti], "清零分配")) strcpy(tn[ti], "calloc");
+            else if (!strcmp(tn[ti], "比较字符串")) strcpy(tn[ti], "strcmp");
+            else if (!strcmp(tn[ti], "复制字符串")) strcpy(tn[ti], "strcpy");
+            else if (!strcmp(tn[ti], "终止程序")) strcpy(tn[ti], "abort");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
