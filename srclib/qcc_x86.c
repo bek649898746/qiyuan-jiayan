@@ -3979,6 +3979,11 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "绝对长整")) strcpy(tn[ti], "labs");
             else if (!strcmp(tn[ti], "找字符集")) strcpy(tn[ti], "strpbrk");
             else if (!strcmp(tn[ti], "转换浮点串")) strcpy(tn[ti], "strtod");
+            /* 接入 2026-08-28 完全中文化 第6批: 时间串/区域字符串映射 (ext_fn_names 确认, 实测可用) */
+            else if (!strcmp(tn[ti], "转时间串")) strcpy(tn[ti], "asctime");
+            else if (!strcmp(tn[ti], "转时间串2")) strcpy(tn[ti], "ctime");
+            else if (!strcmp(tn[ti], "区域比较")) strcpy(tn[ti], "strcoll");
+            else if (!strcmp(tn[ti], "区域变换")) strcpy(tn[ti], "strxfrm");
             /* 接入 2026-08-28 完全中文化 第5批: 格式化/内存扩展映射 (bn 表 + 实测确认; snprintf 的 size 参数未生效已知限制, 不映射) */
             else if (!strcmp(tn[ti], "格式化到串")) strcpy(tn[ti], "sprintf");
             else if (!strcmp(tn[ti], "内存比较")) strcpy(tn[ti], "memcmp");
