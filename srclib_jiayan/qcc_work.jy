@@ -5925,7 +5925,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6913,6 +6913,43 @@ __attribute__((unused))
         Nc(wh_d, bd_d);
         Nc(blk_d, wh_d);
         返 blk_d;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "过滤")) { /* 接入 2026-08-27 高阶函数 过滤 (编译成循环): 过滤 dst, src, n, cond; → { __fi=0; __fk=0; while(__fi<n){ if(cond(src[__fi])){ dst[__fk]=src[__fi]; __fk++; } __fi++; } } — 数组筛选 (Python filter 风格) */
+        tk++; /* 过滤 */
+        字 dstn[64]; strcpy(dstn, tn[tk]); tk++; /* 目标数组 */
+        若 (tt[tk] == CK) tk++; /* , */
+        字 srcn[64]; strcpy(srcn, tn[tk]); tk++; /* 源数组 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_n = expr(); /* 长度 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 e_cond = expr(); /* 条件函数 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        静 整 fl_seq = 0; 字 iname[64]; sprintf(iname, "__fi_%d_", fl_seq++);
+        静 整 fl_seq2 = 0; 字 kname[64]; sprintf(kname, "__fk_%d_", fl_seq2++);
+        var_offset(iname); var_offset(kname); /* 遍历/输出 双计数器 */
+        整 blk = Nd(5);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), iname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __fi = 0; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), kname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(blk, d); } /* int __fk = 0; */
+        整 wh = Nd(9);
+        { 整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32); 整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_i); Nc(cmp, e_n); Nc(wh, cmp); } /* while (__fi < n) */
+        整 bd = Nd(5);
+        整 v_s = Nd(1); memcpy((字*)(nn + v_s), srcn, 32);
+        整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32);
+        整 idx_s = Nd(14); Nc(idx_s, v_s); Nc(idx_s, v_i); /* src[__fi] */
+        整 condc = Nd(4); Nc(condc, idx_s); Nc(condc, e_cond); /* cond(src[__fi]) — 参数先挂 callee 最后 */
+        整 ifn = Nd(8); Nc(ifn, condc); /* if (cond(...)) 非零即真 */
+        整 ibd = Nd(5);
+        整 v_d = Nd(1); memcpy((字*)(nn + v_d), dstn, 32);
+        整 v_k = Nd(1); memcpy((字*)(nn + v_k), kname, 32);
+        整 idx_d = Nd(14); Nc(idx_d, v_d); Nc(idx_d, v_k); /* dst[__fk] */
+        整 asg = Nd(10); Nc(asg, idx_d); Nc(asg, idx_s); Nc(ibd, asg); /* dst[__fk] = src[__fi]; */
+        { 整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_k); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); } 整 asg_k = Nd(10); Nc(asg_k, v_k); Nc(asg_k, pl); Nc(ibd, asg_k); } /* __fk++; */
+        Nc(ifn, ibd);
+        Nc(bd, ifn);
+        { 整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_i); { 整 one = Nd(0); nv[one] = 1; Nc(pl, one); } 整 asg_i = Nd(10); Nc(asg_i, v_i); Nc(asg_i, pl); Nc(bd, asg_i); } /* __fi++; */
+        Nc(wh, bd);
+        Nc(blk, wh);
+        返 blk;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "映射")) { /* 接入 2026-08-27 高阶函数 映射 (编译成循环): 映射 dst, src, n, fn; → { __mi=0; while(__mi<n){ dst[__mi]=fn(src[__mi]); __mi++; } } — 数组映射 (Python map 风格) */
         tk++; /* 映射 */
