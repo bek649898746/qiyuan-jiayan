@@ -1587,6 +1587,9 @@ static int e_lookup(const char *n) {
     for (int i = 0; i < eval_n; i++) if (!strcmp(evals[i].name, n)) return evals[i].val;
     return 0x80000000; /* ENUM_NOT_FOUND (fix 2026-08-09: 原 -1 与负值 enum 常量冲突 → RED=-2 被当未找到 → 当变量用=0) */
 }
+static struct { char name[64]; int vcnt; } disc_table[256]; static int disc_n; /* 判别表 (接入 2026-08-28 #97/#141): 判别类型名 → 变体数, 供依据 穷尽 检查 */
+static void disc_reg(const char *n, int vc) { if (disc_n < 256) { strcpy(disc_table[disc_n].name, n); disc_table[disc_n].vcnt = vc; disc_n++; } }
+static int disc_vcnt(const char *n) { for (int i = 0; i < disc_n; i++) if (!strcmp(disc_table[i].name, n)) return disc_table[i].vcnt; return -1; }
 
 /* ?????????? double ??????????? */
 static int dbl_hi[8192]; static int dbl_lo[8192]; static int dbl_n;
@@ -8531,6 +8534,7 @@ static int stmt(void) {
         st_field_sz_r(nsi, "p0", 4, 4); /* int p0; (payload 0) */
         if (maxload >= 1) st_field_sz_r(nsi, "p1", 4, 4); /* int p1; (payload 1 — 单负载变体也预留双槽, fix 2026-08-28: maxload=1 时 p0*p1 组合需要 p1) */
         st_finalize(nsi);
+        disc_reg(tn2, vn); /* 判别表: 供 依据...穷尽 覆盖检查 (v3.0 #141) */
         return Nd(5);
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "依据")) { /* 接入 2026-08-28 switch 表达式 (有值, 蓝图 §二): 依据 r, x 对照 1: a, 2: b, 其他: c; → { __sw=x; __sr=(其他或0); if(__sw==1){__sr=a;} if(__sw==2){__sr=b;} r=__sr; } — 多路等值分发 (select 指令试吞) */
@@ -8538,6 +8542,13 @@ static int stmt(void) {
         char resn[64]; strcpy(resn, tn[tk]); tk++; /* 结果变量 */
         if (tt[tk] == CK) tk++; /* , */
         int e_sel = expr(); /* 选择表达式 */
+        if (tt[tk] == CK) tk++; /* , */
+        int exh_vcnt = -1; char exh_name[64]; exh_name[0] = 0; /* 穷尽检查标记 (接入 2026-08-28 #141): 依据 r, x 穷尽 Shape 对照 ... — case 覆盖判别所有变体 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "穷尽")) {
+            tk++; strcpy(exh_name, tn[tk]); tk++; /* 判别类型名 */
+            exh_vcnt = disc_vcnt(exh_name);
+            if (tt[tk] == CK) tk++; /* , */
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "对照")) tk++; /* 对照 */
         static int sw_seq = 0; char iname[64]; sprintf(iname, "__sw_%d_", sw_seq++);
         static int sw_seq2 = 0; char rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
@@ -8555,6 +8566,12 @@ static int stmt(void) {
             if (tt[tk] == CK) { tk++; continue; }
             if (tt[tk] == SK) { tk++; break; }
             break;
+        }
+        /* 穷尽性检查 (接入 2026-08-28 #141): case 常量值覆盖 0..vcnt-1 — 缺变体 → [ERR] fail-closed */
+        if (exh_vcnt > 0) {
+            char covered[64]; for (int i = 0; i < 64; i++) covered[i] = 0;
+            for (int i = 0; i < ncase; i++) if (vals[i] >= 0 && nt[vals[i]] == 0) { int v = nv[vals[i]]; if (v >= 0 && v < 64 && v < exh_vcnt) covered[v] = 1; }
+            for (int i = 0; i < exh_vcnt; i++) if (!covered[i]) { fprintf(stderr, "[ERR] 模式匹配非穷尽: 判别 '%s' 缺变体 #%d (穷尽性检查, v3.0 #141)\n", exh_name, i); exit(1); }
         }
         int blk = Nd(5);
         { int d = Nd(7); memcpy((char*)(nn + d), iname, 32); Nc(d, e_sel); Nc(blk, d); } /* int __sw = x; */
