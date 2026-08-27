@@ -2025,6 +2025,9 @@ static int blk_vs[ASZ]; /* fix 2026-08-19: 块节点 (nt==5) 的 var 起点 = bl
 #define MAX_LABELS 65536
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
+static int defer_stmts[4096][64]; /* 接入 2026-08-27 defer: 每函数 defer 语句节点 (按函数序号 fvn, LIFO — epi_label 处逆序执行) */
+static int defer_cnt[4096];
+static int cur_fn_defer_idx = -1; /* parse 时当前函数序号 (defer 收集目标) */
 static struct { int patch_at; int target_label; int is_jmp; } patches[131072]; int patch_n; /* fix 2026-08-06: 16384→65536; 2026-08-16 自举回归: 65536→131072 — 同步镜像后 patch_n 贴上限 */
 static struct { int patch_at; int str_idx; } str_patches[32768]; int strpn; /* fix 2026-08-16 自举回归: 2048→8192 — 同步镜像后字符串引用超 2048; fix 2026-08-26 redis: 8192→32768 — redis-benchmark.c 1.6 万字符串字面量引用超 8192 */
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
@@ -3889,6 +3892,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "遍")) strcpy(tn[ti], "for");
             else if (!strcmp(tn[ti], "断")) strcpy(tn[ti], "break");
             else if (!strcmp(tn[ti], "续")) strcpy(tn[ti], "continue");
+            else if (!strcmp(tn[ti], "延迟")) strcpy(tn[ti], "defer"); /* 接入 2026-08-27: 甲言 defer — Go 式函数退出延迟执行 (LIFO), parse 收集到函数级 defer 列表, epi_label 处逆序执行 */
             else if (!strcmp(tn[ti], "择")) strcpy(tn[ti], "switch");
             else if (!strcmp(tn[ti], "例")) strcpy(tn[ti], "case");
             else if (!strcmp(tn[ti], "缺")) strcpy(tn[ti], "default");
@@ -6407,6 +6411,12 @@ static int stmt(void) {
     if (tt[tk] == FK) return blk();
     if (tt[tk] == BR) { tk++; int r = Nd(16); tk++; return r; } /* break; */
     if (tt[tk] == CN) { tk++; int r = Nd(21); tk++; return r; } /* continue; */
+    if (tt[tk] == VR && !strcmp(tn[tk], "defer")) { /* 接入 2026-08-27: 甲言 defer (延迟) — Go 式函数退出延迟执行, LIFO. 收集语句到当前函数 defer 列表, epi_label 处逆序执行 */
+        tk++; /* defer */
+        int ds = stmt(); /* 延迟的语句 */
+        if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ds;
+        return Nd(5); /* defer 语句本身不生成代码 (函数 epilogue 处执行) */
+    }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
     { int e = expr(); tk++; return e; }
@@ -8188,7 +8198,13 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
-            Nc(fdef, blk());
+            cur_fn_defer_idx = fvn; defer_cnt[fvn] = 0; /* 接入 2026-08-27 defer: 当前函数 defer 收集目标 */
+            Nc(fdef, blk()); /* 函数体 (n0) */
+            if (defer_cnt[fvn] > 0) { /* 接入 2026-08-27 defer: LIFO 逆序打包 defer 语句 → n1[fdef] — return/函数尾跳 epi_label 处先执行 */
+                int cb = Nd(5);
+                for (int di = defer_cnt[fvn] - 1; di >= 0; di--) Nc(cb, defer_stmts[fvn][di]);
+                Nc(fdef, cb); /* n1[fdef] = defer 清理块 (逆序) */
+            }
             if (fvn >= 65536) { fprintf(stderr, "[ERR] 函数体表超过 65536 上限 (fix 2026-08-26 sqlite: 512→8192)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
@@ -13002,7 +13018,8 @@ else if (fsz == 2) { if (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD
                         else if (afsz11 == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); } /* Phase3-IR case15: &e->f char */
                         else if (afsz11 == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); } /* Phase3-IR case15: &e->f short */
                         else { ir_emit(I_DEREF32, 0, 0, 0); } /* Phase3-IR case15: &e->f dword */
-                        ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */                        break;
+                        ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */
+                        break;
                     }
                 }
             }
@@ -13830,10 +13847,18 @@ void gen_code(void) {
         }
 
         cg(n0[c]); /* function body */
+
+        /* epilogue label: return jumps here — 提前到 gfn++ 前 (defer cg 需当前函数 vs_end, 原 gfn++ 后 vs_end 指向下一函数 → defer 变量"不能取地址" fix 2026-08-27 defer 接入) */
+        set_label(epi_label);
+        if (n1[c] >= 0) { /* defer: 延迟语句 LIFO 逆序执行 — return 跳这里先清理再 epilogue; rax 保存/恢复 — defer 内调用会 clobber return 值 (fix 2026-08-27 defer 接入) */
+            sub_rsp_imm(16); /* 对齐 + 临时槽 */
+            asm_emit("    存指64 [rsp], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 0, 4); b(0x24); /* mov [rsp], rax */
+            cg(n1[c]);
+            asm_emit("    取指64 r0, [rsp]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8B); modrm(0, 0, 4); b(0x24); /* mov rax, [rsp] */
+            add_rsp_imm(16);
+        }
         gfn++; /* next function's var range */
 
-        /* epilogue */
-        set_label(epi_label);
         if (is_isr) {
             /* iretq: 从中断返回 (CPU 自动弹出 RIP:CS:RFLAGS:RSP:SS) */
             asm_emit("    iretq\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
