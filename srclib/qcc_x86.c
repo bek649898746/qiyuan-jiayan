@@ -4653,6 +4653,15 @@ static int prim(void) {
                     if (nt[n] == 1) { /* base is a struct var: flag double fields */
                         int bsi = var_stidx((char*)(nn + n));
                         if (bsi >= 0 && st_field_is_dbl(stypes[bsi].name, (char*)(nn + m))) ndbl[m] = 1;
+                    } else if (nt[n] == 15 || nt[n] == 13) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段 (b.val.d — union 内 double) — 原只标 base 是变量, 链末字段 ndbl=0 → 读进 rax 非 xmm0 → 0.0 */
+                        int bsi = -1;
+                        int q = n; int chain[8]; int cn = 0; int dep = 0; /* 从 n 自身收集 (含末字段节点) */
+                        while (q >= 0 && dep < 8 && (nt[q] == 15 || nt[q] == 13)) { chain[cn++] = q; q = n0[q]; dep++; }
+                        if (q >= 0 && nt[q] == 1) {
+                            int rsi = var_stidx((char*)(nn + q));
+                            if (rsi >= 0) { bsi = rsi; for (int ci = cn - 1; ci >= 0 && bsi >= 0; ci--) { int t2 = st_field_ty_idx(stypes[bsi].name, (char*)(nn + chain[ci])); bsi = t2; } }
+                        }
+                        if (bsi >= 0 && st_field_is_dbl(stypes[bsi].name, (char*)(nn + m))) ndbl[m] = 1;
                     }
                     n = m;
                 } else break;
@@ -7094,14 +7103,15 @@ static int parse(const char *s) {
                         while (tt[tk] == DK) { fdflt = 8; tk++; } /* pointer field */
                         if (tt[tk] == EN) { ftkw = 1; tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; } /* fix 2026-08-26 ffmpeg: typedef 匿名 struct 的 enum 字段 `enum {fir,iir} type;` — 原无 EN 分支 → token 不消费 → 死循环 (dither.c filter_t) */
                         if (tt[tk] == ST) { /* nested struct field */
+                            int sub_is_union = !strcmp(tn[tk], "union"); /* fix 2026-08-27 特性#4: typedef 匿名 struct 内 union — 原按 struct 求和布局 → sizeof(含union struct)=32 (应16) */
                             tk++; /* struct */
                             if (tt[tk] == FK) { /* 匿名 struct/union: union { ... } opr; — 解析 body 算大小 + 注册字段 + 消费数组维度 (fix 2026-08-26 lua: 同 MatchState capture[N] 缺口) */
                                 int anon_si = st_add(""); /* 匿名结构体类型 */
                                 tk++; /* { */
                                 while (tk < TS && tt[tk] != UK) {
                                     int nk0 = tk; /* 安全前进 */
-                                    int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4;
-                                    if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) nsz = 8; else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
+                                    int nsz = 4, nrow = 1, ndims = 0, nfirst = 1, npel2 = 0, nbase = 4, nfdbl = 0; /* fix 2026-08-27 特性#4: union double 字段标记 */
+                                    if (tt[tk] == VK) { while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) nsz = 1; else if (!strcmp(tn[tk], "double")) { nsz = 8; nfdbl = 1; } else if (!strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) nsz = 8; if (!(tt[tk] == ST || tt[tk] == EN)) tk++; nbase = nsz; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { int nty = st_find(tn[tk]); if (nty >= 0 && stypes[nty].sz > 0) { nsz = stypes[nty].sz; nrow = nsz; } tk++; } if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
                                     else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == FK) d++; else if (tt[tk] == UK) { d--; if (d <= 0) { tk++; break; } } tk++; } } if (tt[tk] == UK) tk++; }
                                     else if (tt[tk] == VR && td_is(tn[tk])) { int tdv2 = tdef_lookup(tn[tk]); if (tdv2 >= 0 && tdefs[tdv2].sz > 0) { nsz = tdefs[tdv2].sz; nrow = nsz; } tk++; while (tt[tk] == DK) { nsz = 8; npel2++; tk++; } }
@@ -7109,7 +7119,8 @@ static int parse(const char *s) {
                                         char nf[64]; strcpy(nf, tn[tk]); tk++;
                                         while (tt[tk] == LB) { tk++; if (tt[tk] == NK) { if (ndims == 0) nfirst = tv[tk]; ndims++; nsz *= tv[tk]; tk++; } else if (tt[tk] == VR) { int evc2 = e_lookup(tn[tk]); if (evc2 == 0x80000000) evc2 = macro_find(tn[tk]); if (evc2 != 0x80000000 && evc2 != -1) { if (ndims == 0) nfirst = evc2; ndims++; nsz *= evc2; } tk++; } if (tt[tk] == RB) tk++; }
                                         if (ndims >= 1) nrow = nsz / nfirst; else nrow = nsz;
-                                        st_field_sz_r(anon_si, nf, nsz, nrow);
+                                        if (sub_is_union) st_union_field(anon_si, nf, nsz); else st_field_sz_r(anon_si, nf, nsz, nrow); /* fix 2026-08-27 特性#4: union 字段 MAX 布局 (offset 0) */
+                                        if (nfdbl) st_field_dbl(anon_si, nf); /* fix 2026-08-27 特性#4: union double 字段 xmm 访问 (v->val.d 原按 int 读 → 0.0) */
                                         if (npel2 > 0) { int nfi = stypes[anon_si].fn - 1; stypes[anon_si].fptrs[nfi] = 1; stypes[anon_si].fpels[nfi] = npel2 > 1 ? 8 : nbase; stypes[anon_si].ffins[nfi] = nbase; stypes[anon_si].fdeep[nfi] = (char)npel2; }
                                     }
                                     if (tt[tk] == CK) tk++;
@@ -12171,6 +12182,12 @@ static void cg(int n) {
                         pop_r(3); /* rbx = &dst, rax = &src */
                         cg_struct_copy(_csz4);
                     } else {
+                        int fszA = 4, siA = -1;
+                        mem_addr(mc, &fszA, &siA); /* 探测: 链末字段类型 (emit 一次, 后续 double 分支重取) */
+                        if ((siA >= 0 && st_field_is_dbl(stypes[siA].name, fname)) || (cg_mem_chain_si >= 0 && st_field_is_dbl(stypes[cg_mem_chain_si].name, fname))) { /* fix 2026-08-27 特性#4: 嵌套链 double 字段写入 (b.val.d = 3.14) — 原 cg+push_r 存 rax (double 在 xmm0) → 0.0; si_out 是字段指向 struct (d=-1), 用 cg_mem_chain_si (字段所在结构体) */
+                            cg_f(n1[n]); push_xmm0();
+                            if (mem_addr(mc, &fsz, &si_out) == 0) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); }
+                        } else {
                         cg(n1[n]); push_r(0); /* save rhs */
                         if (mem_addr(mc, &fsz, &si_out) == 0) { /* rax = &chain */
                             pop_r(3); /* ebx = rhs */
@@ -12181,6 +12198,7 @@ static void cg(int n) {
                             else { ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 嵌套链 存 32 */
                             mov_rr(0, 3); /* eax = stored value (chained assignments) */
                         }
+                    }
                     }
                 } else {
                 char *vname = (char*)(nn + n0[mc]); /* struct var name */
@@ -12876,7 +12894,9 @@ else if (fsz == 2) { if (st_field_is_uns(stypes[s2].name, fn)) ir_emit(I_MOVZX_R
                     else if (fsz == 1) { if (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 char */
 else if (fsz == 2) { if (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 short */
                     else if (fsz == 8) { /* 64-bit pointer / struct field (fix 2026-08-18: 多级箭头取址不再解引用末指针字段) */
-                        if (!cg_no_deref && !cg_addr_of) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: 嵌套链 64 */
+                        if (!cg_no_deref && !cg_addr_of) {
+                            if (ndbl[n]) asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); /* fix 2026-08-27 特性#4: double 字段嵌套链 (v->val.d) — 值进 xmm0 (printf %f 用 xmm0, 原 DEREF64 只进 rax → 0.0) */
+                            ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: 嵌套链 64 */
                         else if (!cg_incdec_target && !cg_addr_of && cg_mem_chain_si >= 0 && !st_field_is_array_idx(cg_mem_chain_si, fn) &&
                                  st_field_is_ptr(cg_mem_chain_si, fn)) {
                             /* 指针字段作数组基 (嵌套链 a->b->buf[i] / iter->map->table[i]): no_deref 下解引用取指针值 + 按指向元素缩放 (fix 2026-08-18:
