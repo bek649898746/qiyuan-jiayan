@@ -3937,6 +3937,15 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "取余数")) strcpy(tn[ti], "fmod");
             else if (!strcmp(tn[ti], "取随机")) strcpy(tn[ti], "rand");
             else if (!strcmp(tn[ti], "设种子")) strcpy(tn[ti], "srand");
+            /* 接入 2026-08-27 完全中文化: 字符串库函数中文映射 (lexer 层, 零风险) */
+            else if (!strcmp(tn[ti], "查找子串")) strcpy(tn[ti], "strstr");
+            else if (!strcmp(tn[ti], "拼接")) strcpy(tn[ti], "strcat");
+            else if (!strcmp(tn[ti], "转大写")) strcpy(tn[ti], "toupper");
+            else if (!strcmp(tn[ti], "转小写")) strcpy(tn[ti], "tolower");
+            else if (!strcmp(tn[ti], "判数字")) strcpy(tn[ti], "isdigit");
+            else if (!strcmp(tn[ti], "判字母")) strcpy(tn[ti], "isalpha");
+            else if (!strcmp(tn[ti], "取字长")) strcpy(tn[ti], "strlen");
+            else if (!strcmp(tn[ti], "倒序")) strcpy(tn[ti], "strrev");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
