@@ -5781,7 +5781,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6576,6 +6576,33 @@ static int stmt(void) {
         int ulk_call = Nd(4); { int addr2 = Nd(11); Nc(addr2, mx); Nc(ulk_call, addr2); } { int ulkf = Nd(1); memcpy((char*)(nn + ulkf), "mutex_unlock", 13); Nc(ulk_call, ulkf); }
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         return blk_lk;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "范围")) { /* 接入 2026-08-27: 甲言 范围检查 (Ada range 约束的运行时检查): 范围 x 于 1 到 10; → if (x < 1) { printf("范围越界\n"); exit(1); } if (x > 10) { printf("范围越界\n"); exit(1); } — 越界终止; 下/上界用 T_LK/T_GK 比较节点 (断言裸变量验证: 手构造比较节点可用, 上次解包根因是 blk unknown-typedef 误吞非比较节点) */
+        tk++; /* 范围 */
+        int e_v = expr(); /* 被检查表达式 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
+        int e_lo = expr(); /* 下界 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "到")) tk++; /* 到 */
+        int e_hi = expr(); /* 上界 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int blk_r = Nd(5);
+        for (int ri = 0; ri < 2; ri++) { /* 两路检查: 0=低于下界(x<lo), 1=高于上界(x>hi) */
+            int cmp_r = Nd(2); nv[cmp_r] = (ri == 0) ? T_LK : T_GK; /* < 或 > */
+            Nc(cmp_r, e_v); Nc(cmp_r, (ri == 0) ? e_lo : e_hi);
+            int if_r = Nd(8); Nc(if_r, cmp_r);
+            int b_r = Nd(5);
+            if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+            if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+            strcpy(str_tbl[str_cnt], "范围越界\n");
+            int call_p = Nd(4); { int sn_r = Nd(0); nv[sn_r] = str_cnt; nt[sn_r] = STR; Nc(call_p, sn_r); } { int en_r = Nd(1); memcpy((char*)(nn + en_r), "printf", 7); Nc(call_p, en_r); } /* printf("范围越界\n") — 参数先挂, callee 最后 (同管道/断言/解包) */
+            str_cnt++;
+            Nc(b_r, call_p);
+            int call_x = Nd(4); { int one = Nd(0); nv[one] = 1; Nc(call_x, one); } { int en_x = Nd(1); memcpy((char*)(nn + en_x), "exit", 5); Nc(call_x, en_x); } /* exit(1) */
+            Nc(b_r, call_x);
+            Nc(if_r, b_r);
+            Nc(blk_r, if_r);
+        }
+        return blk_r;
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
