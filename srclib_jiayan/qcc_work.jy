@@ -12824,8 +12824,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }}
         } 断;
         例 12: { /* *ptr — byte load (char*), dword (int*), 64-bit (fnptr / char** / int**) */
+            若 (cg_no_deref) { /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原 case-12 忽略 cg_no_deref 永远加载值 → (*p)++ 把值当地址. fix 2026-08-27 第七批#5: 成员链操作数 (case 15) 在 cg_no_deref 下返回字段地址 → (*s.refs)-- 把 &s.refs 当 &target → 写错位 (counter 变 256); 临时关 no_deref 让操作数返回其值 (变量值/成员字段值 = 指针) */
+                cg_no_deref = 0; cg(n0[n]); cg_no_deref = 1;
+                断;
+            }
             cg(n0[n]); /* ptr → eax */
-            若 (cg_no_deref) 断; /* fix 2026-08-08: node-23 后缀++/-- 需要 &target 地址; 原 case-12 忽略 cg_no_deref 永远加载值 → (*p)++ 把值当地址 */
             整 pnode = n0[n];
             若 (pnode >= 0 && (nt[pnode] == 23 || nt[pnode] == 26)) pnode = n0[pnode]; /* *p++ / *++p: resolve through inc/dec to the pointer operand (fix 2026-08-16; fix 2026-08-16 根因I: pnode>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c) */
             整 el = 0;
