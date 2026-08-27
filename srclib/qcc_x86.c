@@ -4008,6 +4008,12 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "倒带")) strcpy(tn[ti], "rewind");
             else if (!strcmp(tn[ti], "判文件结束")) strcpy(tn[ti], "feof");
             else if (!strcmp(tn[ti], "刷新缓冲")) strcpy(tn[ti], "fflush");
+            /* 接入 2026-08-28 完全中文化 第10批: bn 内置 格式化 IO/判类 映射 (实测可用; ferror 恒 0 为句柄语义设计) */
+            else if (!strcmp(tn[ti], "格式化打印")) strcpy(tn[ti], "printf");
+            else if (!strcmp(tn[ti], "输出到文件")) strcpy(tn[ti], "fprintf");
+            else if (!strcmp(tn[ti], "读格式")) strcpy(tn[ti], "scanf");
+            else if (!strcmp(tn[ti], "判文件错误")) strcpy(tn[ti], "ferror");
+            else if (!strcmp(tn[ti], "判字母数字")) strcpy(tn[ti], "isalnum");
             else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
             else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
