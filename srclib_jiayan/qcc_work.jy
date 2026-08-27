@@ -5925,7 +5925,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6675,6 +6675,26 @@ __attribute__((unused))
             else_node = ifn;
         }
         返 else_node;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "保证")) { /* 接入 2026-08-27 契约保证 (Eiffel 风格前置条件): 保证 条件; → if (条件==0) { printf("保证失败\n"); exit(1); } — 复用断言 eq0 模式 + 错误消息 */
+        tk++; /* 保证 */
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 cond_e = expr(); /* 条件表达式 */
+        若 (tt[tk] == KK) tk++; /* ) */
+        若 (tt[tk] == SK) tk++; /* ; */
+        整 eq0 = Nd(2); nv[eq0] = T_QK; Nc(eq0, cond_e); { 整 z = Nd(0); nv[z] = 0; Nc(eq0, z); } /* 条件 == 0 */
+        整 ifn = Nd(8); Nc(ifn, eq0);
+        整 body = Nd(5);
+        若 (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+        若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+        strcpy(str_tbl[str_cnt], "保证失败\n");
+        整 call_p = Nd(4); { 整 sn = Nd(0); nv[sn] = str_cnt; nt[sn] = STR; Nc(call_p, sn); } { 整 en = Nd(1); memcpy((字*)(nn + en), "printf", 7); Nc(call_p, en); }
+        str_cnt++;
+        Nc(body, call_p);
+        整 call_x = Nd(4); { 整 one = Nd(0); nv[one] = 1; Nc(call_x, one); } { 整 en = Nd(1); memcpy((字*)(nn + en), "exit", 5); Nc(call_x, en); }
+        Nc(body, call_x);
+        Nc(ifn, body);
+        返 ifn;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "断言")) { /* 接入 2026-08-27 断言: 断言(expr); → if (expr==0) { exit(1); } — 运行时检查失败终止 */
         tk++;
