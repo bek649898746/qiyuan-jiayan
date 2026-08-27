@@ -6268,6 +6268,24 @@ static int stmt(void) {
             tk++; /* for */
             char rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代变量 */
             tk++; /* 于 */
+            { int save_tk = tk; int start_e = expr(); /* 区间检测: 遍 x 于 a 到 b — 迭代表达式 */
+              if (tt[tk] == VR && !strcmp(tn[tk], "到")) { /* 接入 2026-08-27 for-range 区间: { x=a; while(x<b){body;x++;} } */
+                tk++; int end_e = expr();
+                int blk3 = Nd(5);
+                int v_x3 = Nd(1); memcpy((char*)(nn + v_x3), rvn, 32);
+                { int assign0 = Nd(10); Nc(assign0, v_x3); Nc(assign0, start_e); Nc(blk3, assign0); }
+                int wh3 = Nd(9);
+                { int cmp3 = Nd(2); nv[cmp3] = T_LK; Nc(cmp3, v_x3); Nc(cmp3, end_e); Nc(wh3, cmp3); }
+                int bd3 = Nd(5);
+                { int body3 = stmt(); Nc(bd3, body3); }
+                { int cl3 = new_label(); int setl3 = Nd(20); nv[setl3] = cl3 + 1; Nc(bd3, setl3); nv[wh3] = cl3 + 1; }
+                { int step3 = Nd(23); nv[step3] = 0; Nc(step3, v_x3); Nc(bd3, step3); }
+                Nc(wh3, bd3);
+                Nc(blk3, wh3);
+                return blk3;
+              }
+              tk = save_tk; /* 非区间: 重置 token, 走数组/切片/字符串路径 */
+            }
             int arrn = expr(); /* 数组/切片/字符串表达式 */
             char *avn = NULL; int arr_len = -1; int slice_si = -1; int str_len = -1;
             if (arrn >= 0 && nt[arrn] == STR) { str_len = (int)strlen(str_tbl[tv[arrn]]); } /* 字符串: 遍 c 于 "abc" */
