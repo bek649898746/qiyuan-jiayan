@@ -6068,7 +6068,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6875,8 +6875,45 @@ __attribute__((unused))
         n2[ifn_u] = eb_u; /* else 分支挂 n2 (同 select) */
         返 ifn_u;
     }
-    若 (tt[tk] == VR && !strcmp(tn[tk], "锁住")) { /* 接入 2026-08-27 互斥锁临界区: 锁住 m { body } → { mutex_lock(&m); body; mutex_unlock(&m); } — v1 块尾解锁 (提前 return/break 不解锁, 留后续); m 是互斥锁变量, 调用用户定义的 mutex_lock/mutex_unlock */
+    若 (tt[tk] == VR && !strcmp(tn[tk], "互斥锁")) { /* 接入 2026-08-28 机制层: 互斥锁声明 (内建自旋锁状态): 互斥锁 m; → { int __mtx_m = 0; } — 0=未锁, 1=锁定; 锁住 m {..} 用真原子 CAS 自旋 */
+        tk++; /* 互斥锁 */
+        字 mn[64]; strcpy(mn, tn[tk]); tk++; /* 锁名 */
+        若 (tt[tk] == SK) tk++; /* ; */
+        字 mname[80]; sprintf(mname, "__mtx_%s", mn);
+        var_offset(mname);
+        整 blk = Nd(5);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), mname, 32); 整 z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __mtx_m = 0; */
+        返 blk;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "锁住")) { /* 接入 2026-08-28 机制层: 互斥锁临界区 (内建自旋锁, 复用真原子 CAS): 锁住 m { body } → { while (原子比较交换(&__mtx_m,0,1)!=0); body; __mtx_m=0; } (defer 收集解锁, 提前 return 也解锁); m 未声明互斥锁时回退用户 mutex_lock/mutex_unlock */
         tk++; /* 锁住 */
+        字 mn[64]; strcpy(mn, tn[tk]);
+        字 mname[80]; sprintf(mname, "__mtx_%s", mn);
+        若 (var_lookup(mname) >= 0) { /* 互斥锁已声明 (互斥锁 m;) → 内建自旋锁 */
+            tk++; /* 锁名 */
+            整 body_lk = (tt[tk] == FK) ? blk() : stmt(); /* 临界区体 */
+            整 blk_lk = Nd(5);
+            /* while (原子 比较交换(&__mtx_m, 0, 1) != 0) { } — 自旋 */
+            { 整 v_m = Nd(1); memcpy((字*)(nn + v_m), mname, 32);
+              整 addr = Nd(11); Nc(addr, v_m);
+              整 call = Nd(4); Nc(call, addr);
+              { 整 z = Nd(0); nv[z] = 0; Nc(call, z); }
+              { 整 one = Nd(0); nv[one] = 1; Nc(call, one); }
+              { 整 fn = Nd(1); memcpy((字*)(nn + fn), "atomic_compare_exchange", 24); Nc(call, fn); }
+              整 z2 = Nd(0); nv[z2] = 0;
+              整 neq = Nd(2); nv[neq] = T_XK; Nc(neq, call); Nc(neq, z2); /* CAS != 0 */
+              整 wh = Nd(9); Nc(wh, neq);
+              整 ebd = Nd(5); Nc(wh, ebd); /* 空体 */
+              Nc(blk_lk, wh); }
+            Nc(blk_lk, body_lk);
+            { 整 v_m2 = Nd(1); memcpy((字*)(nn + v_m2), mname, 32);
+              整 z = Nd(0); nv[z] = 0;
+              整 asg = Nd(10); Nc(asg, v_m2); Nc(asg, z);
+              若 (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = asg; /* 解锁 defer 收集 (提前 return 也执行) */
+              Nc(blk_lk, asg); } /* __mtx_m = 0; */
+            返 blk_lk;
+        }
+        /* 回退: 用户 mutex_lock/mutex_unlock */
         整 mx = expr(); /* 互斥锁表达式 */
         整 body_lk = (tt[tk] == FK) ? blk() : stmt(); /* 临界区体 — blk() 整体消费 {..} (fix 2026-08-27: 原 tk++ 吃 { 后 stmt() 不消费 } → UK 残留解析错乱) */
         整 blk_lk = Nd(5);
@@ -9555,8 +9592,62 @@ __attribute__((unused))
         若 (ov_n < 32 && op_r && ty_r[0] && fn_r[0]) { ov_op[ov_n] = (字)op_r; strcpy(ov_ty[ov_n], ty_r); strcpy(ov_fn[ov_n], fn_r); ov_n++; }
         返 Nd(5);
     }
-    若 (tt[tk] == VR && !strcmp(tn[tk], "送")) { /* 接入 2026-08-27: 甲言 通道发送 (Go channel send 语法糖): 送 ch, v; → chan_send(&ch, v); — 参数先挂, callee (chan_send) 最后 (同管道/断言) */
+    若 (tt[tk] == VR && !strcmp(tn[tk], "通道")) { /* 接入 2026-08-28 机制层: 有界通道声明 (Go channel, 环形缓冲): 通道 q, n; → { int __ch_q_buf[n]; int __ch_q_cap=n; int __ch_q_h=0; int __ch_q_t=0; int __ch_q_c=0; } — 送/收 内联环形队列 (非阻塞) */
+        tk++; /* 通道 */
+        字 qn[64]; strcpy(qn, tn[tk]); tk++; /* 通道名 */
+        若 (tt[tk] == CK) tk++; /* , */
+        整 cap = 4;
+        const_expr_eval(&cap); /* 容量 (常量; 失败默认 4) */
+        若 (tt[tk] == SK) tk++; /* ; */
+        字 bname[80], hname[80], tname[80], cname[80], pname[80];
+        sprintf(bname, "__ch_%s_buf", qn); sprintf(hname, "__ch_%s_h", qn);
+        sprintf(tname, "__ch_%s_t", qn); sprintf(cname, "__ch_%s_c", qn); sprintf(pname, "__ch_%s_cap", qn);
+        var_array(bname, cap, 4); /* int __ch_q_buf[cap]; (内部数组, 4 字节元素) */
+        var_offset(hname); var_offset(tname); var_offset(cname); var_offset(pname);
+        整 blk = Nd(5);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), pname, 32); 整 cv = Nd(0); nv[cv] = cap; Nc(d, cv); Nc(blk, d); } /* int __ch_q_cap = cap; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), hname, 32); 整 z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __ch_q_h = 0; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), tname, 32); 整 z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __ch_q_t = 0; */
+        { 整 d = Nd(7); memcpy((字*)(nn + d), cname, 32); 整 z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __ch_q_c = 0; */
+        返 blk;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "送")) { /* 接入 2026-08-28 机制层: 通道发送 (有界环形缓冲, 非阻塞) — 送 q, v; → { if (__ch_q_c < __ch_q_cap) { __ch_q_buf[__ch_q_t]=v; __ch_q_t=(__ch_q_t+1)%__ch_q_cap; __ch_q_c++; } }; 通道未声明时回退旧语法糖 chan_send(&ch, v) */
         tk++; /* 送 */
+        字 qn[64]; strcpy(qn, tn[tk]);
+        字 bname[80]; sprintf(bname, "__ch_%s_buf", qn);
+        若 (var_lookup(bname) >= 0) { /* 通道已声明 (通道 q, n;) → 内联环形缓冲 */
+            tk++; /* 通道名 */
+            若 (tt[tk] == CK) tk++; /* , */
+            整 e_v = expr(); /* 值 */
+            若 (tt[tk] == SK) tk++; /* ; */
+            字 hname[80], tname[80], cname[80], pname[80];
+            sprintf(hname, "__ch_%s_h", qn); sprintf(tname, "__ch_%s_t", qn);
+            sprintf(cname, "__ch_%s_c", qn); sprintf(pname, "__ch_%s_cap", qn);
+            整 blk = Nd(5);
+            整 v_c = Nd(1); memcpy((字*)(nn + v_c), cname, 32);
+            整 v_p = Nd(1); memcpy((字*)(nn + v_p), pname, 32);
+            整 cmp = Nd(2); nv[cmp] = T_LK; Nc(cmp, v_c); Nc(cmp, v_p); /* __ch_q_c < __ch_q_cap */
+            整 ifn = Nd(8); Nc(ifn, cmp);
+            整 ibd = Nd(5);
+            { 整 v_b = Nd(1); memcpy((字*)(nn + v_b), bname, 32);
+              整 v_t = Nd(1); memcpy((字*)(nn + v_t), tname, 32);
+              整 idx = Nd(14); Nc(idx, v_b); Nc(idx, v_t);
+              整 asg = Nd(10); Nc(asg, idx); Nc(asg, e_v); Nc(ibd, asg); } /* __ch_q_buf[__ch_q_t] = v; */
+            { 整 v_t2 = Nd(1); memcpy((字*)(nn + v_t2), tname, 32);
+              整 one = Nd(0); nv[one] = 1;
+              整 add = Nd(2); nv[add] = PK; Nc(add, v_t2); Nc(add, one);
+              整 v_p2 = Nd(1); memcpy((字*)(nn + v_p2), pname, 32);
+              整 md = Nd(2); nv[md] = MD; Nc(md, add); Nc(md, v_p2);
+              整 asg = Nd(10); Nc(asg, v_t2); Nc(asg, md); Nc(ibd, asg); } /* __ch_q_t = (__ch_q_t+1) % __ch_q_cap; */
+            { 整 v_c2 = Nd(1); memcpy((字*)(nn + v_c2), cname, 32);
+              整 one = Nd(0); nv[one] = 1;
+              整 pl = Nd(2); nv[pl] = PK; Nc(pl, v_c2); Nc(pl, one);
+              整 asg = Nd(10); Nc(asg, v_c2); Nc(asg, pl); Nc(ibd, asg); } /* __ch_q_c++; */
+            Nc(ifn, ibd);
+            Nc(blk, ifn);
+            返 blk;
+        }
+        /* 回退: 旧语法糖 chan_send(&ch, v) */
         整 e_ch = expr(); /* 通道表达式 */
         若 (tt[tk] == CK) tk++; /* , */
         整 e_v = expr(); /* 值表达式 */
@@ -9567,8 +9658,44 @@ __attribute__((unused))
         { 整 fn = Nd(1); memcpy((字*)(nn + fn), "chan_send", 10); Nc(call, fn); } /* callee 最后 */
         返 call;
     }
-    若 (tt[tk] == VR && !strcmp(tn[tk], "收")) { /* 接入 2026-08-27: 甲言 通道接收 (Go channel recv 语法糖): 收 ch, v; → chan_recv(&ch, &v); — 两参都取址, callee 最后 */
+    若 (tt[tk] == VR && !strcmp(tn[tk], "收")) { /* 接入 2026-08-28 机制层: 通道接收 (有界环形缓冲, 非阻塞) — 收 q, v; → { if (__ch_q_c > 0) { v = __ch_q_buf[__ch_q_h]; __ch_q_h = (__ch_q_h+1)%__ch_q_cap; __ch_q_c--; } }; 通道未声明时回退旧语法糖 chan_recv(&ch, &v) */
         tk++; /* 收 */
+        字 qn[64]; strcpy(qn, tn[tk]);
+        字 bname[80]; sprintf(bname, "__ch_%s_buf", qn);
+        若 (var_lookup(bname) >= 0) { /* 通道已声明 → 内联环形缓冲 */
+            tk++; /* 通道名 */
+            若 (tt[tk] == CK) tk++; /* , */
+            字 vn[64]; strcpy(vn, tn[tk]); tk++; /* 目标变量 */
+            若 (tt[tk] == SK) tk++; /* ; */
+            字 hname[80], tname[80], cname[80], pname[80];
+            sprintf(hname, "__ch_%s_h", qn); sprintf(tname, "__ch_%s_t", qn);
+            sprintf(cname, "__ch_%s_c", qn); sprintf(pname, "__ch_%s_cap", qn);
+            整 blk = Nd(5);
+            整 v_c = Nd(1); memcpy((字*)(nn + v_c), cname, 32);
+            整 z = Nd(0); nv[z] = 0;
+            整 cmp = Nd(2); nv[cmp] = T_GK; Nc(cmp, v_c); Nc(cmp, z); /* __ch_q_c > 0 */
+            整 ifn = Nd(8); Nc(ifn, cmp);
+            整 ibd = Nd(5);
+            { 整 v_b = Nd(1); memcpy((字*)(nn + v_b), bname, 32);
+              整 v_h = Nd(1); memcpy((字*)(nn + v_h), hname, 32);
+              整 idx = Nd(14); Nc(idx, v_b); Nc(idx, v_h);
+              整 v_r = Nd(1); memcpy((字*)(nn + v_r), vn, 32);
+              整 asg = Nd(10); Nc(asg, v_r); Nc(asg, idx); Nc(ibd, asg); } /* v = __ch_q_buf[__ch_q_h]; */
+            { 整 v_h2 = Nd(1); memcpy((字*)(nn + v_h2), hname, 32);
+              整 one = Nd(0); nv[one] = 1;
+              整 add = Nd(2); nv[add] = PK; Nc(add, v_h2); Nc(add, one);
+              整 v_p = Nd(1); memcpy((字*)(nn + v_p), pname, 32);
+              整 md = Nd(2); nv[md] = MD; Nc(md, add); Nc(md, v_p);
+              整 asg = Nd(10); Nc(asg, v_h2); Nc(asg, md); Nc(ibd, asg); } /* __ch_q_h = (__ch_q_h+1) % __ch_q_cap; */
+            { 整 v_c2 = Nd(1); memcpy((字*)(nn + v_c2), cname, 32);
+              整 one = Nd(0); nv[one] = 1;
+              整 sub = Nd(2); nv[sub] = MK; Nc(sub, v_c2); Nc(sub, one);
+              整 asg = Nd(10); Nc(asg, v_c2); Nc(asg, sub); Nc(ibd, asg); } /* __ch_q_c--; */
+            Nc(ifn, ibd);
+            Nc(blk, ifn);
+            返 blk;
+        }
+        /* 回退: 旧语法糖 chan_recv(&ch, &v) */
         整 e_ch = expr(); /* 通道表达式 */
         若 (tt[tk] == CK) tk++; /* , */
         整 e_v = expr(); /* 目标表达式 */
