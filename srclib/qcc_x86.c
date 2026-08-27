@@ -4266,6 +4266,21 @@ static int expr(void);
 static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
 static int prim(void) {
+        if (tt[tk] == VR && !strcmp(tn[tk], "原子")) { /* 接入 2026-08-27 原子操作 (表达式层, 同异步模式): 原子 加(&x, 1) → atomic_fetch_add(&x, 1); 原子 读(&x) → atomic_load(&x); 原子 写(&x, v) → atomic_store(&x, v) — 操作名映射, 用户定义 atomic_* (读改写原子性, C 模拟已验语义) */
+        tk++; /* 原子 */
+        char opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 加/读/写 */
+        char fname[80];
+        if (!strcmp(opn, "加")) sprintf(fname, "atomic_fetch_add");
+        else if (!strcmp(opn, "读")) sprintf(fname, "atomic_load");
+        else if (!strcmp(opn, "写")) sprintf(fname, "atomic_store");
+        else sprintf(fname, "atomic_%s", opn);
+        if (tt[tk] == OK) tk++; /* ( */
+        int call = Nd(4);
+        while (tt[tk] != KK && tt[tk] != EK && tt[tk] != SK) { Nc(call, expr()); if (tt[tk] == CK) tk++; } /* 参数 */
+        if (tt[tk] == KK) tk++; /* ) */
+        { int fn = Nd(1); memcpy((char*)(nn + fn), fname, 64); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
         if (tt[tk] == VR && !strcmp(tn[tk], "异步")) { /* 接入 2026-08-27 异步操作 (事件循环, 同区域模式): 异步 泵(ts, 3, 1, 10) → async_pump(ts, 3, 1, 10); 异步 步进(t, 1, 10) → async_step(t, 1, 10) — 用户定义 async_* (事件循环+协程式 await+定时器 tick, C 模拟已验语义) */
         tk++; /* 异步 */
         char opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 泵/步进/注册 — 映射到英文 (fix 2026-08-27: 中文名不能直接拼 async_ 前缀) */
@@ -5909,7 +5924,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
