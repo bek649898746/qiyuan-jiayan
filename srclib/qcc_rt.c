@@ -578,5 +578,36 @@ int coro_step(int *c) { /* 步进协程: 完成返回 0; 否则切到纤维跑�
 void __coro_yield(void) { /* 协程让出: 挂起当前纤维, 切回主流程 (主纤维) */
     SwitchToFiber(__coro_main_fiber);
 }
+
+/* 接入 2026-08-28 P1 #6 引用计数 (Rc): 共享所有权, 运行时计数
+   Rc = 8B (仅指针, 指向 data; 计数在 data 前 4B) — 按值传参/返回走普通路径 (避开 sret+big 缺口)
+   共享(&v, sz) → 分配 count+data, 拷贝, count=1
+   克隆(r) → count++
+   释放(r) → count--, 0 时 free
+   取(r) → 返回 data 指针 */
+struct Rc { void *p; };
+struct Rc 共享(void *init, int sz) {
+    struct Rc r;
+    int *hdr = (int *)malloc(sz + 4);
+    if (!hdr) { fprintf(stderr, "[ERR] Rc 分配失败\n"); exit(1); }
+    hdr[0] = 1;
+    if (init && sz > 0) memcpy((char *)hdr + 4, init, sz);
+    r.p = (char *)hdr + 4;
+    return r;
+}
+struct Rc 克隆(struct Rc r) {
+    int *cnt = (int *)r.p - 1;
+    (*cnt) = (*cnt) + 1;
+    return r;
+}
+void 释放(struct Rc r) {
+    if (!r.p) return;
+    int *cnt = (int *)r.p - 1;
+    (*cnt) = (*cnt) - 1;
+    if (*cnt <= 0) free(cnt);
+}
+void *取(struct Rc r) {
+    return r.p;
+}
 #endif
 
