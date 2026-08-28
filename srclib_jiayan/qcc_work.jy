@@ -2247,7 +2247,7 @@ __attribute__((unused))
         "fopen", "fread", "fwrite", "fputc", "fputs", "fgetc", "fclose", "fseek", "ftell", "rewind", "feof", "fflush", "ferror", "fgets", /* fix 2026-08-18: fgetc 缺 → coff 模式当用户函数链到 msvcrt fgetc, 拿 HANDLE 当 FILE* 崩 (git config 读取); fix 2026-08-24 t35t: feof/fflush/ferror 补内置 — 否则当用户函数外部调用 msvcrt, 句柄当 FILE* 崩 (reflog/strbuf_getwholeline) */
         "_va_alloc", "host_va_alloc", "_setpos", "_getpos", "_exit_proc", "__qcc_va_start",
         "memset", "memcpy", "strlen", "strcmp", "strcpy", "strncpy",
-        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm" };
+        "malloc", "calloc", "free", "realloc", "isalnum", "isalpha", "exit", "abort", "inb", "outb", "inl", "outl", "__asm", "thread_create", "thread_join" }; /* 2026-08-28 type-root-14 #45: 线程内建 (CreateThread/WaitForSingleObject IAT 调用) */
     遍 (整 i = 0; i < (整)(大小(bn)/大小((bn)[0])); i++) 若 (!strcmp(bn[i], n)) 返 1;
     返 0;
 }
@@ -2621,14 +2621,15 @@ __attribute__((unused))
 静 字 asm_name[512]; /* -S 模式 asm 文件名 (最终代越界重稳定时截断重开用, fix 2026-08-06) */
 静 整 stc_disp(整 idx) { 返 (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
-静 整 iat_disp_at(整 at, 整 slot) { 整 iat_off = slot < 8 ? (8 + 8 * slot) : (0x50 + 8 * (slot - 8)); 返 (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32 / IAT2@+0x50 msvcrt（fix 2026-08-06 BUG-1） */
+静 整 iat_disp_at(整 at, 整 slot) { 整 iat_off = slot < 11 ? (8 + 8 * slot) : (0x68 + 8 * (slot - 11)); 返 (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32(11) / IAT2@+0x68 msvcrt (2026-08-28 type-root-14 #45: kernel32 8→11 槽) */
 静 空 call_iat(整 slot) {
     asm_emit("    调系统 %d\n", (字*)(长 长)(slot), (字*)(长 长)0, (字*)(长 长)0);
     整 at = cp; /* instruction start (FF 15 + disp32 = 6 bytes) */
     b(0xFF); b(0x15);
     若 (coff_mode) {
-        静 常 字 *impn[25] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
+        静 常 字 *impn[28] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
             "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA",
+            "__imp_CreateThread", "__imp_WaitForSingleObject", "__imp_CloseHandle", /* 2026-08-28 type-root-14 #45: kernel32 8→11 */
             "__imp_pow", "__imp_atan2", "__imp_fmod", "__imp_remainder", "__imp_sqrt", "__imp_cbrt", "__imp_cos", "__imp_sin",
             "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor",
             "__imp__write" };
@@ -2641,7 +2642,7 @@ __attribute__((unused))
 /* 外部数学函数 → IAT slot 8-31（非 coff 模式；fix 2026-08-06 BUG-1; 2026-08-25 math24: 16→24, frexp/ldexp/modf 走混合 ABI 专用分支） */
 静 整 fn_math_iat(常 字 *n) {
     静 常 字 *maths[24] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs","cosh","sinh","tanh","copysign","hypot","frexp","ldexp","modf" };
-    遍 (整 i = 0; i < 24; i++) 若 (!strcmp(maths[i], n)) 返 8 + i;
+    遍 (整 i = 0; i < 24; i++) 若 (!strcmp(maths[i], n)) 返 11 + i; /* 2026-08-28 type-root-14 #45: kernel32 8→11 槽 → msvcrt 槽 8→11 起 */
     返 -1;
 }
 /* 外部库函数注册表 (fix 2026-08-25 step5 time 全系): 非 builtin 非 math 的 msvcrt IAT 函数,
@@ -2650,7 +2651,7 @@ __attribute__((unused))
    slot 33-41 对应 mnames[25..33] (64 位变体映射标准名: time→_time64 等) */
 静 常 字 *ext_fn_names[34] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs","islower","isupper","iscntrl","isgraph","isprint","ispunct","labs","atof","strcoll","strxfrm","strncat","strncpy","strtod" }; /* isblank/strcasecmp/strtoll 等不在传统 msvcrt.dll 导出, 勿入表 */
 静 整 ext_fn_slot(常 字 *n) {
-    遍 (整 i = 0; i < 34; i++) 若 (!strcmp(ext_fn_names[i], n)) 返 33 + i;
+    遍 (整 i = 0; i < 34; i++) 若 (!strcmp(ext_fn_names[i], n)) 返 36 + i; /* 2026-08-28 type-root-14 #45: msvcrt 槽 33→36 起 (kernel32 +3) */
     返 -1;
 }
 静 整 ext_fn_ret(常 字 *n) {
@@ -12655,7 +12656,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             b(0xE8); b4(0); /* call rel32 - jyld resolves _write -> msvcrt import */
             coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0);
         } 否 {
-            call_iat(32); /* _write IAT slot (msvcrt, math24: 24 math + _write, _write 29→32) */
+            call_iat(35); /* _write IAT slot (msvcrt, 2026-08-28 type-root-14 #45: kernel32 8→11 → _write 32→35) */
         }
         add_rsp_imm(32);
         jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
@@ -12737,7 +12738,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     mov_rr64(1, 10); /* rcx = fd */
     mov_rr64(2, 14); /* rdx = buf */
     若 (coff_mode) { b(0xE8); b4(0); coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0); }
-    否 call_iat(32); /* _write (math24: 29→32) */
+    否 call_iat(35); /* _write (2026-08-28 type-root-14 #45: 32→35) */
     add_rsp_imm(32);
     jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
     set_label(lwf);
@@ -16012,6 +16013,41 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             } 否 若 (!strcmp(fname, "__qcc_va_start")) {
                 若 (cur_va_home >= 0) lea_r_mbrp(0, cur_va_home); /* rax = &first vararg slot (home area) */
                 否 mov_r_imm(0, 0); /* 非变参函数: 返回 NULL (fix 2026-08-18: 未设置时 rax 残留垃圾 → va_list 错) */
+            } 否 若 (!strcmp(fname, "thread_create")) { /* 2026-08-28 type-root-14 #45: 线程真接入 — thread_create(&t, work, arg) → t = CreateThread(NULL,0,work,arg,0,NULL) */
+                mov_r_imm(1, 0); /* rcx = lpThreadAttributes = NULL */
+                mov_r_imm(2, 0); /* rdx = dwStackSize = 0 */
+                mov_reg_mrsp64(0, argbase + total_h - slot_h[1] - 8); mov_rr64(8, 0); /* r8 = lpStartAddress = work */
+                mov_reg_mrsp64(0, argbase + total_h - slot_h[2] - 8); mov_rr64(9, 0); /* r9 = lpParameter = arg */
+                mov_reg_mrsp64(14, argbase + total_h - slot_h[0] - 8); /* r14 = &t (callee-saved, 跨调用保留) */
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                sub_rsp_imm(48); /* 32 影子 + 2 栈参 (dwCreationFlags, lpThreadId) */
+                mov_mrsp_reg64(32, 1); /* [rsp+32] = dwCreationFlags = 0 (rcx=0) */
+                mov_mrsp_reg64(40, 1); /* [rsp+40] = lpThreadId = NULL */
+                call_iat(8); /* CreateThread */
+                add_rsp_imm(48);
+                mov_rr64(4, 15); pop_r(15);
+                mov_mreg_reg(14, 0); /* *&t = rax = 句柄 */
+                add_rsp_imm(total_h);
+                math_done = 1;
+            } 否 若 (!strcmp(fname, "thread_join")) { /* 2026-08-28 type-root-14 #45: 线程真接入 — thread_join(&t) → WaitForSingleObject(t, INFINITE); CloseHandle(t) */
+                mov_reg_mrsp64(0, argbase + total_h - slot_h[0] - 8); mov_reg_mreg64(1, 0); /* rcx = *&t = 句柄 */
+                mov_r_imm(2, -1); /* rdx = INFINITE (0xFFFFFFFF) */
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                sub_rsp_imm(32);
+                call_iat(9); /* WaitForSingleObject */
+                add_rsp_imm(32);
+                mov_rr64(4, 15); pop_r(15);
+                mov_reg_mrsp64(0, argbase + total_h - slot_h[0] - 8); mov_reg_mreg64(1, 0); /* rcx = 句柄 (再取) */
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
+                sub_rsp_imm(32);
+                call_iat(10); /* CloseHandle */
+                add_rsp_imm(32);
+                mov_rr64(4, 15); pop_r(15);
+                add_rsp_imm(total_h);
+                math_done = 1;
             } 否 若 (!strcmp(fname, "frexp") || !strcmp(fname, "ldexp") || !strcmp(fname, "modf")) {
                 /* 混合 ABI (fix 2026-08-25 step4): arg0 double 进 xmm0, arg1 (int 值或指针) 进 rdx; 返回 double 在 xmm0。
                    frexp/ldexp/modf 第二参非 double, 不走全 double 的 fn_math_iat 传参路径 */
@@ -17734,7 +17770,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x458); w4(f, 60); /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; step9: 0x428; step10: 0x458) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1: 新布局 desc@+0x1A8, 2 dll) */
+    w4(f, data_rva_base + 0x488); w4(f, 60); /* RVA of import descriptors + size (2026-08-28 type-root-14 #45: desc@+0x488 kernel32 11 槽) */ /* RVA of import descriptors + size (fix 2026-08-06 BUG-1; step9: 0x428; step10: 0x458) */
     /* data directories 2-15: none */
     遍 (整 di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -17782,35 +17818,35 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
-    静 常 字 *knames[8] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA" };
+    静 常 字 *knames[11] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle" }; /* 2026-08-28 type-root-14 #45: +CreateThread/WaitForSingleObject/CloseHandle (线程模型完整) */
     静 常 字 *mnames[59] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime", "strtok", "strrchr", "strnlen", "strpbrk", "memcmp", "toupper", "isalnum", "isxdigit", "isspace", "rand", "srand", "abs", "islower", "isupper", "iscntrl", "isgraph", "isprint", "ispunct", "labs", "atof", "strcoll", "strxfrm", "strncat", "strncpy", "strtod" };
-    整 iat1 = 0x08, iat2 = 0x50, ilt1 = 0x230, ilt2 = 0x278, desc_off = 0x458, name_off = 0x4B0; /* step10: IAT2 54→59 槽 (60*8=480B→0x230); ILT1@0x230 (72B→0x278), ILT2@0x278 (480B→0x458), desc@0x458 (60B→0x494), names@0x4B0 (至 ~0x750 < DATA_RVA_OFF 0x800) */
-    整 n_off[67];
+    整 iat1 = 0x08, iat2 = 0x68, ilt1 = 0x248, ilt2 = 0x2A8, desc_off = 0x488, name_off = 0x4C4; /* 2026-08-28 type-root-14 #45: kernel32 8→11 槽 (12*8=96B→0x60); IAT1@0x08(96B→0x68), IAT2@0x68(480B→0x248), ILT1@0x248(96B→0x2A8), ILT2@0x2A8(480B→0x488), desc@0x488(60B→0x4C4), names@0x4C4 (至 ~0x780 < DATA_RVA_OFF 0x800) */
+    整 n_off[70];
     /* IAT/ILT 占位 */
-    fseek(f, data_foff + iat1, SEEK_SET); 遍 (整 i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + iat1, SEEK_SET); 遍 (整 i = 0; i < 12; i++) w8(f, 0);
     fseek(f, data_foff + iat2, SEEK_SET); 遍 (整 i = 0; i < 60; i++) w8(f, 0);
-    fseek(f, data_foff + ilt1, SEEK_SET); 遍 (整 i = 0; i < 9; i++) w8(f, 0);
+    fseek(f, data_foff + ilt1, SEEK_SET); 遍 (整 i = 0; i < 12; i++) w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET); 遍 (整 i = 0; i < 60; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
-    遍 (整 i = 0; i < 8; i++) { n_off[i] = (整)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    遍 (整 i = 0; i < 59; i++) { n_off[8 + i] = (整)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    遍 (整 i = 0; i < 11; i++) { n_off[i] = (整)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
+    遍 (整 i = 0; i < 59; i++) { n_off[11 + i] = (整)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     整 kdll = (整)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     整 mdll = (整)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
-    /* 回填 IAT1（8 + term） */
+    /* 回填 IAT1（11 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
-    遍 (整 i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
+    遍 (整 i = 0; i < 11; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     /* 回填 IAT2（59 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    遍 (整 i = 0; i < 59; i++) w8(f, data_rva_base + n_off[8 + i]);
+    遍 (整 i = 0; i < 59; i++) w8(f, data_rva_base + n_off[11 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
-    遍 (整 i = 0; i < 8; i++) w8(f, data_rva_base + n_off[i]);
+    遍 (整 i = 0; i < 11; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    遍 (整 i = 0; i < 59; i++) w8(f, data_rva_base + n_off[8 + i]);
+    遍 (整 i = 0; i < 59; i++) w8(f, data_rva_base + n_off[11 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
