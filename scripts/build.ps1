@@ -1,36 +1,36 @@
 # ============================================================
-# ï¿½ï¿½Ôª ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + ï¿½Ô¾ï¿½ï¿½ï¿½Ö¤
-# ï¿½Ã·ï¿½: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ô¾ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Ð£ï¿½é²»ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ 171 ï¿½ï¿½ï¿½ï¿½
+#                                                   +                 
+#         : powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+#             :                                                                                                171             
 # ============================================================
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-Write-Host "==== ï¿½ï¿½Ôª ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½Ö¤ ====" -ForegroundColor Cyan
+Write-Host "====                                                                 ====" -ForegroundColor Cyan
 
-# 1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-Write-Host "[1/4] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ qcc_x86..." -ForegroundColor Yellow
+# 1.                                           
+Write-Host "[1/4]                                            qcc_x86..." -ForegroundColor Yellow
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL]                                 " -ForegroundColor Red; exit 1 }
 
-# 2. ï¿½Ô¼ï¿½
-Write-Host "[2/4] ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ --test ..." -ForegroundColor Yellow
+# 2.         
+Write-Host "[2/4]                      --test ..." -ForegroundColor Yellow
 $t = & .\qcc_x86.exe --test
-if ($t -notmatch 'PASS') { Write-Host "[FAIL] ï¿½Ô¼ï¿½Ê§ï¿½ï¿½: $t" -ForegroundColor Red; exit 1 }
+if ($t -notmatch 'PASS') { Write-Host "[FAIL]                 : $t" -ForegroundColor Red; exit 1 }
 
-# 3. ï¿½Ô¾ï¿½ï¿½ï¿½ï¿? (v1==v2==v3==v4==v5 ï¿½ï¿½ï¿½È?ï¿½ï¿½; 2026-08-20: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ = qcc_boot.exe
-#    ï¿½ï¿½ï¿½Ô¾Ù²ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1, Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½C ï¿½ï¿½ï¿½ï¿½ qcc_x86.exe ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
-Write-Host "[3/4] ï¿½Ô¾ï¿½ï¿½ï¿½ï¿? (ï¿½ï¿½ï¿½ï¿½ qcc_boot.exe = ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 27B42CE1) ..." -ForegroundColor Yellow
-# ´ÓÁãÂ·¾¶ (2026-08-24 ·â´æ: ²Ö¿â²»º¬±àÒë²úÎï, Ä°ÉúÈË clone ºóÐèÏÈ×Ô¾ÙÉú³ÉÖÖ×Ó)
+# 3.                  ? (v1==v2==v3==v4==v5             ?      ; 2026-08-20:                                              = qcc_boot.exe
+#                                 27B42CE1,                           C              qcc_x86.exe                     /                                    )
+Write-Host "[3/4]                  ? (             qcc_boot.exe =                    27B42CE1) ..." -ForegroundColor Yellow
+#                      (2026-08-24          :                                    ,                clone                                                   )
 if (-not (Test-Path .\qcc_boot.exe)) {
-    Write-Host "  [seed] qcc_boot.exe ²»´æÔÚ, ÓÃ C ËÞÖ÷±àÒëÆ÷×Ô¾ÙÉú³ÉÖÖ×Ó..." -ForegroundColor Yellow
+    Write-Host "  [seed] qcc_boot.exe                   ,        C                                                               ..." -ForegroundColor Yellow
     & .\qcc_x86.exe srclib_jiayan\qcc_work.jy -o qcc_boot.exe | Out-Null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path .\qcc_boot.exe)) {
         & .\qcc_x86.exe srclib\qcc_x86.c -o qcc_boot.exe | Out-Null
     }
-    if (-not (Test-Path .\qcc_boot.exe)) { Write-Host "[FAIL] ÎÞ·¨Éú³É qcc_boot.exe" -ForegroundColor Red; exit 1 }
-    Write-Host "  [seed] qcc_boot.exe Éú³ÉÍê³É" -ForegroundColor Green
+    if (-not (Test-Path .\qcc_boot.exe)) { Write-Host "[FAIL]                      qcc_boot.exe" -ForegroundColor Red; exit 1 }
+    Write-Host "  [seed] qcc_boot.exe                      " -ForegroundColor Green
 }
 & .\qcc_boot.exe srclib_jiayan\qcc_work.jy -o v1.exe | Out-Null
 & .\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe | Out-Null
@@ -49,62 +49,62 @@ Write-Host "  v3: $h3"
 Write-Host "  v4: $h4"
 Write-Host "  v5: $h5"
 
-# ï¿½ï¿½ï¿½Õ±ï¿½×¼: ï¿½Ô¾Ù±Õ»ï¿½ï¿½ï¿½ï¿½ï¿½ (2026-08-22 t46: git branch/show-ref È«ï¿½ï¿½Â·ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½Â²ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
-#            Ë«Ö¸ï¿½ï¿½ï¿½Ö¶Î»ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ frow/mem_addr deref fsz/static struct ï¿½Ö¶Î¸ï¿½Öµ/ï¿½ï¿½ï¿½ï¿½ struct typedef ï¿½Ö¶ï¿½;
-#            ï¿½ï¿½ï¿½ï¿½ QCC_DBG_VA varargs ï¿½ï¿½ï¿½Ô²ï¿½×® ï¿½ï¿½ -Wall -Werror ï¿½ã¾¯ï¿½ï¿½):
-# qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
-$expected = '11bbcc6d'  # ºóÖÃ»Ø¹éÐÞ¸´ + ÌØÐÔÑéÖ¤Èë×Ô¶¯Á´ (»¹¼¼ÊõÕ®)  # ÆõÔ¼±í¿ÉÖØÈëÐ¹Â©ÐÞ¸´ + AI¶Ëµ½¶Ë (Õæ½ÓÈë¢á)  # RAIIÕæÐÞ¸´+»úÖÆ²ã³Ô¹·Á¸ (Õæ½ÓÈë¢Þ)  # ¶¥²ãÆõÔ¼ÎÛÈ¾ÐÞ¸´ (Õæ½ÓÈë¢Ü)  # jyc¿Í»§¶Ë+¾«È·ÐÞ¸´½¨Òé (Õæ½ÓÈë¢Ú¢Û)  # serveÕæ½ÓÈë (»º´æ¹²Ïí+ÔØºÉÄ£Ê½, Õæ±Õ»·)  # ±àÒëÆÚ³£Á¿Ç°ÖÃÉóÅÐ (¿ÉÍÌÇåµ¥ P1, Ö¤Ã÷Æ÷²é)  # ÒýÓÃÊÕ¼¯ --refs (¿ÉÍÌÇåµ¥ P1, µ¼º½²¹ÒýÓÃ)  # ¿ÉÖØÈëÐÞ¸´+±àÒë·þÎñÆ÷ (nll²ÐÁô¸ùÒò, --repeatÊ×vs´Î¶ÔÕË)  # ±àÒëºÚÏ»×Ó --recorder (¿ÉÍÌÇåµ¥ P1, ·ÖÆçÖðÖ¡¶¨Î»)  # ½Ó¿ÚÎÄ¼þ+ÓïÒåµ¼º½ (º¯Êý¶¨ÒåÐÐºÅ, ¿ÉÍÌÇåµ¥ P1)  # ½Ó¿ÚÎÄ¼þ --interface (¿ÉÍÌÇåµ¥ P1, MoonBit #4)  # ±àÒëDAGÖØ·ÅÖ¤Ã÷ (¿ÉÍÌÇåµ¥ P0-9, AIÔ­Éú #9 ¡ª P0 ÊÕ¹Ù)  # ½á¹¹ÆõÔ¼ÉóÅÐ ÆõÔ¼¹þÏ£ (¿ÉÍÌÇåµ¥ P0-8, AIÔ­Éú #8)  # ÆõÔ¼ÉóÅÐ Ç°ÖÃ/ºóÖÃ (¿ÉÍÌÇåµ¥ P0-7, AIÔ­Éú #7)  # ±àÒë¼ì²éµã (¿ÉÍÌÇåµ¥ P0-6, AIÔ­Éú #6: --checkpoint ±ÀÀ£Ê¬¼ì)  # ±àÒëÆ÷×ÊÔ´»¤À¸ (¿ÉÍÌÇåµ¥ P0-9b, AIÔ­Éú #9b)  # ÎÄ¼þ¼¶¹þÏ£ÔöÁ¿±àÒë (¿ÉÍÌÇåµ¥ P0-5, AIÔ­Éú #5)  # ½èÓÃ×Ô¶¯»¯+ÒÆÈëdstÐÞ¸´ (2026-08-28 ÍêÉÆµÚ2Ïî)  # locÍêÉÆ: lineÕæÖµ+codeLine (´ó¸çÆÀ¹À) ÐÂ²»¶¯µã
+#                 :                          (2026-08-22 t46: git branch/show-ref                                                          
+#                                      /                         frow/mem_addr deref fsz/static struct             /             struct typedef         ;
+#                         QCC_DBG_VA varargs                         -Wall -Werror             ):
+# qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d                   )
+$expected = '2b218426'  # 2026-08-28 nullable type-root-fix: A8001 unwrap-check + pending tok-pos + fn-decl cleanup + var_offset_ptr/var_static register
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
-    Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
+    Write-Host "[OK]          1-cycle          ?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
-    Write-Host "[FAIL] ¹þÏ£¶ÔÕËÊ§°Ü: expected=$expected Êµ¼ÊSHA256=$($h1.Substring(0,8)) (²»¶¯µã/expectedÒ»ÂÉSHA256, ¼û_BOOT.md L74)" -ForegroundColor Red
-    Write-Host "       ¶Ô²»ÉÏ=²»ÐíÍ¨¹ý! ÅÜÍêÕûÁ´ÖØÐÂ¶ÔÕË»òÐÞÕýexpected" -ForegroundColor Red
+    Write-Host "[FAIL]                             : expected=$expected         SHA256=$($h1.Substring(0,8)) (                  /expected        SHA256,       _BOOT.md L74)" -ForegroundColor Red
+    Write-Host "                     =                    !                                                           expected" -ForegroundColor Red
     exit 1
 }
 
-# 4. AIÔ­Éú #5 (¿ÉÍÌÇåµ¥ P0-5): ÎÄ¼þ¼¶¹þÏ£ÔöÁ¿±àÒë ¡ª ²»¶¯µãÁ´¸´Ñé (ÔöÁ¿²úÎï==ÐÂÏÊ±àÒë==²»¶¯µã; --cache miss¡úhit¡úverify)
-Write-Host "[3.5/5] ÔöÁ¿»º´æ²»¶¯µã¸´Ñé (--cache + --cache-verify) ..." -ForegroundColor Yellow
+# 4. AI         #5 (                   P0-5):                                                                                            (                        ==                    ==                  ; --cache miss      hit      verify)
+Write-Host "[3.5/5]                                            (--cache + --cache-verify) ..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path scratch_test | Out-Null
 Remove-Item scratch_test\_cache_fp.exe, scratch_test\_cache_fp.exe.qcckey, scratch_test\_cache_fp.err -ErrorAction SilentlyContinue
 $h1l = $h1.ToLower()
-# cmd /c °üÔ­Éú stderr: PS5.1 EAP=Stop ÏÂÔ­Éú stderr Ð´ ¡ú NativeCommandError ÖÕÖ¹ (2>&1/2>file ¾ù´¥·¢), cmd ÎÞ´ËÎÊÌâ
+# cmd /c                stderr: PS5.1 EAP=Stop                stderr           NativeCommandError          (2>&1/2>file                   ), cmd                     
 cmd /c "qcc_x86.exe --cache --selfcheck $h1l srclib_jiayan\qcc_work.jy -o scratch_test\_cache_fp.exe 2>scratch_test\_cache_fp.err"
-if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] ÔöÁ¿»º´æ miss ±àÒëÊ§°Ü" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL]                          miss                     " -ForegroundColor Red; exit 1 }
 cmd /c "qcc_x86.exe --cache-verify --selfcheck $h1l srclib_jiayan\qcc_work.jy -o scratch_test\_cache_fp.exe 2>scratch_test\_cache_fp.err"
-if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] ÔöÁ¿»º´æ verify Ê§°Ü" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL]                          verify         " -ForegroundColor Red; exit 1 }
 $cv = Get-Content scratch_test\_cache_fp.err -Raw
-if ($cv -notmatch 'verify OK') { Write-Host "[FAIL] ÔöÁ¿»º´æ¸´ÑéÎ´¹ý: $cv" -ForegroundColor Red; exit 1 }
-Write-Host "[OK] ÔöÁ¿»º´æ²»¶¯µã¸´Ñé: ÔöÁ¿²úÎï==ÐÂÏÊ±àÒë==$($h1.Substring(0,8))" -ForegroundColor Green
+if ($cv -notmatch 'verify OK') { Write-Host "[FAIL]                                       : $cv" -ForegroundColor Red; exit 1 }
+Write-Host "[OK]                                           :                         ==                    ==$($h1.Substring(0,8))" -ForegroundColor Green
 
-# 4. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½+ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ @EXPECTED compile_fail ï¿½ï¿½ ï¿½Þ¸ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü²ï¿½ï¿½Ô´ï¿½ï¿½ï¿? NativeCommandErrorï¿½ï¿½
-Write-Host "[4/4] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ run_tests.py ..." -ForegroundColor Yellow
+# 4.                                                         +            +            ,              @EXPECTED compile_fail                                                                                     ? NativeCommandError      
+Write-Host "[4/4]                                        run_tests.py ..." -ForegroundColor Yellow
 python scripts/run_tests.py
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[FAIL] ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red
+    Write-Host "[FAIL]                             " -ForegroundColor Red
     exit 1
 }
 
-# 5. ï¿½ï¿½Îªï¿½ï¿½ï¿½Ô£ï¿½fix 2026-08-09 Êµï¿½â¸´ï¿½ï¿½ï¿½ï¿½ï¿?: ï¿½ï¿½Ç°ï¿½Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½, 2 Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öªï¿½ï¿½
-Write-Host "[5/5] ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ tests/behavior ..." -ForegroundColor Yellow
+# 5.                       fix 2026-08-09                        ?:                                                 , 2                             
+Write-Host "[5/5]                            tests/behavior ..." -ForegroundColor Yellow
 python tests/behavior/run_behavior.py
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[WARN] ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½" -ForegroundColor Red
+    Write-Host "[WARN]                             " -ForegroundColor Red
     exit 1
 }
 
-# 6. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-Write-Host "[+] ï¿½ï¿½ï¿½ë¹¤ï¿½ï¿½ï¿½ï¿½ jyld / jycc ..." -ForegroundColor Yellow
-# 5.5 ÌØÐÔÑéÖ¤ (»¹¼¼ÊõÕ® 2026-08-28: ÌØÐÔ²âÊÔ²»Èë×Ô¶¯Á´ ¡ú ÒÆÈëdst»Ø¹é/RAIIÌáÇ°returnÐ¹Â©Â©Íø; ÏÖÔÚÈ«²¿²¢ÈëÃÅ½û)
-Write-Host "[5.5/5] ÌØÐÔÑéÖ¤ (18 ¸ö _verify_*.py: ½èÓÃ/ÆõÔ¼/RAII/³Ô¹·Á¸/¶Ëµ½¶Ë) ..." -ForegroundColor Yellow
+# 6.                   
+Write-Host "[+]                          jyld / jycc ..." -ForegroundColor Yellow
+# 5.5                      (                     2026-08-28:                                                               dst        /RAII        return            ;                                         )
+Write-Host "[5.5/5]                      (18        _verify_*.py:             /        /RAII/              /              ) ..." -ForegroundColor Yellow
 $vfails = 0
 Get-ChildItem scripts\_verify_*.py | ForEach-Object {
     python $_.FullName *> $null
     if ($LASTEXITCODE -ne 0) { Write-Host "  [FAIL] $($_.Name)" -ForegroundColor Red; $vfails++ }
 }
-if ($vfails -gt 0) { Write-Host "[FAIL] $vfails ¸öÌØÐÔÑéÖ¤Ê§°Ü" -ForegroundColor Red; exit 1 }
-Write-Host "[OK] ÌØÐÔÑéÖ¤ 18 ¸öÈ«¹ý (½èÓÃ/ÆõÔ¼/RAII/³Ô¹·Á¸/¶Ëµ½¶ËÒÑÈë×Ô¶¯Á´)" -ForegroundColor Green
+if ($vfails -gt 0) { Write-Host "[FAIL] $vfails                                   " -ForegroundColor Red; exit 1 }
+Write-Host "[OK]                      18                (            /        /RAII/              /                                        )" -ForegroundColor Green
 gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
 gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
 
 Write-Host ""
-Write-Host "==== ï¿½ï¿½É¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¡ï¿? ====" -ForegroundColor Cyan
+Write-Host "====                                                                  ? ====" -ForegroundColor Cyan
