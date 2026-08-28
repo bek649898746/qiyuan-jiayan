@@ -2116,6 +2116,8 @@ static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n;
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
 static int ginit[16384]; static int ginit_n; /* global variable initializer nodes (emitted at main entry); fix 2026-08-06: 128→4096 + 溢出报错（原 >128 静默丢初始值） */
 static int ndbl[ASZ]; /* per-node flag: expression yields a double (floating) */
+static int nerr[ASZ]; /* 2026-08-28 type-root-2: per-node error-union call result (must be checked) */
+static int err_fn_cnt = 0; static char err_fn_names[256][64]; static int qcc_err_pending = 0; static int qcc_err_pending_tok = -1; static int qcc_cur_fn_err = 0; static int qcc_skip_err_check = 0; /* 2026-08-28 type-root-2: try-branch expr() exempt from asgn A9001 */ /* 2026-08-28 type-root-2: error-union table + pending */
 static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
 static int pesz[ASZ]; /* per-node flag: (T*) pointer-cast element byte size (1/2/4/8) - fix 2026-08-08 width bug: cast no-op drops type info, *((T*)x) width fell to 1 byte; keep target element size for case-12/10 */
@@ -2436,7 +2438,7 @@ int tk; /* fwd: token 索引 (定义在 L3020 token 系统区 — 2026-08-28 emi
 static char nullable_names[256][64]; static int nullable_scope[256]; static int nullable_cnt = 0; static int nullable_depth = 0; static int qcc_nullable_pending = 0; static int qcc_nullable_pending_tok = -1; /* 2026-08-28 type-root-fix: pending tok pos - lexer prescans, no pos check -> pending consumed by decl BEFORE 可空 */ /* 接入 2026-08-28 类型根治① (v3.0 #75): 可空类型真标记 — 可空 T x 声明登记(lexer 置 pending, 声明消费), 未解包解引用(星/箭头/下标) [ERR] A8001, 解包/赋值清除; 原词法层直接吞掉=等价普通声明, 无真类型 */
 static int nullable_has(const char *v) { for (int i = 0; i < nullable_cnt; i++) if (!strcmp(nullable_names[i], v)) return 1; return 0; }
 static void nullable_remove(const char *v) { for (int i = 0; i < nullable_cnt; i++) if (!strcmp(nullable_names[i], v)) { nullable_names[i][0] = 0; return; } }
-static void nullable_register(const char *n) { if (qcc_nullable_pending && user_fn_active && n[0] != '_' && tk >= qcc_nullable_pending_tok) { qcc_nullable_pending = 0; if (nullable_cnt < 256) { strcpy(nullable_names[nullable_cnt], n); nullable_scope[nullable_cnt] = nullable_depth; nullable_cnt++; } } } /* 2026-08-28 type-root-fix: tk>=pending_tok - decl must be AT/AFTER 可空 pos (lexer prescans) */ /* 可空声明: 消费 pending 标记, 登记 (仅用户代码 + 非 _ 内部变量) */
+static void nullable_register(const char *n) { if (qcc_err_pending && tk >= qcc_err_pending_tok) qcc_err_pending = 0; /* 2026-08-28 type-root-2: var-decl clears err pending (pos-checked: qcc_rt prescan tk<pos must NOT clear) */ if (qcc_nullable_pending && user_fn_active && n[0] != '_' && tk >= qcc_nullable_pending_tok) { qcc_nullable_pending = 0; if (nullable_cnt < 256) { strcpy(nullable_names[nullable_cnt], n); nullable_scope[nullable_cnt] = nullable_depth; nullable_cnt++; } } } /* 2026-08-28 type-root-fix: tk>=pending_tok - decl must be AT/AFTER 可空 pos (lexer prescans) */ /* 可空声明: 消费 pending 标记, 登记 (仅用户代码 + 非 _ 内部变量) */
 static void nullable_scope_exit(void) { nullable_depth--; if (nullable_depth < 0) nullable_depth = 0; for (int i = 0; i < nullable_cnt; ) { if (nullable_scope[i] > nullable_depth) { for (int j = i; j < nullable_cnt - 1; j++) { strcpy(nullable_names[j], nullable_names[j + 1]); nullable_scope[j] = nullable_scope[j + 1]; } nullable_cnt--; } else i++; } } /* 块退出: 清除本块的可空标记 */
 static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tline 可见处 (var_offset 前) — 2026-08-28 大哥评估: loc.line 真值 = tline[tk]-rt_line_skip (用户源码行号) */
     if (diagnostics_json) {
@@ -2453,7 +2455,8 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
         else if (!strcmp(code, "A5001")) fix = "扩容对应容量宏或减小输入规模 (资源护栏 9b)";
         else if (!strcmp(code, "A6002")) fix = "调用前保证前置条件成立: 修正常量参数, 或加调用点守卫 (#7 编译期审判)";
         else if (!strcmp(code, "A7001")) fix = "先 契约 P; 登记契约类型, 或改用已定义结构体 (#8)";
-        else if (!strcmp(code, "A8001")) fix = "可空类型未解包就解引用: 先 解包 变量; (或判空后使用, 类型根治①)";
+        else if (!strcmp(code, "A8001")) fix = "可空类型δ解包就解引用: 先 解包 变量; (或判空后ʹ用, 类型根治①)";
+        else if (!strcmp(code, "A9001")) fix = "错误函数结果必须检查: 用 尝试 f(); 传播, 或显ʽ判断后ʹ用 (类型根治②)";
         else if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还/重新赋值恢复, 再读/写/移动";
         else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
         else if (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
@@ -2468,6 +2471,9 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
     }
     exit(1);
 }
+static int fn_err_has(const char *n) { for (int i = 0; i < err_fn_cnt; i++) if (!strcmp(err_fn_names[i], n)) return 1; return 0; } /* 2026-08-28 type-root-2 */
+static void fn_err_mark(const char *n) { if (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
+static void err_union_check(int node) { if (node >= 0 && nerr[node]) { sprintf(g_errbuf, "错误 union: 错误函数的结果必须检查 — 用 尝试 f(); 传播(有错即返回), 或显ʽ判断后ʹ用 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } } /* 2026-08-28 type-root-2 */
 static int var_offset(const char *n) {
     int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
     nullable_register(n); /* 类型根治① (2026-08-28): 可空 T x 声明 → 登记可空 — 放复用分支前: 嵌套块重声明同名变量也消费 pending */
@@ -4154,7 +4160,7 @@ static void lex(const char *s) {
             }
             else if (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { continue; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
             else if (!strcmp(tn[ti], "可空")) { qcc_nullable_pending = 1; qcc_nullable_pending_tok = ti; continue; } /* 2026-08-28 type-root-fix: pending_tok=ti (next token slot) - lexer prescans, bind pos */ /* 接入 2026-08-28 类型根治① (v3.0 #75): 可空 T x — 置 pending, 下一个声明登记可空 (原词法层直接吞=等价普通声明, 无真类型; 现在未解包解引用编译期拦截 A8001) */
-            else if (!strcmp(tn[ti], "错误")) { continue; } /* 接入 2026-08-28 机制层 #72 error union: 错误 类型标记吞掉 (错误 T f = T f, 显式错误码返回 — Go 式 error union, 配 错 N; return N) */
+            else if (!strcmp(tn[ti], "错误")) { qcc_err_pending = 1; qcc_err_pending_tok = ti; continue; } /* 2026-08-28 type-root-2: error-union pending */ /* 接入 2026-08-28 机制层 #72 error union: 错误 类型标记吞掉 (错误 T f = T f, 显式错误码返回 — Go 式 error union, 配 错 N; return N) */
             else if (!strcmp(tn[ti], "泛型")) { /* 接入 2026-08-28 机制层: 泛型函数宏 (#96, v3.0) — 泛型 名字(参数) = 体; → 注册 fn_macro (文本级模板, 调用按实参类型展开): 泛型 最大值(x, y) = ((x) > (y) ? (x) : (y)); — lexer 层注册, 调用 最大值(a,b) 在 lex 时展开 (fn_macro 机制), 天然多类型 */
                 int gp = i; while (s[gp] == ' ' || s[gp] == '\t') gp++;
                 char gnm[64]; int gq = 0; while ((isalnum((unsigned char)s[gp]) || s[gp] == '_' || (unsigned char)s[gp] >= 0x80) && gq < 63) gnm[gq++] = s[gp++]; gnm[gq] = 0;
@@ -5198,7 +5204,7 @@ static int prim(void) {
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
                 int callee = n;  tk++; int c = Nd(4);
                 int nargs[256]; int argpos[256]; int an = 0; /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
-                while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } /* 标注/具名: 名: 前缀 → 查签名位置 */ int ev = expr(); if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
+                while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } int ev = expr(); if (ev >= 0 && nerr[ev]) { sprintf(g_errbuf, "错误 union: 函数参数不能ֱ接传δ检查的错误结果 — 先 尝试 检查 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } if (tk == t0) break; /* 标注/具名: 名: 前缀 → 查签名位置 */ if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 if (tt[tk] == KK) tk++;
                 { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
                   if (has_n && nt[callee] == 1) { int fi = fn_param_find((char*)(nn + callee)); int pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
@@ -5210,7 +5216,7 @@ static int prim(void) {
                         else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                     else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                   else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
-                Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                Nc(c, n); n = c; if (nt[callee] == 1 && fn_err_has((char*)(nn + callee))) nerr[c] = 1; /* 2026-08-28 type-root-2 */ /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 { /* 编译期常量前置审判 (2026-08-28 可吞清单 P1, 兑现"证明器查"): 调用点参数全常量 → 折叠评估 前置 → 违反编译期报错 A6002 (不等运行时 abort) */
                     if (nt[callee] == 1 && an <= 32) {
                         int has_named = 0; for (int _ai = 0; _ai < an; _ai++) if (argpos[_ai] >= 0) { has_named = 1; break; }
@@ -5449,7 +5455,7 @@ static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
-static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
+static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); if (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
     if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         if (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
@@ -6859,8 +6865,8 @@ static int stmt(void) {
     if (tt[tk] == RK) { tk++; int r = Nd(6); /* 接入 2026-08-28 多返回值: 返回(a, b) → 打包 64 位 (nv[r]=9001 标记, case 6 拆 e1=低32 e2=高32) */
         if (tt[tk] == OK) { int stk_r = tk; tk++; int e1 = expr();
             if (tt[tk] == CK) { tk++; int e2 = expr(); if (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); if (tt[tk] == SK) tk++; return guard_wrap_return(r); } /* RAII 真修复: 多值返回路径同样包守卫析构 */
-            tk = stk_r; Nc(r, expr()); tk++; return guard_wrap_return(r); }
-        Nc(r, expr()); tk++; return guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
+            tk = stk_r; int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } Nc(r, rv_ex); tk++; return guard_wrap_return(r); }
+        int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } Nc(r, rv_ex); tk++; return guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
     if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  if (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  return n; }
     if (tt[tk] == WK) { tk++; tk++; int n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); return n; }
     if (tt[tk] == DW) { /* do stmt while (cond); */
@@ -7093,7 +7099,7 @@ static int stmt(void) {
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "尝试")) { /* 接入 2026-08-27 错误传播: 尝试 f(); → { int __e=f(); if(__e!=0) return __e; } (Go if err!=nil return err) — f 返回错误码 0=成功; 前缀语法避免调用参数歧义 */
         tk++; /* 尝试 */
-        int e2 = expr(); /* 调用表达式 */
+        qcc_skip_err_check = 1; int e2 = expr(); qcc_skip_err_check = 0; nerr[e2] = 0; /* 2026-08-28 type-root-2: try IS the check point */ /* 调用表达式 */
         if (tt[tk] == SK) tk++; /* ; */
                                char iname[64]; sprintf(iname, "__e_%d_", er_seq++); /* er_seq 文件级 (可重入修复) */
         var_offset(iname);
@@ -10155,7 +10161,7 @@ static int stmt(void) {
     }
     if (tt[tk] == SK) { tk++; return Nd(5); } /* 空语句 ; — 返回空块节点 (codegen 无输出). fix 2026-08-19: 原落 expr() 兜底返回 -1 (不消费) → stmt() 挂 -1 给 if 空体 → case-8 codegen n1=-1 错乱 → `if (c) ; else ...` else 链无条件执行 (commit.c handle_ignored_arg strcmp(NULL) SEGV) */
     
-    { int e = expr(); tk++; return e; }
+    { int e = expr(); err_union_check(e); tk++; return e; }
 }
 /* 常量整数表达式求值 (数组维度用): 支持整数/枚举/宏常量、括号、+-*\/%<>^&| 与一元 +-~。
    左到右求值 (维度表达式几乎都是单运算符, 优先级差异可忽略)。成功置 *val 并推进 tk, 返回 1; 失败不推进, 返回 0。
@@ -10268,7 +10274,7 @@ static int parse(const char *s) {
     pp_guard_n = 0; /* fix 2026-08-13 Phase3: lex 阶段 #if defined(X) 走 macro 表(lex 自己的 #define); 清 pp_guard 防 fn_macro_collect 污染 → #if !defined(XTYPES_H) 被误判已定义跳过 xtypes.h typedef */
     
      
-    lex(exp_src);
+lex(exp_src);
     if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
 
     { char _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
@@ -11814,6 +11820,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             if (!strcmp(tn[tk], "main")) user_fn_active = 1; /* 接入 2026-08-28 机制层 #78: 进入用户代码 — qcc_rt.c 运行时无 main, 其变量不查; main 后(含)的用户函数才查 */
             cur_fdef_line = tline[tk] - (rt_exp_lines ? rt_exp_lines : rt_line_skip); if (cur_fdef_line < 1) cur_fdef_line = 1; /* 2026-08-28 语义导航: 函数名 token 行号 (减 rt 偏移 = 用户源码行, 与 loc 对齐) */
             memcpy((char*)(nn + fdef), tn[tk], 64); tk++; tk++;
+            if (qcc_err_pending && qcc_err_pending_tok <= tk) { fn_err_mark((char*)(nn + fdef)); qcc_cur_fn_err = 1; qcc_err_pending = 0; } /* 2026-08-28 type-root-2 */
             fn_ok = 1;
         } else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr: int (*pick(int v))(int) or int (*gfp)(int); */
             tk++; tk++; /* skip ( * */
@@ -11954,7 +11961,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             if (tt[tk] == SK) { fn_param_end(); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
-            { int paren_close = tk - 1; if (qcc_nullable_pending && qcc_nullable_pending_tok > fn_name_tk && qcc_nullable_pending_tok < paren_close) qcc_nullable_pending = 0; } /* 2026-08-28 type-root-fix: 参数表内 可空 (参数声明) → 清 pending (var_param 不登记可空, 防残留误标函数体首变量); 函数体 可空 (在 { 后, tok > paren_close) 保留 */
+            { int paren_close = tk - 1; if (qcc_nullable_pending && qcc_nullable_pending_tok > fn_name_tk && qcc_nullable_pending_tok < paren_close) qcc_nullable_pending = 0; if (qcc_err_pending && qcc_err_pending_tok > fn_name_tk && qcc_err_pending_tok < paren_close) qcc_err_pending = 0; } /* 2026-08-28 type-root-2: interval check - qcc_rt fns (tok<pos) must NOT clear */ /* 2026-08-28 type-root-fix: 参数表内 可空 (参数声明) → 清 pending (var_param 不登记可空, 防残留误标函数体首变量); 函数体 可空 (在 { 后, tok > paren_close) 保留 */
             fn_param_end(); /* 接入 2026-08-28 真具名参数: 参数收集完成复位 (防函数体 var_param 误收集) */
             if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* 声明尾真实 __attribute__((format(...))) 跳过 (空宏后 __attribute__ 是 tt=SK 的「分号」, 不能跳 — 否则原型判定丢失) */
             if (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
@@ -12011,7 +12018,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             if (fvn >= 65536) { fprintf(stderr, "[ERR] 函数体表超过 65536 上限 (fix 2026-08-26 sqlite: 512→8192)\n"); exit(1); }
             fve[fvn] = vcnt; fvn++; /* record var-range end; order == root attach order */
-            fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
+            fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */ qcc_cur_fn_err = 0; /* 2026-08-28 type-root-2 */
             parse_base = 0; /* back to file scope for the next top-level item */
             Nc(p, fdef);
             if (fdef_n < 1024) { fn_lines[fdef_n] = cur_fdef_line; fdef_list[fdef_n++] = fdef; } else budget_fail("函数表 fdef_list", 1024); /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢); 2026-08-28 资源护栏: 满→确定性拒绝; 编译检查点: 每函数解析快照; 语义导航: 行号平行存储 */ { char _cl[96]; sprintf(_cl, "{\"cp\":\"parse\",\"func\":\"%s\",\"idx\":%d}", (char*)(nn + fdef), fdef_n - 1); cp_line(_cl); }
@@ -18654,7 +18661,8 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     vs_end = 0; /* fix 2026-08-28 可重入根因: vs_n() = vs_end?vs_end:vcnt — vs_end 残留(上次 codegen 的 fve[gfn]) → 第二次 parse 期 var_offset REUSE 搜索越界 → 复用 vars[169] 超出 vcnt → codegen DCL-MISS。parse 期必须 vs_end=0 (vs_n()=vcnt) */
     borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
-    nullable_cnt = 0; nullable_depth = 0; qcc_nullable_pending = 0; qcc_nullable_pending_tok = -1; /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
+    nullable_cnt = 0; nullable_depth = 0; qcc_nullable_pending = 0; qcc_nullable_pending_tok = -1;
+    err_fn_cnt = 0; qcc_err_pending = 0; qcc_err_pending_tok = -1; qcc_cur_fn_err = 0; qcc_skip_err_check = 0; memset(nerr, 0, sizeof(nerr)); /* 2026-08-28 type-root-2 */ /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
     extern_n = 2; cl_cnt = 0; rng_seq = 0; er_seq = 0; /* fix 2026-08-28 可重入漏洞: 临时名/extern 槽计数器跨编译累积 — extern 负偏移地址泄漏 + 临时名后缀漂移 → 进程内第 2 次编译产物 ≠ 第 1 次 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
     rec_pass = 0; rec_prev_cp = 0; /* 黑匣子: pass 帧序每编译重置 (跨编译累积 → 分歧定位错帧) */
     fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
