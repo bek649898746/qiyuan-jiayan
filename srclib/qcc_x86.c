@@ -3091,6 +3091,7 @@ static struct { char name[64]; int body0; int body1; } ctfe_fns[2048]; static in
 static int ctfe_find(const char *n) { for (int i = 0; i < ctfe_fns_n; i++) if (!strcmp(ctfe_fns[i].name, n)) return i; return -1; }
 static char ctfe_names[64][64]; static int ctfe_vals[64]; static int ctfe_n = 0; /* CTFE 求值帧 (参数+局部, 栈式嵌套) */
 static int ctfe_lookup(const char *n) { for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n)) return ctfe_vals[i]; return 0x80000000; }
+static char cur_parse_fn[64]; /* 2026-08-28 P1 #11: 当前解析的函数名 (悬垂引用检测用) */
 static int ctfe_call(const char *fname, int *out); /* fwd: 编译期 f(常量...) 求值 (定义在 const_expr 区, prim 需前向) */
 static int *tuns; /* per-token unsigned-suffix flag (0xFFFFFFFFu) — fix 2026-08-05 */
 static int *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-08-05 */
@@ -6963,6 +6964,23 @@ static long long contract_const_eval(int n, const char **argnames, const long lo
     *known = 0; return 0;
 }
 
+static void dangling_check(int rv) { /* 2026-08-28 P1 #11 悬垂引用检测: return &局部 且函数返回指针 → [ERR] A3105 (指针指向已出作用域的局部) */
+    if (rv < 0 || cur_parse_fn[0] == 0) return;
+    if (fn_ret_name_get_ptr(cur_parse_fn)) { /* 当前函数返回指针 */
+        if (nt[rv] == 11) { /* 取地址 &x — 沿基链下溯到根变量 (&a[0]/&s.field) */
+            int obj = n0[rv]; int dep = 0;
+            while (obj >= 0 && dep < 8 && (nt[obj] == 14 || (nt[obj] == 15 && nv[obj] == 0))) { obj = n0[obj]; dep++; }
+            if (obj >= 0 && nt[obj] == 1) { /* 变量 */
+                char *nm = (char*)(nn + obj);
+                int vi = -1;
+                for (int k = vs_n() - 1; k >= 0; k--) if (!strcmp(vars[k].name, nm)) { vi = k; break; }
+                if (vi >= parse_base && var_pesz(nm) == 0) { /* 值型局部 (非指针) 才悬垂 — 指针根 &ptr[k]/&ptr->f 指向 ptr 指向处, 安全 (rt strstr 等) */
+                    sprintf(g_errbuf, "悬垂引用: 返回指向函数局部变量 '%s' 的指针 (局部变量随函数退出失效, v3.0 #11)", nm); emit_error("A3105", g_errbuf);
+                }
+            }
+        }
+    }
+}
 static int stmt(void) {
     if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 内联汇编语句 (bswap.h git_bswap32 的 else 分支): 跳过 (fix 2026-08-14: stmt() 无 __asm__ 处理 → 当函数调用 → undefined symbol) */
         tk++;
@@ -6988,8 +7006,8 @@ static int stmt(void) {
     if (tt[tk] == RK) { tk++; int r = Nd(6); /* 接入 2026-08-28 多返回值: 返回(a, b) → 打包 64 位 (nv[r]=9001 标记, case 6 拆 e1=低32 e2=高32) */
         if (tt[tk] == OK) { int stk_r = tk; tk++; int e1 = expr();
             if (tt[tk] == CK) { tk++; int e2 = expr(); if (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); if (tt[tk] == SK) tk++; return guard_wrap_return(r); } /* RAII 真修复: 多值返回路径同样包守卫析构 */
-            tk = stk_r; int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } Nc(r, rv_ex); tk++; return guard_wrap_return(r); }
-        int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } Nc(r, rv_ex); tk++; return guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
+            tk = stk_r; int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } dangling_check(rv_ex); Nc(r, rv_ex); tk++; return guard_wrap_return(r); } /* 2026-08-28 P1 #11: 悬垂引用检测 (return &局部) */
+        int rv_ex = expr(); if (rv_ex >= 0 && nerr[rv_ex] && !qcc_cur_fn_err) { sprintf(g_errbuf, "错误 union: 不能ֱ接返回δ检查的错误结果 (非错误函数) — 用 尝试 f(); 传播 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } dangling_check(rv_ex); Nc(r, rv_ex); tk++; return guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
     if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  if (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  return n; }
     if (tt[tk] == WK) { tk++; tk++; int n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); return n; }
     if (tt[tk] == DW) { /* do stmt while (cond); */
@@ -12384,6 +12402,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             if (!strcmp(tn[tk], "main")) user_fn_active = 1; /* 接入 2026-08-28 机制层 #78: 进入用户代码 — qcc_rt.c 运行时无 main, 其变量不查; main 后(含)的用户函数才查 */
             cur_fdef_line = tline[tk] - (rt_exp_lines ? rt_exp_lines : rt_line_skip); if (cur_fdef_line < 1) cur_fdef_line = 1; /* 2026-08-28 语义导航: 函数名 token 行号 (减 rt 偏移 = 用户源码行, 与 loc 对齐) */
             memcpy((char*)(nn + fdef), tn[tk], 64); tk++; tk++;
+            strcpy(cur_parse_fn, (char*)(nn + fdef)); /* 2026-08-28 P1 #11: 记录当前解析函数名 (悬垂检测) */
             if (qcc_err_pending && qcc_err_pending_tok <= tk) { fn_err_mark((char*)(nn + fdef)); qcc_cur_fn_err = 1; qcc_err_pending = 0; } /* 2026-08-28 type-root-2 */
             fn_ok = 1;
         } else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr: int (*pick(int v))(int) or int (*gfp)(int); */
