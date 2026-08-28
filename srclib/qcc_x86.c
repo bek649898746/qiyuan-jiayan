@@ -2481,7 +2481,7 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
 }
 static char range_names[128][64]; static int range_lo[128]; static int range_hi[128]; static int range_cnt = 0; /* 2026-08-28 type-root-7 #101 */
 static int range_find(const char *v) { for (int i = 0; i < range_cnt; i++) if (!strcmp(range_names[i], v)) return i; return -1; }
-static char iface_names[32][64]; static char iface_methods[32][16][64]; static int iface_mcnt[32]; static int iface_cnt = 0; /* 2026-08-28 type-root-8 #114 */
+static char iface_names[32][64]; static char iface_methods[32][16][64]; static int iface_mcnt[32]; static int iface_cnt = 0; static char iface_defs[32][16][64]; /* 2026-08-28 type-root-8 #114 */ /* 2026-08-28 P1 #200 默认方法: iface_defs[i][j] = 默认函数名 (impl 未绑定时回落) */
 static char impl_iface[64][64]; static char impl_type[64][64]; static char impl_methods[64][16][64]; static char impl_fns[64][16][64]; static int impl_mcnt[64]; static int impl_cnt = 0; /* type-root-8 #114 */
 static int iface_find(const char *n) { for (int i = 0; i < iface_cnt; i++) if (!strcmp(iface_names[i], n)) return i; return -1; }
 static int impl_find(const char *ifn, const char *tn) { for (int i = 0; i < impl_cnt; i++) if (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) return i; return -1; }
@@ -4836,6 +4836,10 @@ static int prim(void) {
         if (cl_an >= 1 && cl_args[0] >= 0) { int cl_av = cl_args[0]; if (nt[cl_av] == 11) cl_av = n0[cl_av]; if (cl_av >= 0 && nt[cl_av] == 1) { int _si = var_stidx((char*)(nn + cl_av)); if (_si >= 0) strcpy(cl_tn, stypes[_si].name); } }
         char cl_fn[64] = "";
         if (cl_tn[0]) { int cl_imp = impl_find(cl_ifn, cl_tn); if (cl_imp >= 0) { for (int _mj = 0; _mj < impl_mcnt[cl_imp]; _mj++) if (!strcmp(impl_methods[cl_imp][_mj], cl_m)) { strcpy(cl_fn, impl_fns[cl_imp][_mj]); break; } } }
+        if (!cl_fn[0]) { /* 2026-08-28 P1 #200 默认方法: impl 未绑定 → 回落接口默认实现 */
+            int cl_ii = iface_find(cl_ifn);
+            if (cl_ii >= 0) { for (int _md = 0; _md < iface_mcnt[cl_ii]; _md++) if (!strcmp(iface_methods[cl_ii][_md], cl_m)) { if (iface_defs[cl_ii][_md][0]) strcpy(cl_fn, iface_defs[cl_ii][_md]); break; } }
+        }
         if (!cl_fn[0]) { sprintf(g_errbuf, "接口: 类型 %s 未实现方法 %s (接口 %s) — 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)", cl_tn[0] ? cl_tn : "?", cl_m, cl_ifn); emit_error("A9005", g_errbuf); }
         { int c = Nd(4); for (int _ai = 0; _ai < cl_an; _ai++) Nc(c, cl_args[_ai]); { int fn = Nd(1); memcpy((char*)(nn + fn), cl_fn, 64); Nc(c, fn); } return c; }
     }
@@ -7711,15 +7715,20 @@ static int stmt(void) {
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         return blk_lk;
     }
-        if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+        if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */ /* 2026-08-28 P1 #200 默认方法: 接口 名 { 方法 = 默认函数 }; — impl 未绑定该法时回落默认实现 */
         tk++; /* 接口 */
         char ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
         if (tt[tk] == FK) tk++; /* { */
         if (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
         while (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
             if (tt[tk] == VR) {
-                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
-                tk++;
+                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) {
+                    strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]);
+                    iface_defs[iface_cnt][iface_mcnt[iface_cnt]][0] = 0; /* 默认实现 (默认空) */
+                    tk++;
+                    if (tt[tk] == AK) { tk++; if (tt[tk] == VR) { strcpy(iface_defs[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); tk++; } } /* 方法 = 默认函数 */
+                    iface_mcnt[iface_cnt]++;
+                } else tk++;
             }
             if (tt[tk] == CK) tk++;
         }
@@ -7753,15 +7762,20 @@ static int stmt(void) {
         if (impl_cnt < 64) impl_cnt++;
         return Nd(5);
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+    if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */ /* 2026-08-28 P1 #200 默认方法: 接口 名 { 方法 = 默认函数 }; — impl 未绑定该法时回落默认实现 */
         tk++; /* 接口 */
         char ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
         if (tt[tk] == FK) tk++; /* { */
         if (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
         while (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
             if (tt[tk] == VR) {
-                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
-                tk++;
+                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) {
+                    strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]);
+                    iface_defs[iface_cnt][iface_mcnt[iface_cnt]][0] = 0; /* 默认实现 (默认空) */
+                    tk++;
+                    if (tt[tk] == AK) { tk++; if (tt[tk] == VR) { strcpy(iface_defs[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); tk++; } } /* 方法 = 默认函数 */
+                    iface_mcnt[iface_cnt]++;
+                } else tk++;
             }
             if (tt[tk] == CK) tk++;
         }

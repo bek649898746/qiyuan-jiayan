@@ -2481,7 +2481,7 @@ __attribute__((unused))
 }
 静 字 range_names[128][64]; 静 整 range_lo[128]; 静 整 range_hi[128]; 静 整 range_cnt = 0; /* 2026-08-28 type-root-7 #101 */
 静 整 range_find(常 字 *v) { 遍 (整 i = 0; i < range_cnt; i++) 若 (!strcmp(range_names[i], v)) 返 i; 返 -1; }
-静 字 iface_names[32][64]; 静 字 iface_methods[32][16][64]; 静 整 iface_mcnt[32]; 静 整 iface_cnt = 0; /* 2026-08-28 type-root-8 #114 */
+静 字 iface_names[32][64]; 静 字 iface_methods[32][16][64]; 静 整 iface_mcnt[32]; 静 整 iface_cnt = 0; 静 字 iface_defs[32][16][64]; /* 2026-08-28 type-root-8 #114 */ /* 2026-08-28 P1 #200 默认方法: iface_defs[i][j] = 默认函数名 (impl 未绑定时回落) */
 静 字 impl_iface[64][64]; 静 字 impl_type[64][64]; 静 字 impl_methods[64][16][64]; 静 字 impl_fns[64][16][64]; 静 整 impl_mcnt[64]; 静 整 impl_cnt = 0; /* type-root-8 #114 */
 静 整 iface_find(常 字 *n) { 遍 (整 i = 0; i < iface_cnt; i++) 若 (!strcmp(iface_names[i], n)) 返 i; 返 -1; }
 静 整 impl_find(常 字 *ifn, 常 字 *tn) { 遍 (整 i = 0; i < impl_cnt; i++) 若 (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) 返 i; 返 -1; }
@@ -4836,6 +4836,10 @@ __attribute__((unused))
         若 (cl_an >= 1 && cl_args[0] >= 0) { 整 cl_av = cl_args[0]; 若 (nt[cl_av] == 11) cl_av = n0[cl_av]; 若 (cl_av >= 0 && nt[cl_av] == 1) { 整 _si = var_stidx((字*)(nn + cl_av)); 若 (_si >= 0) strcpy(cl_tn, stypes[_si].name); } }
         字 cl_fn[64] = "";
         若 (cl_tn[0]) { 整 cl_imp = impl_find(cl_ifn, cl_tn); 若 (cl_imp >= 0) { 遍 (整 _mj = 0; _mj < impl_mcnt[cl_imp]; _mj++) 若 (!strcmp(impl_methods[cl_imp][_mj], cl_m)) { strcpy(cl_fn, impl_fns[cl_imp][_mj]); 断; } } }
+        若 (!cl_fn[0]) { /* 2026-08-28 P1 #200 默认方法: impl 未绑定 → 回落接口默认实现 */
+            整 cl_ii = iface_find(cl_ifn);
+            若 (cl_ii >= 0) { 遍 (整 _md = 0; _md < iface_mcnt[cl_ii]; _md++) 若 (!strcmp(iface_methods[cl_ii][_md], cl_m)) { 若 (iface_defs[cl_ii][_md][0]) strcpy(cl_fn, iface_defs[cl_ii][_md]); 断; } }
+        }
         若 (!cl_fn[0]) { sprintf(g_errbuf, "接口: 类型 %s 未实现方法 %s (接口 %s) — 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)", cl_tn[0] ? cl_tn : "?", cl_m, cl_ifn); emit_error("A9005", g_errbuf); }
         { 整 c = Nd(4); 遍 (整 _ai = 0; _ai < cl_an; _ai++) Nc(c, cl_args[_ai]); { 整 fn = Nd(1); memcpy((字*)(nn + fn), cl_fn, 64); Nc(c, fn); } 返 c; }
     }
@@ -7711,15 +7715,20 @@ __attribute__((unused))
         若 (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         返 blk_lk;
     }
-        若 (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */ /* 2026-08-28 P1 #200 默认方法: 接口 名 { 方法 = 默认函数 }; — impl 未绑定该法时回落默认实现 */
         tk++; /* 接口 */
         字 ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
         若 (tt[tk] == FK) tk++; /* { */
         若 (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
         循环 (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
             若 (tt[tk] == VR) {
-                若 (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
-                tk++;
+                若 (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) {
+                    strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]);
+                    iface_defs[iface_cnt][iface_mcnt[iface_cnt]][0] = 0; /* 默认实现 (默认空) */
+                    tk++;
+                    若 (tt[tk] == AK) { tk++; 若 (tt[tk] == VR) { strcpy(iface_defs[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); tk++; } } /* 方法 = 默认函数 */
+                    iface_mcnt[iface_cnt]++;
+                } 否 tk++;
             }
             若 (tt[tk] == CK) tk++;
         }
@@ -7753,15 +7762,20 @@ __attribute__((unused))
         若 (impl_cnt < 64) impl_cnt++;
         返 Nd(5);
     }
-    若 (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+    若 (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */ /* 2026-08-28 P1 #200 默认方法: 接口 名 { 方法 = 默认函数 }; — impl 未绑定该法时回落默认实现 */
         tk++; /* 接口 */
         字 ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
         若 (tt[tk] == FK) tk++; /* { */
         若 (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
         循环 (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
             若 (tt[tk] == VR) {
-                若 (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
-                tk++;
+                若 (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) {
+                    strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]);
+                    iface_defs[iface_cnt][iface_mcnt[iface_cnt]][0] = 0; /* 默认实现 (默认空) */
+                    tk++;
+                    若 (tt[tk] == AK) { tk++; 若 (tt[tk] == VR) { strcpy(iface_defs[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); tk++; } } /* 方法 = 默认函数 */
+                    iface_mcnt[iface_cnt]++;
+                } 否 tk++;
             }
             若 (tt[tk] == CK) tk++;
         }
