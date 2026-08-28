@@ -1228,6 +1228,9 @@ __attribute__((unused))
 }
 静 字 expect_sha[65] = ""; /* #expect (Phase 4 哈希审判) */
 静 字 selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
+静 空 sha256_buf(常 字 *data, 整 len, 字 out[65]); /* fwd: 定义在资源护栏区 (契约哈希/描述符需在 parse 期用) */
+静 字 cstr_names[64][64]; 静 字 cstr_hashes[64][65]; 静 整 cstr_n; /* 接入 2026-08-28 可吞清单 P0-8: 结构契约表 (契约 struct 名 → 描述符 SHA256 接口指纹) — 声明在此, 定义函数在契约表区 */
+静 整 cstr_find(常 字 *n); 静 整 cstr_register(常 字 *n); /* fwd */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 静 整 cache_mode = 0; 静 整 cache_verify = 0; 静 字 cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 静 整 checkpoint_mode = 0; 静 字 checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -4500,6 +4503,21 @@ __attribute__((unused))
 静 空 moved_release(常 字 *v) { 遍 (整 i = 0; i < moved_cnt; i++) 若 (!strcmp(moved_names[i], v)) { moved_names[i][0] = 0; 返; } } /* 2026-08-28 #5: 重新赋值 = 重新初始化, 恢复可用 (Rust 式 move 后重绑定) */
 
 静 整 prim(空) {
+        若 (tt[tk] == VR && !strcmp(tn[tk], "契约哈希")) { /* 接入 2026-08-28 可吞清单 P0-8: 契约哈希(P) → 结构契约描述符 SHA256 字符串常量 (接口指纹, strcmp 校验外部数据 Schema) */
+            tk++; /* 契约哈希 */
+            若 (tt[tk] == OK) tk++; /* ( */
+            字 htag[64]; strcpy(htag, tn[tk]); tk++;
+            若 (tt[tk] == KK) tk++; /* ) */
+            整 hci = cstr_find(htag);
+            若 (hci < 0 && st_find(htag) >= 0) cstr_register(htag); /* 使用时自动登记 (顶层 契约 P; 若被全局变量路径拦截, 此处兜底) */
+            hci = cstr_find(htag);
+            若 (hci < 0) { sprintf(g_errbuf, "契约哈希: 结构体 '%s' 未登记为契约类型 (须先 契约 %s;)", htag, htag); emit_error("A7001", g_errbuf); }
+            若 (str_cnt >= 65536) budget_fail("字符串表 str_tbl", 65536);
+            若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+            strcpy(str_tbl[str_cnt], hci >= 0 ? cstr_hashes[hci] : "0000000000000000000000000000000000000000000000000000000000000000");
+            整 hsn = Nd(0); nv[hsn] = str_cnt; nt[hsn] = STR; str_cnt++;
+            返 hsn;
+        }
         若 (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-28 机制层 #75 可空类型完整: 解包 x → __qcc_unwrap(x) — 空值运行时检查 (x==0 → [ERR] 空值解包 + exit, 强制处理空值) */
             tk++; /* 解包 */
             整 ev = expr(); /* 被解包表达式 */
@@ -6234,7 +6252,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6694,6 +6712,24 @@ __attribute__((unused))
    前置=入口检查 (解析期脱糖成 if(!pre){printf;exit;} 包函数体首), 后置=出口检查 (代码生成期 epilogue 注入, 返回 占位=返回值) */
 静 构 { 字 fn[64]; 整 pre_stmt; 整 post_root; 整 post_str; 整 has_post; } contracts[256]; 静 整 contract_cnt; 静 整 cur_contract = -1;
 静 整 contract_find(常 字 *fn) { 遍 (整 i = 0; i < contract_cnt; i++) 若 (!strcmp(contracts[i].fn, fn)) 返 i; 返 -1; }
+/* 接入 2026-08-28 可吞清单 P0-8: 结构契约审判 — 接口级哈希 (Turn 接口级审判 qcc 版): 契约 struct 名 → 规范描述符 SHA256 (确定性接口指纹, 外部数据过 Schema 才能绑定) */
+静 整 cstr_find(常 字 *n) { 遍 (整 i = 0; i < cstr_n; i++) 若 (!strcmp(cstr_names[i], n)) 返 i; 返 -1; }
+静 整 cstr_register(常 字 *n) { /* 契约 P; — 登记 struct P 为契约类型 + 计算描述符哈希 (名:总大小:字段名:偏移:大小[:指针/数组], 声明序, 确定性) */
+    若 (cstr_find(n) >= 0) 返 0;
+    若 (cstr_n >= 64) budget_fail("契约结构表 cstr", 64);
+    整 si = st_find(n);
+    若 (si < 0) { fprintf(stderr, "[ERR] 契约: 未知结构体 '%s' (须先定义 struct %s)\n", n, n); 返 -1; }
+    字 desc[4096]; 整 di = 0;
+    di += sprintf(desc + di, "%s:%d:", n, stypes[si].sz);
+    遍 (整 f = 0; f < stypes[si].fn && di < 3900; f++) {
+        di += sprintf(desc + di, "%s:%d:%d%s,", stypes[si].fnames[f], stypes[si].foffs[f], stypes[si].fsizes[f], stypes[si].fptrs[f] ? ":p" : "");
+    }
+    字 h[65]; sha256_buf(desc, di, h);
+    strcpy(cstr_names[cstr_n], n);
+    strcpy(cstr_hashes[cstr_n], h);
+    cstr_n++;
+    返 0;
+}
 静 整 build_contract_check(整 cond_root, 整 msg_str) { /* if(!cond){ printf(msg); exit(1); } — 复用 保证/断言 eq0 模式 */
     整 eq0 = Nd(2); nv[eq0] = T_QK; Nc(eq0, cond_root); { 整 z = Nd(0); nv[z] = 0; Nc(eq0, z); }
     整 ifn = Nd(8); Nc(ifn, eq0);
@@ -7012,6 +7048,13 @@ __attribute__((unused))
             else_node = ifn;
         }
         返 else_node;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "契约")) { /* 接入 2026-08-28 可吞清单 P0-8: 结构契约审判 — 契约 P; 登记 struct P 为契约类型 (接口指纹哈希, 外部数据过 Schema 才能绑定) */
+        tk++; /* 契约 */
+        字 ctag[64]; strcpy(ctag, tn[tk]); tk++;
+        若 (tt[tk] == SK) tk++; /* ; */
+        cstr_register(ctag);
+        返 Nd(5); /* 空语句 (登记是编译期动作) */
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "保证")) { /* 接入 2026-08-27 契约保证 (Eiffel 风格前置条件): 保证 条件; → if (条件==0) { printf("保证失败\n"); exit(1); } — 复用断言 eq0 模式 + 错误消息 */
         tk++; /* 保证 */
@@ -11622,6 +11665,13 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
         }
         /* __attribute__((...)) �?skip balanced parens */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "契约")) { /* 接入 2026-08-28 可吞清单 P0-8: 顶层 契约 P; — 登记契约结构 (接口指纹哈希) */
+            tk++; /* 契约 */
+            字 ctag2[64]; strcpy(ctag2, tn[tk]); tk++;
+            若 (tt[tk] == SK) tk++; /* ; */
+            cstr_register(ctag2);
+            续;
+        }
         若 (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行: 顶层 声明 名字(参数) 返回 类型; — 注册签名 (与 stmt 分支同逻辑, 顶层不经过 stmt) */
             tk++;
             若 (tk < TS && decl_cnt < 256) { strcpy(decl_names[decl_cnt++], tn[tk]); }
