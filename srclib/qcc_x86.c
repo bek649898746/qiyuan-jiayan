@@ -4054,7 +4054,7 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "字")) strcpy(tn[ti], "char");
             else if (!strcmp(tn[ti], "空")) strcpy(tn[ti], "void");
             else if (!strcmp(tn[ti], "短")) strcpy(tn[ti], "short");
-            else if (!strcmp(tn[ti], "长整")) strcpy(tn[ti], "long long"); /* 接入 2026-08-28: 长整 双字 = 64 位 (原 长+整 = long int 32 位, 语义不符) */
+            else if (!strcmp(tn[ti], "长整")) strcpy(tn[ti], "long long"); /* 接入 2026-08-28: 长整 双字 = 64 位 */ else if (!strcmp(tn[ti], "i8")) strcpy(tn[ti], "char"); /* 2026-08-28 type-root-6 #99: 显式宽度类型 i8 -> char */ else if (!strcmp(tn[ti], "i16")) strcpy(tn[ti], "short"); /* i16 -> short */ else if (!strcmp(tn[ti], "i32")) strcpy(tn[ti], "int"); /* i32 -> int */ else if (!strcmp(tn[ti], "i64")) strcpy(tn[ti], "long long"); /* i64 -> long long */ else if (!strcmp(tn[ti], "u32")) strcpy(tn[ti], "unsigned"); /* u32 -> unsigned int */ else if (!strcmp(tn[ti], "u64")) strcpy(tn[ti], "unsigned long long"); /* u64 -> unsigned long long */
             else if (!strcmp(tn[ti], "长")) strcpy(tn[ti], "long");
             else if (!strcmp(tn[ti], "常")) strcpy(tn[ti], "const");
             else if (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
