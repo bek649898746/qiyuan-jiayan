@@ -53,7 +53,7 @@ Write-Host "  v5: $h5"
 #                                      /                         frow/mem_addr deref fsz/static struct             /             struct typedef         ;
 #                         QCC_DBG_VA varargs                         -Wall -Werror             ):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d                   )
-$expected = '2403b0a9'  # 2026-08-28 type-root-4 no-implicit-cast #74: zhuan T(x) op + double->int narrowing A9002  # 2026-08-28 type-root-3 NLL borrow: last-use auto-yield (read-only -> mut borrow)  # 2026-08-28 type-root-2 error-union: A9001 unchecked-result check (try/err-fn-return/explicit-cmp pass, 4 consume points) + file now strict UTF-8  # 2026-08-28 nullable type-root-fix: A8001 unwrap-check + pending tok-pos + fn-decl cleanup + var_offset_ptr/var_static register
+$expected = 'c95503a6'  # 2026-08-28 type-root-5 try_lock #55: trylock expr-level single CAS (1/0)  # 2026-08-28 type-root-4 no-implicit-cast #74: zhuan T(x) op + double->int narrowing A9002  # 2026-08-28 type-root-3 NLL borrow: last-use auto-yield (read-only -> mut borrow)  # 2026-08-28 type-root-2 error-union: A9001 unchecked-result check (try/err-fn-return/explicit-cmp pass, 4 consume points) + file now strict UTF-8  # 2026-08-28 nullable type-root-fix: A8001 unwrap-check + pending tok-pos + fn-decl cleanup + var_offset_ptr/var_static register
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK]          1-cycle          ?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
