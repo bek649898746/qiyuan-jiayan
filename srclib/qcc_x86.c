@@ -33,10 +33,20 @@
    在编译含 va_list 代码时崩溃 (0xC0000005) → H1≠H2。改为无变参签名 + EMIT_ERR 宏(sprintf 在调用处展开, 绕开 va_list 传参) */
 static int diagnostics_json = 0; /* --diagnostics=json: 报错输出 JSON */
 static int repeat_n = 1; /* --repeat N (接入 2026-08-28 AI原生 #6 可重入验证): 同进程连续编译 N 次, 验证可重入无状态核心 */
+static char g_src_name[512] = ""; /* 输入文件名 (JSON 诊断 loc.file) */
 static char g_errbuf[256]; /* 报错消息缓冲 — 调用处 sprintf 填充 (不用变参宏 __VA_ARGS__: qcc fn_macro 不支持变参宏展开, 2026-08-28 自举崩教训) */
 static void emit_error(const char *code, const char *msg) {
     if (diagnostics_json) {
-        fprintf(stderr, "{\"code\":\"%s\",\"severity\":\"error\",\"message\":\"%s\"}\n", code, msg);
+        /* v0.1 (大哥启动单 2026-08-28): diagnostics 数组 + fixes 静态建议; loc.line 待 lex tline (占位 0)
+           JSON 转义: Windows 路径反斜杠 \ → \\ (json.load 需合法转义) */
+        const char *fix = "查看错误码文档";
+        if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还借用/重新赋值恢复, 再读/写/移动";
+        else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
+        else if (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
+        else if (code[0] == 'A' && code[1] == '2') fix = "检查类型/声明/语义";
+        char ef[600]; int efi = 0; for (int ci = 0; g_src_name[ci] && efi < 590; ci++) { if (g_src_name[ci] == '\\') { ef[efi++] = '\\'; ef[efi++] = '\\'; } else ef[efi++] = g_src_name[ci]; } ef[efi] = 0;
+        char em[1100]; int emi = 0; for (int ci = 0; msg[ci] && emi < 1090; ci++) { if (msg[ci] == '\\') { em[emi++] = '\\'; em[emi++] = '\\'; } else if (msg[ci] == '"') { em[emi++] = '\\'; em[emi++] = '"'; } else em[emi++] = msg[ci]; } em[emi] = 0;
+        fprintf(stderr, "{\"diagnostics\":[{\"code\":\"%s\",\"severity\":\"error\",\"loc\":{\"file\":\"%s\",\"line\":0,\"col\":0},\"span\":{\"start\":0,\"end\":0},\"message\":\"%s\",\"causeChain\":[],\"backtrace\":[],\"fixes\":[\"%s\"]}]}\n", code, ef, em, fix);
     } else {
         fprintf(stderr, "[ERR] %s %s\n", code, msg);
     }
@@ -18370,7 +18380,8 @@ static int qcc_compile_once(const char *src, const char *outf, int asm_mode) {
             fprintf(stderr, "[SELFCHECK] FAIL: %s != %s (不动点对账失败, 哈希审判 fail-closed)\n", sh, selfcheck_sha);
             return 1;
         }
-        fprintf(stderr, "[SELFCHECK] OK: %s\n", sh);
+        if (diagnostics_json) { fprintf(stderr, "{\"diagnostics\":[],\"selfcheck\":\"%s\"}\n", sh); } /* 接入 2026-08-28 AI原生 #1 v0.1: 哈希审判随 JSON 诊断同出 (甲言独有卖点) */
+        else fprintf(stderr, "[SELFCHECK] OK: %s\n", sh);
     }
     if (expect_sha[0]) { /* #expect 源码内期望原语: 产物哈希对账 (Phase4), 与 --selfcheck 同级 */
         char eh[65]; sha256_file(outf, eh);
@@ -18430,6 +18441,7 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
             argi += 2; continue;
         }
         /* input file */
+        strncpy(g_src_name, argv[argi], 511); g_src_name[511] = 0; /* JSON 诊断 loc.file */
         char *fb = read_file(argv[argi]);
         if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
         dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录, 供子目录 #include 相对搜索 */
