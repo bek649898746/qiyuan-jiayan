@@ -18425,8 +18425,51 @@ static void dag_hash_ast(void) { if (!dag_mode) return; char h1[65], h2[65], h3[
     if (nc > 0) sha256_buf((const char*)n1, nc * 4, h5); else strcpy(h5, "0");
     sprintf(all, "%s%s%s%s%s", h1, h2, h3, h4, h5); sha256_buf(all, 320, dag_ast);
 }
-
-
+/* 接入 2026-08-28 可吞清单 P1 (MoonBit #4 接口文件 + Agint #14 结构化工件): 接口文件导出 — --interface 解析后导出 API 表面 JSON (AI 读接口不读实现, 直击 SWE-AGI '读代码瓶颈') */
+static int interface_mode = 0; /* --interface */
+static const char *iface_var_type(int vi) { if (vars[vi].is_dbl) return "double"; if (vars[vi].is_ll) return "longlong"; if (vars[vi].is_char) return "char"; if (vars[vi].is_uns) return "unsigned"; if (vars[vi].p_esz > 0) return "ptr"; if (vars[vi].st_idx >= 0) return "struct"; if (vars[vi].arr_sz > 0) return "array"; return "int"; }
+static const char *iface_ret_type(const char *fn) { int rsi = fn_ret_name_get(fn); if (rsi >= 0) { static char rb[96]; sprintf(rb, "struct %s", stypes[rsi].name); return rb; } if (fn_ret_name_get_ptr(fn)) return "ptr"; if (fn_ll_get_ret(fn)) return "longlong"; if (fn_dbl_get_ret(fn)) return "double"; return "int"; }
+static void interface_emit(void) { /* 接口文件 (AI 可消费 JSON): 函数签名/参数/返回 + 结构体/typedef/全局/枚举 — 解析期表导出, 不产码 */
+    printf("{\"interface\":{");
+    printf("\"functions\":[");
+    int ffirst = 1;
+    for (int i = 0; i < fdef_n; i++) {
+        int c = fdef_list[i];
+        if (c <= 0) continue;
+        char *fn = (char*)(nn + c);
+        int v0 = (i < 65536) ? fvb[i] : 0, v1 = (i < 65536) ? fve[i] : 0;
+        printf("%s{\"name\":\"%s\",\"defined\":true,\"params\":[", ffirst ? "" : ",", fn);
+        int pc = 0;
+        for (int vi = v0; vi < v1 && vi >= 0; vi++) if (vars[vi].is_param) { printf("%s{\"name\":\"%s\",\"type\":\"%s\"}", pc ? "," : "", vars[vi].name, iface_var_type(vi)); pc++; }
+        printf("],\"ret\":\"%s\"}", iface_ret_type(fn));
+        ffirst = 0;
+    }
+    for (int di = 0; di < decl_cnt; di++) { int ddef = 0; for (int i = 0; i < fdef_n; i++) if (fdef_list[i] > 0 && !strcmp((char*)(nn + fdef_list[i]), decl_names[di])) { ddef = 1; break; } if (!ddef) { printf("%s{\"name\":\"%s\",\"defined\":false}", ffirst ? "" : ",", decl_names[di]); ffirst = 0; } } /* declare 声明未实现的骨架 */
+    printf("]");
+    printf(",\"structs\":[");
+    int sfirst = 1;
+    for (int si = 0; si < st_n; si++) {
+        if (stypes[si].name[0] == 0 || stypes[si].sz <= 0) continue;
+        printf("%s{\"name\":\"%s\",\"size\":%d,\"fields\":[", sfirst ? "" : ",", stypes[si].name, stypes[si].sz);
+        for (int f = 0; f < stypes[si].fn; f++) printf("%s{\"name\":\"%s\",\"off\":%d,\"size\":%d%s}", f ? "," : "", stypes[si].fnames[f], stypes[si].foffs[f], stypes[si].fsizes[f], stypes[si].fptrs[f] ? ",\"ptr\":true" : "");
+        printf("]}");
+        sfirst = 0;
+    }
+    printf("]");
+    printf(",\"typedefs\":[");
+    int tfirst = 1;
+    for (int ti = 0; ti < tdef_n; ti++) { printf("%s{\"name\":\"%s\",\"sz\":%d%s}", tfirst ? "" : ",", tdefs[ti].name, tdefs[ti].sz, tdefs[ti].is_struct ? ",\"struct\":true" : ""); tfirst = 0; }
+    printf("]");
+    printf(",\"globals\":[");
+    int gfirst = 1;
+    for (int vi = 0; vi < vcnt; vi++) if (vars[vi].is_static && !var_static_kw[vi]) { printf("%s{\"name\":\"%s\",\"type\":\"%s\",\"size\":%d}", gfirst ? "" : ",", vars[vi].name, iface_var_type(vi), vars[vi].p_esz > 0 ? 8 : (vars[vi].arr_sz > 0 ? vars[vi].arr_sz : (vars[vi].is_ll || vars[vi].is_dbl) ? 8 : vars[vi].is_char ? 1 : 4)); gfirst = 0; }
+    printf("]");
+    printf(",\"enums\":[");
+    int efirst = 1;
+    for (int ei = 0; ei < eval_n; ei++) { printf("%s{\"name\":\"%s\",\"val\":%d}", efirst ? "" : ",", evals[ei].name, evals[ei].val); efirst = 0; }
+    printf("]");
+    printf("}}\n");
+}
 
 /* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
 static void budget_report(void) {
@@ -18530,6 +18573,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
     int root = parse(src); /* fn_macro 收集+展开已在 parse 内 include 展开之后执行 (fix 2026-08-07: 头文件函数宏可见) */
     dag_hash_ast(); /* 编译 DAG (可吞清单 P0-9): AST 阶段哈希 (nt/nv/nn/n0/n1 入链) */
     if (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); return 1; }
+    if (interface_mode) { interface_emit(); return 0; } /* 接口文件 (可吞清单 P1): 只解析导出, 不产码 (gen_code 会重置 func_n 等表) */
     root_global = root;
 
 
@@ -18720,6 +18764,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--budget") == 0) { budget_flag = 1; argi++; continue; } /* 资源护栏 9b (可吞清单 P0-9b): 编译期水位报告 (AI 可读 JSON) */
         if (strcmp(argv[argi], "--checkpoint") == 0 && argc > argi + 1) { checkpoint_mode = 1; strncpy(checkpoint_path, argv[argi + 1], 511); checkpoint_path[511] = 0; argi += 2; continue; } /* 编译检查点 (可吞清单 P0-6): 崩溃尸检 — 进度快照落盘 (lex/每函数parse/每函数codegen/done), 崩溃现场可查 */
         if (strcmp(argv[argi], "--dag") == 0) { dag_mode = 1; argi++; continue; } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 (源码→token→AST→产物), 编译过程可重放可验证 */
+        if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件 (可吞清单 P1, MoonBit #4): 解析后导出 API 表面 JSON (AI 读接口不读实现) */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
