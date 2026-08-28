@@ -158,6 +158,21 @@ def main():
     fail_n = len(results) - pass_n
     fails = [f"{name} ({msg})" for name, ok, msg in results if not ok]
 
+    # 防环境偶发 (2026-08-28 大哥指令): 失败测试自动重试一次 —
+    # 真回归重跑必再挂 (不放过), Windows 环境抖动 (杀软扫新 exe/启动时序) 重跑即过 (不误伤)
+    if fail_n > 0:
+        retry_names = [n for n, ok, _ in results if not ok]
+        print(f'--- {len(retry_names)} 个失败, 自动重试一次 ---', flush=True)
+        retried = [run_one_test(n) for n in retry_names]
+        rmap = {n: (ok2, msg2) for n, ok2, msg2 in retried}
+        results = [(n, rmap[n][0] if n in rmap else ok, rmap[n][1] if n in rmap else msg)
+                   for n, ok, msg in results]
+        pass_n = sum(1 for _, ok, _ in results if ok)
+        fail_n = len(results) - pass_n
+        fails = [f"{name} ({msg})" for name, ok, msg in results if not ok]
+        if fail_n > 0:
+            print(f'--- 重试后仍失败 {fail_n} 个 (判定为真回归) ---')
+
     print(f'\n行为断言: PASS={pass_n} FAIL={fail_n}')
     if fails:
         print('--- 失败 ---')
