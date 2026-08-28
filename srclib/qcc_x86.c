@@ -115,6 +115,7 @@ static int nc_root_p = -1; /* parse 根节点索引: Nc 子节点硬上限豁免
 static int *nx[256]; /* 扩展子槽 n256..n511 — 大型函数体 > 256 语句时原静默丢弃尾部语句 → 编译产物缺语义 (fix 2026-08-18: 乙层补丁硬上限暴露; git sequencer.c 等大函数体被截断) */
 static int *nchain; /* 块节点溢出链: 512 子槽满 → 新块节点挂这里 (fix 2026-08-18: git 大函数体 > 512 语句, 静态扩容不够 → 无界链式) */
 static int fdef_list[1024]; static int fdef_n; /* 顶层函数定义节点列表 (fix 2026-08-06: 根节点 n0..n255 只容 256 个子 → 第 257 个函数 (main) 被 Nc 静默丢弃 → 编译产物无 main 崩; 自举文件恰满 256) */
+static int fn_lines[1024]; static int cur_fdef_line = 0; /* 接入 2026-08-28 可吞清单 P1 (语义导航): 函数定义行号 (fdef 名 token 的 tline, 与 fdef_list 平行) — AI 读代码定位用, 甲言化: --导航 */
 static int gen_final = 0; /* 1 only on the LAST gen_code pass: gate -S asm text so the .asm file holds one copy (fix 2026-08-05: iteration re-runs gen_code → duplicate code + broken label resolution) */
 static int crt_entry_off; /* .text offset of the mini-CRT entry stub (pass 2 value) */
 static int fvb[65536], fve[65536], fvn; /* per-function var index ranges (parse order == gen order) — 512→8192 (fix 2026-08-26 sqlite: sqlite3.c 数千函数) */
@@ -11717,12 +11718,14 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
         if (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */
             if (!strcmp(tn[tk], "main")) user_fn_active = 1; /* 接入 2026-08-28 机制层 #78: 进入用户代码 — qcc_rt.c 运行时无 main, 其变量不查; main 后(含)的用户函数才查 */
+            cur_fdef_line = tline[tk] - (rt_exp_lines ? rt_exp_lines : rt_line_skip); if (cur_fdef_line < 1) cur_fdef_line = 1; /* 2026-08-28 语义导航: 函数名 token 行号 (减 rt 偏移 = 用户源码行, 与 loc 对齐) */
             memcpy((char*)(nn + fdef), tn[tk], 64); tk++; tk++;
             fn_ok = 1;
         } else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr: int (*pick(int v))(int) or int (*gfp)(int); */
             tk++; tk++; /* skip ( * */
             if (tt[tk] == VR && tt[tk + 1] == OK) { /* name ( — fnptr-returning FUNCTION definition */
                 memcpy((char*)(nn + fdef), tn[tk], 64); tk++; /* name */
+                    cur_fdef_line = tline[tk - 1] - (rt_exp_lines ? rt_exp_lines : rt_line_skip); if (cur_fdef_line < 1) cur_fdef_line = 1; /* 2026-08-28 语义导航: 函数名 token 行号 (减 rt 偏移 = 用户源码行) */
                 tk++; /* skip ( of the param list */
                 fn_ok = 1; fdef_is_fnptr_ret = 1;
             } else if (tt[tk] == VR && tt[tk + 1] == KK) { /* name ) — global fnptr VARIABLE: int (*gfp)(int); */
@@ -11915,7 +11918,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
             parse_base = 0; /* back to file scope for the next top-level item */
             Nc(p, fdef);
-            if (fdef_n < 1024) fdef_list[fdef_n++] = fdef; else budget_fail("函数表 fdef_list", 1024); /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢); 2026-08-28 资源护栏: 满→确定性拒绝; 编译检查点: 每函数解析快照 */ { char _cl[96]; sprintf(_cl, "{\"cp\":\"parse\",\"func\":\"%s\",\"idx\":%d}", (char*)(nn + fdef), fdef_n - 1); cp_line(_cl); }
+            if (fdef_n < 1024) { fn_lines[fdef_n] = cur_fdef_line; fdef_list[fdef_n++] = fdef; } else budget_fail("函数表 fdef_list", 1024); /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢); 2026-08-28 资源护栏: 满→确定性拒绝; 编译检查点: 每函数解析快照; 语义导航: 行号平行存储 */ { char _cl[96]; sprintf(_cl, "{\"cp\":\"parse\",\"func\":\"%s\",\"idx\":%d}", (char*)(nn + fdef), fdef_n - 1); cp_line(_cl); }
         } else {  break; } 
     }
     return p;
@@ -18438,7 +18441,7 @@ static void interface_emit(void) { /* 接口文件 (AI 可消费 JSON): 函数�
         if (c <= 0) continue;
         char *fn = (char*)(nn + c);
         int v0 = (i < 65536) ? fvb[i] : 0, v1 = (i < 65536) ? fve[i] : 0;
-        printf("%s{\"name\":\"%s\",\"defined\":true,\"params\":[", ffirst ? "" : ",", fn);
+        printf("%s{\"name\":\"%s\",\"defined\":true,\"line\":%d,\"params\":[", ffirst ? "" : ",", fn, (i < 1024) ? fn_lines[i] : 0);
         int pc = 0;
         for (int vi = v0; vi < v1 && vi >= 0; vi++) if (vars[vi].is_param) { printf("%s{\"name\":\"%s\",\"type\":\"%s\"}", pc ? "," : "", vars[vi].name, iface_var_type(vi)); pc++; }
         printf("],\"ret\":\"%s\"}", iface_ret_type(fn));
@@ -18764,7 +18767,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--budget") == 0) { budget_flag = 1; argi++; continue; } /* 资源护栏 9b (可吞清单 P0-9b): 编译期水位报告 (AI 可读 JSON) */
         if (strcmp(argv[argi], "--checkpoint") == 0 && argc > argi + 1) { checkpoint_mode = 1; strncpy(checkpoint_path, argv[argi + 1], 511); checkpoint_path[511] = 0; argi += 2; continue; } /* 编译检查点 (可吞清单 P0-6): 崩溃尸检 — 进度快照落盘 (lex/每函数parse/每函数codegen/done), 崩溃现场可查 */
         if (strcmp(argv[argi], "--dag") == 0) { dag_mode = 1; argi++; continue; } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 (源码→token→AST→产物), 编译过程可重放可验证 */
-        if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件 (可吞清单 P1, MoonBit #4): 解析后导出 API 表面 JSON (AI 读接口不读实现) */
+        if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
