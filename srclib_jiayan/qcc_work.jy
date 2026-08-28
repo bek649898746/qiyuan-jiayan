@@ -25,6 +25,22 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <windows.h>
+
+/* 接入 2026-08-28 AI原生编译器 #1/#3 (大哥定 地基打桩): 统一错误出口 emit_error — 稳定错误码 + 可选 JSON 诊断
+   错误码: A1xxx=语法/解析 A2xxx=语义/类型 A3xxx=借用/所有权/生命周期 A4xxx=明确初始化 A5xxx=资源/运行时
+   文本模式保持 "[ERR] 码 信息" (325 测试 compile_fail 依赖 [ERR] 前缀); JSON 模式 AI 程序化消费
+   ⚠️ 自举教训 (2026-08-28): emit_error 原用 va_list 变参(vsnprintf/vfprintf) — qcc 编译该复杂模式生成的编译器
+   在编译含 va_list 代码时崩溃 (0xC0000005) → H1≠H2。改为无变参签名 + EMIT_ERR 宏(sprintf 在调用处展开, 绕开 va_list 传参) */
+静 整 diagnostics_json = 0; /* --diagnostics=json: 报错输出 JSON */
+静 字 g_errbuf[256]; /* 报错消息缓冲 — 调用处 sprintf 填充 (不用变参宏 __VA_ARGS__: qcc fn_macro 不支持变参宏展开, 2026-08-28 自举崩教训) */
+静 空 emit_error(常 字 *code, 常 字 *msg) {
+    若 (diagnostics_json) {
+        fprintf(stderr, "{\"code\":\"%s\",\"severity\":\"error\",\"message\":\"%s\"}\n", code, msg);
+    } 否 {
+        fprintf(stderr, "[ERR] %s %s\n", code, msg);
+    }
+    exit(1);
+}
 #include <stdint.h>
 #define uint8_t 无 字
 #define uint16_t 无 短
@@ -5024,9 +5040,9 @@ __attribute__((unused))
         /* enum constant? */
         整 ev = e_lookup(tn[tk]);
         若 (ev != 0x80000000) { tk++; 整 n = Nd(0); nv[n] = ev; 返 n; } /* fix 2026-08-09: != 哨兵而非 >= 0 (负值常量 RED=-2) */
-        若 (is_moved(tn[tk])) { 若 (asgn_lhs_parsing) { 若 (lv_moved_n < 8) { strcpy(lv_moved[lv_moved_n++], tn[tk]); } } 否 若 (!move_dst_parsing) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)\n", tn[tk]); exit(1); } } /* 接入 2026-08-28 机制层 #5: 移动后源彻底失效 — 右值读即 [ERR]; 左值解析期(asgn_lhs_parsing)记入缓冲由 asgn 事后判定 (赋值=重新初始化放行/非赋值=右值读报错); 移入目标(dst)是写跳过 */
-        若 (uninit_has(tn[tk])) { 若 (asgn_lhs_parsing) { 若 (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } 否 若 (!move_dst_parsing) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)\n", tn[tk]); exit(1); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
-        若 (borrow_mode_of(tn[tk]) == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)\n", tn[tk]); exit(1); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
+        若 (is_moved(tn[tk])) { 若 (asgn_lhs_parsing) { 若 (lv_moved_n < 8) { strcpy(lv_moved[lv_moved_n++], tn[tk]); } } 否 若 (!move_dst_parsing) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", tn[tk]); emit_error("A3101", g_errbuf); } } /* 接入 2026-08-28 机制层 #5: 移动后源彻底失效 — 右值读即 [ERR]; 左值解析期(asgn_lhs_parsing)记入缓冲由 asgn 事后判定 (赋值=重新初始化放行/非赋值=右值读报错); 移入目标(dst)是写跳过 */
+        若 (uninit_has(tn[tk])) { 若 (asgn_lhs_parsing) { 若 (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } 否 若 (!move_dst_parsing) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", tn[tk]); emit_error("A4001", g_errbuf); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
+        若 (borrow_mode_of(tn[tk]) == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)", tn[tk]); emit_error("A3001", g_errbuf); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
         整 n = Nd(1); memcpy((字*)(nn + n), tn[tk], 64); tk++;
                 若 (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         若 (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
@@ -5304,15 +5320,15 @@ __attribute__((unused))
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
 静 整 tern(空) { 整 n = lor(); 若 (tt[tk] == QU) { tk++; 整 t = lor(); 若 (tt[tk] == CL) tk++; 整 f = tern(); 整 a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); 返 a; } 返 n; }
-静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); 整 bm = borrow_mode_of(vname); 若 (bm >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)\n", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); exit(1); } 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
+静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); 整 bm = borrow_mode_of(vname); 若 (bm >= 0) { sprintf(g_errbuf, "借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); emit_error("A3001", g_errbuf); } 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
     若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
-        若 (lv_uninit_n > 0) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)\n", lv_uninit[0]); exit(1); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
+        若 (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         整 o = tt[tk++];
         整 op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
         整 a = Nd(10); 整 bin = Nd(2); nv[bin] = op;
         Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         返 a;
-    } 若 (lv_moved_n > 0) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)\n", lv_moved[0]); exit(1); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错 */ 若 (lv_uninit_n > 0) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)\n", lv_uninit[0]); exit(1); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错 */ 返 n; }
+    } 若 (lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错 */ 若 (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错 */ 返 n; }
 静 整 pipe_chain(空) { 整 n = asgn(); 循环 (tt[tk] == PIPE) { tk++; 整 f = asgn(); 整 call = Nd(4); Nc(call, n); Nc(call, f); n = call; } 返 n; } /* 接入 2026-08-27 管道操作符: a |> f = f(a) — call 节点 callee 是最后 Nc (case 4 L11080 反向找), 参数先挂 (fix 2026-08-27: 原 f 先挂 n0 → callee 变 a 字面量 → 垃圾函数名崩) */
 静 整 expr(空) { 返 pipe_chain(); }
 
@@ -6997,11 +7013,11 @@ __attribute__((unused))
         若 (is_rel) {
             遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], bn)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; } /* 放还: 解除借用 (mode 一并清) */
         } 否 {
-            若 (is_moved(bn)) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能借用 (v3.0 #10)\n", bn); exit(1); } /* 接入 2026-08-28 机制层 #10: moved 变量不能借用 (所有权已转移) */
+            若 (is_moved(bn)) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能借用 (v3.0 #10)", bn); emit_error("A3103", g_errbuf); } /* 接入 2026-08-28 机制层 #10: moved 变量不能借用 (所有权已转移) */
             整 bi = -1; 遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], bn)) { bi = i; 断; }
             若 (bi >= 0) { /* 已有借用 → 独占互斥 (v3.0 #3) */
-                若 (is_mut) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被借用, 不能可变借用 (独占, v3.0 #3)\n", bn); exit(1); }
-                若 (borrowed_mode[bi] == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被可变借用 (独占), 不能再借用 (v3.0 #3)\n", bn); exit(1); }
+                若 (is_mut) { sprintf(g_errbuf, "借用检查: 变量 '%s' 已被借用, 不能可变借用 (独占, v3.0 #3)", bn); emit_error("A3002", g_errbuf); }
+                若 (borrowed_mode[bi] == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 已被可变借用 (独占), 不能再借用 (v3.0 #3)", bn); emit_error("A3003", g_errbuf); }
                 /* 只读借用可叠加 (多读单写, 现有语义) */
             }
             若 (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_scope[borrowed_cnt] = borrow_depth; borrowed_cnt++; } /* #4: 记录借用声明时块深度, 块退出自动放还 */
@@ -7029,9 +7045,9 @@ __attribute__((unused))
         若 (tt[tk] == SK) tk++; /* ; */
         若 (e_s >= 0 && nt[e_s] == 1) { /* moved 登记: 源是简单变量时跟踪 */
             字 *srcn = (字*)(nn + e_s);
-            若 (borrow_mode_of(srcn) >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被借用, 不能移动 (借用期所有权不可转移, v3.0 #10)\n", srcn); exit(1); } /* 接入 2026-08-28 机制层 #10: 借用期间不能 move (只读借用在此拦, 可变借用 L5014 已拦) */
+            若 (borrow_mode_of(srcn) >= 0) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被借用, 不能移动 (借用期所有权不可转移, v3.0 #10)", srcn); emit_error("A3004", g_errbuf); } /* 接入 2026-08-28 机制层 #10: 借用期间不能 move (只读借用在此拦, 可变借用 L5014 已拦) */
             整 mi; 遍 (mi = 0; mi < moved_cnt; mi++) 若 (!strcmp(moved_names[mi], srcn)) 断;
-            若 (mi < moved_cnt) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能再次移动\n", srcn); exit(1); }
+            若 (mi < moved_cnt) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能再次移动", srcn); emit_error("A3102", g_errbuf); }
             若 (moved_cnt < 256) strcpy(moved_names[moved_cnt++], srcn);
         }
         整 blk = Nd(5);
@@ -18200,6 +18216,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
             argi += 2; 续;
         }
         若 (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; 续; }
+        若 (strcmp(argv[argi], "--diagnostics=json") == 0 || strcmp(argv[argi], "--dj") == 0) { diagnostics_json = 1; argi++; 续; } /* 接入 2026-08-28 AI原生 #1: JSON 诊断模式 — 报错输出 {code,severity,message}, AI 程序化消费 */
 若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
         若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
