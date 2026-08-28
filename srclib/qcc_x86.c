@@ -18243,6 +18243,23 @@ static void sha256_file(const char *path, char out[65]) {
 
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
+char *qcc_prepend_rt(const char *src) { /* 可嵌入: rt 拼接封装 (fix 2026-08-28 大哥验收: reset 清宏 + 时序 → rt 守卫失效 → rt 实现剃光 → 嵌入产物缺代码段崩) — main 与 qcc_embed_driver 共用; 多路径搜索: 相对 cwd + 可执行文件目录 (Windows GetModuleFileName) */
+    char *rtb = read_file("srclib/qcc_rt.c");
+    if (!rtb) rtb = read_file("qcc_rt.c");
+    if (!rtb) { char mp[1024]; DWORD mn = GetModuleFileNameA(NULL, mp, 1023); if (mn > 0) { char *sl = strrchr(mp, '/'); char *bs = strrchr(mp, '\\'); char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs); if (last) { *last = 0; char sp2[1024]; strcpy(sp2, mp); strcat(sp2, "/srclib/qcc_rt.c"); rtb = read_file(sp2); if (!rtb) { strcpy(sp2, mp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); } } } }
+    if (!rtb) return NULL;
+    int rl = (int)strlen(rtb);
+    int al = (int)strlen(src);
+    macro_add("QCC_RT_PREPENDED", 1); /* 标记 rt 已预置 — qcc_rt.c 守卫认此宏 */
+    rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* 行号校正 */
+    char *combined2 = malloc((rl + al + 5) & ~3);
+    memcpy(combined2, rtb, rl);
+    combined2[rl] = '\n';
+    memcpy(combined2 + rl + 1, src, al);
+    combined2[rl + 1 + al] = 0;
+    free(rtb);
+    return combined2;
+}
 static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置跨编译累积的静态全局表 (parse 已重置 tk/vcnt/fdef_n/tt 等; 这里补宏/类型/字符串/函数/机制层/static槽/位域表) */
     macro_n = 0; fn_macro_n = 0; obj_macro_n = 0; ginit_n = 0; func_n = 0; str_cnt = 0; pp_guard_n = 0; st_n = 0;
     stc_n = 0; bit_slot = -1; bit_pos = 0; /* static 槽计数 + 位域打包状态 — 跨编译累积必须重置 */
@@ -18251,6 +18268,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
 }
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
+    if (!coff_mode) { char *rtc = qcc_prepend_rt(src); if (rtc) src = rtc; } /* rt 拼接在 reset 之后 (fix 2026-08-28: reset 的 macro_n=0 清提前设的 QCC_RT_PREPENDED → rt 剃光 → 嵌入产物缺代码段崩); -c 模式不拼 rt; src 传纯用户源码 */
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64);
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
     tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
@@ -18535,53 +18553,8 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
 
     /* prepend the self-host runtime (qcc_rt.c): heap realloc, fseek/ftell/rewind,
        exit/abort, strcpy/strncmp/isdigit/isalpha shadow the broken inline stubs.
-       Every compiled program gets it, so stage2 is self-contained.
-       NOTE: copy from src (the combined buffer), NOT all_src �?all_src is already
-       free()d by the combined block above (use-after-free). */
-    if (!coff_mode)
-    {
-        char *rtb = read_file("srclib/qcc_rt.c");
-        if (!rtb) rtb = read_file("qcc_rt.c");
-        if (!rtb && argc > 1) { /* cwd 无关: 基于源码路径推导运行时 (fix 2026-08-05: 原相对 cwd, 非根目录编译静默缺运行时) */
-            char sp[1024];
-            strncpy(sp, argv[1], 1023); sp[1023] = 0;
-            char *sl = strrchr(sp, '/');
-            char *bs = strrchr(sp, '\\');
-            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
-            if (last) {
-                *last = 0;
-                strcat(sp, "/srclib/qcc_rt.c");
-                rtb = read_file(sp);
-            }
-        }
-        if (!rtb && argc > 0) { /* fix 2026-08-26: 从编译器自身路径推导 — rt 在编译器目录不在源码目录; 原从 argv[1](源码) 推导 → 语料目录编译时 rt 静默缺失 → strncmp/strcspn/strspn/strdup 未定义恒 0/崩 (diff_gate strlib/math 85 差异) */
-            char sp[1024];
-            strncpy(sp, argv[0], 1023); sp[1023] = 0;
-            char *sl = strrchr(sp, '/');
-            char *bs = strrchr(sp, '\\');
-            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
-            if (last) {
-                *last = 0;
-                char sp2[1024];
-                strcpy(sp2, sp); strcat(sp2, "/srclib/qcc_rt.c");
-                rtb = read_file(sp2);
-                if (!rtb) { strcpy(sp2, sp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); }
-            }
-        }
-        if (rtb) {
-            int rl = (int)strlen(rtb);
-            int al = (int)strlen(src);
-            macro_add("QCC_RT_PREPENDED", 1); /* 修复 2026-08-25: 标记 rt 已预置 — qcc_rt.c 守卫改为认此宏而非 __GNUC__ (diff_gate -D __GNUC__=5 曾把 rt 实现全部剃光 → strcspn/strspn/strncmp/strdup 恒返 0) */
-            rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
-            char *combined2 = malloc((rl + al + 5) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — rl+al+2 misaligned the bump counter -> tt..tll misaligned -> tll[tk] reads garbage -> spurious nll=1 -> 2-cycle */
-            memcpy(combined2, rtb, rl);
-            combined2[rl] = '\n';
-            memcpy(combined2 + rl + 1, src, al);
-            combined2[rl + 1 + al] = 0;
-            src = combined2;
-            free(rtb);
-        }
-    }
+       Every compiled program gets it, so stage2 is self-contained. */
+    /* fix 2026-08-28: rt 拼接已移入 qcc_compile_once 内部 (reset 之后, 避免 macro_n=0 清 QCC_RT_PREPENDED → rt 剃光 → 嵌入产物崩); main 传纯用户源码 */
 
     /* 接入 2026-08-28 AI原生 #6: 编译核心函数化 — 同进程可重复调用 (可重入无状态核心) */
     int qc_rc = qcc_compile_once(src, outf, asm_mode);
