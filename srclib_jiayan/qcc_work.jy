@@ -5651,6 +5651,9 @@ __attribute__((unused))
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
         整 o = tt[tk++];
         整 op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
+        整 ovf2 = -1; /* 2026-08-28 P1 #260 复合赋值重载: a op= b → 重载函数(a, b) 若注册 */
+        若 (ov_n > 0 && n >= 0 && nt[n] == 1) { 整 si2 = var_stidx((字*)(nn + n)); 若 (si2 >= 0) { 字 *tyn2 = stypes[si2].name; 遍 (整 k = 0; k < ov_n; k++) 若 (ov_op[k] == (字)op && !strcmp(ov_ty[k], tyn2)) { ovf2 = k; 断; } } }
+        若 (ovf2 >= 0) { 整 rhs2 = asgn(); 整 call2 = Nd(4); Nc(call2, n); Nc(call2, rhs2); { 整 fn = Nd(1); memcpy((字*)(nn + fn), ov_fn[ovf2], 64); Nc(call2, fn); } 整 a2 = Nd(10); Nc(a2, n); Nc(a2, call2); 返 a2; } /* a = 重载函数(a, b) */
         整 a = Nd(10); 整 bin = Nd(2); nv[bin] = op;
         Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         返 a;

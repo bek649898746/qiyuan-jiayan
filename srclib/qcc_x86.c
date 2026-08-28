@@ -5651,6 +5651,9 @@ static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; lv_path_n = 0; asgn_lhs
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
         int o = tt[tk++];
         int op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
+        int ovf2 = -1; /* 2026-08-28 P1 #260 复合赋值重载: a op= b → 重载函数(a, b) 若注册 */
+        if (ov_n > 0 && n >= 0 && nt[n] == 1) { int si2 = var_stidx((char*)(nn + n)); if (si2 >= 0) { char *tyn2 = stypes[si2].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == (char)op && !strcmp(ov_ty[k], tyn2)) { ovf2 = k; break; } } }
+        if (ovf2 >= 0) { int rhs2 = asgn(); int call2 = Nd(4); Nc(call2, n); Nc(call2, rhs2); { int fn = Nd(1); memcpy((char*)(nn + fn), ov_fn[ovf2], 64); Nc(call2, fn); } int a2 = Nd(10); Nc(a2, n); Nc(a2, call2); return a2; } /* a = 重载函数(a, b) */
         int a = Nd(10); int bin = Nd(2); nv[bin] = op;
         Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         return a;
