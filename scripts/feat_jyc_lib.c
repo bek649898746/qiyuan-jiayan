@@ -55,6 +55,11 @@ int main(void) {
     if (守卫求和() != 15) { printf("FAIL guard-sum\n"); return 1; }
     if (g_析构日志 != 15) { printf("FAIL guard-dtor %d\n", g_析构日志); return 1; }
 
+    /* 声明先行吃狗粮: 声明 的 字符串比较 (前向调用) + 实现 */
+    if (字符串相等("hello", "hello") != 1) { printf("FAIL eq\n"); return 1; }
+    if (字符串相等("hello", "world") != 0) { printf("FAIL neq\n"); return 1; }
+    if (字符串比较("abc", "abd") >= 0) { printf("FAIL cmp\n"); return 1; }
+
     printf("PASS\n");
     return 0;
 }
