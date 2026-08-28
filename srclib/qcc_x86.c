@@ -2120,13 +2120,14 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 
 /* ==================== COFF 对象输出（-c 模式） ==================== */
 static int stc_disp(int idx);
-static struct { char name[64]; int label; int defined; int ret_si; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1) */
+static struct { char name[64]; int label; int defined; int ret_si; int declared; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1); declared (接入 2026-08-28 declare 声明先行): 声明 名字(参数) 返回 类型; 注册签名, 未实现生成 stub (缺失=警告非错误, AI 渐进补全) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
 static char fn_static_names[512][64]; static int fn_static_n;
 static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static void fn_static_unmark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) { for (int j = i; j < fn_static_n - 1; j++) strcpy(fn_static_names[j], fn_static_names[j + 1]); fn_static_n--; return; } }
 static int func_n = 0;
+static char decl_names[256][64]; static int decl_cnt; /* 接入 2026-08-28 declare 声明先行: 独立声明表 (func_n 在 gen_code 重置, 故不依赖 func_tbl.declared) — 声明 名字(参数); 注册, 未实现生成 stub */
 static int coff_mode = 0;
 static /* fix 2026-08-10 Gate 9: ������� (bare_metal) + �ڴ�����/�����ַ */
 int bare_metal = 0; /* Gate 9: ��������������� (main ��� __bare__ ��������) */
@@ -6201,7 +6202,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -7033,6 +7034,19 @@ static int stmt(void) {
             }
             if (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_scope[borrowed_cnt] = borrow_depth; borrowed_cnt++; } /* #4: 记录借用声明时块深度, 块退出自动放还 */
         }
+        return Nd(5);
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行 (AI启动单/MoonBit#1): 声明 名字(参数) 返回 类型; → 注册签名, 实现后补(stub), 缺失=警告非错误 */
+        tk++; /* 声明 */
+        char dname[64]; strcpy(dname, tn[tk]); tk++; /* 函数名 */
+        if (decl_cnt < 256) strcpy(decl_names[decl_cnt++], dname); /* 声明表注册 (独立于 func_tbl, gen_code 重置 func_n) */
+        int ddep = 0; /* 跳过 (参数) 返回 类型 到 ; */
+        while (tk < TS && tt[tk] != EK && tt[tk] != SK) {
+            if (tt[tk] == OK) ddep++;
+            else if (tt[tk] == KK) { ddep--; if (ddep <= 0) { tk++; continue; } }
+            tk++;
+        }
+        if (tt[tk] == SK) tk++; /* ; */
         return Nd(5);
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "守卫")) { /* 接入 2026-08-28 机制层 #8 RAII 完整(析构): 守卫 x, 析构名; → 登记(变量,析构,块深度), 块退出自动调用 析构名(x) (作用域退出自动释放, Rust 式 drop) */
@@ -11546,6 +11560,19 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
         }
         /* __attribute__((...)) �?skip balanced parens */
+        if (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行: 顶层 声明 名字(参数) 返回 类型; — 注册签名 (与 stmt 分支同逻辑, 顶层不经过 stmt) */
+            tk++;
+            if (tk < TS && decl_cnt < 256) { strcpy(decl_names[decl_cnt++], tn[tk]); }
+            tk++;
+            int ddd = 0;
+            while (tk < TS && tt[tk] != EK && tt[tk] != SK) {
+                if (tt[tk] == OK) ddd++;
+                else if (tt[tk] == KK) { ddd--; if (ddd <= 0) { tk++; continue; } }
+                tk++;
+            }
+            if (tt[tk] == SK) tk++;
+            continue;
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) {
             tk++;
             int depth = 0;
@@ -14433,7 +14460,17 @@ static void cg(int n) {
                     } else if (coff_is_builtin((char*)(nn + n))) {
                         mov_r_imm(0, 0); /* 单文件 builtin (内联发射, 无真实函数体): 确定性 NULL (fix 2026-08-19: 原 load_param_val 不发射 → rax 残留垃圾 → 测试靠运气) */
                     } else {
-                        fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (char*)(nn + n)); exit(1);
+                        int dk2; for (dk2 = 0; dk2 < decl_cnt; dk2++) if (!strcmp(decl_names[dk2], (char*)(nn + n))) break;
+                        if (dk2 < decl_cnt) { /* 接入 2026-08-28 declare: 已声明未实现函数取地址 → fn_patches 烘焙 (同已定义函数, 指向 stub 绝对 VA) */
+                            int dfi3 = func_find((char*)(nn + n));
+                            asm_emit("    移动 r0, FN:%s\n", (char*)(nn + n), (char*)(long long)0, (char*)(long long)0);
+                            b(0xB8); b4(0);
+                            if (fnpn >= 2048) { fprintf(stderr, "[FNPATCH-OVERFLOW] fnpn=%d\n", fnpn); abort(); }
+                            fn_patches[fnpn].patch_at = cp - 4;
+                            fn_patches[fnpn].label = func_tbl[dfi3].label;
+                            fnpn++;
+                        }
+                        else { fprintf(stderr, "[ERR] 未定义函数 '%s' 不能取地址 — 多文件请用 qcc -c + jyld 链接\n", (char*)(nn + n)); exit(1); }
                     }
                 } else {
                     load_param_val((char*)(nn + n)); /* eax = param (reg or [rbp+disp]) */
@@ -17462,6 +17499,16 @@ void gen_code(void) {
             pop_r(3); /* pop rbx */
             pop_r(5); /* pop rbp */
             ret();
+        }
+    }
+    /* 接入 2026-08-28 declare 声明先行: 已声明的未实现函数 → stub (mov eax,0; ret), 缺失=警告非错误 (AI 渐进补全) */
+    for (int di = 0; di < decl_cnt; di++) {
+        int dfi2 = func_find(decl_names[di]);
+        if (!func_tbl[dfi2].defined) {
+            set_label(func_tbl[dfi2].label);
+            b(0xB8); b(0x00); b(0x00); b(0x00); b(0x00); /* mov eax, 0 (返回 0 的骨架) */
+            b(0xC3); /* ret */
+            func_tbl[dfi2].defined = 1;
         }
     }
     if (coff_mode && ginit_sub_label >= 0) { /* fix 2026-08-17: ginit 专用子程序 (每函数守卫调用, 正文只在末尾一次) */
