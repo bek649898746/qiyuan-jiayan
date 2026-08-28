@@ -18243,7 +18243,7 @@ static void sha256_file(const char *path, char out[65]) {
 
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
-static int qcc_compile_once(const char *src, const char *outf, int asm_mode) {
+int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64);
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
     tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
@@ -18441,6 +18441,8 @@ static int qcc_compile_once(const char *src, const char *outf, int asm_mode) {
     return 0;
 }
 
+/* 接入 2026-08-28 AI原生 #可嵌入: QCC_EMBEDDED 模式跳过 main — 编译器以库形式被调用 (qcc_compile_once 暴露为嵌入式 API) */
+#ifndef QCC_EMBEDDED
 int main(int argc, char **argv) {
     const char *src = "int main() { return 42; }";
     const char *outf = NULL;
@@ -18584,3 +18586,4 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
     return 0;
 
 }
+#endif /* QCC_EMBEDDED */
