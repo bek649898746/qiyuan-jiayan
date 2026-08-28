@@ -6999,13 +6999,15 @@ static int stmt(void) {
         if (guard_cnt < 64) { strcpy(guard_vars[guard_cnt], gv); strcpy(guard_fns[guard_cnt], gf); guard_scope[guard_cnt] = borrow_depth; guard_cnt++; }
         return Nd(5);
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "移入")) { /* 接入 2026-08-28 机制层 #1/#5: 所有权 move — 移入 dst, src; → { dst = src; src 标记已移动 } (#5: moved 表提升全局, dst 解析跳过读检查, src 登记) */
+    if (tt[tk] == VR && !strcmp(tn[tk], "移入")) { /* 接入 2026-08-28 机制层 #1/#5/#13: 所有权 move — 移入 dst, src; → { dst = src; src 标记已移动 }; #13 覆写: 移入 dst, src 覆写 钩子名; → { 钩子名(&dst, &src); src 标记已移动 } (可覆写移动, 替代按位) */
         tk++; /* 移入 */
         move_dst_parsing = 1; /* #5: dst 是写目标, 跳过 moved 读检查 (dst 可为已移动变量重新赋值) */
         int e_d = expr(); /* 目标 (左值: 变量/数组元素/成员) */
         move_dst_parsing = 0;
         if (tt[tk] == CK) tk++; /* , */
         int e_s = expr(); /* 源 (变量/数组元素/成员) — 已 moved 时 L5014 读检查 [ERR] */
+        int override = 0; char ofn[64] = "";
+        if (tt[tk] == VR && !strcmp(tn[tk], "覆写")) { tk++; strcpy(ofn, tn[tk]); tk++; override = 1; } /* #13: 可覆写移动钩子 */
         if (tt[tk] == SK) tk++; /* ; */
         if (e_s >= 0 && nt[e_s] == 1) { /* moved 登记: 源是简单变量时跟踪 */
             char *srcn = (char*)(nn + e_s);
@@ -7015,7 +7017,15 @@ static int stmt(void) {
             if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], srcn);
         }
         int blk = Nd(5);
-        { int asg = Nd(10); Nc(asg, e_d); Nc(asg, e_s); Nc(blk, asg); } /* dst = src; */
+        if (override) { /* #13: 覆写移动 → 调用钩子 钩子名(&dst, &src) (Nd(11)=取地址, callee 最后 Nc) */
+            int call = Nd(4);
+            { int ad = Nd(11); Nc(ad, e_d); Nc(call, ad); }
+            { int as2 = Nd(11); Nc(as2, e_s); Nc(call, as2); }
+            { int fn = Nd(1); memcpy((char*)(nn + fn), ofn, 64); Nc(call, fn); }
+            Nc(blk, call);
+        } else {
+            { int asg = Nd(10); Nc(asg, e_d); Nc(asg, e_s); Nc(blk, asg); } /* dst = src; */
+        }
         return blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "互斥锁")) { /* 接入 2026-08-28 机制层: 互斥锁声明 (内建自旋锁状态): 互斥锁 m; → { int __mtx_m = 0; } — 0=未锁, 1=锁定; 锁住 m {..} 用真原子 CAS 自旋 */
