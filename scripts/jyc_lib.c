@@ -51,3 +51,44 @@ int 点距离平方(struct 点 p) 后置 (返回 >= 0) {
 int 取大(int a, int b) 后置 (返回 >= a) 后置 (返回 >= b) {
     return a > b ? a : b;
 }
+
+/* === 机制层 (借用/移动/可空/错误union/RAII) — 真实库函数吃狗粮 (2026-08-28 真接入⑥) === */
+
+/* 借用: 只读阶段 借用/放还 — 真实数组访问函数 */
+int 取第(const int *arr, int n, int i) 前置 (arr != 0) 前置 (i >= 0) 前置 (i < n) {
+    借用 arr;            /* 只读借用: 读 OK, 写会[ERR]/自动放还 */
+    int v = arr[i];
+    放还 arr;            /* 显式结束只读阶段 */
+    return v;
+}
+
+/* 可空: 查找返回 0 表未找到 (可空指针), 调用方 解包 强制处理 */
+int *查找值(int *arr, int n, int v) {
+    for (int i = 0; i < n; i++) if (arr[i] == v) return &arr[i];
+    return 0;            /* 可空: 0 = 空 */
+}
+
+/* 错误 union: 除或错 — b==0 显式返回错误码 1 (Go 式 error, AI 找根因) */
+错误 int 除或错(int a, int b) {
+    if (b == 0) { 错 1; return 1; }   /* 显式错误码 */
+    return a / b;
+}
+
+/* 移动: 点移动 — 参数 p 的所有权转移给局部 q (移入 后 p 失效, Rust 式 move) */
+struct 点 点移动(struct 点 p) {
+    struct 点 q;
+    移入 q, p;           /* p 移动给 q, 移后 p 失效 (再读[ERR]) */
+    return q;
+}
+
+/* RAII 守卫: 析构函数 块退出自动调用 (LIFO 逆序) — 真实资源清理 (守卫把变量按值传给析构) */
+int g_析构日志 = 0;
+void 析构记录(int v) { g_析构日志 += v; }   /* 析构: 日志累加守卫变量值 (按值接收) */
+
+int 守卫求和(void) {
+    int a = 5;
+    守卫 a, 析构记录;    /* 块退出 → 析构记录(&a) */
+    int b = 10;
+    守卫 b, 析构记录;    /* LIFO: b 先析构, 再 a */
+    return a + b;        /* 15; 退出后 g_析构日志 = 10 + 5 = 15 */
+}
