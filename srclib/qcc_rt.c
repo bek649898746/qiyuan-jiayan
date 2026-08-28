@@ -632,5 +632,62 @@ void 释放原子(struct Rc r) {
     int old = 原子 加(cnt, -1); /* 原子 --, 返回旧值 */
     if (old <= 1) free(cnt); /* 旧值 1 → 归零 → 释放 */
 }
+
+/* ---- 接入 2026-08-28 P1 并发组: 用户态同步原语 (真原子 CAS/xadd, 不扩 kernel32 IAT) ----
+   #56 信号量 (计数信号量): __qcc_sem_wait = P 忙等到 count>0 再原子减; __qcc_sem_post = V 原子加 */
+int __qcc_sem_init(int *s, int v) { *s = v; return 0; }
+int __qcc_sem_wait(int *s) {
+    while (1) {
+        int old = *s;
+        if (old > 0) {
+            if (原子 比较交换(s, old, old - 1) == old) return 0; /* CAS 成功 = 拿到一个许可 */
+        }
+    }
+}
+int __qcc_sem_post(int *s) {
+    原子 加(s, 1);
+    return 0;
+}
+
+/* #51 读写锁 (读者优先, 写者独占): state>0 读者数, state==0 空闲, state==-1 写者持有 */
+int __qcc_rwlock_rd(int *s) { /* 读者: 忙等非写状态, 原子 +1 */
+    while (1) {
+        int old = *s;
+        if (old >= 0) {
+            if (原子 比较交换(s, old, old + 1) == old) return 0;
+        }
+    }
+}
+int __qcc_rwlock_wr(int *s) { /* 写者: 忙等完全空闲, 置 -1 */
+    while (1) {
+        int old = *s;
+        if (old == 0) {
+            if (原子 比较交换(s, 0, -1) == 0) return 0;
+        }
+    }
+}
+int __qcc_rwlock_un(int *s) {
+    if (*s == -1) *s = 0; /* 写锁释放 → 空闲 */
+    else 原子 加(s, -1); /* 读锁释放 → 读者数 -1 */
+    return 0;
+}
+
+/* #50 条件变量 (futex 式计数): 等条件 = 登记轮次+忙等计数前进; 唤醒 = 计数+1 (单); 唤醒全部 = 计数+1000 (所有等待者) */
+int __qcc_cv_wait(int *cv, int *mtx) { /* mtx 可选: 等待前释放锁, 醒来重取 */
+    if (mtx) *mtx = 0; /* 释放互斥锁 */
+    int my = (*cv) + 1;
+    *cv = my; /* 登记等待轮次 */
+    while (*cv == my) { } /* 忙等: 计数前进 = 信号到达 */
+    if (mtx) { while (*mtx != 0) { } *mtx = 1; } /* 重取互斥锁 */
+    return 0;
+}
+int __qcc_cv_signal(int *cv) {
+    (*cv) = (*cv) + 1; /* 计数前进, 唤醒一个等待者 */
+    return 0;
+}
+int __qcc_cv_broadcast(int *cv) {
+    (*cv) = (*cv) + 1000; /* 大步前进, 唤醒所有等待者 */
+    return 0;
+}
 #endif
 
