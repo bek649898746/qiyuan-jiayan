@@ -7039,9 +7039,19 @@ static int stmt(void) {
         { int li = lbl_find((char*)(nn + n)); if (li < 0) li = lbl_reg((char*)(nn + n)); nv[n] = li + 1; } /* fix 2026-08-18: goto 在解析时固化 label id (lbl_n 按函数重置后 codegen 的 lbl_find 查不到前函数标签 — SET_LABEL 已存 id, goto 必须同步) */
         return n;
     }
-    if (tt[tk] == VR && tt[tk + 1] == CL) { /* label: */
+    if (tt[tk] == VR && tt[tk + 1] == CL) { /* label: — 2026-08-28 P1 #156 循环标签: 标签: while/for/do → 包装块 { 标签:; 循环; 标签_brk:; } (break 标签→goto _brk, continue 标签→goto 标签循环头) */
         char ln[64]; strcpy(ln, tn[tk]); tk += 2; /* name : */
         int li = lbl_reg(ln);
+        if (tt[tk] == WK || (tt[tk] == VK && !strcmp(tn[tk], "for")) || tt[tk] == DW) { /* 标签后跟循环 */
+            char brk[80]; sprintf(brk, "%s_brk", ln);
+            int bi = lbl_reg(brk); /* 注册 break 目标标签 */
+            int n = Nd(5);
+            { int ln2 = Nd(20); nv[ln2] = li + 1; Nc(n, ln2); } /* 标签: (循环头 = continue 目标) */
+            int loop = stmt(); /* 循环语句 */
+            Nc(n, loop);
+            { int lb = Nd(20); nv[lb] = bi + 1; Nc(n, lb); } /* 标签_brk: (break 目标 = 循环出口) */
+            return n;
+        }
         int n = Nd(20); nv[n] = li + 1; /* SET_LABEL(li) */
         return n;
     }
@@ -7275,8 +7285,20 @@ static int stmt(void) {
         return sw_wh;
     }
     if (tt[tk] == FK) return blk();
-    if (tt[tk] == BR) { tk++; int r = Nd(16); tk++; return r; } /* break; */
-    if (tt[tk] == CN) { tk++; int r = Nd(21); tk++; return r; } /* continue; */
+    if (tt[tk] == BR) { tk++; if (tt[tk] == VR) { /* 2026-08-28 P1 #156 循环标签: break 标签; → goto 标签_brk (跳到命名循环出口) */
+            char brk[80]; sprintf(brk, "%s_brk", tn[tk]); tk++;
+            if (tt[tk] == SK) tk++;
+            int n = Nd(25); memcpy((char*)(nn + n), brk, 64);
+            { int li = lbl_find(brk); if (li < 0) li = lbl_reg(brk); nv[n] = li + 1; }
+            return n;
+        } int r = Nd(16); tk++; return r; } /* break; */
+    if (tt[tk] == CN) { tk++; if (tt[tk] == VR) { /* 2026-08-28 P1 #156 循环标签: continue 标签; → goto 标签 (跳到命名循环头, 重新判断条件) */
+            char ln2b[64]; strcpy(ln2b, tn[tk]); tk++;
+            if (tt[tk] == SK) tk++;
+            int n = Nd(25); memcpy((char*)(nn + n), ln2b, 64);
+            { int li = lbl_find(ln2b); if (li < 0) li = lbl_reg(ln2b); nv[n] = li + 1; }
+            return n;
+        } int r = Nd(21); tk++; return r; } /* continue; */
     if (tt[tk] == VR && !strcmp(tn[tk], "defer")) { /* 接入 2026-08-27: 甲言 defer (延迟) — Go 式函数退出延迟执行, LIFO. 收集语句到当前函数 defer 列表, epi_label 处逆序执行 */
         tk++; /* defer */
         int ds = stmt(); /* 延迟的语句 */
