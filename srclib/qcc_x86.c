@@ -4795,6 +4795,28 @@ static int prim(void) {
         if (!cl_fn[0]) { sprintf(g_errbuf, "接口: 类型 %s 未实现方法 %s (接口 %s) — 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)", cl_tn[0] ? cl_tn : "?", cl_m, cl_ifn); emit_error("A9005", g_errbuf); }
         { int c = Nd(4); for (int _ai = 0; _ai < cl_an; _ai++) Nc(c, cl_args[_ai]); { int fn = Nd(1); memcpy((char*)(nn + fn), cl_fn, 64); Nc(c, fn); } return c; }
     }
+    if (tt[tk] == VR && !strcmp(tn[tk], "反射")) { /* 2026-08-28 type-root-11 #166: compile-time reflection - 反射 字段数/字段偏移/字段大小/类型大小(T[, f]) */
+        tk++; /* 反射 */
+        char rop[64]; strcpy(rop, tn[tk]); tk++;
+        if (tt[tk] == OK) tk++; /* ( */
+        int rsi = -1;
+        if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { rsi = st_find(tn[tk]); if (rsi < 0) rsi = td_st_index(tn[tk]); tk++; } }
+        else if (tt[tk] == VR) { rsi = st_find(tn[tk]); if (rsi < 0) rsi = td_st_index(tn[tk]); tk++; }
+        int rval = 0;
+        if (!strcmp(rop, "字段数")) { if (rsi >= 0) rval = stypes[rsi].fn; }
+        else if (!strcmp(rop, "类型大小")) { if (rsi >= 0) rval = stypes[rsi].sz; }
+        else if (!strcmp(rop, "字段偏移") || !strcmp(rop, "字段大小")) {
+            if (tt[tk] == CK) tk++; /* , */
+            char rf[64]; strcpy(rf, tn[tk]); tk++;
+            if (rsi >= 0) {
+                if (!strcmp(rop, "字段偏移")) rval = st_off(stypes[rsi].name, rf);
+                else { int fs = st_field_size(stypes[rsi].name, rf); if (fs > 0) rval = fs; }
+            }
+        }
+        while (tk < TS && tt[tk] != KK && tt[tk] != EK) tk++;
+        if (tt[tk] == KK) tk++; /* ) */
+        int n = Nd(0); nv[n] = rval; return n;
+    }
     if (tt[tk] == VR && !strcmp(tn[tk], "转")) { /* 2026-08-28 type-root-4 #74: explicit cast 转 T(x) - no-implicit-cast explicit means (int/char/short/ll/double/unsigned/ptr) */
         tk++; /* zhuan kw */
         int zty = 0; int zptr = 0; int zuns = 0; /* 0=int 1=char 2=short 4=double 6=ll -1=void */
