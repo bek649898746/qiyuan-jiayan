@@ -32,26 +32,13 @@
    ⚠️ 自举教训 (2026-08-28): emit_error 原用 va_list 变参(vsnprintf/vfprintf) — qcc 编译该复杂模式生成的编译器
    在编译含 va_list 代码时崩溃 (0xC0000005) → H1≠H2。改为无变参签名 + EMIT_ERR 宏(sprintf 在调用处展开, 绕开 va_list 传参) */
 static int diagnostics_json = 0; /* --diagnostics=json: 报错输出 JSON */
+static int *tline = NULL; /* token 行号表 (接入 2026-08-28 大哥评估: JSON 诊断 loc.line 必须真值 — lex 记录每个 token 行号, emit_error 查 tline[tk] 输出定位) */
+static int cur_token_line = 0; /* 当前 token 行号 (lex token 生成时更新; emit_error 读 — tk/TS 定义在 emit_error 之后, 不能直接引用) */
+static int g_rt_len = 0; static int rt_exp_lines = 0; /* rt 长度 + exp_src 中 rt 实际行数 (2026-08-28 loc.line: tline[tk]-rt_exp_lines = 用户源码行号; 不用 rt_line_skip(原始) 因 exp_src 展开后行数不同) */
 static int repeat_n = 1; /* --repeat N (接入 2026-08-28 AI原生 #6 可重入验证): 同进程连续编译 N 次, 验证可重入无状态核心 */
 static char g_src_name[512] = ""; /* 输入文件名 (JSON 诊断 loc.file) */
 static char g_errbuf[256]; /* 报错消息缓冲 — 调用处 sprintf 填充 (不用变参宏 __VA_ARGS__: qcc fn_macro 不支持变参宏展开, 2026-08-28 自举崩教训) */
-static void emit_error(const char *code, const char *msg) {
-    if (diagnostics_json) {
-        /* v0.1 (大哥启动单 2026-08-28): diagnostics 数组 + fixes 静态建议; loc.line 待 lex tline (占位 0)
-           JSON 转义: Windows 路径反斜杠 \ → \\ (json.load 需合法转义) */
-        const char *fix = "查看错误码文档";
-        if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还借用/重新赋值恢复, 再读/写/移动";
-        else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
-        else if (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
-        else if (code[0] == 'A' && code[1] == '2') fix = "检查类型/声明/语义";
-        char ef[600]; int efi = 0; for (int ci = 0; g_src_name[ci] && efi < 590; ci++) { if (g_src_name[ci] == '\\') { ef[efi++] = '\\'; ef[efi++] = '\\'; } else ef[efi++] = g_src_name[ci]; } ef[efi] = 0;
-        char em[1100]; int emi = 0; for (int ci = 0; msg[ci] && emi < 1090; ci++) { if (msg[ci] == '\\') { em[emi++] = '\\'; em[emi++] = '\\'; } else if (msg[ci] == '"') { em[emi++] = '\\'; em[emi++] = '"'; } else em[emi++] = msg[ci]; } em[emi] = 0;
-        fprintf(stderr, "{\"diagnostics\":[{\"code\":\"%s\",\"severity\":\"error\",\"loc\":{\"file\":\"%s\",\"line\":0,\"col\":0},\"span\":{\"start\":0,\"end\":0},\"message\":\"%s\",\"causeChain\":[],\"backtrace\":[],\"fixes\":[\"%s\"]}]}\n", code, ef, em, fix);
-    } else {
-        fprintf(stderr, "[ERR] %s %s\n", code, msg);
-    }
-    exit(1);
-}
+static void emit_error(const char *code, const char *msg); /* fwd: 定义在 tk/tline 可见处 (var_offset 前, 2026-08-28 大哥评估 loc.line 真值需 tline[tk]) */
 #include <stdint.h>
 #define uint8_t unsigned char
 #define uint16_t unsigned short
@@ -2429,6 +2416,24 @@ static char uninit_names[256][64]; static int uninit_scope[256]; static int unin
 static int uninit_has(const char *v) { for (int i = 0; i < uninit_cnt; i++) if (!strcmp(uninit_names[i], v)) return 1; return 0; }
 static void uninit_remove(const char *v) { for (int i = 0; i < uninit_cnt; i++) if (!strcmp(uninit_names[i], v)) { uninit_names[i][0] = 0; return; } }
 static void uninit_scope_exit(void) { uninit_depth--; if (uninit_depth < 0) uninit_depth = 0; for (int i = 0; i < uninit_cnt; ) { if (uninit_scope[i] > uninit_depth) { for (int j = i; j < uninit_cnt - 1; j++) { strcpy(uninit_names[j], uninit_names[j + 1]); uninit_scope[j] = uninit_scope[j + 1]; } uninit_cnt--; } else i++; } } /* 块退出: 清除本块声明的未初始化变量 (生命周期=词法块) */
+int tk; /* fwd: token 索引 (定义在 L3020 token 系统区 — 2026-08-28 emit_error 定位行号需提前声明) */
+static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tline 可见处 (var_offset 前) — 2026-08-28 大哥评估: loc.line 真值 = tline[tk]-rt_line_skip (用户源码行号) */
+    if (diagnostics_json) {
+        const char *fix = "查看错误码文档";
+        if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还借用/重新赋值恢复, 再读/写/移动";
+        else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
+        else if (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
+        else if (code[0] == 'A' && code[1] == '2') fix = "检查类型/声明/语义";
+        char ef[600]; int efi = 0; for (int ci = 0; g_src_name[ci] && efi < 590; ci++) { if (g_src_name[ci] == '\\') { ef[efi++] = '\\'; ef[efi++] = '\\'; } else ef[efi++] = g_src_name[ci]; } ef[efi] = 0;
+        char em[1100]; int emi = 0; for (int ci = 0; msg[ci] && emi < 1090; ci++) { if (msg[ci] == '\\') { em[emi++] = '\\'; em[emi++] = '\\'; } else if (msg[ci] == '"') { em[emi++] = '\\'; em[emi++] = '"'; } else em[emi++] = msg[ci]; } em[emi] = 0;
+        int _ln = (tline && tk >= 0 && tk < 1000000) ? tline[tk] - (rt_exp_lines ? rt_exp_lines : rt_line_skip) : 0; if (_ln < 1) _ln = 1; /* 用户源码行号 (tline[tk]-rt_exp_lines) */
+        char cl_buf[220] = ""; if (g_src_name[0] && _ln >= 1) { FILE *clf = fopen(g_src_name, "rb"); if (clf) { int cl_l = 1; int cl_c = 0; while (cl_l < _ln && cl_c != -1) { cl_c = fgetc(clf); if (cl_c == '\n') cl_l++; } int cli2 = 0; if (cl_l == _ln) { while ((cl_c = fgetc(clf)) != -1 && cl_c != '\n' && cli2 < 190) { char cc = (char)cl_c; if (cc == '\\') { cl_buf[cli2++] = '\\'; cl_buf[cli2++] = '\\'; } else if (cc == '"') { cl_buf[cli2++] = '\\'; cl_buf[cli2++] = '"'; } else cl_buf[cli2++] = cc; } } cl_buf[cli2] = 0; fclose(clf); } } /* codeLine: 从用户源文件读 loc.line 行 (AI 直接看到出错代码; 用 -1 替代 EOF — qcc 不识别 stdio.h 的 EOF 宏) */
+        fprintf(stderr, "{\"diagnostics\":[{\"code\":\"%s\",\"severity\":\"error\",\"loc\":{\"file\":\"%s\",\"line\":%d,\"col\":0},\"span\":{\"start\":0,\"end\":0},\"message\":\"%s\",\"causeChain\":[],\"backtrace\":[],\"fixes\":[\"%s\"],\"codeLine\":\"%s\"}]}\n", code, ef, _ln, em, fix, cl_buf);
+    } else {
+        fprintf(stderr, "[ERR] %s %s\n", code, msg);
+    }
+    exit(1);
+}
 static int var_offset(const char *n) {
     int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
     int _psz = (_pa > 4) ? 8 : 4; /* _Alignas(>=8) int → 8B 槽 → rsp_off ≡ 8 mod 16 → 地址 ≡ 0 mod 16 */
@@ -3772,13 +3777,13 @@ static int gen_type_id(void) {
 }
 
 static void lex(const char *s) {
-    int i = 0; ti = 0; tk = 0; int unknown_chars = 0; /* fix 2026-08-09 BUG-5: 未知字符计数, lex 结束汇报 */
+    int i = 0; ti = 0; tk = 0; int unknown_chars = 0; int cur_line = 1; /* fix 2026-08-05: 未知字符计数, lex 结束汇报; 接入 2026-08-28: 行号追踪 (tline[ti]=cur_line) */
     while (s[i] && ti < TS) {
-        while (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r' || s[i] == '\f' || s[i] == '\v') i++; /* fix 2026-08-13 Phase3: \f/\v 是合法空白 — 漏掉会落入 switch default 发射 tt=0(EK) 幽灵 token, 中间截断 parse (regex_internal.c 第40行 \f) */
+        while (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r' || s[i] == '\f' || s[i] == '\v') { if (s[i] == '\n') cur_line++; i++; } /* fix 2026-08-13 Phase3: \f/\v 是合法空白 — 漏掉会落入 switch default 发射 tt=0(EK) 幽灵 token, 中间截断 parse (regex_internal.c 第40行 \f); 接入 2026-08-28: 数换行更新 cur_line */
         if (!s[i]) break;
-        if (if_skip && s[i] != '#') { if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; } /* fix 2026-08-26 cpython: 跳过区内块注释整体跳到闭合符 — pyconfig.h 注释里含条件指令示例文本, 逐行跳过会把注释内容当真指令 → 条件栈失衡 → 守卫 endif 关错层 */ while (s[i] && s[i] != '\n') i++; continue; } /* false branch: skip whole code lines (fix 2026-08-05) */
+        if (if_skip && s[i] != '#') { if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (s[i] == '\n') cur_line++; i++; } if (s[i]) i += 2; continue; } /* fix 2026-08-26 cpython: 跳过区内块注释整体跳到闭合符 — pyconfig.h 注释里含条件指令示例文本, 逐行跳过会把注释内容当真指令 → 条件栈失衡 → 守卫 endif 关错层; 接入 2026-08-28: 块注释内换行数 cur_line (loc.line 精确) */ while (s[i] && s[i] != '\n') i++; continue; } /* false branch: skip whole code lines (fix 2026-08-05) */
         if (s[i] == '/' && s[i + 1] == '/') { while (s[i] && s[i] != '\n') i++; continue; }
-        if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) i++; if (s[i]) i += 2; continue; }
+        if (s[i] == '/' && s[i + 1] == '*') { i += 2; while (s[i] && !(s[i] == '*' && s[i + 1] == '/')) { if (s[i] == '\n') cur_line++; i++; } if (s[i]) i += 2; continue; } /* 接入 2026-08-28: 块注释内换行数 cur_line (loc.line 精确) */
         if (s[i] == '#') { /* #define NAME VALUE / #include / conditional compilation (fix 2026-08-05: #ifdef/#ifndef/#if/#elif/#else/#endif) */
             int d = i + 1; while (s[d] == ' ' || s[d] == '\t') d++; /* fix 2026-08-13 Phase3: # 后空白 (glibc 缩进指令 #  define) */
             int is_def = !strncmp(s + d, "define", 6) && (s[d + 6] == 0 || s[d + 6] == ' ' || s[d + 6] == '\t' || s[d + 6] == '\r' || s[d + 6] == '\n');
@@ -3915,7 +3920,7 @@ static void lex(const char *s) {
             } /* fix 2026-08-14: \xHH 十六进制转义 (regexec.c '\xff'); 2026-08-15: \nnn 八进制 */
             else { cval = s[i]; i++; }
             if (s[i] == '\'') i++;
-            tt[ti] = NK; tv[ti] = cval; ti++; continue;
+            tt[ti] = NK; tv[ti] = cval; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue;
         }
         if (isdigit(s[i])) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0;
             long long v64 = 0; int is_hexoct = 0; /* 64-bit accumulator for big LL literals (fix 2026-08-05); fix 2026-08-25 bug#29: hex/octal 超 INT_MAX → unsigned (C11 6.4.4.1) */
@@ -3932,7 +3937,7 @@ static void lex(const char *s) {
                     if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
                     dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
-                    ti++; continue;
+                    { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue;
                 }
                 while (isxdigit(s[i])) { int c = s[i]; if (c >= '0' && c <= '9') v64 = v64 * 16 + (c - '0'); else if (c >= 'a' && c <= 'f') v64 = v64 * 16 + (c - 'a' + 10); else v64 = v64 * 16 + (c - 'A' + 10); i++; }
             } else {
@@ -3948,7 +3953,7 @@ static void lex(const char *s) {
                     if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double 字面量表满 (fix 2026-08-06 M3: 原 512 守卫 vs 1024 容量 → 静默 0.0)\n"); exit(1); }
                     dbl_hi[dbl_n] = fhi; dbl_lo[dbl_n] = flo;
                     tt[ti] = FP; tv[ti] = dbl_n; dbl_n++;
-                    ti++; continue;
+                    { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue;
                 }
                 if (s[i] == '0' && s[i + 1] >= '0' && s[i + 1] <= '7') { /* 八进制 0755 = 493 (fix 2026-08-05: was decimal → 755) */
                     is_hexoct = 1;
@@ -3961,7 +3966,7 @@ static void lex(const char *s) {
             if (is_hexoct && (unsigned long long)v64 > 0x7FFFFFFFULL) tuns[ti] = 1; /* fix 2026-08-25 bug#29: hex/octal 字面量超 INT_MAX → unsigned int (0xFFFFFFFF > 0 应为真) */
             if (s[i] == 'u' || s[i] == 'U') { tuns[ti] = 1; i++; } /* unsigned suffix 0xFFFFFFFFu (fix 2026-08-05) */
             if (s[i] == 'l' || s[i] == 'L') { while (s[i] == 'l' || s[i] == 'L') i++; tll[ti] = 1; } /* long long suffix (fix 2026-08-05) */
-            ti++; continue; }
+            { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; }
         if (isalpha(s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) { int j = 0; while (isalnum(s[i]) || s[i] == '_' || ((unsigned char)s[i] >= 0x80)) { if (j < 63) tn[ti][j++] = s[i]; i++; } tn[ti][j] = 0;
             /* 甲言库函数: 中文名 → 英文名 (输出→printf, 分配→malloc ...) */
             if (!strcmp(tn[ti], "输出")) strcpy(tn[ti], "printf");
@@ -4010,8 +4015,8 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
             else if (!strcmp(tn[ti], "易失")) strcpy(tn[ti], "volatile"); /* 接入 2026-08-27: 甲言 volatile 中文化 — 易失 int x → volatile int x (第五批 #21 volatile 部分) */
-            else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 铸基者 郑宇和 · 种子 828 */
-            else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 自举者 郑启元 · 种子 828 */
+            else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 铸基者 郑宇和 · 种子 828 */
+            else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 自举者 郑启元 · 种子 828 */
             /* 接入 2026-08-27 完全中文化: 常用库函数中文映射 (lexer 层, 零风险) */
             else if (!strcmp(tn[ti], "退出")) strcpy(tn[ti], "exit");
             else if (!strcmp(tn[ti], "关文件")) strcpy(tn[ti], "fclose");
@@ -4101,9 +4106,9 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "读格式")) strcpy(tn[ti], "scanf");
             else if (!strcmp(tn[ti], "判文件错误")) strcpy(tn[ti], "ferror");
             else if (!strcmp(tn[ti], "判字母数字")) strcpy(tn[ti], "isalnum");
-            else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 审计者 郑启灵 · 种子 828 */
-            else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
-            else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; ti++; continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
+            else if (!strcmp(tn[ti], "启灵")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 审计者 郑启灵 · 种子 828 */
+            else if (!strcmp(tn[ti], "__FILE__")) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); strcpy(str_tbl[str_cnt], "?"); tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 预定义宏 __FILE__ → 文件名占位 (fix 2026-08-14) */
+            else if (!strcmp(tn[ti], "__LINE__")) { tt[ti] = NK; tv[ti] = 0; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 预定义宏 __LINE__ → 0 占位 (fix 2026-08-14) */
             else if (!strcmp(tn[ti], "L") && (s[i] == '"' || s[i] == '\'')) { continue; } /* 宽字符串/宽字符 L"..." / L'x' — L 前缀跳过 (fix 2026-08-14: mingw.c normalize_ntpath L"\\??\\"; fix 2026-08-15: fsm-listen L'/' 泄漏 L undefined) */
             else if (!strcmp(tn[ti], "__attribute__") || !strcmp(tn[ti], "__declspec")) { /* fix 2026-08-08: GCC attr __attribute__((...)) in decl position hung the parser (bin_test.c) - lexer swallows the balanced-paren block, emits no token; fix 2026-08-26 cpython: __declspec(dllimport/dllexport) MSVC 等价 (pyconfig.h/pymem.h Windows 导出宏) — 同法吞掉, 不发 token */
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
@@ -4156,7 +4161,7 @@ static void lex(const char *s) {
                     int ad = 0;
                     while (s[aj]) { if (s[aj] == '(') ad++; else if (s[aj] == ')') { ad--; if (ad <= 0) { aj++; break; } } aj++; }
                 }
-                tt[ti] = AG; tv[ti] = av; ti++; i = aj; continue;
+                tt[ti] = AG; tv[ti] = av; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } i = aj; continue;
             }
             else if (!strcmp(tn[ti], "大小")) strcpy(tn[ti], "sizeof");
             else if (!strcmp(tn[ti], "原串") && (s[i] == '"' || s[i] == '#')) { /* 接入 2026-08-28 原始/多行字符串 (蓝图 §五 字面量扩展): 原串"..." 或 原串#"..."# (N 个 # 定界) — 不处理转义 (\n 保持字面), 可跨行, 内部可含定界符 */
@@ -4179,12 +4184,12 @@ static void lex(const char *s) {
                         i++;
                     }
                     str_tbl[str_cnt][j] = 0;
-                    { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* interning 同普通字符串 */
-                    tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; continue;
+                    { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } } /* interning 同普通字符串 */
+                    tt[ti] = STR; tv[ti] = str_cnt; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } str_cnt++; continue;
                 }
             }
-            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; ti++; continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; ti++; continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; ti++; continue; }
-        if (s[i] == '"') { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 12286) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else if (s[i] == 'r') str_tbl[str_cnt][j++] = '\r'; else if (s[i] == 'f') str_tbl[str_cnt][j++] = '\f'; else if (s[i] == 'v') str_tbl[str_cnt][j++] = '\v'; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 12286 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 12286 字符上限 j=%d cnt=%d strt='%.50s' around='%.40s' (fix 2026-08-13 全量链接: Git 超长拼接 help 文本; fix 2026-08-26 cpython)\n", j, str_cnt, str_tbl[str_cnt], s + i - j); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + j < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], j + 1); i = i; continue; } } { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; ti++; continue; } } /* fix step27: 字符串字面量 interning — 相同内容复用 si (gcc 合并相同字面量 → 指针比较/差一致; 原每字面量独立 si → strchr("hello",104)-"hello" 差 -6) */ tt[ti] = STR; tv[ti] = str_cnt; ti++; str_cnt++; i = i; continue; }
+            int k = kw(tn[ti]);            if (k == NK) { char *sm = str_macro_find(tn[ti]); if (sm) { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); int k2 = 0; while (sm[k2] && k2 < 2046) { str_tbl[str_cnt][k2] = sm[k2]; k2++; } if (k2 >= 2046 && sm[k2]) { fprintf(stderr, "[ERR] 字符串宏值超过 2046 字符 (fix 2026-08-06)\n"); exit(1); } str_tbl[str_cnt][k2] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + k2 < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], k2 + 1); continue; } } tt[ti] = STR; tv[ti] = str_cnt; str_cnt++; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } int found_num = 0, nvv = 0, found_mi = -1; for (int mi = 0; mi < macro_n; mi++) if (!strcmp(macros[mi].name, tn[ti])) { found_num = 1; nvv = macros[mi].val; found_mi = mi; break; } if (found_num) { tt[ti] = NK; tv[ti] = nvv; tuns[ti] = macro_uns[found_mi]; tll[ti] = macro_ll[found_mi]; tll_hi[ti] = macro_ll_hi[found_mi]; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-12: num-macro NK must clear tll/tuns - stale calloc junk -> spurious nll -> 2-cycle */ /* fix 2026-08-06: 字符串宏优先; 数值宏含负值 (macro_find 的 -1 哨兵不可用于存在性判断) */ tt[ti] = VR; } else tt[ti] = k; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; }
+        if (s[i] == '"') { if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); } if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc(); i++; int j = 0; while (1) { /* 相邻字面量拼接 "a" "b" -> "ab" (fix 2026-08-06) */ while (s[i] && s[i] != '"' && j < 12286) { if (s[i] == '\\' && s[i + 1]) { i++; if (s[i] == 'n') str_tbl[str_cnt][j++] = '\n'; else if (s[i] == 't') str_tbl[str_cnt][j++] = '\t'; else if (s[i] == '0') str_tbl[str_cnt][j++] = 0; else if (s[i] == 'r') str_tbl[str_cnt][j++] = '\r'; else if (s[i] == 'f') str_tbl[str_cnt][j++] = '\f'; else if (s[i] == 'v') str_tbl[str_cnt][j++] = '\v'; else str_tbl[str_cnt][j++] = s[i]; } else str_tbl[str_cnt][j++] = s[i]; i++; } if (j >= 12286 && s[i] != '"') { fprintf(stderr, "[ERR] 字符串字面量超过 12286 字符上限 j=%d cnt=%d strt='%.50s' around='%.40s' (fix 2026-08-13 全量链接: Git 超长拼接 help 文本; fix 2026-08-26 cpython)\n", j, str_cnt, str_tbl[str_cnt], s + i - j); exit(1); } i++; int ni = i; while (s[ni] == ' ' || s[ni] == '\t' || s[ni] == '\n' || s[ni] == '\r') ni++; if (s[ni] == '"') { i = ni + 1; continue; } break; } str_tbl[str_cnt][j] = 0; if (ti > 0 && tt[ti - 1] == STR) { int pj = (int)strlen(str_tbl[tv[ti - 1]]); if (pj + j < 12286) { memcpy(str_tbl[tv[ti - 1]] + pj, str_tbl[str_cnt], j + 1); i = i; continue; } } { int _iu = -1; for (int _ki = 0; _ki < str_cnt; _ki++) if (!strcmp(str_tbl[_ki], str_tbl[str_cnt])) { _iu = _ki; break; } if (_iu >= 0) { tt[ti] = STR; tv[ti] = _iu; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } } /* fix step27: 字符串字面量 interning — 相同内容复用 si (gcc 合并相同字面量 → 指针比较/差一致; 原每字面量独立 si → strchr("hello",104)-"hello" 差 -6) */ tt[ti] = STR; tv[ti] = str_cnt; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } str_cnt++; i = i; continue; }
         if (s[i] == '\'') { /* char literal 'x' �?NK */
             i++; int cv = s[i];
             if (cv == '\\' && s[i + 1]) {
@@ -4199,9 +4204,9 @@ static void lex(const char *s) {
             }
             else i++;
             if (s[i] == '\'') i++;
-            tt[ti] = NK; tv[ti] = cv; ti++; continue;
+            tt[ti] = NK; tv[ti] = cv; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue;
         }
-        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '>' ? (i++, PIPE) : s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; /* 接入 2026-08-27 管道操作符: | > → PIPE (a |> f = f(a)) */ case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = (s[i + 1] == '.') ? (i++, QA) : QU; break; /* ?. 可选链 → QA (接入 2026-08-28); 普通 ? → QU 三目 */ case '.': if (s[i + 1] == '?') { i++; tt[ti] = QA; } /* 可选链 ?. → QA (接入 2026-08-28: a?.b = a 非空 ? a->b : 0) */ else if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; ti++; continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } ti++; i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
+        switch (s[i]) { case '+': tt[ti] = s[i + 1] == '+' ? (i++, PP) : s[i + 1] == '=' ? (i++, PA) : PK; break; case '-': tt[ti] = s[i + 1] == '>' ? (i++, AR) : s[i + 1] == '-' ? (i++, MM) : s[i + 1] == '=' ? (i++, MA) : MK; break; case '*': tt[ti] = s[i + 1] == '=' ? (i++, DA) : DK; break; case '/': tt[ti] = s[i + 1] == '=' ? (i++, SA) : DV; break; case '%': tt[ti] = s[i + 1] == '=' ? (i++, MS) : MD; break; case '&': tt[ti] = s[i + 1] == '=' ? (i++, AA) : s[i + 1] == '&' ? (i++, LA) : PT; break; case '|': tt[ti] = s[i + 1] == '>' ? (i++, PIPE) : s[i + 1] == '=' ? (i++, OA) : s[i + 1] == '|' ? (i++, LO) : OR; break; /* 接入 2026-08-27 管道操作符: | > → PIPE (a |> f = f(a)) */ case '^': tt[ti] = s[i + 1] == '=' ? (i++, XA) : XR; break; case '~': tt[ti] = BN; break; case '?': tt[ti] = (s[i + 1] == '.') ? (i++, QA) : QU; break; /* ?. 可选链 → QA (接入 2026-08-28); 普通 ? → QU 三目 */ case '.': if (s[i + 1] == '?') { i++; tt[ti] = QA; } /* 可选链 ?. → QA (接入 2026-08-28: a?.b = a 非空 ? a->b : 0) */ else if (s[i + 1] >= '0' && s[i + 1] <= '9') { int fhi2, flo2; fp_parse(s, &i, &fhi2, &flo2); if (s[i] == 'f' || s[i] == 'F') i++; if (dbl_n >= 8192) { fprintf(stderr, "[ERR] double tbl full\n"); exit(1); } dbl_hi[dbl_n] = fhi2; dbl_lo[dbl_n] = flo2; tt[ti] = FP; tv[ti] = dbl_n; dbl_n++; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } tt[ti] = DT; break; case '=': tt[ti] = s[i + 1] == '=' ? (i++, QK) : AK; break; case '<': tt[ti] = s[i + 1] == '<' ? (s[i + 2] == '=' ? (i += 2, SHL) : (i++, SH)) : s[i + 1] == '=' ? (i++, HK) : LK; break; case '>': tt[ti] = s[i + 1] == '>' ? (s[i + 2] == '=' ? (i += 2, SHR) : (i++, SR)) : s[i + 1] == '=' ? (i++, YK) : GK; break; case '!': tt[ti] = s[i + 1] == '=' ? (i++, XK) : NT; break; case ';': tt[ti] = SK; break; case ',': tt[ti] = CK; break; case '(': tt[ti] = OK; break; case ')': tt[ti] = KK; break; case '{': tt[ti] = FK; break; case '}': tt[ti] = UK; break; case '[': tt[ti] = LB; break; case ']': tt[ti] = RB; break; case ':': tt[ti] = CL; break; default: unknown_chars++; i++; continue; } { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } i++; /* fix 2026-08-13 Phase3: default 不发射 token (原 ti++ 留下 tt=0=EK 幽灵 token 截断 parse) */
     }
     if (unknown_chars) fprintf(stderr, "[WARN] lex: %d 未知字符被忽略为空白 (fix 2026-08-09 BUG-5)\n", unknown_chars);
 }
@@ -10096,6 +10101,7 @@ static int parse(const char *s) {
     
      
     lex(exp_src);
+    if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
 
     
     free(exp_src);
@@ -18270,10 +18276,11 @@ char *qcc_prepend_rt(const char *src) { /* 可嵌入: rt 拼接封装 (fix 2026-
     if (!rtb) { char mp[1024]; DWORD mn = GetModuleFileNameA(NULL, mp, 1023); if (mn > 0) { char *sl = strrchr(mp, '/'); char *bs = strrchr(mp, '\\'); char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs); if (last) { *last = 0; char sp2[1024]; strcpy(sp2, mp); strcat(sp2, "/srclib/qcc_rt.c"); rtb = read_file(sp2); if (!rtb) { strcpy(sp2, mp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); } } } }
     if (!rtb) return NULL;
     int rl = (int)strlen(rtb);
+    g_rt_len = rl; /* 2026-08-28 loc.line: rt 长度 (parse 前算 rt_exp_lines) */
     int al = (int)strlen(src);
     macro_add("QCC_RT_PREPENDED", 1); /* 标记 rt 已预置 — qcc_rt.c 守卫认此宏 */
     rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* 行号校正 */
-    char *combined2 = malloc((rl + al + 5) & ~3);
+    char *combined2 = malloc((rl + al + 5 + 16) & ~3);
     memcpy(combined2, rtb, rl);
     combined2[rl] = '\n';
     memcpy(combined2 + rl + 1, src, al);
@@ -18293,7 +18300,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
     if (!coff_mode) { char *rtc = qcc_prepend_rt(src); if (rtc) src = rtc; } /* rt 拼接在 reset 之后 (fix 2026-08-28: reset 的 macro_n=0 清提前设的 QCC_RT_PREPENDED → rt 剃光 → 嵌入产物缺代码段崩); -c 模式不拼 rt; src 传纯用户源码 */
-    tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64);
+    tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64); tline = calloc(TS, 4); /* token 行号表 (接入 2026-08-28: JSON 诊断 loc.line) */
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
     tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
     tll_hi = calloc(TS, 4); /* long-long literal high 32 bits (fix 2026-08-05) */
