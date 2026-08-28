@@ -5296,6 +5296,10 @@ static int prim(void) {
                     int m = Nd(15); /* unified member access */
                     Nc(m, n); nv[m] = ar; /* nv=1 for arrow, 0 for dot */
                     memcpy((char*)(nn + m), tn[tk], 64); tk++;
+                    if (!ar && !asgn_lhs_parsing && !move_dst_parsing && nt[n] == 1) { /* 2026-08-28 P1 #17 部分移动: 读已移走字段 (s.x) → A3101; 其余字段仍可用 */
+                        char _pth[64]; sprintf(_pth, "%s.%s", (char*)(nn + n), (char*)(nn + m));
+                        if (is_moved(_pth)) { sprintf(g_errbuf, "所有权错误: 字段 '%s' 已移动 (部分移动后源字段失效, v3.0 #17)", _pth); emit_error("A3101", g_errbuf); }
+                    }
                     if (nt[n] == 1) { /* base is a struct var: flag double fields */
                         int bsi = var_stidx((char*)(nn + n));
                         if (bsi >= 0 && st_field_is_dbl(stypes[bsi].name, (char*)(nn + m))) ndbl[m] = 1;
@@ -7412,6 +7416,13 @@ static int stmt(void) {
             int mi; for (mi = 0; mi < moved_cnt; mi++) if (!strcmp(moved_names[mi], srcn)) break;
             if (mi < moved_cnt) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能再次移动", srcn); emit_error("A3102", g_errbuf); }
             if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], srcn);
+        } else if (e_s >= 0 && nt[e_s] == 15) { /* 2026-08-28 P1 #17 部分移动: 源是字段 (s.x) — 登记字段路径 moved, 其余字段仍可用 */
+            char *fname = (char*)(nn + e_s);
+            int base = n0[e_s];
+            if (base >= 0 && nt[base] == 1) {
+                char path[64]; sprintf(path, "%s.%s", (char*)(nn + base), fname);
+                if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], path);
+            }
         }
         borrow_write_policy(e_d); /* 借用自动化 (2026-08-28 完善): 移入 dst = 写目标 → 只读借用自动放还, 可变借用 [ERR] (原此路径无 dst 借用检查) */
         { int rvd = e_d; int depd = 0; while (rvd >= 0 && depd < 8 && (nt[rvd] == 14 || (nt[rvd] == 15 && nv[rvd] == 0))) { rvd = n0[rvd]; depd++; } if (rvd >= 0 && nt[rvd] == 1) { uninit_remove((char*)(nn + rvd)); moved_release((char*)(nn + rvd)); } } /* #78 完善 (2026-08-28 fix #78回归): 移入 dst = 初始化/重新绑定 → 解除 dst 的未初始化/已移动状态 (与 asgn 赋值同记账) */
