@@ -5436,6 +5436,16 @@ static int prim(void) {
                 int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv; if (closure_mode[cl_ci] == 2) { cv = Nd(11); int cvv = Nd(1); memcpy((char*)(nn + cvv), closure_caps[cl_ci][_cp], 32); Nc(cv, cvv); } else { cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); } nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 2026-08-28 P1 #32: by-mut (mode 2) 捕获传地址 Nd(11) */ /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
                 while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } int ev = expr(); if (ev >= 0 && nerr[ev]) { sprintf(g_errbuf, "错误 union: 函数参数不能ֱ接传δ检查的错误结果 — 先 尝试 检查 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } if (tk == t0) break; /* 标注/具名: 名: 前缀 → 查签名位置 */ if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 if (tt[tk] == KK) tk++;
+                if (nt[callee] == 1 && ov_n > 0) { /* 2026-08-28 P2 #258 调用运算符重载: 重载 () 类型 = fn; → obj(args) → fn(obj, args...) */
+                    int osi2 = var_stidx((char*)(nn + callee));
+                    if (osi2 >= 0) { char *oty2 = stypes[osi2].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == OK && !strcmp(ov_ty[k], oty2)) {
+                        int obj_copy = Nd(1); memcpy((char*)(nn + obj_copy), (char*)(nn + callee), 64); /* obj 独立副本 (防改名污染) */
+                        for (int _ai = an; _ai > 0; _ai--) { nargs[_ai] = nargs[_ai - 1]; argpos[_ai] = argpos[_ai - 1]; }
+                        nargs[0] = obj_copy; argpos[0] = -1; an++; /* obj 前置为 arg0 */
+                        memcpy((char*)(nn + callee), ov_fn[k], 64); /* callee 换成重载函数 */
+                        break;
+                    } }
+                }
                 { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
                   if (has_n && nt[callee] == 1) { int fi = fn_param_find((char*)(nn + callee)); int pn = (fi >= 0) ? fn_param_map[fi].pn : 0;
                     if (pn > 0) { int placed[256]; for (int i = 0; i < 256; i++) placed[i] = -1; int ok = 1;
@@ -5647,6 +5657,10 @@ static int prim(void) {
     }
     if (tt[tk] == PT) { tk++; int n = Nd(11); Nc(n, prim()); return n; }
     if (tt[tk] == DK) { tk++; int n = Nd(12); int dop = prim(); /* 类型根治① (2026-08-28): 前缀 *p 解引用 — 操作数在星后, 解析后查可空 (原 L5145 只查变量在解引用符前的 AR/LB 路径, *p 漏拦) */
+        if (dop >= 0 && nt[dop] == 1) { /* 2026-08-28 P2 #257 解引用重载: 重载 * 类型 = fn; → *obj → fn(obj) */
+            int ds2 = var_stidx((char*)(nn + dop));
+            if (ds2 >= 0 && ov_n > 0) { char *dty = stypes[ds2].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == DK && !strcmp(ov_ty[k], dty)) { int c = Nd(4); Nc(c, dop); { int fn = Nd(1); memcpy((char*)(nn + fn), ov_fn[k], 64); Nc(c, fn); } return c; } }
+        }
         if (dop >= 0 && nt[dop] == 1 && nullable_has((char*)(nn + dop))) { sprintf(g_errbuf, "可空类型: 变量 '%s' 未解包就解引用 (星号) — 先 解包 %s; (类型根治①, v3.0 #75)", (char*)(nn + dop), (char*)(nn + dop)); emit_error("A8001", g_errbuf); }
         Nc(n, dop);
         if (dop >= 0 && nt[dop] == 1 && var_pdbl((char*)(nn + dop))) ndbl[n] = 1; /* *double-p → xmm0 */
@@ -10870,11 +10884,13 @@ static int stmt(void) {
         Nc(blk, wh);
         return blk;
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "重载")) { /* 接入 2026-08-27 运算符重载注册: 重载 + 点 = 点_add; → ov 表注册 (运算符 + 类型名 → 函数名), add() 分派 — 用户先定义普通函数再注册 */
+    if (tt[tk] == VR && !strcmp(tn[tk], "重载")) { /* 接入 2026-08-27 运算符重载注册: 重载 + 点 = 点_add; → ov 表注册 (运算符 + 类型名 → 函数名), add() 分派 — 用户先定义普通函数再注册 */ /* 2026-08-28 P2 #257/#258: 重载 * 智能 = fn (解引用), 重载 () 函子 = fn (调用) */
         tk++; /* 重载 */
         int op_r = 0;
         if (tt[tk] == PK) { op_r = PK; tk++; } /* + */
         else if (tt[tk] == MK) { op_r = MK; tk++; } /* - */
+        else if (tt[tk] == DK) { op_r = DK; tk++; } /* #257 * 解引用重载 */
+        else if (tt[tk] == OK) { op_r = OK; tk++; if (tt[tk] == KK) tk++; } /* #258 () 调用重载 */
         char ty_r[64] = ""; if (tt[tk] == VR) { strcpy(ty_r, tn[tk]); tk++; } /* 类型名 */
         if (tt[tk] == AK) tk++; /* = */
         char fn_r[64] = ""; if (tt[tk] == VR) { strcpy(fn_r, tn[tk]); tk++; } /* 函数名 */
