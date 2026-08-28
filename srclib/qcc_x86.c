@@ -2458,6 +2458,10 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
         else if (!strcmp(code, "A8001")) fix = "可空类型δ解包就解引用: 先 解包 变量; (或判空后ʹ用, 类型根治①)";
         else if (!strcmp(code, "A9001")) fix = "错误函数结果必须检查: 用 尝试 f(); 传播, 或显式判断后使用 (类型根治②)";
         else if (!strcmp(code, "A9002")) fix = "无隐式转换: double 赋整型用 转 int(...) 显式转换 (类型根治④)";
+        else if (!strcmp(code, "A9004")) fix = "接口未声明: 先 接口 名 { 方法列表 }; (v3.0 #114)";
+        else if (!strcmp(code, "A9005")) fix = "类型未实现接口方法: 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)";
+        else if (!strcmp(code, "A9004")) fix = "接口未声明: 先 接口 名 { 方法列表 }; (v3.0 #114)";
+        else if (!strcmp(code, "A9005")) fix = "类型未实现接口方法: 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)";
         else if (!strcmp(code, "A9003")) fix = "区间类型变量只能赋界内值: 赋值前检查或夹取修正 (类型根治⑦ #101)";
         else if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还/重新赋值恢复, 再读/写/移动";
         else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
@@ -2475,6 +2479,10 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
 }
 static char range_names[128][64]; static int range_lo[128]; static int range_hi[128]; static int range_cnt = 0; /* 2026-08-28 type-root-7 #101 */
 static int range_find(const char *v) { for (int i = 0; i < range_cnt; i++) if (!strcmp(range_names[i], v)) return i; return -1; }
+static char iface_names[32][64]; static char iface_methods[32][16][64]; static int iface_mcnt[32]; static int iface_cnt = 0; /* 2026-08-28 type-root-8 #114 */
+static char impl_iface[64][64]; static char impl_type[64][64]; static char impl_methods[64][16][64]; static char impl_fns[64][16][64]; static int impl_mcnt[64]; static int impl_cnt = 0; /* type-root-8 #114 */
+static int iface_find(const char *n) { for (int i = 0; i < iface_cnt; i++) if (!strcmp(iface_names[i], n)) return i; return -1; }
+static int impl_find(const char *ifn, const char *tn) { for (int i = 0; i < impl_cnt; i++) if (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) return i; return -1; }
 static int fn_err_has(const char *n) { for (int i = 0; i < err_fn_cnt; i++) if (!strcmp(err_fn_names[i], n)) return 1; return 0; } /* 2026-08-28 type-root-2 */
 static void fn_err_mark(const char *n) { if (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
 static int expr_is_double(int n); static int var_lookup(const char *n); /* fwd (2026-08-28 type-root-4 #74) */
@@ -4764,6 +4772,22 @@ static int prim(void) {
           int call_t = Nd(4); Nc(call_t, addr_t);
           { int fn_t = Nd(1); memcpy((char*)(nn + fn_t), "try_lock", 9); Nc(call_t, fn_t); }
           return call_t; }
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "调用")) { /* 2026-08-28 type-root-8 #114: trait method call - 调用 名 方法(实参) static dispatch */
+        tk++; /* 调用 */
+        char cl_ifn[64]; strcpy(cl_ifn, tn[tk]); tk++;
+        char cl_m[64]; strcpy(cl_m, tn[tk]); tk++;
+        if (iface_find(cl_ifn) < 0) { sprintf(g_errbuf, "%s", "接口: 接口未声明 (先 接口 名 { 方法列表 }; v3.0 #114)"); emit_error("A9004", g_errbuf); }
+        if (tt[tk] == OK) tk++; /* ( */
+        int cl_args[16]; int cl_an = 0;
+        while (tt[tk] != KK && tt[tk] != EK && cl_an < 16) { cl_args[cl_an++] = expr(); if (tt[tk] == CK) tk++; }
+        if (tt[tk] == KK) tk++; /* ) */
+        char cl_tn[64] = "";
+        if (cl_an >= 1 && cl_args[0] >= 0) { int cl_av = cl_args[0]; if (nt[cl_av] == 11) cl_av = n0[cl_av]; if (cl_av >= 0 && nt[cl_av] == 1) { int _si = var_stidx((char*)(nn + cl_av)); if (_si >= 0) strcpy(cl_tn, stypes[_si].name); } }
+        char cl_fn[64] = "";
+        if (cl_tn[0]) { int cl_imp = impl_find(cl_ifn, cl_tn); if (cl_imp >= 0) { for (int _mj = 0; _mj < impl_mcnt[cl_imp]; _mj++) if (!strcmp(impl_methods[cl_imp][_mj], cl_m)) { strcpy(cl_fn, impl_fns[cl_imp][_mj]); break; } } }
+        if (!cl_fn[0]) { sprintf(g_errbuf, "接口: 类型 %s 未实现方法 %s (接口 %s) — 用 实现 名 于 类型 { 方法 = 函数 } 绑定 (v3.0 #114)", cl_tn[0] ? cl_tn : "?", cl_m, cl_ifn); emit_error("A9005", g_errbuf); }
+        { int c = Nd(4); for (int _ai = 0; _ai < cl_an; _ai++) Nc(c, cl_args[_ai]); { int fn = Nd(1); memcpy((char*)(nn + fn), cl_fn, 64); Nc(c, fn); } return c; }
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "转")) { /* 2026-08-28 type-root-4 #74: explicit cast 转 T(x) - no-implicit-cast explicit means (int/char/short/ll/double/unsigned/ptr) */
         tk++; /* zhuan kw */
@@ -7385,7 +7409,91 @@ static int stmt(void) {
         if (cur_fn_defer_idx >= 0 && cur_fn_defer_idx < 4096 && defer_cnt[cur_fn_defer_idx] < 64) defer_stmts[cur_fn_defer_idx][defer_cnt[cur_fn_defer_idx]++] = ulk_call; /* 接入 2026-08-27 锁住升级: 解锁改 defer 收集 — 函数退出 epi_label 处自动解锁 (v1 块尾解锁提前 return 不解锁; 升级 Go 风格) */
         return blk_lk;
     }
-        if (tt[tk] == VR && !strcmp(tn[tk], "使用")) { /* 接入 2026-08-28 with/using 上下文管理 (蓝图 §二): 使用 前置, 后置 { body } → { 前置; body; 后置(defer) } — 进入执行前置 (如 打开文件), 退出自动执行后置 (如 关文件, defer 收集同锁住升级, 提前 return 也执行) */
+        if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+        tk++; /* 接口 */
+        char ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
+        if (tt[tk] == FK) tk++; /* { */
+        if (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
+        while (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
+            if (tt[tk] == VR) {
+                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
+                tk++;
+            }
+            if (tt[tk] == CK) tk++;
+        }
+        if (tt[tk] == UK) tk++;
+        if (tt[tk] == SK) tk++;
+        if (iface_cnt < 32) iface_cnt++;
+        return Nd(5);
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "实现")) { /* 2026-08-28 type-root-8 #114: impl - 实现 名 于 类型 { 方法 = 函数 }; */
+        tk++; /* 实现 */
+        char ip_ifn[64]; strcpy(ip_ifn, tn[tk]); tk++;
+        if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++;
+        char ip_tn[64]; strcpy(ip_tn, tn[tk]); tk++;
+        if (tt[tk] == FK) tk++; /* { */
+        if (iface_find(ip_ifn) < 0) { sprintf(g_errbuf, "%s", "接口: 接口未声明 (先 接口 名 { 方法列表 }; v3.0 #114)"); emit_error("A9004", g_errbuf); }
+        if (impl_cnt < 64) { strcpy(impl_iface[impl_cnt], ip_ifn); strcpy(impl_type[impl_cnt], ip_tn); impl_mcnt[impl_cnt] = 0; }
+        while (tt[tk] != UK && tt[tk] != EK) {
+            if (tt[tk] == VR) {
+                char ip_m[64]; strcpy(ip_m, tn[tk]); tk++;
+                if (tt[tk] == AK) { tk++; /* = */
+                    if (tt[tk] == VR) {
+                        if (impl_cnt < 64 && impl_mcnt[impl_cnt] < 16) { strcpy(impl_methods[impl_cnt][impl_mcnt[impl_cnt]], ip_m); strcpy(impl_fns[impl_cnt][impl_mcnt[impl_cnt]], tn[tk]); impl_mcnt[impl_cnt]++; }
+                        tk++;
+                    }
+                }
+            }
+            if (tt[tk] == CK) tk++;
+        }
+        if (tt[tk] == UK) tk++;
+        if (tt[tk] == SK) tk++;
+        if (impl_cnt < 64) impl_cnt++;
+        return Nd(5);
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "接口")) { /* 2026-08-28 type-root-8 #114: trait decl - 接口 名 { 方法1, 方法2 }; */
+        tk++; /* 接口 */
+        char ifn2[64]; strcpy(ifn2, tn[tk]); tk++;
+        if (tt[tk] == FK) tk++; /* { */
+        if (iface_cnt < 32) { strcpy(iface_names[iface_cnt], ifn2); iface_mcnt[iface_cnt] = 0; }
+        while (tt[tk] != UK && tt[tk] != EK && tt[tk] != SK) {
+            if (tt[tk] == VR) {
+                if (iface_cnt < 32 && iface_mcnt[iface_cnt] < 16) { strcpy(iface_methods[iface_cnt][iface_mcnt[iface_cnt]], tn[tk]); iface_mcnt[iface_cnt]++; }
+                tk++;
+            }
+            if (tt[tk] == CK) tk++;
+        }
+        if (tt[tk] == UK) tk++;
+        if (tt[tk] == SK) tk++;
+        if (iface_cnt < 32) iface_cnt++;
+        return Nd(5);
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "实现")) { /* 2026-08-28 type-root-8 #114: impl - 实现 名 于 类型 { 方法 = 函数 }; */
+        tk++; /* 实现 */
+        char ip_ifn[64]; strcpy(ip_ifn, tn[tk]); tk++;
+        if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++;
+        char ip_tn[64]; strcpy(ip_tn, tn[tk]); tk++;
+        if (tt[tk] == FK) tk++; /* { */
+        if (iface_find(ip_ifn) < 0) { sprintf(g_errbuf, "%s", "接口: 接口未声明 (先 接口 名 { 方法列表 }; v3.0 #114)"); emit_error("A9004", g_errbuf); }
+        if (impl_cnt < 64) { strcpy(impl_iface[impl_cnt], ip_ifn); strcpy(impl_type[impl_cnt], ip_tn); impl_mcnt[impl_cnt] = 0; }
+        while (tt[tk] != UK && tt[tk] != EK) {
+            if (tt[tk] == VR) {
+                char ip_m[64]; strcpy(ip_m, tn[tk]); tk++;
+                if (tt[tk] == AK) { tk++; /* = */
+                    if (tt[tk] == VR) {
+                        if (impl_cnt < 64 && impl_mcnt[impl_cnt] < 16) { strcpy(impl_methods[impl_cnt][impl_mcnt[impl_cnt]], ip_m); strcpy(impl_fns[impl_cnt][impl_mcnt[impl_cnt]], tn[tk]); impl_mcnt[impl_cnt]++; }
+                        tk++;
+                    }
+                }
+            }
+            if (tt[tk] == CK) tk++;
+        }
+        if (tt[tk] == UK) tk++;
+        if (tt[tk] == SK) tk++;
+        if (impl_cnt < 64) impl_cnt++;
+        return Nd(5);
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "使用")) { /* 接入 2026-08-28 with/using 上下文管理 (蓝图 §二): 使用 前置, 后置 { body } → { 前置; body; 后置(defer) } — 进入执行前置 (如 打开文件), 退出自动执行后置 (如 关文件, defer 收集同锁住升级, 提前 return 也执行) */
         tk++; /* 使用 */
         int e_enter = expr(); /* 进入表达式 */
         if (tt[tk] == CK) tk++; /* , */
@@ -18722,7 +18830,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0; for (int _bl = 0; _bl < 256; _bl++) borrowed_lastuse[_bl] = -1; /* 2026-08-28 type-root-3 NLL: reset */
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
     nullable_cnt = 0; nullable_depth = 0; qcc_nullable_pending = 0; qcc_nullable_pending_tok = -1;
-    err_fn_cnt = 0; qcc_err_pending = 0; qcc_err_pending_tok = -1; qcc_cur_fn_err = 0; qcc_skip_err_check = 0; memset(nerr, 0, sizeof(nerr)); range_cnt = 0; /* type-root-7 #101 */ /* 2026-08-28 type-root-2 */ /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
+    err_fn_cnt = 0; qcc_err_pending = 0; qcc_err_pending_tok = -1; qcc_cur_fn_err = 0; qcc_skip_err_check = 0; memset(nerr, 0, sizeof(nerr)); range_cnt = 0; /* type-root-7 #101 */ iface_cnt = 0; impl_cnt = 0; /* type-root-8 #114 */ iface_cnt = 0; impl_cnt = 0; /* type-root-8 #114 */ /* 2026-08-28 type-root-2 */ /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
     extern_n = 2; cl_cnt = 0; rng_seq = 0; er_seq = 0; /* fix 2026-08-28 可重入漏洞: 临时名/extern 槽计数器跨编译累积 — extern 负偏移地址泄漏 + 临时名后缀漂移 → 进程内第 2 次编译产物 ≠ 第 1 次 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
     rec_pass = 0; rec_prev_cp = 0; /* 黑匣子: pass 帧序每编译重置 (跨编译累积 → 分歧定位错帧) */
     fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
