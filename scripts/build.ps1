@@ -53,7 +53,7 @@ Write-Host "  v5: $h5"
 #            双指锟斤拷锟街段伙拷锟斤拷/锟斤拷锟斤拷锟斤拷锟斤拷 frow/mem_addr deref fsz/static struct 锟街段革拷值/锟斤拷锟斤拷 struct typedef 锟街讹拷;
 #            锟斤拷锟斤拷 QCC_DBG_VA varargs 锟斤拷锟皆诧拷桩 锟斤拷 -Wall -Werror 锟姐警锟斤拷):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d 锟斤拷锟斤拷锟斤拷)
-$expected = '43b4ebe5'  # 借用自动化+移入dst修复 (2026-08-28 完善第2项)  # loc完善: line真值+codeLine (大哥评估) 新不动点
+$expected = '229edc6b'  # 文件级哈希增量编译 (可吞清单 P0-5, AI原生 #5)  # 借用自动化+移入dst修复 (2026-08-28 完善第2项)  # loc完善: line真值+codeLine (大哥评估) 新不动点
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 锟皆撅拷 1-cycle 锟斤拷锟?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {
@@ -61,6 +61,20 @@ if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and 
     Write-Host "       对不上=不许通过! 跑完整链重新对账或修正expected" -ForegroundColor Red
     exit 1
 }
+
+# 4. AI原生 #5 (可吞清单 P0-5): 文件级哈希增量编译 — 不动点链复验 (增量产物==新鲜编译==不动点; --cache miss→hit→verify)
+Write-Host "[3.5/5] 增量缓存不动点复验 (--cache + --cache-verify) ..." -ForegroundColor Yellow
+New-Item -ItemType Directory -Force -Path scratch_test | Out-Null
+Remove-Item scratch_test\_cache_fp.exe, scratch_test\_cache_fp.exe.qcckey, scratch_test\_cache_fp.err -ErrorAction SilentlyContinue
+$h1l = $h1.ToLower()
+# cmd /c 包原生 stderr: PS5.1 EAP=Stop 下原生 stderr 写 → NativeCommandError 终止 (2>&1/2>file 均触发), cmd 无此问题
+cmd /c "qcc_x86.exe --cache --selfcheck $h1l srclib_jiayan\qcc_work.jy -o scratch_test\_cache_fp.exe 2>scratch_test\_cache_fp.err"
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] 增量缓存 miss 编译失败" -ForegroundColor Red; exit 1 }
+cmd /c "qcc_x86.exe --cache-verify --selfcheck $h1l srclib_jiayan\qcc_work.jy -o scratch_test\_cache_fp.exe 2>scratch_test\_cache_fp.err"
+if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] 增量缓存 verify 失败" -ForegroundColor Red; exit 1 }
+$cv = Get-Content scratch_test\_cache_fp.err -Raw
+if ($cv -notmatch 'verify OK') { Write-Host "[FAIL] 增量缓存复验未过: $cv" -ForegroundColor Red; exit 1 }
+Write-Host "[OK] 增量缓存不动点复验: 增量产物==新鲜编译==$($h1.Substring(0,8))" -ForegroundColor Green
 
 # 4. 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟阶硷拷锟斤拷锟斤拷锟斤拷+锟斤拷锟斤拷+锟斤拷锟斤拷, 锟斤拷锟斤拷 @EXPECTED compile_fail 锟斤拷 锟睫革拷原锟斤拷锟斤拷循锟斤拷撞锟斤拷锟斤拷锟斤拷锟绞э拷懿锟斤拷源锟斤拷锟? NativeCommandError锟斤拷
 Write-Host "[4/4] 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟阶硷拷 run_tests.py ..." -ForegroundColor Yellow
