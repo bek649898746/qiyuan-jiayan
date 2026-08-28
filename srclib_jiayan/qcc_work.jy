@@ -4518,6 +4518,18 @@ __attribute__((unused))
 静 空 borrow_scope_exit(空) { borrow_depth--; 若 (borrow_depth < 0) borrow_depth = 0; 遍 (整 i = 0; i < borrowed_cnt; ) { 若 (borrowed_scope[i] > borrow_depth) { 遍 (整 j = i; j < borrowed_cnt - 1; j++) { strcpy(borrowed_names[j], borrowed_names[j + 1]); borrowed_mode[j] = borrowed_mode[j + 1]; borrowed_scope[j] = borrowed_scope[j + 1]; } borrowed_cnt--; } 否 i++; } } /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内新借用的变量 (生命周期=词法作用域, 数组压缩 O(n), 手动放还仍兼容) */
 静 字 moved_names[256][64]; 静 整 moved_cnt = 0; 静 整 move_dst_parsing = 0; 静 整 asgn_lhs_parsing = 0; 静 字 lv_moved[8][64]; 静 整 lv_moved_n = 0; /* 接入 2026-08-28 机制层 #5 移动语义完整: moved 表(全局, L5014 读检查/L5296 写恢复需要); move_dst_parsing=移入目标解析(dst是写); asgn_lhs_parsing=赋值左值解析中; lv_moved=左值解析期遇到的 moved 变量缓冲 (事后判定: 赋值→重新初始化放行, 非赋值→右值读取报错) */
 静 字 guard_vars[64][64]; 静 字 guard_fns[64][64]; 静 整 guard_scope[64]; 静 整 guard_cnt = 0; /* 接入 2026-08-28 机制层 #8 RAII 完整(析构): 守卫 x, 析构名; → 记录(变量,析构函数,块深度), 块退出自动调用 析构名(x) (作用域退出自动释放, 复用 borrow_depth 做作用域标记) */
+静 整 guard_wrap_return(整 r) { /* 接入 2026-08-28 机制层 #8 RAII 真修复: return 包块 { 活跃守卫析构(LIFO); 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露); 每个 return 各有自己的析构副本, 运行时只走被选路径 → 无双发 */
+    整 active = 0;
+    遍 (整 gi = 0; gi < guard_cnt; gi++) 若 (guard_vars[gi][0] != 0) { active = 1; 断; }
+    若 (!active) 返 r;
+    整 blk_g = Nd(5);
+    遍 (整 gi = guard_cnt - 1; gi >= 0; gi--) { 若 (guard_vars[gi][0] != 0) {
+        整 call = Nd(4); { 整 arg = Nd(1); memcpy((字*)(nn + arg), guard_vars[gi], 64); Nc(call, arg); } { 整 fn = Nd(1); memcpy((字*)(nn + fn), guard_fns[gi], 64); Nc(call, fn); }
+        Nc(blk_g, call);
+    } }
+    Nc(blk_g, r);
+    返 blk_g;
+}
 静 整 is_moved(常 字 *v) { 遍 (整 i = 0; i < moved_cnt; i++) 若 (!strcmp(moved_names[i], v)) 返 1; 返 0; } /* 2026-08-28 #5: 0/1 moved 状态 */
 静 空 moved_release(常 字 *v) { 遍 (整 i = 0; i < moved_cnt; i++) 若 (!strcmp(moved_names[i], v)) { moved_names[i][0] = 0; 返; } } /* 2026-08-28 #5: 重新赋值 = 重新初始化, 恢复可用 (Rust 式 move 后重绑定) */
 
@@ -6832,9 +6844,9 @@ __attribute__((unused))
     }
     若 (tt[tk] == RK) { tk++; 整 r = Nd(6); /* 接入 2026-08-28 多返回值: 返回(a, b) → 打包 64 位 (nv[r]=9001 标记, case 6 拆 e1=低32 e2=高32) */
         若 (tt[tk] == OK) { 整 stk_r = tk; tk++; 整 e1 = expr();
-            若 (tt[tk] == CK) { tk++; 整 e2 = expr(); 若 (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); 若 (tt[tk] == SK) tk++; 返 r; }
-            tk = stk_r; Nc(r, expr()); tk++; 返 r; }
-        Nc(r, expr()); tk++; 返 r; }
+            若 (tt[tk] == CK) { tk++; 整 e2 = expr(); 若 (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); 若 (tt[tk] == SK) tk++; 返 guard_wrap_return(r); } /* RAII 真修复: 多值返回路径同样包守卫析构 */
+            tk = stk_r; Nc(r, expr()); tk++; 返 guard_wrap_return(r); }
+        Nc(r, expr()); tk++; 返 guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
     若 (tt[tk] == IK) { tk++; tk++; 整 n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  若 (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  返 n; }
     若 (tt[tk] == WK) { tk++; tk++; 整 n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); 返 n; }
     若 (tt[tk] == DW) { /* do stmt while (cond); */
@@ -17702,7 +17714,6 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             asm_emit("    取指64 r0, [rsp]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 0); b(0x8B); modrm(0, 0, 4); b(0x24); /* mov rax, [rsp] */
             add_rsp_imm(16);
         }
-        { 整 cidx = contract_find(fname); 若 (cidx >= 0 && contracts[cidx].has_post) { 整 ro2 = var_lookup("__qcc_ret"); 若 (ro2 >= 0) mov_mbrp_reg(ro2 - cur_frame_sz, 0); cg(build_contract_check(contracts[cidx].post_root, contracts[cidx].post_str)); 若 (ro2 >= 0) mov_reg_mbrp(0, ro2 - cur_frame_sz); } } /* 契约后置 (2026-08-28 可吞清单 P0-7): epilogue 处 __qcc_ret=返回值; if(!后置){printf;exit;} — 每个 return 都跳 epi_label, 在此统一检查; 检查后恢复 rax=返回值 (cg 求值会踩 rax) */
         gfn++; /* next function's var range */
 
         若 (is_isr) {

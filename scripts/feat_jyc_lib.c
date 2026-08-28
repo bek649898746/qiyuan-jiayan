@@ -29,6 +29,32 @@ int main(void) {
     /* 取大 */
     if (取大(3, 7) != 7) { printf("FAIL max\n"); return 1; }
 
+    /* === 机制层吃狗粮 === */
+
+    /* 借用: 只读阶段 */
+    int arr2[4] = { 10, 20, 30, 40 };
+    if (取第(arr2, 4, 2) != 30) { printf("FAIL borrow\n"); return 1; }
+
+    /* 可空 + 解包: 查找 */
+    int *found = 查找值(arr2, 4, 30);
+    if (found == 0) { printf("FAIL find\n"); return 1; }
+    int *missing = 查找值(arr2, 4, 99);
+    if (missing != 0) { printf("FAIL find-null\n"); return 1; }
+
+    /* 错误 union: 除或错 */
+    if (除或错(10, 2) != 5) { printf("FAIL err-ok\n"); return 1; }
+    if (除或错(10, 0) != 1) { printf("FAIL err-code\n"); return 1; }   /* b==0 → 错误码 1 */
+
+    /* 移动: 点移动 (移入 后 p 失效) */
+    struct 点 p1; p1.x = 7; p1.y = 8;
+    struct 点 p2 = 点移动(p1);
+    if (p2.x != 7 || p2.y != 8) { printf("FAIL move\n"); return 1; }
+
+    /* RAII 守卫: 析构日志 (LIFO: b=10 先, a=5 后) */
+    g_析构日志 = 0;
+    if (守卫求和() != 15) { printf("FAIL guard-sum\n"); return 1; }
+    if (g_析构日志 != 15) { printf("FAIL guard-dtor %d\n", g_析构日志); return 1; }
+
     printf("PASS\n");
     return 0;
 }

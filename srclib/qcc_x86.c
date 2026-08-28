@@ -4518,6 +4518,18 @@ static void borrow_write_policy(int n) { char *vn = borrow_write_target(n); if (
 static void borrow_scope_exit(void) { borrow_depth--; if (borrow_depth < 0) borrow_depth = 0; for (int i = 0; i < borrowed_cnt; ) { if (borrowed_scope[i] > borrow_depth) { for (int j = i; j < borrowed_cnt - 1; j++) { strcpy(borrowed_names[j], borrowed_names[j + 1]); borrowed_mode[j] = borrowed_mode[j + 1]; borrowed_scope[j] = borrowed_scope[j + 1]; } borrowed_cnt--; } else i++; } } /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内新借用的变量 (生命周期=词法作用域, 数组压缩 O(n), 手动放还仍兼容) */
 static char moved_names[256][64]; static int moved_cnt = 0; static int move_dst_parsing = 0; static int asgn_lhs_parsing = 0; static char lv_moved[8][64]; static int lv_moved_n = 0; /* 接入 2026-08-28 机制层 #5 移动语义完整: moved 表(全局, L5014 读检查/L5296 写恢复需要); move_dst_parsing=移入目标解析(dst是写); asgn_lhs_parsing=赋值左值解析中; lv_moved=左值解析期遇到的 moved 变量缓冲 (事后判定: 赋值→重新初始化放行, 非赋值→右值读取报错) */
 static char guard_vars[64][64]; static char guard_fns[64][64]; static int guard_scope[64]; static int guard_cnt = 0; /* 接入 2026-08-28 机制层 #8 RAII 完整(析构): 守卫 x, 析构名; → 记录(变量,析构函数,块深度), 块退出自动调用 析构名(x) (作用域退出自动释放, 复用 borrow_depth 做作用域标记) */
+static int guard_wrap_return(int r) { /* 接入 2026-08-28 机制层 #8 RAII 真修复: return 包块 { 活跃守卫析构(LIFO); 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露); 每个 return 各有自己的析构副本, 运行时只走被选路径 → 无双发 */
+    int active = 0;
+    for (int gi = 0; gi < guard_cnt; gi++) if (guard_vars[gi][0] != 0) { active = 1; break; }
+    if (!active) return r;
+    int blk_g = Nd(5);
+    for (int gi = guard_cnt - 1; gi >= 0; gi--) { if (guard_vars[gi][0] != 0) {
+        int call = Nd(4); { int arg = Nd(1); memcpy((char*)(nn + arg), guard_vars[gi], 64); Nc(call, arg); } { int fn = Nd(1); memcpy((char*)(nn + fn), guard_fns[gi], 64); Nc(call, fn); }
+        Nc(blk_g, call);
+    } }
+    Nc(blk_g, r);
+    return blk_g;
+}
 static int is_moved(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!strcmp(moved_names[i], v)) return 1; return 0; } /* 2026-08-28 #5: 0/1 moved 状态 */
 static void moved_release(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!strcmp(moved_names[i], v)) { moved_names[i][0] = 0; return; } } /* 2026-08-28 #5: 重新赋值 = 重新初始化, 恢复可用 (Rust 式 move 后重绑定) */
 
@@ -6832,9 +6844,9 @@ static int stmt(void) {
     }
     if (tt[tk] == RK) { tk++; int r = Nd(6); /* 接入 2026-08-28 多返回值: 返回(a, b) → 打包 64 位 (nv[r]=9001 标记, case 6 拆 e1=低32 e2=高32) */
         if (tt[tk] == OK) { int stk_r = tk; tk++; int e1 = expr();
-            if (tt[tk] == CK) { tk++; int e2 = expr(); if (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); if (tt[tk] == SK) tk++; return r; }
-            tk = stk_r; Nc(r, expr()); tk++; return r; }
-        Nc(r, expr()); tk++; return r; }
+            if (tt[tk] == CK) { tk++; int e2 = expr(); if (tt[tk] == KK) tk++; nv[r] = 9001; Nc(r, e1); Nc(r, e2); if (tt[tk] == SK) tk++; return guard_wrap_return(r); } /* RAII 真修复: 多值返回路径同样包守卫析构 */
+            tk = stk_r; Nc(r, expr()); tk++; return guard_wrap_return(r); }
+        Nc(r, expr()); tk++; return guard_wrap_return(r); } /* RAII 真修复 (2026-08-28): return 包块 { 活跃守卫析构; 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露) */
     if (tt[tk] == IK) { tk++; tk++; int n = Nd(8); Nc(n, expr()); tk++; Nc(n, stmt());  if (tt[tk] == ZK) { tk++; Nc(n, stmt());  }  return n; }
     if (tt[tk] == WK) { tk++; tk++; int n = Nd(9); Nc(n, expr_comma()); tk++; Nc(n, stmt()); return n; }
     if (tt[tk] == DW) { /* do stmt while (cond); */
@@ -17702,7 +17714,6 @@ void gen_code(void) {
             asm_emit("    取指64 r0, [rsp]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8B); modrm(0, 0, 4); b(0x24); /* mov rax, [rsp] */
             add_rsp_imm(16);
         }
-        { int cidx = contract_find(fname); if (cidx >= 0 && contracts[cidx].has_post) { int ro2 = var_lookup("__qcc_ret"); if (ro2 >= 0) mov_mbrp_reg(ro2 - cur_frame_sz, 0); cg(build_contract_check(contracts[cidx].post_root, contracts[cidx].post_str)); if (ro2 >= 0) mov_reg_mbrp(0, ro2 - cur_frame_sz); } } /* 契约后置 (2026-08-28 可吞清单 P0-7): epilogue 处 __qcc_ret=返回值; if(!后置){printf;exit;} — 每个 return 都跳 epi_label, 在此统一检查; 检查后恢复 rax=返回值 (cg 求值会踩 rax) */
         gfn++; /* next function's var range */
 
         if (is_isr) {
