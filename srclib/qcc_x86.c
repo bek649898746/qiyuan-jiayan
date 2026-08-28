@@ -14496,8 +14496,10 @@ static void emit_fileio(const char *fname) {
         b(0xF0); b(0x4C); b(0x0F); b(0xB1); b(0x01); /* lock cmpxchg [rcx], r8 (REX.W+R=4C + 0F B1 + modrm 01=[rcx]/r8) */
     } else if (!strcmp(fname, "atomic_fetch_add")) {
         /* 接入 2026-08-28 机制层: 真原子 fetch-add — atomic_fetch_add(ptr=rcx, delta=rdx)
-           → mov rax, rdx; lock xadd [rcx], rax; rax = 旧值, [rcx] += delta */
-        mov_rr64(0, 2); /* rax = rdx (delta) */
+           → movsxd rax, edx (delta 32 位符号扩展 — fix 2026-08-28 P1 #7: 原 mov_rr64 高 32 位垃圾,
+           64 位 lock xadd 写 8 字节污染相邻 data (Arc count+data 布局 → data+1 污染));
+           lock xadd [rcx], rax; rax = 旧值, [rcx] += delta */
+        b(0x48); b(0x63); b(0xC2); /* movsxd rax, edx (符号扩展 32→64) */
         asm_emit("    lock xadd [rcx], rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
         b(0xF0); b(0x48); b(0x0F); b(0xC1); b(0x01); /* lock xadd [rcx], rax (REX.W=48 + 0F C1 + modrm 01) */
     } else if (!strcmp(fname, "atomic_exchange")) {

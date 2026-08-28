@@ -609,5 +609,28 @@ void 释放(struct Rc r) {
 void *取(struct Rc r) {
     return r.p;
 }
+
+/* 接入 2026-08-28 P1 #7 原子引用计数 (Arc): 线程安全共享, 原子计数
+   同 Rc 布局 (8B 指针 + 头计数), 计数用真原子 lock xadd — 多线程并发安全 */
+struct Rc 共享原子(void *init, int sz) {
+    struct Rc r;
+    int *hdr = (int *)malloc(sz + 4);
+    if (!hdr) { fprintf(stderr, "[ERR] Arc 分配失败\n"); exit(1); }
+    hdr[0] = 1;
+    if (init && sz > 0) memcpy((char *)hdr + 4, init, sz);
+    r.p = (char *)hdr + 4;
+    return r;
+}
+struct Rc 克隆原子(struct Rc r) {
+    int *cnt = (int *)r.p - 1;
+    原子 加(cnt, 1); /* 原子 ++ (lock xadd) */
+    return r;
+}
+void 释放原子(struct Rc r) {
+    if (!r.p) return;
+    int *cnt = (int *)r.p - 1;
+    int old = 原子 加(cnt, -1); /* 原子 --, 返回旧值 */
+    if (old <= 1) free(cnt); /* 旧值 1 → 归零 → 释放 */
+}
 #endif
 
