@@ -5007,6 +5007,7 @@ __attribute__((unused))
         /* enum constant? */
         整 ev = e_lookup(tn[tk]);
         若 (ev != 0x80000000) { tk++; 整 n = Nd(0); nv[n] = ev; 返 n; } /* fix 2026-08-09: != 哨兵而非 >= 0 (负值常量 RED=-2) */
+        若 (borrow_mode_of(tn[tk]) == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)\n", tn[tk]); exit(1); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
         整 n = Nd(1); memcpy((字*)(nn + n), tn[tk], 64); tk++;
                 若 (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         若 (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
@@ -5284,9 +5285,10 @@ __attribute__((unused))
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
 静 整 tern(空) { 整 n = lor(); 若 (tt[tk] == QU) { tk++; 整 t = lor(); 若 (tt[tk] == CL) tk++; 整 f = tern(); 整 a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); 返 a; } 返 n; }
-静 字 borrowed_names[256][64]; 静 整 borrowed_cnt = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/10): 借用 x; 标记只读, 写报错; 放还 x; 解除 */
+静 字 borrowed_names[256][64]; 静 整 borrowed_mode[256]; 静 整 borrowed_cnt = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/10, #3 可变借用): 借用 x; 标记只读(0), 可变借用 x; 独占(1); 写报错; 放还 x; 解除 */
 静 整 is_borrowed(常 字 *v) { 遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], v)) 返 1; 返 0; }
-静 整 asgn(空) { 整 n = tern(); 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); 若 (is_borrowed(vname)) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被借用 (只读), 不能写 (多读单写, v3.0 #2/3/10)\n", vname); exit(1); } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
+静 整 borrow_mode_of(常 字 *v) { 遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], v)) 返 borrowed_mode[i]; 返 -1; } /* 接入 2026-08-28 机制层 #3: 0=只读借用 1=可变借用(独占) -1=未借用 (vt_lifetime 状态机 2/3 对齐) */
+静 整 asgn(空) { 整 n = tern(); 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); 整 bm = borrow_mode_of(vname); 若 (bm >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)\n", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); exit(1); } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
     若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         整 o = tt[tk++];
         整 op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
@@ -6152,7 +6154,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -6959,15 +6961,22 @@ __attribute__((unused))
         n2[ifn_u] = eb_u; /* else 分支挂 n2 (同 select) */
         返 ifn_u;
     }
-    若 (tt[tk] == VR && (!strcmp(tn[tk], "借用") || !strcmp(tn[tk], "放还"))) { /* 接入 2026-08-28 机制层: 借用标记 (#2/3/10, v3.0) — 借用 x; 标记只读 (多读单写, 之后 x 的赋值报错); 放还 x; 解除; 与 asgn() 写检查配合 */
+    若 (tt[tk] == VR && (!strcmp(tn[tk], "借用") || !strcmp(tn[tk], "可变借用") || !strcmp(tn[tk], "放还"))) { /* 接入 2026-08-28 机制层: 借用标记 (#2/3/10, v3.0) — 借用 x; 标记只读 (多读单写); 可变借用 x; 独占可变借用 (读/写/再借用均 [ERR], #3); 放还 x; 解除; 与 asgn() 写检查 + L5010 读检查配合 */
         整 is_rel = !strcmp(tn[tk], "放还");
+        整 is_mut = !strcmp(tn[tk], "可变借用");
         tk++;
         字 bn[64]; strcpy(bn, tn[tk]); tk++;
         若 (tt[tk] == SK) tk++;
         若 (is_rel) {
-            遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], bn)) borrowed_names[i][0] = 0; /* 放还: 解除借用 */
+            遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], bn)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; } /* 放还: 解除借用 (mode 一并清) */
         } 否 {
-            若 (borrowed_cnt < 256) strcpy(borrowed_names[borrowed_cnt++], bn); /* 借用: 标记只读 */
+            整 bi = -1; 遍 (整 i = 0; i < borrowed_cnt; i++) 若 (!strcmp(borrowed_names[i], bn)) { bi = i; 断; }
+            若 (bi >= 0) { /* 已有借用 → 独占互斥 (v3.0 #3) */
+                若 (is_mut) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被借用, 不能可变借用 (独占, v3.0 #3)\n", bn); exit(1); }
+                若 (borrowed_mode[bi] == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被可变借用 (独占), 不能再借用 (v3.0 #3)\n", bn); exit(1); }
+                /* 只读借用可叠加 (多读单写, 现有语义) */
+            }
+            若 (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_cnt++; }
         }
         返 Nd(5);
     }
