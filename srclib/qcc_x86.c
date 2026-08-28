@@ -1235,6 +1235,7 @@ static int cstr_find(const char *n); static int cstr_register(const char *n); /*
 static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; static char dag_ast[65]; static void dag_hash_tokens(void); static void dag_hash_ast(void); /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 阶段哈希链 (定义在资源护栏区) */
 static int recorder_mode = 0; static char recorder_path[512]; static int rec_prev_cp = 0; static int rec_pass = 0; static void rec_line(const char *line); static void recorder_frame(const char *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 static int serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
+static int is_compat_stat_c = 0; /* compat/stat.c 兼容开关 — 2026-08-28 挪文件作用域 (cache_try_hit 键签名要用, 原 main 局部) */
 static int refs_mode = 0; static void refs_record(const char *n, int line); static void refs_emit(void); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
 static struct { char fn[64]; int pre_stmt; int pre_root; int post_root; int post_str; int has_post; } contracts[256]; static int contract_cnt; static int cur_contract; static int contract_find(const char *fn); static long long contract_const_eval(int n, const char **argnames, const long long *argvals, int argc, int *known); /* 接入 2026-08-28 可吞清单 P0-7/P1: 契约表 + 编译期常量前置审判 (声明在此, prim/调用点用; 函数定义在契约表区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
@@ -18669,6 +18670,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
 
     int root = parse(src); /* fn_macro 收集+展开已在 parse 内 include 展开之后执行 (fix 2026-08-07: 头文件函数宏可见) */
     dag_hash_ast(); /* 编译 DAG (可吞清单 P0-9): AST 阶段哈希 (nt/nv/nn/n0/n1 入链) */
+    if (dag_mode && !dag_src[0]) { int _dsl = (int)strlen(src); sha256_buf(src, _dsl, dag_src); } /* fix 2026-08-28: 源码阶段哈希 — 原在 main 缓存块算, serve 不经过 main → dag 载荷 source 空 */
     if (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); return 1; }
     if (interface_mode) { interface_emit(); return 0; } /* 接口文件 (可吞清单 P1): 只解析导出, 不产码 (gen_code 会重置 func_n 等表) */
     if (refs_mode) { refs_emit(); return 0; } /* 引用收集 (可吞清单 P1): 只解析导出引用表, 不产码 */
@@ -18818,7 +18820,36 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
         fprintf(stderr, "[EXPECT] OK: %s\n", eh);
     }
     if (checkpoint_mode) { char hsh[65]; sha256_file(outf, hsh); char _cl[128]; sprintf(_cl, "{\"cp\":\"done\",\"artifact\":\"%.8s\"}", hsh); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): 完成快照 (产物哈希前 8 位) */
+    if (dag_mode) { char dah[65]; sha256_file(outf, dah); printf("{\"dag\":{\"version\":\"%s\",\"stages\":{\"source\":\"%s\",\"tokens\":\"%s\",\"ast\":\"%s\",\"artifact\":\"%s\"}}}\n", QCC_CACHE_VER, dag_src, dag_tok, dag_ast, dah); } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 — 同输入+同编译器 → 同链; fix 2026-08-28: 挪进 qcc_compile_once (serve 模式 main 不执行 → dag 载荷丢失 → 客户端死等) */
     return 0;
+}
+
+/* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — sidecar 式缓存 (可吞清单 P0-5, MoonBit #3 + 生态 D5)
+   键 = SHA256(版本 + 选项签名 + 宏表 + 源码); 命中=跳过编译 (输出文件即缓存); <outf>.qcckey 记录键
+   --cache-verify: 命中时新鲜编译到 <outf>.qccfresh + 对账复验 (增量结果纳入不动点链); asm_mode/--repeat 不缓存
+   fix 2026-08-28: 抽成函数 — serve/CLI 共用 (原缓存逻辑只在 main, serve 设置 cache_mode 但不走键/命中 → 缓存死代码) */
+static int cache_try_hit(const char *src, const char *outf, int asm_mode) { /* 命中→1 (跳过编译), miss→0, 失败→2/3 */
+    char pre[3600]; int pi = 0;
+    char ver_sel[65] = ""; int ver_len = 0;
+    if (selfcheck_sha[0]) { ver_len = (int)strlen(selfcheck_sha); memcpy(ver_sel, selfcheck_sha, ver_len); }
+    else { char mpx[1024]; DWORD mnx = GetModuleFileNameA(NULL, mpx, 1023); if (mnx > 0) { char vh[65]; sha256_file(mpx, vh); if (vh[0]) { memcpy(ver_sel, vh, 64); ver_len = 64; } } }
+    if (ver_len == 0) { ver_len = (int)strlen(QCC_CACHE_VER); memcpy(ver_sel, QCC_CACHE_VER, ver_len); }
+    memcpy(pre + pi, ver_sel, ver_len); pi += ver_len;
+    pre[pi++] = coff_mode ? 'c' : (bin_mode ? 'b' : 'x');
+    if (bare_metal) pre[pi++] = 'B';
+    if (is_compat_stat_c) pre[pi++] = 'C';
+    for (int mi = 0; mi < macro_n && pi < 3500; mi++) { int nl = (int)strlen(macros[mi].name); if (pi + nl + 12 < 3590) { memcpy(pre + pi, macros[mi].name, nl); pi += nl; pre[pi++] = '='; int vv = macros[mi].val; char vs[16]; int vi = 0; if (vv == 0) vs[vi++] = '0'; while (vv > 0) { vs[vi++] = (char)('0' + vv % 10); vv /= 10; } while (vi > 0) pre[pi++] = vs[--vi]; pre[pi++] = ';'; } }
+    int sl = (int)strlen(src);
+    char *kb = malloc(pi + sl + 1);
+    memcpy(kb, pre, pi); memcpy(kb + pi, src, sl); kb[pi + sl] = 0;
+    sha256_buf(kb, pi + sl, cache_key);
+    free(kb);
+    if (!cache_sidecar_matches(outf)) return 0;
+    if (selfcheck_sha[0]) { char sh2[65]; sha256_file(outf, sh2); if (strcmp(sh2, selfcheck_sha) != 0) { fprintf(stderr, "[CACHE] SELFCHECK-FAIL 缓存产物 %s != %s (不动点对账失败)\n", sh2, selfcheck_sha); return 2; } fprintf(stderr, "[CACHE] selfcheck OK %s (缓存产物对账不动点)\n", sh2); }
+    if (cache_verify) { char tf[560]; strcpy(tf, outf); strcat(tf, ".qccfresh"); if (qcc_compile_once(src, tf, asm_mode)) { fprintf(stderr, "[CACHE] VERIFY 新鲜编译失败\n"); return 3; } char hc[65], hf[65]; sha256_file(outf, hc); sha256_file(tf, hf); if (strcmp(hc, hf) == 0) { fprintf(stderr, "[CACHE] verify OK %s (增量产物==新鲜编译)\n", hc); } else { fprintf(stderr, "[CACHE] VERIFY-MISMATCH %s != %s (缓存失效, 已用新鲜产物刷新)\n", hc, hf); copy_file_bytes(tf, outf); cache_sidecar_write(outf); } }
+    if (!serve_mode) printf("OK: %s (cached)\n", outf);
+    fprintf(stderr, "[CACHE] hit %.8s\n", cache_key);
+    return 1;
 }
 
 /* 接入 2026-08-28 可吞清单 P1 (甲言化: 编译服务器 qccd — AI 专用中文编译器的长驻核心): --serve stdin/stdout JSON-lines 协议
@@ -18850,22 +18881,40 @@ static void serve_loop(void) {
     char line[1048576]; /* 单请求一行; 内嵌 src 换行须 \n 转义 (大文件用 file 模式) */
     fprintf(stderr, "[SERVE] 甲言编译服务器就绪 (AI 专用中文编译器 qccd, 可重入核心 + 增量缓存)\n");
     while (fgets(line, sizeof(line), stdin)) {
-        if (serve_get_flag(line, "quit")) { fprintf(stderr, "[SERVE] 退出\n"); fflush(stdout); return; }
         char cmd[32] = ""; serve_get_str(line, "cmd", cmd, sizeof(cmd));
+        if (!strcmp(cmd, "quit") || serve_get_flag(line, "quit")) { fprintf(stderr, "[SERVE] 退出\n"); fflush(stdout); return; } /* fix 2026-08-28: quit 协议 — 支持 {"cmd":"quit"} (原只查 "quit":true → 客户端永远退不出) */
         if (!strcmp(cmd, "compile")) {
             char src[786432]; char fn[512] = ""; char outf[512] = "a.exe";
+            char mode[32] = ""; /* 空=产码; interface/refs/dag=只解析导出 (stdout 即载荷) */
             int use_file = serve_get_str(line, "file", fn, sizeof(fn));
             serve_get_str(line, "out", outf, sizeof(outf));
+            serve_get_str(line, "mode", mode, sizeof(mode));
             int want_cache = serve_get_flag(line, "cache");
             char *csrc = NULL;
             if (use_file) { csrc = read_file(fn); if (!csrc) { printf("{\"ok\":false,\"cmd\":\"compile\",\"err\":\"cannot open %s\"}\n", fn); fflush(stdout); continue; } }
             else { if (!serve_get_str(line, "src", src, sizeof(src))) { printf("{\"ok\":false,\"cmd\":\"compile\",\"err\":\"no src/file\"}\n"); fflush(stdout); continue; } csrc = src; }
             int saved_cache = cache_mode; cache_mode = want_cache ? 1 : 0;
-            int rc = qcc_compile_once(csrc, outf, 0);
-            cache_mode = saved_cache;
-            if (rc == 0) { char ah[65]; sha256_file(outf, ah); printf("{\"ok\":true,\"cmd\":\"compile\",\"out\":\"%s\",\"artifact\":\"%.16s\"}\n", outf, ah); }
+            int saved_iface = interface_mode, saved_refs = refs_mode, saved_dag = dag_mode, saved_verify = cache_verify;
+            interface_mode = !strcmp(mode, "interface") ? 1 : 0;
+            refs_mode = !strcmp(mode, "refs") ? 1 : 0;
+            dag_mode = !strcmp(mode, "dag") ? 1 : 0;
+            int rc = 0;
+            if (cache_mode && !interface_mode && !refs_mode && !dag_mode) {
+                macro_n = 0; /* fix 2026-08-28: serve 键计算前清宏表 — 缓存键含宏表, 而上次编译的 rt 宏 (QCC_RT_PREPENDED 等) 残留 → 同源两次键不同 → 缓存永不命中 (main 路径键在编译前算、宏表干净) */
+                int ch = cache_try_hit(csrc, outf, 0); /* 真缓存 (fix 2026-08-28: 原 serve 缓存死代码 — 键/命中逻辑只在 main) */
+                if (ch == 1) { printf("{\"ok\":true,\"cmd\":\"compile\",\"out\":\"%s\",\"cached\":true}\n", outf); fflush(stdout); goto serve_compile_done; }
+                if (ch == 2 || ch == 3) { printf("{\"ok\":false,\"cmd\":\"compile\",\"err\":\"cache-fail\"}\n"); fflush(stdout); goto serve_compile_done; }
+            }
+            rc = qcc_compile_once(csrc, outf, 0);
+            if (rc == 0 && cache_mode && !interface_mode && !refs_mode && !dag_mode) { cache_sidecar_write(outf); fprintf(stderr, "[CACHE] miss %.8s\n", cache_key); } /* 编译成功 → 落缓存键 (serve 同 main) */
+            if (interface_mode || refs_mode || dag_mode) {
+                /* 载荷模式: qcc_compile_once 的 stdout 已输出接口/引用/DAG JSON (serve 抑制 OK 打印) — 它即响应 */
+                if (rc != 0) printf("{\"ok\":false,\"cmd\":\"compile\",\"mode\":\"%s\"}\n", mode);
+            } else if (rc == 0) { char ah[65]; sha256_file(outf, ah); printf("{\"ok\":true,\"cmd\":\"compile\",\"out\":\"%s\",\"artifact\":\"%.16s\"}\n", outf, ah); }
             else printf("{\"ok\":false,\"cmd\":\"compile\",\"out\":\"%s\"}\n", outf);
             fflush(stdout);
+serve_compile_done:
+            cache_mode = saved_cache; interface_mode = saved_iface; refs_mode = saved_refs; dag_mode = saved_dag; cache_verify = saved_verify;
             if (use_file) free(csrc);
         } else if (!strcmp(cmd, "ping")) {
             printf("{\"ok\":true,\"cmd\":\"ping\",\"lang\":\"甲言 qcc\",\"serve\":true}\n"); fflush(stdout);
@@ -18884,7 +18933,6 @@ int main(int argc, char **argv) {
     int asm_mode = 0;
     char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
     char *all_src = NULL; int all_len = 0;
-    int is_compat_stat_c = 0;
 
     /* fix 2026-08-10 Gate 9: ������ "__bare__" ��Ǳ������������ */
     for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
@@ -18981,35 +19029,9 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
        键 = SHA256(版本 + 选项签名 + 宏表 + 源码); 命中=跳过编译 (输出文件即缓存); <outf>.qcckey 记录键
        --cache-verify: 命中时新鲜编译到 <outf>.qccfresh + 对账复验 (增量结果纳入不动点链); asm_mode/--repeat 不缓存 */
     if (cache_mode && !asm_mode && repeat_n <= 1 && all_len > 0) {
-        char pre[3600]; int pi = 0;
-        /* 版本签名: --selfcheck 提供的不动点 > 自身 exe 哈希 (换编译器自动失效) > QCC_CACHE_VER 常量 (兜底) */
-        char ver_sel[65] = ""; int ver_len = 0;
-        if (selfcheck_sha[0]) { ver_len = (int)strlen(selfcheck_sha); memcpy(ver_sel, selfcheck_sha, ver_len); }
-        else { char mpx[1024]; DWORD mnx = GetModuleFileNameA(NULL, mpx, 1023); if (mnx > 0) { char vh[65]; sha256_file(mpx, vh); if (vh[0]) { memcpy(ver_sel, vh, 64); ver_len = 64; } } }
-        if (ver_len == 0) { ver_len = (int)strlen(QCC_CACHE_VER); memcpy(ver_sel, QCC_CACHE_VER, ver_len); }
-        memcpy(pre + pi, ver_sel, ver_len); pi += ver_len;
-        pre[pi++] = coff_mode ? 'c' : (bin_mode ? 'b' : 'x');
-        if (bare_metal) pre[pi++] = 'B';
-        if (is_compat_stat_c) pre[pi++] = 'C';
-        for (int mi = 0; mi < macro_n && pi < 3500; mi++) { int nl = (int)strlen(macros[mi].name); if (pi + nl + 12 < 3590) { memcpy(pre + pi, macros[mi].name, nl); pi += nl; pre[pi++] = '='; int vv = macros[mi].val; char vs[16]; int vi = 0; if (vv == 0) vs[vi++] = '0'; while (vv > 0) { vs[vi++] = (char)('0' + vv % 10); vv /= 10; } while (vi > 0) pre[pi++] = vs[--vi]; pre[pi++] = ';'; } }
-        int sl = (int)strlen(src);
-        char *kb = malloc(pi + sl + 1);
-        memcpy(kb, pre, pi); memcpy(kb + pi, src, sl); kb[pi + sl] = 0;
-        sha256_buf(kb, pi + sl, cache_key);
-        free(kb);
-        if (cache_sidecar_matches(outf)) { /* 命中: 输出文件即缓存, 跳过编译 */
-            if (selfcheck_sha[0]) { char sh2[65]; sha256_file(outf, sh2); if (strcmp(sh2, selfcheck_sha) != 0) { fprintf(stderr, "[CACHE] SELFCHECK-FAIL 缓存产物 %s != %s (不动点对账失败)\n", sh2, selfcheck_sha); return 1; } fprintf(stderr, "[CACHE] selfcheck OK %s (缓存产物对账不动点)\n", sh2); }
-            if (cache_verify) { /* 复验: 新鲜编译到 <outf>.qccfresh + SHA256 对账 (增量产物==新鲜编译 == 不动点链复验) */
-                char tf[560]; strcpy(tf, outf); strcat(tf, ".qccfresh");
-                if (qcc_compile_once(src, tf, asm_mode)) { fprintf(stderr, "[CACHE] VERIFY 新鲜编译失败\n"); return 1; }
-                char hc[65], hf[65]; sha256_file(outf, hc); sha256_file(tf, hf);
-                if (strcmp(hc, hf) == 0) { fprintf(stderr, "[CACHE] verify OK %s (增量产物==新鲜编译)\n", hc); }
-                else { fprintf(stderr, "[CACHE] VERIFY-MISMATCH %s != %s (缓存失效, 已用新鲜产物刷新)\n", hc, hf); copy_file_bytes(tf, outf); cache_sidecar_write(outf); }
-            }
-            printf("OK: %s (cached)\n", outf);
-            fprintf(stderr, "[CACHE] hit %.8s\n", cache_key);
-            return 0;
-        }
+        int _ch = cache_try_hit(src, outf, asm_mode); /* 抽成共享函数 (serve 复用, fix 2026-08-28) */
+        if (_ch == 1) return 0;
+        if (_ch == 2 || _ch == 3) return 1;
     }
     /* 接入 2026-08-28 AI原生 #6: 编译核心函数化 — 同进程可重复调用 (可重入无状态核心) */
     int qc_rc = qcc_compile_once(src, outf, asm_mode);
@@ -19022,7 +19044,6 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
     }
     if (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (含首次对账, 可重入无状态核心验证通过)\n", repeat_n);
     if (budget_flag) budget_report(); /* 资源护栏 9b: 编译期水位报告 (AI 可读 JSON, 编译成功后) */
-    if (dag_mode) { char dah[65]; sha256_file(outf, dah); printf("{\"dag\":{\"version\":\"%s\",\"stages\":{\"source\":\"%s\",\"tokens\":\"%s\",\"ast\":\"%s\",\"artifact\":\"%s\"}}}\n", QCC_CACHE_VER, dag_src, dag_tok, dag_ast, dah); } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 — 同输入+同编译器 → 同链 (编译过程可重放可验证) */
     return 0;
 
 }
