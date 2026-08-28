@@ -2717,6 +2717,10 @@ __attribute__((unused))
         }
         返 vars[i].rsp_off; /* backward: latest shadows */
     }
+    /* fix 2026-08-28 可重入: --repeat 第二次 REUSE 复用的变量 (blk_end==-1) 可能超出 fve[gfn]
+       (REUSE 不新增 vcnt → fve 只到 <REUSE索引>) — var_lookup 主循环 [0, fve) 找不到 → DCL-MISS.
+       兜底: 搜 blk_end==-1 (函数级可见) 且索引 >= fvb[gfn] 的变量 (当前函数或之后的 REUSE 槽) */
+    若 (vs_end) { 遍 (整 i = vcnt - 1; i >= 0; i--) 若 (!strcmp(vars[i].name, n) && vars[i].blk_end == -1 && vars[i].rsp_off >= 0 && i >= fvb[gfn]) 返 vars[i].rsp_off; }
     /* fix 2026-08-12: codegen 时 vs_n()=vs_end 是当前函数 var 上限 — 声明在 vs_end 之后的
        file-scope static (kw=0) 全局可见却被上限排除 (镜像 func_n 场景, 原静默残留; extern 报错后暴露).
        局部变量 (kw=1/非static) 仍受 vs_end/fvb 限制, 不跨函数泄漏 (BLOCKER-1). */
@@ -10084,6 +10088,7 @@ __attribute__((unused))
     
      
     lex(exp_src);
+
     
     free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
@@ -18268,9 +18273,12 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     free(rtb);
     返 combined2;
 }
-静 空 reset_compile_state(空) { /* 接入 2026-08-28 AI原生 #6: 重置跨编译累积的静态全局表 (parse 已重置 tk/vcnt/fdef_n/tt 等; 这里补宏/类型/字符串/函数/机制层/static槽/位域表) */
+静 空 reset_compile_state(空) { /* 接入 2026-08-28 AI原生 #6: 重置跨编译累积的静态全局表 (parse 已重置 tk/vcnt/fdef_n/tt 等; 这里补宏/类型/字符串/函数/机制层/static槽/位域/声明/枚举/typedef/判别/double表) */
     macro_n = 0; fn_macro_n = 0; obj_macro_n = 0; ginit_n = 0; func_n = 0; str_cnt = 0; pp_guard_n = 0; st_n = 0;
     stc_n = 0; bit_slot = -1; bit_pos = 0; /* static 槽计数 + 位域打包状态 — 跨编译累积必须重置 */
+    decl_cnt = 0; tdn_n = 0; eval_n = 0; disc_n = 0; tdef_n = 0; dbl_n = 0; /* declare声明表 + typedef名 + 枚举常量 + 判别表 + typedef定义 + double常量表 */
+    if_skip = 0; if_n = 0; cl_if_skip = 0; cl_if_n = 0; /* lex 预处理条件编译栈 */
+    vs_end = 0; /* fix 2026-08-28 可重入根因: vs_n() = vs_end?vs_end:vcnt — vs_end 残留(上次 codegen 的 fve[gfn]) → 第二次 parse 期 var_offset REUSE 搜索越界 → 复用 vars[169] 超出 vcnt → codegen DCL-MISS。parse 期必须 vs_end=0 (vs_n()=vcnt) */
     borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
 }
