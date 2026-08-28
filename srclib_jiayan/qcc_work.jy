@@ -2432,7 +2432,12 @@ __attribute__((unused))
 静 整 uninit_has(常 字 *v) { 遍 (整 i = 0; i < uninit_cnt; i++) 若 (!strcmp(uninit_names[i], v)) 返 1; 返 0; }
 静 空 uninit_remove(常 字 *v) { 遍 (整 i = 0; i < uninit_cnt; i++) 若 (!strcmp(uninit_names[i], v)) { uninit_names[i][0] = 0; 返; } }
 静 空 uninit_scope_exit(空) { uninit_depth--; 若 (uninit_depth < 0) uninit_depth = 0; 遍 (整 i = 0; i < uninit_cnt; ) { 若 (uninit_scope[i] > uninit_depth) { 遍 (整 j = i; j < uninit_cnt - 1; j++) { strcpy(uninit_names[j], uninit_names[j + 1]); uninit_scope[j] = uninit_scope[j + 1]; } uninit_cnt--; } 否 i++; } } /* 块退出: 清除本块声明的未初始化变量 (生命周期=词法块) */
-整 tk; /* fwd: token 索引 (定义在 L3020 token 系统区 — 2026-08-28 emit_error 定位行号需提前声明) */
+整 tk; /* fwd: token 索引 (定义在 L3020 token 系统区 — 2026-08-28 emit_error 定位行号需提前声明; 2026-08-28 type-root-fix: 前移到 nullable_register 之前供其读 tk 做 pending 位置校验) */
+静 字 nullable_names[256][64]; 静 整 nullable_scope[256]; 静 整 nullable_cnt = 0; 静 整 nullable_depth = 0; 静 整 qcc_nullable_pending = 0; 静 整 qcc_nullable_pending_tok = -1; /* 2026-08-28 type-root-fix: pending tok pos - lexer prescans, no pos check -> pending consumed by decl BEFORE 可空 */ /* 接入 2026-08-28 类型根治① (v3.0 #75): 可空类型真标记 — 可空 T x 声明登记(lexer 置 pending, 声明消费), 未解包解引用(星/箭头/下标) [ERR] A8001, 解包/赋值清除; 原词法层直接吞掉=等价普通声明, 无真类型 */
+静 整 nullable_has(常 字 *v) { 遍 (整 i = 0; i < nullable_cnt; i++) 若 (!strcmp(nullable_names[i], v)) 返 1; 返 0; }
+静 空 nullable_remove(常 字 *v) { 遍 (整 i = 0; i < nullable_cnt; i++) 若 (!strcmp(nullable_names[i], v)) { nullable_names[i][0] = 0; 返; } }
+静 空 nullable_register(常 字 *n) { 若 (qcc_nullable_pending && user_fn_active && n[0] != '_' && tk >= qcc_nullable_pending_tok) { qcc_nullable_pending = 0; 若 (nullable_cnt < 256) { strcpy(nullable_names[nullable_cnt], n); nullable_scope[nullable_cnt] = nullable_depth; nullable_cnt++; } } } /* 2026-08-28 type-root-fix: tk>=pending_tok - decl must be AT/AFTER 可空 pos (lexer prescans) */ /* 可空声明: 消费 pending 标记, 登记 (仅用户代码 + 非 _ 内部变量) */
+静 空 nullable_scope_exit(空) { nullable_depth--; 若 (nullable_depth < 0) nullable_depth = 0; 遍 (整 i = 0; i < nullable_cnt; ) { 若 (nullable_scope[i] > nullable_depth) { 遍 (整 j = i; j < nullable_cnt - 1; j++) { strcpy(nullable_names[j], nullable_names[j + 1]); nullable_scope[j] = nullable_scope[j + 1]; } nullable_cnt--; } 否 i++; } } /* 块退出: 清除本块的可空标记 */
 静 空 emit_error(常 字 *code, 常 字 *msg) { /* 定义在 tk/tline 可见处 (var_offset 前) — 2026-08-28 大哥评估: loc.line 真值 = tline[tk]-rt_line_skip (用户源码行号) */
     若 (diagnostics_json) {
         /* fix 2026-08-28 真接入③: 修复建议按具体错误码精确给出 (原只按 A3/A4 族粗分, "查看错误码文档" 占位) */
@@ -2448,6 +2453,7 @@ __attribute__((unused))
         否 若 (!strcmp(code, "A5001")) fix = "扩容对应容量宏或减小输入规模 (资源护栏 9b)";
         否 若 (!strcmp(code, "A6002")) fix = "调用前保证前置条件成立: 修正常量参数, 或加调用点守卫 (#7 编译期审判)";
         否 若 (!strcmp(code, "A7001")) fix = "先 契约 P; 登记契约类型, 或改用已定义结构体 (#8)";
+        否 若 (!strcmp(code, "A8001")) fix = "可空类型未解包就解引用: 先 解包 变量; (或判空后使用, 类型根治①)";
         否 若 (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还/重新赋值恢复, 再读/写/移动";
         否 若 (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
         否 若 (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
@@ -2464,6 +2470,7 @@ __attribute__((unused))
 }
 静 整 var_offset(常 字 *n) {
     整 _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
+    nullable_register(n); /* 类型根治① (2026-08-28): 可空 T x 声明 → 登记可空 — 放复用分支前: 嵌套块重声明同名变量也消费 pending */
     整 _psz = (_pa > 4) ? 8 : 4; /* _Alignas(>=8) int → 8B 槽 → rsp_off ≡ 8 mod 16 → 地址 ≡ 0 mod 16 */
     
     /* do NOT reuse a same-named ARRAY entry: a `char fn[64]` field-local from another
@@ -2487,6 +2494,7 @@ __attribute__((unused))
 }
 静 整 var_offset_ptr(常 字 *n, 整 pesz) {
     var_align(); /* fix step25: _Alignas 变量级 */
+    nullable_register(n); /* 类型根治① (2026-08-28): 可空 T *p (指针声明) → 登记可空 — var_offset 只覆盖标量, 指针走本函数 (原漏登记 → 可空指针 A8001 不触发) */
     
     /* 8-byte slot so full 64-bit pointer fits.
        REUSE only when the existing same-name var is the SAME pointer type (same element
@@ -2514,6 +2522,7 @@ __attribute__((unused))
 /* static var: slot in .data (RVA data_rva+8+4*idx), zero-initialised, survives calls */
 静 整 var_static(常 字 *n, 整 pesz) {
     var_align(); /* fix step25: _Alignas 变量级 */
+    nullable_register(n); /* 类型根治① (2026-08-28): static 可空声明 → 登记可空 (覆盖函数内 static 指针) */
     
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].is_static && var_codegen_visible(i)) { 若 (vars[i].rsp_off < 0) { vars[i].rsp_off = stc_n; stc_n += (pesz > 0 ? 2 : 1); } var_last_idx = i; 返 vars[i].rsp_off; } /* fix 2026-08-14: extern 声明后的暂定定义 int x; 应把 extern 槽升级为定义 (原直接返回负槽 → x 永远 undefined → strbuf_slopbuf undefined) */
     若 (vcnt >= 65536 || stc_n >= 0x20000000) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); } /* fix 2026-08-26 redis: stc_n 上限 0x4000000→0x20000000 — str_tbl 扩到 32768 槽 (256MB) 后静态槽数顶满旧 67M 上限 */
@@ -4144,7 +4153,7 @@ __attribute__((unused))
                 续; /* fix 2026-08-14: 空宏 #define __attribute__(x) 展开后 __attribute__ 无 ((...)) 也要吞掉 — 否则变 tt=SK 分号 token, 劈开 void die(...) → die undefined */
             }
             否 若 (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { 续; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
-            否 若 (!strcmp(tn[ti], "可空")) { 续; } /* 接入 2026-08-27: 甲言 Option 类型标记 (可空): 词法层吞掉 = 等价普通声明 (可空 T x == T x), 显式声明可空性 (NULL 合法). 同 __extension__ 吞掉不占 token 位 */
+            否 若 (!strcmp(tn[ti], "可空")) { qcc_nullable_pending = 1; qcc_nullable_pending_tok = ti; 续; } /* 2026-08-28 type-root-fix: pending_tok=ti (next token slot) - lexer prescans, bind pos */ /* 接入 2026-08-28 类型根治① (v3.0 #75): 可空 T x — 置 pending, 下一个声明登记可空 (原词法层直接吞=等价普通声明, 无真类型; 现在未解包解引用编译期拦截 A8001) */
             否 若 (!strcmp(tn[ti], "错误")) { 续; } /* 接入 2026-08-28 机制层 #72 error union: 错误 类型标记吞掉 (错误 T f = T f, 显式错误码返回 — Go 式 error union, 配 错 N; return N) */
             否 若 (!strcmp(tn[ti], "泛型")) { /* 接入 2026-08-28 机制层: 泛型函数宏 (#96, v3.0) — 泛型 名字(参数) = 体; → 注册 fn_macro (文本级模板, 调用按实参类型展开): 泛型 最大值(x, y) = ((x) > (y) ? (x) : (y)); — lexer 层注册, 调用 最大值(a,b) 在 lex 时展开 (fn_macro 机制), 天然多类型 */
                 整 gp = i; 循环 (s[gp] == ' ' || s[gp] == '\t') gp++;
@@ -4549,8 +4558,9 @@ __attribute__((unused))
             整 hsn = Nd(0); nv[hsn] = str_cnt; nt[hsn] = STR; str_cnt++;
             返 hsn;
         }
-        若 (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-28 机制层 #75 可空类型完整: 解包 x → __qcc_unwrap(x) — 空值运行时检查 (x==0 → [ERR] 空值解包 + exit, 强制处理空值) */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-28 机制层 #75 可空类型完整: 解包 x → __qcc_unwrap(x) — 空值运行时检查 (x==0 → [ERR] 空值解包 + exit, 强制处理空值); 类型根治① (2026-08-28): 解包同时清除可空标记 (解包后变量视为非空, 后续解引用放行) */
             tk++; /* 解包 */
+            { 字 unw[64]; strcpy(unw, tn[tk]); nullable_remove(unw); } /* 类型根治①: 解包 x → x 不再可空 (若 x 是简单变量) */
             整 ev = expr(); /* 被解包表达式 */
             整 call = Nd(4);
             Nc(call, ev); /* 参数: 值 */
@@ -5132,6 +5142,7 @@ __attribute__((unused))
         若 (uninit_has(tn[tk])) { 若 (asgn_lhs_parsing) { 若 (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } 否 若 (!move_dst_parsing) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", tn[tk]); emit_error("A4001", g_errbuf); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
         若 (borrow_mode_of(tn[tk]) == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)", tn[tk]); emit_error("A3001", g_errbuf); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
         整 n = Nd(1); refs_record(tn[tk], tline[tk]); memcpy((字*)(nn + n), tn[tk], 64); tk++; /* 引用收集 (2026-08-28 可吞清单 P1): 变量/函数名 token 处记录 (读/写/调用统一路径) */
+        若 (nullable_has(tn[tk - 1]) && (tt[tk] == AR || tt[tk] == LB)) { sprintf(g_errbuf, "可空类型: 变量 '%s' 未解包就解引用 (箭头/下标) — 先 解包 %s; (类型根治①, v3.0 #75)", tn[tk - 1], tn[tk - 1]); emit_error("A8001", g_errbuf); } /* 类型根治① (2026-08-28): 可空变量未解包解引用 → 编译期拦截 (变量在解引用符前: p->x / p[0]; 前缀 *p 在 L5412 DK 分支单独拦 — 原含 DK 条件会误伤 `可空 int x; x*2` 乘法; 判空/赋值/传参不拦, 解引用才拦) */
                 若 (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         若 (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
         若 (var_is_uns(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nuns[n] = 1; /* unsigned VARIABLE (fix 2026-08-06: (long long)u 必须零扩展, movsxd 判断靠 nuns) */
@@ -5399,8 +5410,10 @@ __attribute__((unused))
         返 n;
     }
     若 (tt[tk] == PT) { tk++; 整 n = Nd(11); Nc(n, prim()); 返 n; }
-    若 (tt[tk] == DK) { tk++; 整 n = Nd(12); Nc(n, prim());
-        整 dop = n0[n]; 若 (dop >= 0 && nt[dop] == 1 && var_pdbl((字*)(nn + dop))) ndbl[n] = 1; /* *double-p → xmm0 */
+    若 (tt[tk] == DK) { tk++; 整 n = Nd(12); 整 dop = prim(); /* 类型根治① (2026-08-28): 前缀 *p 解引用 — 操作数在星后, 解析后查可空 (原 L5145 只查变量在解引用符前的 AR/LB 路径, *p 漏拦) */
+        若 (dop >= 0 && nt[dop] == 1 && nullable_has((字*)(nn + dop))) { sprintf(g_errbuf, "可空类型: 变量 '%s' 未解包就解引用 (星号) — 先 解包 %s; (类型根治①, v3.0 #75)", (字*)(nn + dop), (字*)(nn + dop)); emit_error("A8001", g_errbuf); }
+        Nc(n, dop);
+        若 (dop >= 0 && nt[dop] == 1 && var_pdbl((字*)(nn + dop))) ndbl[n] = 1; /* *double-p → xmm0 */
         返 n; }
     若 (tt[tk] == NT) { tk++; 整 n = Nd(17); Nc(n, prim()); 返 n; }
     若 (tt[tk] == BN) { tk++; 整 n = Nd(18); Nc(n, prim()); 返 n; } /* ~expr */
@@ -5436,7 +5449,7 @@ __attribute__((unused))
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
 静 整 tern(空) { 整 n = lor(); 若 (tt[tk] == QU) { tk++; 整 t = lor(); 若 (tt[tk] == CL) tk++; 整 f = tern(); 整 a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); 返 a; } 返 n; }
-静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
+静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); nullable_remove((字*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
     若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         若 (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
@@ -6759,6 +6772,7 @@ __attribute__((unused))
     遍 (整 gi = guard_cnt - 1; gi >= 0; gi--) { 若 (guard_scope[gi] == borrow_depth) { 整 call = Nd(4); { 整 arg = Nd(1); memcpy((字*)(nn + arg), guard_vars[gi], 64); Nc(call, arg); } { 整 fn = Nd(1); memcpy((字*)(nn + fn), guard_fns[gi], 64); Nc(call, fn); } Nc(b, call); b_cnt++; guard_vars[gi][0] = 0; } } { 整 w = 0; 遍 (整 r = 0; r < guard_cnt; r++) { 若 (guard_vars[r][0] != 0) { 若 (w != r) { strcpy(guard_vars[w], guard_vars[r]); strcpy(guard_fns[w], guard_fns[r]); guard_scope[w] = guard_scope[r]; } w++; } } guard_cnt = w; } /* 接入 2026-08-28 机制层 #8 RAII: 块退出 → 自动调用本块守卫析构 (LIFO 逆序, 复用 borrow_depth 判断作用域, 压缩移除) */
     borrow_scope_exit(); /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内借用 (生命周期=词法作用域, 嵌套正确) */
     uninit_scope_exit(); /* 接入 2026-08-28 机制层 #78: 块退出 → 清除本块声明的未初始化变量 (生命周期=词法块) */
+    nullable_scope_exit(); /* 类型根治① (2026-08-28): 块退出 → 清除本块可空标记 (生命周期=词法块) */
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
     遍 (整 bvi = blk_vstart; bvi < vcnt; bvi++) 若 (vars[bvi].blk_end == 0) { vars[bvi].blk_start = blk_vstart; vars[bvi].blk_end = vcnt; } /* fix 2026-08-19: 本块直接声明的变量 blk 范围 = 本块 [start,end) (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
@@ -7170,7 +7184,7 @@ __attribute__((unused))
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-27: 甲言 Option 解包 (unwrap): 解包 p; → if (p) {} else { printf("解包空值\n"); exit(1); } — 空值终止 (Option.unwrap panic on None). fix 2026-08-27: ①原 if(p==0) Nd(2) T_QK 比较不生效 (同尝试深水区: 生成比较节点对裸变量 codegen 失效), 改 if(p) 非零即真 + else 终止; ②blk() unknown-typedef 检测把 解包 x; 误判为未知类型声明 (解包 后跟裸变量+; 命中 L5785) → L5785 排除 解包 */
         tk++; /* 解包 */
-        整 e_u = expr(); /* 解包表达式 */
+        整 e_u = expr(); 若 (e_u >= 0 && nt[e_u] == 1) nullable_remove((字*)(nn + e_u)); /* 2026-08-28 type-root-fix: stmt-level 解包 also clears nullable mark */ /* 解包表达式 */
         若 (tt[tk] == SK) tk++; /* ; */
         整 ifn_u = Nd(8); Nc(ifn_u, e_u); /* if (e_u) — 非零即真 (同尝试, 已验证模式) */
         整 tb_u = Nd(5); Nc(ifn_u, tb_u); /* 非空: 空块继续 */
@@ -11793,7 +11807,10 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         若 (!strcmp(tn[tk], "__attribute__")) { tk++; 若 (tt[tk] == OK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == OK) d++; 否 若 (tt[tk] == KK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } } /* __attribute__((...)) 后置跳过 — 注意 #define __attribute__(x) 空宏后 tt=SK 非 VR, 只能按 tn 匹配 (fix 2026-08-14) */
         整 fdef = Nd(4);
         整 fn_ok = 0, fdef_is_fnptr_ret = 0;
+        整 fn_name_tk = -1; /* 2026-08-28 type-root-fix: 函数名 token 位置 — 参数表内 可空 区间判定用 (防误清函数体 可空) */
         若 (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */
+            fn_name_tk = tk;
+            若 (qcc_nullable_pending && qcc_nullable_pending_tok <= tk) qcc_nullable_pending = 0; /* 2026-08-28 type-root-fix: 可空 在函数名前=修饰返回类型 → 清 pending (函数声明/定义不产生可空变量, 防残留误标后续声明); 在函数名后=参数/体内声明 → 保留 */
             若 (!strcmp(tn[tk], "main")) user_fn_active = 1; /* 接入 2026-08-28 机制层 #78: 进入用户代码 — qcc_rt.c 运行时无 main, 其变量不查; main 后(含)的用户函数才查 */
             cur_fdef_line = tline[tk] - (rt_exp_lines ? rt_exp_lines : rt_line_skip); 若 (cur_fdef_line < 1) cur_fdef_line = 1; /* 2026-08-28 语义导航: 函数名 token 行号 (减 rt 偏移 = 用户源码行, 与 loc 对齐) */
             memcpy((字*)(nn + fdef), tn[tk], 64); tk++; tk++;
@@ -11937,6 +11954,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             若 (tt[tk] == SK) { fn_param_end(); parse_base = 0; tk++; 续; } /* fix 2026-08-12: 无括号声明误判为 fn 也重置 parse_base (同原型泄漏); no-paren decl misparsed as fn: static unsigned char *code; */
             tk++; /* skip ) */
+            { 整 paren_close = tk - 1; 若 (qcc_nullable_pending && qcc_nullable_pending_tok > fn_name_tk && qcc_nullable_pending_tok < paren_close) qcc_nullable_pending = 0; } /* 2026-08-28 type-root-fix: 参数表内 可空 (参数声明) → 清 pending (var_param 不登记可空, 防残留误标函数体首变量); 函数体 可空 (在 { 后, tok > paren_close) 保留 */
             fn_param_end(); /* 接入 2026-08-28 真具名参数: 参数收集完成复位 (防函数体 var_param 误收集) */
             若 (tt[tk] == VR && !strcmp(tn[tk], "__attribute__")) { tk++; 若 (tt[tk] == OK) { 整 d = 1; tk++; 循环 (tk < TS && d > 0) { 若 (tt[tk] == OK) d++; 否 若 (tt[tk] == KK) { d--; 若 (d <= 0) { tk++; 断; } } tk++; } } } /* 声明尾真实 __attribute__((format(...))) 跳过 (空宏后 __attribute__ 是 tt=SK 的「分号」, 不能跳 — 否则原型判定丢失) */
             若 (fdef_is_fnptr_ret) { /* fnptr-return: skip ) closing (*pick) and the trailing (int) before the body */
@@ -18636,6 +18654,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     vs_end = 0; /* fix 2026-08-28 可重入根因: vs_n() = vs_end?vs_end:vcnt — vs_end 残留(上次 codegen 的 fve[gfn]) → 第二次 parse 期 var_offset REUSE 搜索越界 → 复用 vars[169] 超出 vcnt → codegen DCL-MISS。parse 期必须 vs_end=0 (vs_n()=vcnt) */
     borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
+    nullable_cnt = 0; nullable_depth = 0; qcc_nullable_pending = 0; qcc_nullable_pending_tok = -1; /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
     extern_n = 2; cl_cnt = 0; rng_seq = 0; er_seq = 0; /* fix 2026-08-28 可重入漏洞: 临时名/extern 槽计数器跨编译累积 — extern 负偏移地址泄漏 + 临时名后缀漂移 → 进程内第 2 次编译产物 ≠ 第 1 次 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
     rec_pass = 0; rec_prev_cp = 0; /* 黑匣子: pass 帧序每编译重置 (跨编译累积 → 分歧定位错帧) */
     fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
