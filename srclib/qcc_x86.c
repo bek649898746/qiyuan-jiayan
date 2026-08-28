@@ -6690,6 +6690,22 @@ static int blk(void) {
     return b_root;
 }
 
+/* 接入 2026-08-28 可吞清单 P0-7: 契约审判 — 前置/后置 子句表 (fn 名键) + 检查语句构建器
+   前置=入口检查 (解析期脱糖成 if(!pre){printf;exit;} 包函数体首), 后置=出口检查 (代码生成期 epilogue 注入, 返回 占位=返回值) */
+static struct { char fn[64]; int pre_stmt; int post_root; int post_str; int has_post; } contracts[256]; static int contract_cnt; static int cur_contract = -1;
+static int contract_find(const char *fn) { for (int i = 0; i < contract_cnt; i++) if (!strcmp(contracts[i].fn, fn)) return i; return -1; }
+static int build_contract_check(int cond_root, int msg_str) { /* if(!cond){ printf(msg); exit(1); } — 复用 保证/断言 eq0 模式 */
+    int eq0 = Nd(2); nv[eq0] = T_QK; Nc(eq0, cond_root); { int z = Nd(0); nv[z] = 0; Nc(eq0, z); }
+    int ifn = Nd(8); Nc(ifn, eq0);
+    int body = Nd(5);
+    int call_p = Nd(4); { int sn = Nd(0); nv[sn] = msg_str; nt[sn] = STR; Nc(call_p, sn); } { int en = Nd(1); memcpy((char*)(nn + en), "printf", 7); Nc(call_p, en); }
+    Nc(body, call_p);
+    int call_x = Nd(4); { int one = Nd(0); nv[one] = 1; Nc(call_x, one); } { int en = Nd(1); memcpy((char*)(nn + en), "exit", 5); Nc(call_x, en); }
+    Nc(body, call_x);
+    Nc(ifn, body);
+    return ifn;
+}
+
 static int stmt(void) {
     if (tt[tk] == VR && (!strcmp(tn[tk], "__asm__") || !strcmp(tn[tk], "__asm"))) { /* 内联汇编语句 (bswap.h git_bswap32 的 else 分支): 跳过 (fix 2026-08-14: stmt() 无 __asm__ 处理 → 当函数调用 → undefined symbol) */
         tk++;
@@ -11803,9 +11819,40 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 }
             }
             if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
+            /* 接入 2026-08-28 可吞清单 P0-7: 契约子句 前置(...) 后置(...) — 前置=入口检查(解析期脱糖), 后置=出口检查(代码生成期 epilogue 注入); 后置内 返回 = 返回值占位 (重命名成隐藏局部 __qcc_ret) */
+            cur_contract = -1;
+            while (tt[tk] == VR && (!strcmp(tn[tk], "前置") || !strcmp(tn[tk], "后置"))) {
+                int is_pre = !strcmp(tn[tk], "前置");
+                tk++;
+                if (cur_contract < 0) { if (contract_cnt >= 256) budget_fail("契约表 contracts", 256); cur_contract = contract_cnt++; strcpy(contracts[cur_contract].fn, (char*)(nn + fdef)); contracts[cur_contract].pre_stmt = -1; contracts[cur_contract].post_root = -1; contracts[cur_contract].post_str = -1; contracts[cur_contract].has_post = 0; }
+                if (tt[tk] == OK) tk++; /* ( */
+                if (!is_pre && !contracts[cur_contract].has_post) var_offset("__qcc_ret"); /* 后置: 注册返回值隐藏局部槽 (先于表达式解析, 供 var_lookup) */
+                { int dp = 0; int tk_s = tk; while (tk < TS) { if (tt[tk] == OK) dp++; else if (tt[tk] == KK) { if (dp == 0) break; dp--; } tk++; } for (int q = tk_s; q < tk; q++) if (!strcmp(tn[q], "return")) { tt[q] = VR; strcpy(tn[q], "__qcc_ret"); } tk = tk_s; } /* 扫描本子句区间: 返回 → __qcc_ret (返回 词法层映射成 return 关键字 RK, 非 VR — 需连 token 类型一起转, 表达式解析前重命名走正常变量通道) */
+                int ce = expr(); /* 契约条件表达式 */
+                if (tt[tk] == KK) tk++; /* ) */
+                if (is_pre) {
+                    char msgb[96]; sprintf(msgb, "[契约] 前置违反: %s\n", (char*)(nn + fdef));
+                    if (str_cnt >= 65536) budget_fail("字符串表 str_tbl", 65536);
+                    if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+                    strcpy(str_tbl[str_cnt], msgb);
+                    contracts[cur_contract].pre_stmt = build_contract_check(ce, str_cnt);
+                    str_cnt++;
+                } else {
+                    char msgb2[96]; sprintf(msgb2, "[契约] 后置违反: %s\n", (char*)(nn + fdef));
+                    if (str_cnt >= 65536) budget_fail("字符串表 str_tbl", 65536);
+                    if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+                    strcpy(str_tbl[str_cnt], msgb2);
+                    contracts[cur_contract].post_str = str_cnt;
+                    contracts[cur_contract].post_root = ce;
+                    contracts[cur_contract].has_post = 1;
+                    str_cnt++;
+                }
+            }
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             cur_fn_defer_idx = fvn; defer_cnt[fvn] = 0; /* 接入 2026-08-27 defer: 当前函数 defer 收集目标 */
-            Nc(fdef, blk()); /* 函数体 (n0) */
+            int bodyx = blk();
+            if (cur_contract >= 0 && contracts[cur_contract].pre_stmt >= 0) { int wrapx = Nd(5); Nc(wrapx, contracts[cur_contract].pre_stmt); Nc(wrapx, bodyx); bodyx = wrapx; } /* 契约前置 (2026-08-28 可吞清单 P0-7): 入口检查包函数体首 */
+            Nc(fdef, bodyx); /* 函数体 (n0) */
             if (defer_cnt[fvn] > 0) { /* 接入 2026-08-27 defer: LIFO 逆序打包 defer 语句 → n1[fdef] — return/函数尾跳 epi_label 处先执行 */
                 int cb = Nd(5);
                 for (int di = defer_cnt[fvn] - 1; di >= 0; di--) Nc(cb, defer_stmts[fvn][di]);
@@ -17532,6 +17579,7 @@ void gen_code(void) {
             asm_emit("    取指64 r0, [rsp]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8B); modrm(0, 0, 4); b(0x24); /* mov rax, [rsp] */
             add_rsp_imm(16);
         }
+        { int cidx = contract_find(fname); if (cidx >= 0 && contracts[cidx].has_post) { int ro2 = var_lookup("__qcc_ret"); if (ro2 >= 0) mov_mbrp_reg(ro2 - cur_frame_sz, 0); cg(build_contract_check(contracts[cidx].post_root, contracts[cidx].post_str)); if (ro2 >= 0) mov_reg_mbrp(0, ro2 - cur_frame_sz); } } /* 契约后置 (2026-08-28 可吞清单 P0-7): epilogue 处 __qcc_ret=返回值; if(!后置){printf;exit;} — 每个 return 都跳 epi_label, 在此统一检查; 检查后恢复 rax=返回值 (cg 求值会踩 rax) */
         gfn++; /* next function's var range */
 
         if (is_isr) {
