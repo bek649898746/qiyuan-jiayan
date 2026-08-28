@@ -727,5 +727,40 @@ int __qcc_pool_ret(int id, void *blk) {
     __qcc_pool_top[id] = __qcc_pool_top[id] + 1;
     return 0;
 }
+
+/* #270 动态数组 (Vec): 全局表 + 倍增扩容 — 追加/取/长度 O(1) 摊还 (同 pool 全局表, 避开 struct 指针字段残留 bug) */
+static int *__qcc_vec_data[64];
+static int __qcc_vec_len[64];
+static int __qcc_vec_cap[64];
+static int __qcc_vec_cnt = 0;
+int __qcc_vec_init(int cap) {
+    int i = __qcc_vec_cnt; __qcc_vec_cnt = __qcc_vec_cnt + 1;
+    if (cap < 4) cap = 4;
+    __qcc_vec_data[i] = (int *)malloc(cap * 4);
+    if (!__qcc_vec_data[i]) return -1;
+    __qcc_vec_len[i] = 0; __qcc_vec_cap[i] = cap;
+    return i;
+}
+int __qcc_vec_push(int id, int x) {
+    if (id < 0 || id >= 64) return 1;
+    if (__qcc_vec_len[id] >= __qcc_vec_cap[id]) { /* 倍增扩容 */
+        int nc = __qcc_vec_cap[id] * 2;
+        int *nd = (int *)malloc(nc * 4);
+        for (int i = 0; i < __qcc_vec_len[id]; i++) nd[i] = __qcc_vec_data[id][i];
+        __qcc_vec_data[id] = nd; __qcc_vec_cap[id] = nc;
+    }
+    __qcc_vec_data[id][__qcc_vec_len[id]] = x;
+    __qcc_vec_len[id] = __qcc_vec_len[id] + 1;
+    return 0;
+}
+int __qcc_vec_get(int id, int i) {
+    if (id < 0 || id >= 64) return 0;
+    if (i < 0 || i >= __qcc_vec_len[id]) return 0;
+    return __qcc_vec_data[id][i];
+}
+int __qcc_vec_lenof(int id) {
+    if (id < 0 || id >= 64) return 0;
+    return __qcc_vec_len[id];
+}
 #endif
 
