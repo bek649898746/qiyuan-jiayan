@@ -7121,7 +7121,7 @@ static int stmt(void) {
         { int li = lbl_find((char*)(nn + n)); if (li < 0) li = lbl_reg((char*)(nn + n)); nv[n] = li + 1; } /* fix 2026-08-18: goto 在解析时固化 label id (lbl_n 按函数重置后 codegen 的 lbl_find 查不到前函数标签 — SET_LABEL 已存 id, goto 必须同步) */
         return n;
     }
-    if (tt[tk] == VR && tt[tk + 1] == CL) { /* label: — 2026-08-28 P1 #156 循环标签: 标签: while/for/do → 包装块 { 标签:; 循环; 标签_brk:; } (break 标签→goto _brk, continue 标签→goto 标签循环头) */
+    if (tt[tk] == VR && tt[tk + 1] == CL) { /* label: — 2026-08-28 P1 #156 循环标签: 标签: while/for/do → 包装块 { 标签:; 循环; 标签_brk:; } (break 标签→goto _brk, continue 标签→goto 标签循环头) */ /* 2026-08-28 P2 #164 带值 break: 包装块声明 __brk_标签 退出变量, break 标签, 值; 写入 */
         char ln[64]; strcpy(ln, tn[tk]); tk += 2; /* name : */
         int li = lbl_reg(ln);
         if (tt[tk] == WK || (tt[tk] == VK && !strcmp(tn[tk], "for")) || tt[tk] == DW) { /* 标签后跟循环 */
@@ -7129,6 +7129,9 @@ static int stmt(void) {
             int bi = lbl_reg(brk); /* 注册 break 目标标签 */
             int n = Nd(5);
             { int ln2 = Nd(20); nv[ln2] = li + 1; Nc(n, ln2); } /* 标签: (循环头 = continue 目标) */
+            char brk_v[80]; sprintf(brk_v, "__brk_%s", ln);
+            if (var_lookup(brk_v) < 0) var_offset(brk_v); /* #164: __brk_标签 退出变量 */
+            { int d = Nd(7); memcpy((char*)(nn + d), brk_v, 32); int z = Nd(0); nv[z] = 0; Nc(d, z); Nc(n, d); } /* int __brk_标签 = 0; */
             int loop = stmt(); /* 循环语句 */
             Nc(n, loop);
             { int lb = Nd(20); nv[lb] = bi + 1; Nc(n, lb); } /* 标签_brk: (break 目标 = 循环出口) */
@@ -7367,8 +7370,21 @@ static int stmt(void) {
         return sw_wh;
     }
     if (tt[tk] == FK) return blk();
-    if (tt[tk] == BR) { tk++; if (tt[tk] == VR) { /* 2026-08-28 P1 #156 循环标签: break 标签; → goto 标签_brk (跳到命名循环出口) */
-            char brk[80]; sprintf(brk, "%s_brk", tn[tk]); tk++;
+    if (tt[tk] == BR) { tk++; if (tt[tk] == VR) { /* 2026-08-28 P1 #156 循环标签: break 标签; → goto 标签_brk (跳到命名循环出口) */ /* 2026-08-28 P2 #164 带值 break: break 标签, 值; → { __brk_标签 = 值; goto 标签_brk; } */
+            char brk[80]; sprintf(brk, "%s_brk", tn[tk]);
+            char brk_v[80]; sprintf(brk_v, "__brk_%s", tn[tk]);
+            tk++;
+            if (tt[tk] == CK) { /* 带值 */
+                tk++; int bv = expr();
+                if (tt[tk] == SK) tk++;
+                int n = Nd(5);
+                { int v_r = Nd(1); memcpy((char*)(nn + v_r), brk_v, 32);
+                  int asg = Nd(10); Nc(asg, v_r); Nc(asg, bv); Nc(n, asg); } /* __brk_标签 = 值; */
+                { int g = Nd(25); memcpy((char*)(nn + g), brk, 64);
+                  { int li = lbl_find(brk); if (li < 0) li = lbl_reg(brk); nv[g] = li + 1; }
+                  Nc(n, g); } /* goto 标签_brk; */
+                return n;
+            }
             if (tt[tk] == SK) tk++;
             int n = Nd(25); memcpy((char*)(nn + n), brk, 64);
             { int li = lbl_find(brk); if (li < 0) li = lbl_reg(brk); nv[n] = li + 1; }
