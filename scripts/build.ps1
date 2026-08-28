@@ -53,7 +53,7 @@ Write-Host "  v5: $h5"
 #            Ë«Ö¸ï¿½ï¿½ï¿½Ö¶Î»ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ frow/mem_addr deref fsz/static struct ï¿½Ö¶Î¸ï¿½Öµ/ï¿½ï¿½ï¿½ï¿½ struct typedef ï¿½Ö¶ï¿½;
 #            ï¿½ï¿½ï¿½ï¿½ QCC_DBG_VA varargs ï¿½ï¿½ï¿½Ô²ï¿½×® ï¿½ï¿½ -Wall -Werror ï¿½ã¾¯ï¿½ï¿½):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
-$expected = '97b36cfb'  # µÚ104Õ¾ ÄÚ´æÐò (#44) ÐÂ²»¶¯µã
+$expected = 'ee66b70d'  # µÚ105Õ¾ Ã÷È·³õÊ¼»¯ (#78) ÐÂ²»¶¯µã
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] ï¿½Ô¾ï¿½ 1-cycle ï¿½ï¿½ï¿?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

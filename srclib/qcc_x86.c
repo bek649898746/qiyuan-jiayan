@@ -2397,6 +2397,10 @@ static int var_align(void) {
     }
     return pa;
 }
+static char uninit_names[256][64]; static int uninit_scope[256]; static int uninit_cnt = 0; static int uninit_depth = 0; static char lv_uninit[8][64]; static int lv_uninit_n = 0; static int user_fn_active = 0; /* 接入 2026-08-28 机制层 #78 明确初始化: 未初始化局部变量表 — var_offset 登记(仅用户 main 后 + 跳过 _ 前缀编译器内部变量), asgn 赋值移除, L5014 读取 [ERR], 块退出清除; user_fn_active=遇到用户 main 后置 1 (qcc_rt.c 运行时拼接在源码前, 无 main, 其变量不查避免误报) */
+static int uninit_has(const char *v) { for (int i = 0; i < uninit_cnt; i++) if (!strcmp(uninit_names[i], v)) return 1; return 0; }
+static void uninit_remove(const char *v) { for (int i = 0; i < uninit_cnt; i++) if (!strcmp(uninit_names[i], v)) { uninit_names[i][0] = 0; return; } }
+static void uninit_scope_exit(void) { uninit_depth--; if (uninit_depth < 0) uninit_depth = 0; for (int i = 0; i < uninit_cnt; ) { if (uninit_scope[i] > uninit_depth) { for (int j = i; j < uninit_cnt - 1; j++) { strcpy(uninit_names[j], uninit_names[j + 1]); uninit_scope[j] = uninit_scope[j + 1]; } uninit_cnt--; } else i++; } } /* 块退出: 清除本块声明的未初始化变量 (生命周期=词法块) */
 static int var_offset(const char *n) {
     int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
     int _psz = (_pa > 4) ? 8 : 4; /* _Alignas(>=8) int → 8B 槽 → rsp_off ≡ 8 mod 16 → 地址 ≡ 0 mod 16 */
@@ -2417,6 +2421,7 @@ static int var_offset(const char *n) {
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
     vars[vcnt].blk_end = -1; /* fix 2026-08-19: var_offset 临时变量 (switch _sw 等) 函数级可见 — 原 blk_end=0 默认 → codegen 作用域判定 (0>=cg_blk_end) 假 → cg(_sw) 静默丢弃 → if(_sw==1) 只生成常量 1 → switch 全走 default (t_sw f(1)=0) */
+    if (user_fn_active && n[0] != '_' && uninit_cnt < 256) { strcpy(uninit_names[uninit_cnt], n); uninit_scope[uninit_cnt] = uninit_depth; uninit_cnt++; } /* 接入 2026-08-28 机制层 #78 明确初始化: 用户代码(main 后)局部变量声明登记 (跳过 _ 前缀编译器内部变量/qcc_rt 运行时); 读取未初始化 → L5014 [ERR] */
     return vars[vcnt++].rsp_off;
 }
 static int var_offset_ptr(const char *n, int pesz) {
@@ -5020,6 +5025,7 @@ static int prim(void) {
         int ev = e_lookup(tn[tk]);
         if (ev != 0x80000000) { tk++; int n = Nd(0); nv[n] = ev; return n; } /* fix 2026-08-09: != 哨兵而非 >= 0 (负值常量 RED=-2) */
         if (is_moved(tn[tk])) { if (asgn_lhs_parsing) { if (lv_moved_n < 8) { strcpy(lv_moved[lv_moved_n++], tn[tk]); } } else if (!move_dst_parsing) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)\n", tn[tk]); exit(1); } } /* 接入 2026-08-28 机制层 #5: 移动后源彻底失效 — 右值读即 [ERR]; 左值解析期(asgn_lhs_parsing)记入缓冲由 asgn 事后判定 (赋值=重新初始化放行/非赋值=右值读报错); 移入目标(dst)是写跳过 */
+        if (uninit_has(tn[tk])) { if (asgn_lhs_parsing) { if (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } else if (!move_dst_parsing) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)\n", tn[tk]); exit(1); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
         if (borrow_mode_of(tn[tk]) == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)\n", tn[tk]); exit(1); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
         int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 64); tk++;
                 if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
@@ -5298,14 +5304,15 @@ static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
-static int asgn(void) { lv_moved_n = 0; asgn_lhs_parsing = 1; int n = tern(); asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); int bm = borrow_mode_of(vname); if (bm >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)\n", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); exit(1); } if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1 && is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); /* 接入 2026-08-28 机制层 #5: 成员/数组左值写 (p1.x = 7) 同样恢复基础变量 moved (重新初始化) */ } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
+static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); int bm = borrow_mode_of(vname); if (bm >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)\n", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); exit(1); } if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
     if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
+        if (lv_uninit_n > 0) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)\n", lv_uninit[0]); exit(1); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         int o = tt[tk++];
         int op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
         int a = Nd(10); int bin = Nd(2); nv[bin] = op;
-        Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b �?a = a op b */
+        Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         return a;
-    } if (lv_moved_n > 0) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)\n", lv_moved[0]); exit(1); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错 */ return n; }
+    } if (lv_moved_n > 0) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)\n", lv_moved[0]); exit(1); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错 */ if (lv_uninit_n > 0) { fprintf(stderr, "[ERR] 明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)\n", lv_uninit[0]); exit(1); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错 */ return n; }
 static int pipe_chain(void) { int n = asgn(); while (tt[tk] == PIPE) { tk++; int f = asgn(); int call = Nd(4); Nc(call, n); Nc(call, f); n = call; } return n; } /* 接入 2026-08-27 管道操作符: a |> f = f(a) — call 节点 callee 是最后 Nc (case 4 L11080 反向找), 参数先挂 (fix 2026-08-27: 原 f 先挂 n0 → callee 变 a 字面量 → 垃圾函数名崩) */
 static int expr(void) { return pipe_chain(); }
 
@@ -5526,6 +5533,7 @@ static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数�
 static int blk(void) {
     int b = Nd(5); tk++;
     borrow_depth++; /* 接入 2026-08-28 机制层 #4: 生命周期=词法块作用域 — 进入块深度+1, 块内借用记 scope, 块退出自动放还 */
+    uninit_depth++; /* 接入 2026-08-28 机制层 #78: 未初始化变量表块深度 — 块退出清除本块声明 */
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
     int blk_vstart = vcnt; /* fix 2026-08-19: 本块直接声明的变量起点 — 结束时给未标记 blk_start/blk_end 的变量 (本块直接声明) 打上本块范围, 嵌套块的变量已由嵌套 blk() 标记, 不会被覆盖 */
     blk_vs[b_root] = blk_vstart; /* codegen 作用域判定: 本块 var 下界 */
@@ -5652,6 +5660,7 @@ static int blk(void) {
                     }
                     if (tt[tk] == AK) { /* = expr / = { ... } 初始化器 */
                         tk++;
+                        uninit_remove(vn); /* 接入 2026-08-28 机制层 #78: 声明带初始化 = 已初始化 */
                         if (is_static && ginit_n < 4096) {
                             /* 函数内 static struct 变量/数组: 初始化在 main 入口跑一次 (ginit, C 语义),
                                镜像普通变量 static 路径 (fix 2026-08-18: 原挂运行时语句 → .data 槽全 0) */
@@ -6001,7 +6010,7 @@ static int blk(void) {
                                 else var_struct(vn2, si);
                             }
                             memcpy((char*)(nn + d2), vn2, 32);
-                            if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                            if (tt[tk] == AK) { tk++; uninit_remove(vn2); Nc(d2, expr()); } /* #78: 声明带初始化 = 已初始化 */
                             Nc(b, d2); b_cnt++;
                         }
                     }
@@ -6084,7 +6093,7 @@ static int blk(void) {
                             else var_struct(vn2, si);
                         }
                         memcpy((char*)(nn + d2), vn2, 32);
-                        if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                        if (tt[tk] == AK) { tk++; uninit_remove(vn2); Nc(d2, expr()); } /* #78: 声明带初始化 = 已初始化 */
                         Nc(b, d2); b_cnt++;
                     }
                 }
@@ -6266,7 +6275,7 @@ static int blk(void) {
                         tk++;
                     }
                 }
-                if (tt[tk] == AK) { tk++; Nc(d, expr()); } /* init: int (*g)(int) = fp; */
+                if (tt[tk] == AK) { tk++; uninit_remove((char*)(nn + d)); Nc(d, expr()); } /* init: int (*g)(int) = fp; (#78: 声明带初始化) */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
                 Nc(b, d); b_cnt++;
@@ -6282,7 +6291,7 @@ static int blk(void) {
                 if (is_static) { var_static_arr(vnp, 0, eszp, cntp); vars[vcnt - 1].p_esz = eszp; }
                 else { var_array(vnp, cntp, eszp); vars[vcnt - 1].p_esz = eszp; }
                 memcpy((char*)(nn + d), vnp, 32);
-                if (tt[tk] == AK) { tk++; Nc(d, expr()); }
+                if (tt[tk] == AK) { tk++; uninit_remove(vnp); Nc(d, expr()); } /* #78: 括号数组声明带初始化 */
                 while (tk < TS && tt[tk] != SK && tt[tk] != EK) tk++;
                 if (tt[tk] == SK) tk++;
                 Nc(b, d); b_cnt++;
@@ -6386,6 +6395,7 @@ static int blk(void) {
             
         } if (tt[tk] == AK) {
             tk++;
+            uninit_remove((char*)(nn + d)); /* 接入 2026-08-28 机制层 #78: 声明带初始化 = 已初始化 (普通/指针/struct 公共分支, 变量名在 d 节点) */
             if (tt[tk] == FK && acnt > 0 && !is_static) {
                 /* local ARRAY brace init: int data[5]={1,2,3,4,5}; / int m[2][3]={{...}}; (multi-dim fix 2026-08-05: was adims<=1 → 2D got no init) */
                 Nc(b, d); b_cnt++; /* declare first */
@@ -6403,7 +6413,7 @@ static int blk(void) {
                         else if (is_double) var_double(vn2b);
                         else var_offset(vn2b);
                         memcpy((char*)(nn + d2b), vn2b, 32);
-                        if (tt[tk] == AK) { tk++; Nc(d2b, expr()); }
+                        if (tt[tk] == AK) { tk++; uninit_remove(vn2b); Nc(d2b, expr()); } /* #78: 逗号声明带初始化 */
                         Nc(b, d2b); b_cnt++;
                     }
                 }
@@ -6463,12 +6473,14 @@ static int blk(void) {
                         if (is_double) vars[vcnt - 1].is_dbl = 1;
                         if (is_ll) vars[vcnt - 1].is_ll = 1; /* fix 2026-08-06 */
                     } else {
-                        if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                        int comma_had_init = 0;
+                        if (tt[tk] == AK) { tk++; comma_had_init = 1; Nc(d2, expr()); } /* 逗号声明带初始化 (int a=0, b=1u) */
                         if (is_ptr2) { var_offset_ptr(vn2, is_char ? 1 : 4); if (ptr2_depth >= 2) vars[vcnt - 1].arr_esz = 8; } /* fix 2026-08-18: T** 逗号变量 8B 元素 */
                         else if (is_ll) { var_ll(vn2); if (is_uns) vars[vcnt - 1].is_uns = 1; } /* fix 2026-08-06: 逗号声明 ll 变量 (原 var_offset → 存32) */
                         else if (is_double) { var_double(vn2); }
                         else if (ltd_si >= 0) { var_struct(vn2, ltd_si); } /* typedef struct comma var (fix: was missing → p2 as int) */
                         else { var_offset(vn2); if (is_char) vars[vcnt - 1].is_char = 1; if (is_short) vars[vcnt - 1].is_short = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; }
+                        if (comma_had_init) uninit_remove(vn2); /* 接入 2026-08-28 机制层 #78: 带初始化必须在 var_offset 登记后移除 (顺序! 先登记后移除) */
                     }
                     memcpy((char*)(nn + d2), vn2, 32);
                     Nc(b, d2); b_cnt++;
@@ -6491,6 +6503,7 @@ static int blk(void) {
                     int struct_brace_blk = -1;
                     if (tt[tk] == AK) { /* = init (fix 2026-08-15: struct strbuf merge_names = STRBUF_INIT, *autogen = NULL; 原只处理 ; → autogen 未注册) */
                         tk++;
+                        uninit_remove(vns); /* #78: struct 变量声明带初始化 */
                         if (tt[tk] == FK && !is_ptr) { /* brace init { .buf = ... } — 仅 struct 值变量 (fix 2026-08-18: 指针 = { 走 expr) */
                             tk++;
                             int idn = Nd(1); memcpy((char*)(nn + idn), vns, 32);
@@ -6609,6 +6622,7 @@ static int blk(void) {
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
     for (int gi = guard_cnt - 1; gi >= 0; gi--) { if (guard_scope[gi] == borrow_depth) { int call = Nd(4); { int arg = Nd(1); memcpy((char*)(nn + arg), guard_vars[gi], 64); Nc(call, arg); } { int fn = Nd(1); memcpy((char*)(nn + fn), guard_fns[gi], 64); Nc(call, fn); } Nc(b, call); b_cnt++; guard_vars[gi][0] = 0; } } { int w = 0; for (int r = 0; r < guard_cnt; r++) { if (guard_vars[r][0] != 0) { if (w != r) { strcpy(guard_vars[w], guard_vars[r]); strcpy(guard_fns[w], guard_fns[r]); guard_scope[w] = guard_scope[r]; } w++; } } guard_cnt = w; } /* 接入 2026-08-28 机制层 #8 RAII: 块退出 → 自动调用本块守卫析构 (LIFO 逆序, 复用 borrow_depth 判断作用域, 压缩移除) */
     borrow_scope_exit(); /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内借用 (生命周期=词法作用域, 嵌套正确) */
+    uninit_scope_exit(); /* 接入 2026-08-28 机制层 #78: 块退出 → 清除本块声明的未初始化变量 (生命周期=词法块) */
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
     for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) { vars[bvi].blk_start = blk_vstart; vars[bvi].blk_end = vcnt; } /* fix 2026-08-19: 本块直接声明的变量 blk 范围 = 本块 [start,end) (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
@@ -6728,7 +6742,7 @@ static int stmt(void) {
                     char vn[64]; strcpy(vn, tn[tk]); tk++;
                     if (is_ptr) var_offset_ptr(vn, is_char ? 1 : 4); else var_offset(vn);
                     memcpy((char*)(nn + d), vn, 32);
-                    if (tt[tk] == AK) { tk++; Nc(d, expr()); }
+                    if (tt[tk] == AK) { tk++; uninit_remove(vn); Nc(d, expr()); } /* #78: for 初始化声明带初始化 (for(int bi=1;...)) — 在 var_offset 后移除 */
                 }
                 Nc(blk_node, d);
                 while (tt[tk] == CK) { /* for(int i = 0, j = 0; ...) — 逗号声明列表 (fix 2026-08-07: 原只声明第一个, j 变未定义标识符 → && 条件被污染) */
@@ -6740,7 +6754,7 @@ static int stmt(void) {
                         if (is_ptr2) var_offset_ptr(vn2, is_char ? 1 : 4);
                         else var_offset(vn2);
                         memcpy((char*)(nn + d2), vn2, 32);
-                        if (tt[tk] == AK) { tk++; Nc(d2, expr()); }
+                        if (tt[tk] == AK) { tk++; uninit_remove(vn2); Nc(d2, expr()); } /* #78: for 逗号声明带初始化 */
                         Nc(blk_node, d2);
                     }
                 }
@@ -11534,6 +11548,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         int fdef = Nd(4);
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
         if (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */
+            if (!strcmp(tn[tk], "main")) user_fn_active = 1; /* 接入 2026-08-28 机制层 #78: 进入用户代码 — qcc_rt.c 运行时无 main, 其变量不查; main 后(含)的用户函数才查 */
             memcpy((char*)(nn + fdef), tn[tk], 64); tk++; tk++;
             fn_ok = 1;
         } else if (tt[tk] == OK && tt[tk + 1] == DK) { /* fnptr: int (*pick(int v))(int) or int (*gfp)(int); */
