@@ -538,5 +538,45 @@ int __qcc_unwrap(int v) {
     if (!v) { fprintf(stderr, "[ERR] 空值解包 (可空类型被解包为 无, v3.0 #75)\n"); exit(1); }
     return v;
 }
+
+/* 接入 2026-08-28 type-root-15 #41 协程完整: stackful 协程 = Windows Fiber (独立栈, 挂起/恢复)
+   语法: 协程(c, fn, ctx) → coro_init(&c, fn, ctx) — 分配索引, CreateFiber(__coro_wrap, i)
+         步进(c)      → coro_step(&c)   — done?0 : 首次 ConvertThreadToFiber + SwitchToFiber, 返回 !done
+         让出()       → __coro_yield()  — SwitchToFiber(主纤维) (挂起协程, 回主流程)
+   CreateFiber/SwitchToFiber/ConvertThreadToFiber 由 qcc 内建发射 kernel32 IAT 调用 */
+static void *__coro_fiber[64];
+static void *__coro_main_fiber = 0;
+static int __coro_main_ok = 0;
+static void *__coro_fn[64];
+static void *__coro_arg[64];
+static int __coro_done[64];
+static int __coro_cnt = 0;
+
+static void __coro_wrap(void *param) { /* 纤维入口: 调用户 fn → 置完成 → 切回主流程 */
+    int i = (int)(long long)param;
+    ((int (*)(void *))__coro_fn[i])(__coro_arg[i]);
+    __coro_done[i] = 1;
+    SwitchToFiber(__coro_main_fiber);
+}
+
+int coro_init(int *c, void *fn, void *arg) { /* 分配协程索引 + 建纤维 (独立栈, 未启动) */
+    int i = __coro_cnt; __coro_cnt = __coro_cnt + 1;
+    *c = i;
+    __coro_fn[i] = fn; __coro_arg[i] = arg; __coro_done[i] = 0;
+    __coro_fiber[i] = CreateFiber(0, __coro_wrap, (void *)(long long)i);
+    return __coro_fiber[i] != 0;
+}
+
+int coro_step(int *c) { /* 步进协程: 完成返回 0; 否则切到纤维跑一段 (直到 让出 或 fn 返回), 返回 1 运行中 */
+    int i = *c;
+    if (__coro_done[i]) return 0;
+    if (!__coro_main_ok) { __coro_main_fiber = ConvertThreadToFiber(0); __coro_main_ok = 1; } /* 主线程首次切纤维前转成纤维 */
+    SwitchToFiber(__coro_fiber[i]);
+    return !__coro_done[i];
+}
+
+void __coro_yield(void) { /* 协程让出: 挂起当前纤维, 切回主流程 (主纤维) */
+    SwitchToFiber(__coro_main_fiber);
+}
 #endif
 
