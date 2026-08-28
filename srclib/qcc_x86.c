@@ -2485,7 +2485,7 @@ static char iface_names[32][64]; static char iface_methods[32][16][64]; static i
 static char impl_iface[64][64]; static char impl_type[64][64]; static char impl_methods[64][16][64]; static char impl_fns[64][16][64]; static int impl_mcnt[64]; static int impl_cnt = 0; /* type-root-8 #114 */
 static int iface_find(const char *n) { for (int i = 0; i < iface_cnt; i++) if (!strcmp(iface_names[i], n)) return i; return -1; }
 static int impl_find(const char *ifn, const char *tn) { for (int i = 0; i < impl_cnt; i++) if (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) return i; return -1; }
-static char closure_names[64][64]; static char closure_fn[64][64]; static char closure_caps[64][8][64]; static int closure_ccnt[64]; static int closure_cnt = 0; /* 2026-08-28 type-root-9 #211: closure table */
+static char closure_names[64][64]; static char closure_fn[64][64]; static char closure_caps[64][8][64]; static int closure_ccnt[64]; static int closure_cnt = 0; static int closure_mode[64]; /* 2026-08-28 type-root-9 #211: closure table */ /* 2026-08-28 P1 #32 闭包捕获模式: 0=by-ref(默认) 1=by-move(快照+源失效) 2=by-mut(传址) */
 static char const_names[128][64]; static int const_vals[128]; static int const_cnt = 0; /* 2026-08-28 type-root-10 #278: compile-time const table */
 static int const_find(const char *n) { for (int i = 0; i < const_cnt; i++) if (!strcmp(const_names[i], n)) return i; return -1; }
 static char cnst_node[ASZ]; /* type-root-10 #278: node is const-read */
@@ -4558,9 +4558,29 @@ static char borrowed_names[256][64]; static int borrowed_mode[256]; static int b
 static int borrow_mode_of(const char *v) { for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) return borrowed_mode[i]; return -1; } /* 0=只读借用 1=可变借用(独占) -1=未借用 (vt_lifetime 状态机 2/3 对齐) */
 static void borrow_release(const char *v) { if (!v) return; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; return; } } /* 放还: 解除借用 (mode 一并清, 借用幂等注册 → 一次全清) — 放还语句/写自动放还共用 */
 static char *borrow_write_target(int n) { int rv = n; int dep = 0; while (rv >= 0 && dep < 8 && (nt[rv] == 14 || (nt[rv] == 15 && nv[rv] == 0))) { rv = n0[rv]; dep++; } if (rv >= 0 && nt[rv] == 1) return (char*)(nn + rv); return NULL; } /* 借用自动化 (2026-08-28 完善): 写目标基础变量 — 下钻数组下标/点成员, 遇箭头/解引用停止 (写的是指向对象, 不是指针变量本身) */
-static void borrow_write_policy(int n) { char *vn = borrow_write_target(n); if (!vn) return; int bm = borrow_mode_of(vn); if (bm == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能写 (可变借用后原变量冻结, v3.0 #3)", vn); emit_error("A3001", g_errbuf); } else if (bm == 0) borrow_release(vn); } /* 借用自动化 (2026-08-28 完善): 写目标 → 只读借用(0)自动放还 (显式写=解除只读借用的明确意图, 免手动 放还); 可变借用(1)硬错误 (独占冻结是本意, 读检查 L5014 已拦, 此处兜底) */
+static void borrow_write_policy(int n) { /* 2026-08-28 P1 #33/#34 借用分裂: 先查字段/元素路径借用 (s.x / a[i]) — 路径级独占拦截+只读自动放还, 其余字段/元素不受影响; 无路径借用才回落整变量检查 */
+    if (n >= 0 && nt[n] == 15 && nv[n] == 0) { /* 点成员写目标: 构造路径 "s.x" */
+        char *fn2 = (char*)(nn + n); int base2 = n0[n]; int dep2 = 0;
+        while (base2 >= 0 && dep2 < 8 && (nt[base2] == 14 || (nt[base2] == 15 && nv[base2] == 0))) { base2 = n0[base2]; dep2++; }
+        if (base2 >= 0 && nt[base2] == 1) {
+            char pth[160]; sprintf(pth, "%s.%s", (char*)(nn + base2), fn2);
+            int pbm = borrow_mode_of(pth);
+            if (pbm == 1) { sprintf(g_errbuf, "借用检查: 字段 '%s' 被可变借用 (独占), 不能写 (v3.0 #33)", pth); emit_error("A3001", g_errbuf); return; }
+            if (pbm == 0) { borrow_release(pth); return; } /* 借用自动化: 写字段 = 解除该字段只读借用 */
+        }
+    } else if (n >= 0 && nt[n] == 14 && n1[n] >= 0 && nt[n1[n]] == 0) { /* 静态下标写目标: 路径 "a[i]" */
+        int base3 = n0[n]; int dep3 = 0;
+        while (base3 >= 0 && dep3 < 8 && (nt[base3] == 14 || (nt[base3] == 15 && nv[base3] == 0))) { base3 = n0[base3]; dep3++; }
+        if (base3 >= 0 && nt[base3] == 1) {
+            char pth[160]; sprintf(pth, "%s[%d]", (char*)(nn + base3), nv[n1[n]]);
+            int pbm = borrow_mode_of(pth);
+            if (pbm == 1) { sprintf(g_errbuf, "借用检查: 元素 '%s' 被可变借用 (独占), 不能写 (v3.0 #34)", pth); emit_error("A3001", g_errbuf); return; }
+            if (pbm == 0) { borrow_release(pth); return; }
+        }
+    }
+    char *vn = borrow_write_target(n); if (!vn) return; int bm = borrow_mode_of(vn); if (bm == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能写 (可变借用后原变量冻结, v3.0 #3)", vn); emit_error("A3001", g_errbuf); } else if (bm == 0) borrow_release(vn); } /* 借用自动化 (2026-08-28 完善): 写目标 → 只读借用(0)自动放还 (显式写=解除只读借用的明确意图, 免手动 放还); 可变借用(1)硬错误 (独占冻结是本意, 读检查 L5014 已拦, 此处兜底) */
 static void borrow_scope_exit(void) { borrow_depth--; if (borrow_depth < 0) borrow_depth = 0; for (int i = 0; i < borrowed_cnt; ) { if (borrowed_scope[i] > borrow_depth) { for (int j = i; j < borrowed_cnt - 1; j++) { strcpy(borrowed_names[j], borrowed_names[j + 1]); borrowed_mode[j] = borrowed_mode[j + 1]; borrowed_scope[j] = borrowed_scope[j + 1]; } borrowed_cnt--; } else i++; } } /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内新借用的变量 (生命周期=词法作用域, 数组压缩 O(n), 手动放还仍兼容) */
-static char moved_names[256][64]; static int moved_cnt = 0; static int move_dst_parsing = 0; static int asgn_lhs_parsing = 0; static char lv_moved[8][64]; static int lv_moved_n = 0; /* 接入 2026-08-28 机制层 #5 移动语义完整: moved 表(全局, L5014 读检查/L5296 写恢复需要); move_dst_parsing=移入目标解析(dst是写); asgn_lhs_parsing=赋值左值解析中; lv_moved=左值解析期遇到的 moved 变量缓冲 (事后判定: 赋值→重新初始化放行, 非赋值→右值读取报错) */
+static char moved_names[256][64]; static int moved_cnt = 0; static int move_dst_parsing = 0; static int asgn_lhs_parsing = 0; static char lv_moved[8][64]; static int lv_moved_n = 0; static char lv_path[8][64]; static int lv_path_borrow[8]; static int lv_path_n = 0; /* 接入 2026-08-28 机制层 #5 移动语义完整: moved 表(全局, L5014 读检查/L5296 写恢复需要); move_dst_parsing=移入目标解析(dst是写); asgn_lhs_parsing=赋值左值解析中; lv_moved=左值解析期遇到的 moved 变量缓冲 (事后判定: 赋值→重新初始化放行, 非赋值→右值读取报错) */ /* 2026-08-28 P1 #33/#34/#17 修复: lv_path=成员/元素路径缓冲 (asgn 对所有表达式设 lhs=1, 原成员读检查 !asgn_lhs_parsing 永不触发 = 死钩子; 改为缓冲+asgn 事后判定: 写目标→写策略处理, 读→A3001/A3101) */
 static char guard_vars[64][64]; static char guard_fns[64][64]; static int guard_scope[64]; static int guard_cnt = 0; static char guard_ready[64]; /* 接入 2026-08-28 机制层 #8 RAII 完整(析构): 守卫 x, 析构名; → 记录(变量,析构函数,块深度), 块退出自动调用 析构名(x) (作用域退出自动释放, 复用 borrow_depth 做作用域标记) */ /* 2026-08-28 P1 #15 Drop 标记: guard_ready=1 已初始化(析构执行) 0 未初始化(跳过析构 — 部分初始化/未初始化不析构) */
 static int guard_wrap_return(int r) { /* 接入 2026-08-28 机制层 #8 RAII 真修复: return 包块 { 活跃守卫析构(LIFO); 返回 } — 析构在 return 前可达 (原 blk() 块尾析构被 return 跳过 → 资源泄漏, feat_raii 只测落出路径没暴露); 每个 return 各有自己的析构副本, 运行时只走被选路径 → 无双发 */ /* 2026-08-28 P1 #24 所有权转移返回: return 局部 → 局部所有权转移给调用者, 返回变量的析构跳过 (返回路径不执行被返回变量的守卫 — 否则析构后调用者拿到的是已释放资源) */
     char sk1[64] = ""; char sk2[64] = "";
@@ -5290,8 +5310,15 @@ static int prim(void) {
                 tk++; /* skip [ */
                 int m = Nd(14); /* array access node */
                 Nc(m, n); /* n0 = variable */
-                Nc(m, expr()); /* n1 = index */
+                int idx_node = expr(); /* n1 = index */
+                Nc(m, idx_node);
                 if (tt[tk] == RB) tk++; /* skip ] */
+                if (!move_dst_parsing && nt[n] == 1 && idx_node >= 0 && nt[idx_node] == 0) { /* 2026-08-28 P1 #34 切片分裂: 静态下标路径 a[i] — 元素级借用检查 (动态下标记录为边界) */
+                    char _apth[160]; sprintf(_apth, "%s[%d]", (char*)(nn + n), nv[idx_node]);
+                    int _abm = borrow_mode_of(_apth);
+                    if (is_moved(_apth) || _abm == 1) { if (lv_path_n < 8) { strcpy(lv_path[lv_path_n], _apth); lv_path_borrow[lv_path_n] = (_abm == 1); lv_path_n++; } } /* 缓冲: asgn 事后判定 */
+                    if (_abm == 0) { for (int _bl = 0; _bl < borrowed_cnt; _bl++) if (!strcmp(borrowed_names[_bl], _apth)) { borrowed_lastuse[_bl] = tk; break; } } /* NLL: 元素路径借用 last-use */
+                }
                 if (nt[n] == 1 && (var_is_dbl((char*)(nn + n)) || var_pdbl((char*)(nn + n)))) ndbl[m] = 1; /* double array / double* elem */
                 else if (ndbl[n]) ndbl[m] = 1; /* nested arr[i][j]: outer index node inherits double flag */
                 n = m;
@@ -5301,9 +5328,11 @@ static int prim(void) {
                     int m = Nd(15); /* unified member access */
                     Nc(m, n); nv[m] = ar; /* nv=1 for arrow, 0 for dot */
                     memcpy((char*)(nn + m), tn[tk], 64); tk++;
-                    if (!ar && !asgn_lhs_parsing && !move_dst_parsing && nt[n] == 1) { /* 2026-08-28 P1 #17 部分移动: 读已移走字段 (s.x) → A3101; 其余字段仍可用 */
-                        char _pth[64]; sprintf(_pth, "%s.%s", (char*)(nn + n), (char*)(nn + m));
-                        if (is_moved(_pth)) { sprintf(g_errbuf, "所有权错误: 字段 '%s' 已移动 (部分移动后源字段失效, v3.0 #17)", _pth); emit_error("A3101", g_errbuf); }
+                    if (!ar && !move_dst_parsing && nt[n] == 1) { /* 2026-08-28 P1 #17 部分移动 + #33 借用分裂: 字段路径 s.x 检查 — moved/可变借用 缓冲, asgn 事后判定 (写目标→写策略, 读→报错; asgn 对所有表达式设 lhs=1, 不能直接拦) */
+                        char _pth[160]; sprintf(_pth, "%s.%s", (char*)(nn + n), (char*)(nn + m));
+                        int _pbm = borrow_mode_of(_pth); /* #33: 字段路径借用检查 (路径名与整变量名同表) */
+                        if (is_moved(_pth) || _pbm == 1) { if (lv_path_n < 8) { strcpy(lv_path[lv_path_n], _pth); lv_path_borrow[lv_path_n] = (_pbm == 1); lv_path_n++; } } /* 缓冲: 写目标→AK 分支清缓冲+写策略处理; 读→asgn 末尾报错 */
+                        if (_pbm == 0) { for (int _bl = 0; _bl < borrowed_cnt; _bl++) if (!strcmp(borrowed_names[_bl], _pth)) { borrowed_lastuse[_bl] = tk; break; } } /* NLL: 路径借用 last-use 记录 */
                     }
                     if (nt[n] == 1) { /* base is a struct var: flag double fields */
                         int bsi = var_stidx((char*)(nn + n));
@@ -5339,7 +5368,7 @@ static int prim(void) {
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
                 int callee = n;  tk++; int c = Nd(4);
-                int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
+                int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv; if (closure_mode[cl_ci] == 2) { cv = Nd(11); int cvv = Nd(1); memcpy((char*)(nn + cvv), closure_caps[cl_ci][_cp], 32); Nc(cv, cvv); } else { cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); } nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 2026-08-28 P1 #32: by-mut (mode 2) 捕获传地址 Nd(11) */ /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
                 while (tt[tk] != KK && tt[tk] != EK) { if (tt[tk] == VR && !strcmp(tn[tk], "或返"))break; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } int ev = expr(); if (ev >= 0 && nerr[ev]) { sprintf(g_errbuf, "错误 union: 函数参数不能ֱ接传δ检查的错误结果 — 先 尝试 检查 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } if (tk == t0) break; /* 标注/具名: 名: 前缀 → 查签名位置 */ if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 if (tt[tk] == KK) tk++;
                 { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
@@ -5525,7 +5554,7 @@ static int prim(void) {
                     n = tern;
                 } else break;
             } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4);
-                int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 真具名参数: 收集后重排 (同主调用) */
+                int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv; if (closure_mode[cl_ci] == 2) { cv = Nd(11); int cvv = Nd(1); memcpy((char*)(nn + cvv), closure_caps[cl_ci][_cp], 32); Nc(cv, cvv); } else { cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); } nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 2026-08-28 P1 #32: by-mut (mode 2) 捕获传地址 Nd(11) */ /* 真具名参数: 收集后重排 (同主调用) */
                 while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; int pos = -1; if (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((char*)(nn + callee), tn[tk]) : -1; tk += 2; } int ev = expr(); if (tk == t0) break; if (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 if (tt[tk] == KK) tk++;
                 { int has_n = 0; for (int i = 0; i < an; i++) if (argpos[i] >= 0) { has_n = 1; break; }
@@ -5591,16 +5620,17 @@ static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
-static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); if (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && cnst_node[n]) { sprintf(g_errbuf, "常量: 常量不可赋值 (常量 名 = 值 声明后只读, v3.0 #278)"); emit_error("A9006", g_errbuf); } if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); guard_mark_ready(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); guard_mark_ready((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); int _a_rhs = asgn(); if (n >= 0 && nt[n] == 1) { if (const_find((char*)(nn + n)) >= 0) { sprintf(g_errbuf, "%s", "常量: 变量 %s 是 常量 不可赋值 (常量 名 = 值 声明后不可变, v3.0 #278)"); emit_error("A9006", g_errbuf); } implicit_cast_check(_a_rhs, (char*)(nn + n)); int _ri = range_find((char*)(nn + n)); if (_ri >= 0) { int _rok = 0; long long _rv = contract_const_eval(_a_rhs, NULL, NULL, 0, &_rok); if (_rok && (_rv < range_lo[_ri] || _rv > range_hi[_ri])) { sprintf(g_errbuf, "%s", "区间类型: 赋值 %lld 超出区间 [%d, %d] - 区间类型变量只能赋界内值 (v3.0 #101)"); emit_error("A9003", g_errbuf); } } } Nc(a, _a_rhs); return a; }
+static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; lv_path_n = 0; asgn_lhs_parsing = 1; int n = tern(); if (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && cnst_node[n]) { sprintf(g_errbuf, "常量: 常量不可赋值 (常量 名 = 值 声明后只读, v3.0 #278)"); emit_error("A9006", g_errbuf); } if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); guard_mark_ready(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); guard_mark_ready((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } lv_path_n = 0; /* 2026-08-28 P1 #33/#34/#17: 成员/数组写目标 — 路径缓冲清除 (写策略已处理路径借用) */ { int _pw = n; int _pd = 0; while (_pw >= 0 && _pd < 8 && (nt[_pw] == 14 || (nt[_pw] == 15 && nv[_pw] == 0))) _pw = n0[_pw]; if (n >= 0 && nt[n] == 15 && nv[n] == 0 && _pw >= 0 && nt[_pw] == 1) { char _pp[160]; sprintf(_pp, "%s.%s", (char*)(nn + _pw), (char*)(nn + n)); moved_release(_pp); } else if (n >= 0 && nt[n] == 14 && n1[n] >= 0 && nt[n1[n]] == 0 && _pw >= 0 && nt[_pw] == 1) { char _pp[160]; sprintf(_pp, "%s[%d]", (char*)(nn + _pw), nv[n1[n]]); moved_release(_pp); } } /* #17: 字段/元素写 = 重新初始化 → 解除路径 moved (Rust 式 move 后重绑定) */ } int a = Nd(10); Nc(a, n); int _a_rhs = asgn(); if (n >= 0 && nt[n] == 1) { if (const_find((char*)(nn + n)) >= 0) { sprintf(g_errbuf, "%s", "常量: 变量 %s 是 常量 不可赋值 (常量 名 = 值 声明后不可变, v3.0 #278)"); emit_error("A9006", g_errbuf); } implicit_cast_check(_a_rhs, (char*)(nn + n)); int _ri = range_find((char*)(nn + n)); if (_ri >= 0) { int _rok = 0; long long _rv = contract_const_eval(_a_rhs, NULL, NULL, 0, &_rok); if (_rok && (_rv < range_lo[_ri] || _rv > range_hi[_ri])) { sprintf(g_errbuf, "%s", "区间类型: 赋值 %lld 超出区间 [%d, %d] - 区间类型变量只能赋界内值 (v3.0 #101)"); emit_error("A9003", g_errbuf); } } } Nc(a, _a_rhs); return a; }
     if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         if (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
+        if (lv_path_n > 0) { if (lv_path_borrow[0]) { sprintf(g_errbuf, "借用检查: 字段/元素 '%s' 被可变借用 (独占), 不能读取 (v3.0 #33/#34)", lv_path[0]); emit_error("A3001", g_errbuf); } else { sprintf(g_errbuf, "所有权错误: 字段/元素 '%s' 已移动 (部分移动后源字段失效, v3.0 #17)", lv_path[0]); emit_error("A3101", g_errbuf); } } /* 2026-08-28 P1 #33/#34/#17: 复合赋值隐含读 — 路径缓冲拦截 */
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
         int o = tt[tk++];
         int op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
         int a = Nd(10); int bin = Nd(2); nv[bin] = op;
         Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         return a;
-    } if (!move_dst_parsing && lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错; 移入 dst 解析期跳过 (dst 是写目标, 可为已移动变量) */ if (!move_dst_parsing && lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错; 移入 dst 解析期跳过 (移入=初始化, fix 2026-08-28 #78回归: 移入 b,a 的 b 未初始化被误伤) */ return n; }
+    } if (!move_dst_parsing && lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错; 移入 dst 解析期跳过 (dst 是写目标, 可为已移动变量) */ if (!move_dst_parsing && lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错; 移入 dst 解析期跳过 (移入=初始化, fix 2026-08-28 #78回归: 移入 b,a 的 b 未初始化被误伤) */ if (!move_dst_parsing && lv_path_n > 0) { if (lv_path_borrow[0]) { sprintf(g_errbuf, "借用检查: 字段/元素 '%s' 被可变借用 (独占), 不能读取 (v3.0 #33/#34)", lv_path[0]); emit_error("A3001", g_errbuf); } else { sprintf(g_errbuf, "所有权错误: 字段/元素 '%s' 已移动 (部分移动后源字段失效, v3.0 #17)", lv_path[0]); emit_error("A3101", g_errbuf); } } /* 2026-08-28 P1 #33/#34/#17: 成员/元素路径读检查 — asgn 对所有表达式设 lhs=1, 路径读=非写目标时事后判定 (写目标已在 AK 分支清缓冲+写策略处理) */ return n; }
 static int pipe_chain(void) { int n = asgn(); while (tt[tk] == PIPE) { tk++; int f = asgn(); int call = Nd(4); Nc(call, n); Nc(call, f); n = call; } return n; } /* 接入 2026-08-27 管道操作符: a |> f = f(a) — call 节点 callee 是最后 Nc (case 4 L11080 反向找), 参数先挂 (fix 2026-08-27: 原 f 先挂 n0 → callee 变 a 字面量 → 垃圾函数名崩) */
 static int expr(void) { parse_depth++; if (parse_depth > 350) budget_fail("表达式递归深度", 350); int _er = pipe_chain(); parse_depth--; return _er; } /* 资源护栏 9b (2026-08-28): 深括号/三元/嵌套调用递归护栏 — 实测每层 expr 链烧 10-20 栈帧, 崩溃点 ~500-800, 护栏 350 安全线下; 超限 A5001 确定性拒绝 (防栈溢出 0xC0000005) */
 
@@ -7362,11 +7392,17 @@ static int stmt(void) {
         n2[ifn_u] = eb_u; /* else 分支挂 n2 (同 select) */
         return ifn_u;
     }
-    if (tt[tk] == VR && (!strcmp(tn[tk], "借用") || !strcmp(tn[tk], "可变借用") || !strcmp(tn[tk], "放还"))) { /* 接入 2026-08-28 机制层: 借用标记 (#2/3/10, v3.0) — 借用 x; 标记只读 (多读单写); 可变借用 x; 独占可变借用 (读/写/再借用均 [ERR], #3); 放还 x; 解除; 与 asgn() 写检查 + L5010 读检查配合 */
+    if (tt[tk] == VR && (!strcmp(tn[tk], "借用") || !strcmp(tn[tk], "可变借用") || !strcmp(tn[tk], "放还"))) { /* 接入 2026-08-28 机制层: 借用标记 (#2/3/10, v3.0) — 借用 x; 标记只读 (多读单写); 可变借用 x; 独占可变借用 (读/写/再借用均 [ERR], #3); 放还 x; 解除; 与 asgn() 写检查 + L5010 读检查配合 */ /* 2026-08-28 P1 #33/#34 借用分裂: 借用 s.x / 可变借用 a[0] → 字段/元素路径级借用 (路径名注册, 其余字段/元素不受影响) */
         int is_rel = !strcmp(tn[tk], "放还");
         int is_mut = !strcmp(tn[tk], "可变借用");
         tk++;
         char bn[64]; strcpy(bn, tn[tk]); tk++;
+        if (tt[tk] == DT) { /* #33 借用分裂: 借用 s.x — 点成员路径 (字段级, . = DT token) */
+            tk++; /* . */
+            char bp[160]; snprintf(bp, 160, "%s.%s", bn, tn[tk]); strcpy(bn, bp); tk++; /* s.x */
+        } else if (tt[tk] == LB && tt[tk + 1] == NK && tt[tk + 2] == RB) { /* #34 切片分裂: 借用 a[0] — 静态下标路径 (元素级) */
+            char bp[160]; snprintf(bp, 160, "%s[%d]", bn, tv[tk + 1]); strcpy(bn, bp); tk += 3; /* a[0] */
+        }
         if (tt[tk] == SK) tk++;
         if (is_rel) {
             borrow_release(bn); /* 放还: 解除借用 (借用幂等注册 → 一次全清, mode 一并清) */
@@ -7592,19 +7628,37 @@ static int stmt(void) {
         if (impl_cnt < 64) impl_cnt++;
         return Nd(5);
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "闭包")) { /* 2026-08-28 type-root-9 #211: closure decl - 闭包 名 = fn 捕获(v1, v2); */
+    if (tt[tk] == VR && !strcmp(tn[tk], "闭包")) { /* 2026-08-28 type-root-9 #211: closure decl - 闭包 名 = fn 捕获(v1, v2); */ /* 2026-08-28 P1 #32 闭包捕获模式: 捕获 移动(v) → by-move 快照+源失效; 捕获 可变(v) → by-mut 传址 (fn 参数须指针); 捕获(v) 默认 by-ref (调用时读当前值) */
         tk++; /* 闭包 */
         char clc_nm[64]; strcpy(clc_nm, tn[tk]); tk++;
         if (tt[tk] == AK) tk++; /* = */
         char clc_fn[64]; strcpy(clc_fn, tn[tk]); tk++;
         int clc_ci = -1;
+        int clc_mode = 0;
+        int clc_blk = Nd(5); /* by-move 快照声明块 (by-ref/by-mut 空块零影响) */
         if (tt[tk] == VR && !strcmp(tn[tk], "捕获")) { tk++;
+            if (tt[tk] == VR && !strcmp(tn[tk], "移动")) { clc_mode = 1; tk++; }
+            else if (tt[tk] == VR && !strcmp(tn[tk], "可变")) { clc_mode = 2; tk++; }
             if (tt[tk] == OK) tk++; /* ( */
             clc_ci = closure_cnt;
-            if (clc_ci < 64) { strcpy(closure_names[clc_ci], clc_nm); strcpy(closure_fn[clc_ci], clc_fn); closure_ccnt[clc_ci] = 0; } if (var_lookup(clc_nm) < 0) var_offset(clc_nm); /* type-root-9 #211 var reg */ if (var_lookup(clc_nm) < 0) var_offset(clc_nm); /* type-root-9 #211 var reg */
+            if (clc_ci < 64) { strcpy(closure_names[clc_ci], clc_nm); strcpy(closure_fn[clc_ci], clc_fn); closure_ccnt[clc_ci] = 0; closure_mode[clc_ci] = clc_mode; } if (var_lookup(clc_nm) < 0) var_offset(clc_nm); uninit_remove(clc_nm); /* 2026-08-28 P1 #32: 闭包变量=函数句柄非数据变量 — var_offset 顺带登记未初始化, 需撤销 (否则无参调用 增() 缓冲不清理 → A4001 误报) */
             while (tt[tk] != KK && tt[tk] != EK) {
                 if (tt[tk] == VR) {
-                    if (clc_ci < 64 && closure_ccnt[clc_ci] < 8) { strcpy(closure_caps[clc_ci][closure_ccnt[clc_ci]], tn[tk]); closure_ccnt[clc_ci]++; }
+                    if (clc_ci < 64 && closure_ccnt[clc_ci] < 8) {
+                        if (clc_mode == 1) { /* by-move: 快照 __clc{N}_m{K} = v; 捕获快照名, 源 moved */
+                            if (borrow_mode_of(tn[tk]) >= 0) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被借用, 不能移动捕获 (借用期所有权不可转移, v3.0 #32)", tn[tk]); emit_error("A3004", g_errbuf); }
+                            char sn[64]; snprintf(sn, 64, "__clc%d_m%d", clc_ci, closure_ccnt[clc_ci]);
+                            if (var_lookup(sn) < 0) var_offset(sn);
+                            int d_s = Nd(7); memcpy((char*)(nn + d_s), sn, 32);
+                            int v_s = Nd(1); memcpy((char*)(nn + v_s), tn[tk], 64);
+                            Nc(d_s, v_s); Nc(clc_blk, d_s); /* int __clcN_mK = v; */
+                            strcpy(closure_caps[clc_ci][closure_ccnt[clc_ci]], sn);
+                            if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], tn[tk]); /* 源失效: 所有权转移进闭包 */
+                        } else {
+                            strcpy(closure_caps[clc_ci][closure_ccnt[clc_ci]], tn[tk]);
+                        }
+                        closure_ccnt[clc_ci]++;
+                    }
                     tk++;
                 }
                 if (tt[tk] == CK) tk++;
@@ -7613,7 +7667,7 @@ static int stmt(void) {
         }
         if (tt[tk] == SK) tk++;
         if (clc_ci >= 0 && clc_ci < 64) closure_cnt++;
-        return Nd(5);
+        return clc_blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "常量")) { /* 2026-08-28 type-root-10 #278: const decl - 常量 名 = expr; compile-time */
         tk++; /* 常量 */
