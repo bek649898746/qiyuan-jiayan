@@ -52,6 +52,20 @@ int 取大(int a, int b) 后置 (返回 >= a) 后置 (返回 >= b) {
     return a > b ? a : b;
 }
 
+/* === 声明先行吃狗粮 (2026-08-28 真接入⑦): 声明 API 骨架 → 实现后补 → 前向调用正常 (AI 渐进补全模式) === */
+声明 字符串比较(const char *a, const char *b) 返回 int;   /* 声明骨架 (签名先行) */
+
+/* 字符串相等: 前向调用 声明 的 字符串比较 (declare 提供签名, 定义在后) */
+int 字符串相等(const char *a, const char *b) 前置 (a != 0) 前置 (b != 0) {
+    return 字符串比较(a, b) == 0;
+}
+
+/* 实现后补 (与 声明 签名一致) */
+int 字符串比较(const char *a, const char *b) {
+    while (*a != 0 && *b != 0 && *a == *b) { a++; b++; }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
 /* === 机制层 (借用/移动/可空/错误union/RAII) — 真实库函数吃狗粮 (2026-08-28 真接入⑥) === */
 
 /* 借用: 只读阶段 借用/放还 — 真实数组访问函数 */
