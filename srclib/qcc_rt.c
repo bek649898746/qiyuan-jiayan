@@ -696,5 +696,36 @@ int __qcc_barrier_wait(int *bar, int n) {
     while (*bar < n) { } /* 等所有参与者到达 */
     return 0;
 }
+
+/* #225 内存池 (固定大小块池): 全局表 + 空闲栈 — O(1) 取块还块, 无碎片 (用静态数组表, 同 coro 模式, 避开 struct 指针字段触发布局残留) */
+static int __qcc_pool_top[64];
+static int __qcc_pool_bsz[64];
+static int __qcc_pool_n[64];
+static int *__qcc_pool_stack[64];
+static char *__qcc_pool_buf[64];
+static int __qcc_pool_cnt = 0;
+int __qcc_pool_register(int bsz, int n, char *buf) {
+    int i = __qcc_pool_cnt; __qcc_pool_cnt = __qcc_pool_cnt + 1;
+    int *stack = (int *)malloc(n * 4);
+    if (!stack) return -1;
+    for (int k = 0; k < n; k++) stack[k] = n - 1 - k; /* 空闲栈装满 0..n-1 */
+    __qcc_pool_stack[i] = stack; __qcc_pool_top[i] = n; __qcc_pool_bsz[i] = bsz; __qcc_pool_n[i] = n; __qcc_pool_buf[i] = buf;
+    return i;
+}
+void *__qcc_pool_alloc(int id) {
+    if (id < 0 || id >= 64) return 0;
+    if (__qcc_pool_top[id] <= 0) return 0; /* 耗尽 → NULL */
+    int t = __qcc_pool_top[id] - 1;
+    __qcc_pool_top[id] = t;
+    return __qcc_pool_buf[id] + __qcc_pool_stack[id][t] * __qcc_pool_bsz[id];
+}
+int __qcc_pool_ret(int id, void *blk) {
+    if (id < 0 || id >= 64) return 1;
+    int i = ((char *)blk - __qcc_pool_buf[id]) / __qcc_pool_bsz[id];
+    if (i < 0 || i >= __qcc_pool_n[id]) return 1; /* 非法块 */
+    __qcc_pool_stack[id][__qcc_pool_top[id]] = i;
+    __qcc_pool_top[id] = __qcc_pool_top[id] + 1;
+    return 0;
+}
 #endif
 
