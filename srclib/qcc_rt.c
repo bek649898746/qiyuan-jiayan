@@ -532,5 +532,11 @@ double tgamma(double x) {
         return 3.14159265358979323846 / (s * tgamma(1.0 - x));
     }
 }
+
+/* 接入 2026-08-28 机制层 #75 可空类型完整: 解包 x → __qcc_unwrap(x) — 空值运行时检查 (x==0 → [ERR] + exit), 强制处理空值 */
+int __qcc_unwrap(int v) {
+    if (!v) { fprintf(stderr, "[ERR] 空值解包 (可空类型被解包为 无, v3.0 #75)\n"); exit(1); }
+    return v;
+}
 #endif
 

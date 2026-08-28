@@ -4481,6 +4481,14 @@ static int is_moved(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!st
 static void moved_release(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!strcmp(moved_names[i], v)) { moved_names[i][0] = 0; return; } } /* 2026-08-28 #5: 重新赋值 = 重新初始化, 恢复可用 (Rust 式 move 后重绑定) */
 
 static int prim(void) {
+        if (tt[tk] == VR && !strcmp(tn[tk], "解包")) { /* 接入 2026-08-28 机制层 #75 可空类型完整: 解包 x → __qcc_unwrap(x) — 空值运行时检查 (x==0 → [ERR] 空值解包 + exit, 强制处理空值) */
+            tk++; /* 解包 */
+            int ev = expr(); /* 被解包表达式 */
+            int call = Nd(4);
+            Nc(call, ev); /* 参数: 值 */
+            { int fn = Nd(1); memcpy((char*)(nn + fn), "__qcc_unwrap", 13); Nc(call, fn); } /* callee 最后 (rt 提供实现) */
+            return call;
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "原子")) { /* 接入 2026-08-27 原子操作 (表达式层, 同异步模式): 原子 加(&x, 1) → atomic_fetch_add(&x, 1); 原子 读(&x) → atomic_load(&x); 原子 写(&x, v) → atomic_store(&x, v) — 操作名映射, 用户定义 atomic_* (读改写原子性, C 模拟已验语义) */
         tk++; /* 原子 */
         char opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 加/读/写/比较交换 */
