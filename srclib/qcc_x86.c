@@ -10472,6 +10472,137 @@ static int skip_global_init(int tk) {
     return tk;
 }
 
+/* ========== 宏系统 (2026-08-28 type-root-12 #167: AST 级安全宏 — lex 后 parse 前 token 级展开) ========== */
+static struct { char name[64]; char params[16][64]; int pn; int body0; int body1; } jm_macros[512];
+static int jm_n = 0;
+static int jm_decl0[512]; static int jm_decl1[512]; /* 宏声明 token 区间 (展开时跳过) */
+static int jm_find(const char *n) { for (int i = 0; i < jm_n; i++) if (!strcmp(jm_macros[i].name, n)) return i; return -1; }
+
+static int *jm_tt2; static int *jm_tv2; static int *jm_tline2; static int *jm_tuns2; static int *jm_tll2; static int *jm_tll_hi2;
+static char (*jm_tn2)[64];
+static int jm_out; static int jm_depth;
+/* 嵌套宏展开帧栈: 每帧记录 宏索引 + 原始实参 token 切片 (调用者上下文惰性展开, 替换时括号包裹) */
+static int jm_stk_mi[24]; static int jm_stk_an[24]; static int jm_stk_raw[24][16][2];
+
+static void jm_overflow(void) { fprintf(stderr, "[ERR] A9008 宏展开超限: token 数超上限\n"); exit(1); }
+
+static void jm_emit_token(int i) {
+    if (jm_out >= TS) jm_overflow();
+    jm_tt2[jm_out] = tt[i]; jm_tv2[jm_out] = tv[i]; strcpy(jm_tn2[jm_out], tn[i]);
+    jm_tline2[jm_out] = tline[i]; jm_tuns2[jm_out] = tuns[i]; jm_tll2[jm_out] = tll[i]; jm_tll_hi2[jm_out] = tll_hi[i];
+    jm_out++;
+}
+
+static void jm_emit_paren(int type) { /* 合成 ( ) token 用于实参括号包裹 */
+    if (jm_out >= TS) jm_overflow();
+    jm_tt2[jm_out] = type; jm_tv2[jm_out] = 0; strcpy(jm_tn2[jm_out], type == OK ? "(" : ")");
+    jm_tline2[jm_out] = 0; jm_tuns2[jm_out] = 0; jm_tll2[jm_out] = 0; jm_tll_hi2[jm_out] = 0;
+    jm_out++;
+}
+
+static int jm_param_of(int i, int *frame_out, int *param_out) { /* 最内层活动帧的参数匹配 (词法遮蔽) */
+    for (int f = jm_depth - 1; f >= 0; f--) {
+        int mi = jm_stk_mi[f];
+        for (int q = 0; q < jm_macros[mi].pn; q++)
+            if (!strcmp(jm_macros[mi].params[q], tn[i])) { *frame_out = f; *param_out = q; return 1; }
+    }
+    return 0;
+}
+
+/* 展开原 token 区间 [a,b) 到输出: 嵌套宏调用展开 + 活动帧参数替换 (实参在调用者上下文惰性展开+括号包裹) */
+static void jm_emit_orig(int a, int b);
+
+static void jm_emit_arg(int fr, int q) { /* 帧 fr 的第 q 个实参, 在调用者上下文 (帧 0..fr-1) 展开 — 保存/恢复被隐藏帧槽位 (嵌套调用会复用槽位) */
+    int saved = jm_depth;
+    int s_mi = jm_stk_mi[fr]; int s_an = jm_stk_an[fr]; int s_raw[16][2];
+    for (int k = 0; k < 16; k++) { s_raw[k][0] = jm_stk_raw[fr][k][0]; s_raw[k][1] = jm_stk_raw[fr][k][1]; }
+    jm_depth = fr;
+    jm_emit_paren(OK);
+    jm_emit_orig(jm_stk_raw[fr][q][0], jm_stk_raw[fr][q][1]);
+    jm_emit_paren(KK);
+    jm_depth = saved;
+    jm_stk_mi[fr] = s_mi; jm_stk_an[fr] = s_an;
+    for (int k = 0; k < 16; k++) { jm_stk_raw[fr][k][0] = s_raw[k][0]; jm_stk_raw[fr][k][1] = s_raw[k][1]; }
+}
+
+static void jm_emit_orig(int a, int b) {
+    int i = a;
+    while (i < b) {
+        if (tt[i] == VR && !strcmp(tn[i], "宏")) {
+            int dk = -1; for (int k = 0; k < jm_n; k++) if (jm_decl0[k] == i) { dk = k; break; }
+            if (dk >= 0) { i = jm_decl1[dk]; continue; }
+        }
+        if (tt[i] == VR) {
+            int f0, q0;
+            if (jm_param_of(i, &f0, &q0)) { jm_emit_arg(f0, q0); i++; continue; }
+        }
+        int mi = (tt[i] == VR) ? jm_find(tn[i]) : -1;
+        if (tt[i] == VR && i + 1 < ti && tt[i + 1] == OK && mi >= 0 && jm_depth < 24) {
+            int ce = i + 2; int d = 1;
+            while (ce < ti && d > 0) { if (tt[ce] == OK) d++; else if (tt[ce] == KK) { d--; if (d == 0) break; } ce++; }
+            int raw[16][2]; int an = 0; int p0 = i + 2; int pd = 0;
+            for (int p = i + 2; p < ce; p++) {
+                if (tt[p] == OK) pd++;
+                else if (tt[p] == KK) { if (pd > 0) pd--; }
+                else if (tt[p] == CK && pd == 0) { if (an < 16) { raw[an][0] = p0; raw[an][1] = p; } an++; p0 = p + 1; }
+            }
+            if (p0 < ce && an < 16) { raw[an][0] = p0; raw[an][1] = ce; an++; } /* 空括号 an=0 */
+            if (an != jm_macros[mi].pn) { tk = i; emit_error("A9007", "宏参数个数不匹配: 调用与声明参数数不一致"); }
+            int fr = jm_depth;
+            jm_stk_mi[fr] = mi; jm_stk_an[fr] = an;
+            for (int k = 0; k < an; k++) { jm_stk_raw[fr][k][0] = raw[k][0]; jm_stk_raw[fr][k][1] = raw[k][1]; }
+            jm_depth++;
+            jm_emit_orig(jm_macros[mi].body0, jm_macros[mi].body1); /* 整个体连续展开 — 内部游标自动越过嵌套调用 (逐 token 调用会把嵌套调用内部 token 重复处理) */
+            jm_depth--;
+            i = ce + 1;
+        } else {
+            jm_emit_token(i); i++;
+        }
+    }
+}
+
+static void jiayan_macro_expand(void) {
+    int i = 0;
+    jm_n = 0;
+    while (i < ti) {
+        if (tt[i] == VR && !strcmp(tn[i], "宏") && i + 2 < ti && tt[i + 1] == VR && tt[i + 2] == OK) {
+            int pend = i + 2; int pd = 0; int pend_i = -1;
+            while (pend < ti) { if (tt[pend] == OK) pd++; else if (tt[pend] == KK) { pd--; if (pd == 0) { pend_i = pend; break; } } pend++; }
+            if (pend_i > 0 && jm_n < 512) {
+                int mn = jm_n;
+                strcpy(jm_macros[mn].name, tn[i + 1]);
+                jm_macros[mn].pn = 0;
+                { int qd = 0; for (int q = i + 2; q < pend_i; q++) { if (tt[q] == OK) qd++; else if (tt[q] == KK) qd--; else if (tt[q] == VR && qd == 1 && jm_macros[mn].pn < 16) strcpy(jm_macros[mn].params[jm_macros[mn].pn++], tn[q]); } }
+                int b0 = -1; int b1 = -1; int decl_end = pend_i + 1;
+                if (pend_i + 1 < ti && tt[pend_i + 1] == AK) { /* = expr ; */
+                    b0 = pend_i + 2; int d = 0; int j = pend_i + 2;
+                    while (j < ti) { if (tt[j] == OK || tt[j] == FK || tt[j] == LB) d++; else if (tt[j] == KK || tt[j] == UK || tt[j] == RB) { if (d > 0) d--; } else if (tt[j] == SK && d == 0) { b1 = j; decl_end = j + 1; break; } j++; }
+                } else if (pend_i + 1 < ti && tt[pend_i + 1] == FK) { /* { ... } */
+                    b0 = pend_i + 1; int d = 0; int j = pend_i + 1;
+                    while (j < ti) { if (tt[j] == FK) d++; else if (tt[j] == UK) { d--; if (d == 0) { b1 = j + 1; decl_end = j + 1; break; } } j++; }
+                }
+                if (b0 >= 0 && b1 >= b0) {
+                    jm_macros[mn].body0 = b0; jm_macros[mn].body1 = b1;
+                    jm_decl0[mn] = i; jm_decl1[mn] = decl_end;
+                    jm_n++;
+                    i = decl_end; continue;
+                }
+            }
+        }
+        i++;
+    }
+    if (jm_n == 0) return;
+    jm_tt2 = calloc(TS, 4); jm_tv2 = calloc(TS, 4); jm_tline2 = calloc(TS, 4);
+    jm_tuns2 = calloc(TS, 4); jm_tll2 = calloc(TS, 4); jm_tll_hi2 = calloc(TS, 4);
+    jm_tn2 = calloc(TS, 64);
+    if (!jm_tt2 || !jm_tv2 || !jm_tline2 || !jm_tuns2 || !jm_tll2 || !jm_tll_hi2 || !jm_tn2) { fprintf(stderr, "[ERR] 宏展开内存不足\n"); exit(1); }
+    jm_out = 0; jm_depth = 0;
+    jm_emit_orig(0, ti);
+    free(tt); free(tv); free(tn); free(tline); free(tuns); free(tll); free(tll_hi);
+    tt = jm_tt2; tv = jm_tv2; tn = jm_tn2; tline = jm_tline2; tuns = jm_tuns2; tll = jm_tll2; tll_hi = jm_tll_hi2;
+    ti = jm_out;
+}
+
 static int parse(const char *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
     for (int _vi = 0; _vi < 16384; _vi++) { vars[_vi].alignN = 0; vars[_vi].align_base = 0; vars[_vi].vla_dim = 0; } /* fix step30/31: 静态 vars 数组跨编译残留清零 — 对齐间接/VLA 标记必须每编译重置 */
@@ -10507,6 +10638,7 @@ static int parse(const char *s) {
      
 lex(exp_src);
     if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
+    jiayan_macro_expand(); /* 宏系统 (2026-08-28 type-root-12 #167): lex 后 parse 前 token 级展开 — 宏 名(参数) = expr; 或 宏 名(参数) { 语句 } */
 
     { char _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
     dag_hash_tokens(); /* 编译 DAG (可吞清单 P0-9): token 流阶段哈希 (tt/tv/tn/tline 入链) */
