@@ -4439,8 +4439,9 @@ static int stmt(void);
 static int expr(void);
 static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
-static char borrowed_names[256][64]; static int borrowed_mode[256]; static int borrowed_cnt = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/10, #3 可变借用): 借用 x; 标记只读(0), 可变借用 x; 独占(1); 写报错; 放还 x; 解除 — 定义在 prim() 前 (L5010 读检查先于 asgn/stmt 引用) */
+static char borrowed_names[256][64]; static int borrowed_mode[256]; static int borrowed_scope[256]; static int borrowed_cnt = 0; static int borrow_depth = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/4/10): 借用 x; 标记只读(0), 可变借用 x; 独占(1); #4 生命周期=词法块作用域 — borrowed_scope 记录借用声明时块深度, 块退出自动放还 (借用不跨块) */
 static int borrow_mode_of(const char *v) { for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) return borrowed_mode[i]; return -1; } /* 0=只读借用 1=可变借用(独占) -1=未借用 (vt_lifetime 状态机 2/3 对齐) */
+static void borrow_scope_exit(void) { borrow_depth--; if (borrow_depth < 0) borrow_depth = 0; for (int i = 0; i < borrowed_cnt; ) { if (borrowed_scope[i] > borrow_depth) { for (int j = i; j < borrowed_cnt - 1; j++) { strcpy(borrowed_names[j], borrowed_names[j + 1]); borrowed_mode[j] = borrowed_mode[j + 1]; borrowed_scope[j] = borrowed_scope[j + 1]; } borrowed_cnt--; } else i++; } } /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内新借用的变量 (生命周期=词法作用域, 数组压缩 O(n), 手动放还仍兼容) */
 
 static int prim(void) {
         if (tt[tk] == VR && !strcmp(tn[tk], "原子")) { /* 接入 2026-08-27 原子操作 (表达式层, 同异步模式): 原子 加(&x, 1) → atomic_fetch_add(&x, 1); 原子 读(&x) → atomic_load(&x); 原子 写(&x, v) → atomic_store(&x, v) — 操作名映射, 用户定义 atomic_* (读改写原子性, C 模拟已验语义) */
@@ -5515,6 +5516,7 @@ static int compound_literal(int is_struct, int si, int is_array, int arr_n, int 
 static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数组维度用常量表达式) */
 static int blk(void) {
     int b = Nd(5); tk++;
+    borrow_depth++; /* 接入 2026-08-28 机制层 #4: 生命周期=词法块作用域 — 进入块深度+1, 块内借用记 scope, 块退出自动放还 */
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
     int blk_vstart = vcnt; /* fix 2026-08-19: 本块直接声明的变量起点 — 结束时给未标记 blk_start/blk_end 的变量 (本块直接声明) 打上本块范围, 嵌套块的变量已由嵌套 blk() 标记, 不会被覆盖 */
     blk_vs[b_root] = blk_vstart; /* codegen 作用域判定: 本块 var 下界 */
@@ -6596,6 +6598,7 @@ static int blk(void) {
         else { Nc(b, stmt()); b_cnt++; }
     }
     if (tt[tk] == UK) tk++; /* fix 2026-08-07: EK 提前退出时不得越过 token 区 (原无条件 tk++ 遇 EOF 越界). NOTE: vcnt NOT restored — C has function scope, not block scope */
+    borrow_scope_exit(); /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内借用 (生命周期=词法作用域, 嵌套正确) */
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
     for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) { vars[bvi].blk_start = blk_vstart; vars[bvi].blk_end = vcnt; } /* fix 2026-08-19: 本块直接声明的变量 blk 范围 = 本块 [start,end) (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
@@ -6976,7 +6979,7 @@ static int stmt(void) {
                 if (borrowed_mode[bi] == 1) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被可变借用 (独占), 不能再借用 (v3.0 #3)\n", bn); exit(1); }
                 /* 只读借用可叠加 (多读单写, 现有语义) */
             }
-            if (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_cnt++; }
+            if (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_scope[borrowed_cnt] = borrow_depth; borrowed_cnt++; } /* #4: 记录借用声明时块深度, 块退出自动放还 */
         }
         return Nd(5);
     }
