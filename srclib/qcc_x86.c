@@ -6979,6 +6979,7 @@ static int stmt(void) {
         if (is_rel) {
             for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], bn)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; } /* 放还: 解除借用 (mode 一并清) */
         } else {
+            if (is_moved(bn)) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能借用 (v3.0 #10)\n", bn); exit(1); } /* 接入 2026-08-28 机制层 #10: moved 变量不能借用 (所有权已转移) */
             int bi = -1; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], bn)) { bi = i; break; }
             if (bi >= 0) { /* 已有借用 → 独占互斥 (v3.0 #3) */
                 if (is_mut) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 已被借用, 不能可变借用 (独占, v3.0 #3)\n", bn); exit(1); }
@@ -7008,6 +7009,7 @@ static int stmt(void) {
         if (tt[tk] == SK) tk++; /* ; */
         if (e_s >= 0 && nt[e_s] == 1) { /* moved 登记: 源是简单变量时跟踪 */
             char *srcn = (char*)(nn + e_s);
+            if (borrow_mode_of(srcn) >= 0) { fprintf(stderr, "[ERR] 借用检查: 变量 '%s' 被借用, 不能移动 (借用期所有权不可转移, v3.0 #10)\n", srcn); exit(1); } /* 接入 2026-08-28 机制层 #10: 借用期间不能 move (只读借用在此拦, 可变借用 L5014 已拦) */
             int mi; for (mi = 0; mi < moved_cnt; mi++) if (!strcmp(moved_names[mi], srcn)) break;
             if (mi < moved_cnt) { fprintf(stderr, "[ERR] 所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能再次移动\n", srcn); exit(1); }
             if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], srcn);
