@@ -181,12 +181,14 @@ static int vs_n(void) { return vs_end ? vs_end : vcnt; } /* was #define vs_n() �
 /* simple #define NAME VALUE macros (constant numbers) */
 static struct { char name[64]; int val; } macros[4096]; static int macro_n; /* Phase1-L3: 64->1024 */
 static char macro_uns[4096]; static char macro_ll[4096]; static int macro_ll_hi[4096]; /* 数值宏 ULL/U 后缀标志 — #define UINTMAX_MAX ...ULL 展开必须保留 unsigned long long (fix 2026-08-15) */
-static void macro_add_full(const char *n, int v, int uns, int ll, int ll_hi) { if (macro_n < 4096) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_uns[macro_n] = (char)uns; macro_ll[macro_n] = (char)ll; macro_ll_hi[macro_n] = ll_hi; macro_n++; } } /* fix 2026-08-15: 上限 1024→4096 对齐数组容量 — fsmonitor--daemon.c 头链数值宏超 1024, SIMPLE_IPC_QUIT 被丢 → undefined */
+static void budget_fail(const char *tbl, int cap) { fprintf(stderr, "[ERR] A5001 资源护栏: 表 '%s' 满 (容量 %d), 编译确定性拒绝 — 请扩容对应容量宏 (可吞清单 P0-9b, AI原生 #9b)\n", tbl, cap); exit(1); } /* 接入 2026-08-28 资源护栏: 超限走确定性降级 — 替代静默丢弃/满员返-1 (历史教训: sqlite 对象宏 2048 静默丢 → parse 断链; 镜像 func_n 静默残留 → extern 报错) */
+static int parse_depth = 0; /* 资源护栏 9b (2026-08-28): 表达式/块递归深度 — 防深嵌套栈溢出 0xC0000005, 超限 A5001 确定性拒绝 */
+static void macro_add_full(const char *n, int v, int uns, int ll, int ll_hi) { if (macro_n < 4096) { strcpy(macros[macro_n].name, n); macros[macro_n].val = v; macro_uns[macro_n] = (char)uns; macro_ll[macro_n] = (char)ll; macro_ll_hi[macro_n] = ll_hi; macro_n++; } else budget_fail("宏表 macros", 4096); } /* fix 2026-08-15: 上限 1024→4096 对齐数组容量 — fsmonitor--daemon.c 头链数值宏超 1024, SIMPLE_IPC_QUIT 被丢 → undefined; 2026-08-28 资源护栏: 满→确定性拒绝 (原静默丢弃) */
 static void macro_add(const char *n, int v) { macro_add_full(n, v, 0, 0, 0); }
 static int macro_find(const char *n) { for (int i = 0; i < macro_n; i++) if (!strcmp(macros[i].name, n)) return macros[i].val; return -1; }
 /* 对象宏: #define A <表达式/标识符> → 文本层展开 (fix 2026-08-13: Git hash-ll.h 大量 TAB 别名/对象宏) */
 static struct { char name[64]; char val[4096]; } obj_macros[8192]; static int obj_macro_n; /* fix 2026-08-15: name 32→64 + val 512→4096 — 长宏名/长宏体 (FIND_BISECTION_FIRST_PARENT_ONLY / REBASE_OPTIONS_INIT) */
-static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 8192) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } } /* fix 2026-08-25 sqlite: 上限 2048→8192 与数组一致 (1714ab9 只扩了数组忘了改守卫) — sqlite3.c 3029 个对象宏, 2048 后静默丢弃 → SQLITE_WSD 等宏未展开 → parse 断链 */
+static void obj_add(const char *n, const char *v) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) { strcpy(obj_macros[i].val, v); return; } /* fix 2026-08-13 Phase3: 重复 #define 后者覆盖前者 (C 语义: 最后定义生效, 如 internal_function 的 __i386__/else 两分支) */ if (obj_macro_n < 8192) { strcpy(obj_macros[obj_macro_n].name, n); strcpy(obj_macros[obj_macro_n].val, v); obj_macro_n++; } else budget_fail("对象宏表 obj_macros", 8192); } /* fix 2026-08-25 sqlite: 上限 2048→8192 与数组一致 (1714ab9 只扩了数组忘了改守卫) — sqlite3.c 3029 个对象宏, 2048 后静默丢弃 → SQLITE_WSD 等宏未展开 → parse 断链; 2026-08-28 资源护栏: 满→确定性拒绝 */
 static const char *obj_find(const char *n) { for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) return obj_macros[i].val; return 0; }
 static void obj_del(const char *n) { /* fix 2026-08-21: #undef 删除对象宏 — git-compat-util.h `#define rmdir lstat_cache_aware_rmdir` + symlinks.c `#undef rmdir` 失效 → lstat_cache_aware_rmdir 内 rmdir() 展开成自身 → call 自身无限递归 (commit 栈溢出) */
     for (int i = 0; i < obj_macro_n; i++) if (!strcmp(obj_macros[i].name, n)) {
@@ -236,7 +238,7 @@ static char *obj_macro_expand(const char *s) {
                     cond = pp_eval(expr);
                 }
                 if (is_if || is_ifdef || is_ifndef) {
-                    if (cx_n < 64) { cx_parent[cx_n] = parent; cx_taken[cx_n] = cond && !parent; cx_skip = parent || !cond; cx_n++; }
+                    if (cx_n < 64) { cx_parent[cx_n] = parent; cx_taken[cx_n] = cond && !parent; cx_skip = parent || !cond; cx_n++; } else budget_fail("条件编译栈 cx", 64);
                 } else if (is_elif) {
                     if (cx_n > 0) { if (!cx_taken[cx_n-1] && !cx_parent[cx_n-1]) { cx_taken[cx_n-1] = cond; cx_skip = cx_parent[cx_n-1] || !cond; } else cx_skip = 1; }
                 } else if (is_else) {
@@ -435,7 +437,7 @@ static void obj_macro_collect(const char *s) {
                     cond = pp_eval(expr);
                 }
                 if (is_if || is_ifdef || is_ifndef) {
-                    if (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
+                    if (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; } else budget_fail("行条件栈 cl_if", 1024);
                 } else if (is_elif) {
                     if (cl_if_n > 0) { if (!cl_if_taken[cl_if_n-1] && !cl_if_parent[cl_if_n-1]) { cl_if_taken[cl_if_n-1] = cond; cl_if_skip = cl_if_parent[cl_if_n-1] || !cond; } else cl_if_skip = 1; }
                 } else if (is_else) {
@@ -523,7 +525,7 @@ static void fn_macro_collect(const char *s) {
                     cond = pp_eval(expr);
                 }
                 if (is_if || is_ifdef || is_ifndef) {
-                    if (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; }
+                    if (cl_if_n < 1024) { cl_if_parent[cl_if_n] = parent; cl_if_taken[cl_if_n] = cond && !parent; cl_if_skip = parent || !cond; cl_if_n++; } else budget_fail("行条件栈 cl_if", 1024);
                 } else if (is_elif) {
                     if (cl_if_n > 0) { if (!cl_if_taken[cl_if_n-1] && !cl_if_parent[cl_if_n-1]) { cl_if_taken[cl_if_n-1] = cond; cl_if_skip = cl_if_parent[cl_if_n-1] || !cond; } else cl_if_skip = 1; }
                 } else if (is_else) {
@@ -1267,7 +1269,7 @@ static char *pp_include_expand(const char *src, int depth) {
                     cond = pp_eval(expr);
                 }
                 if (is_if || is_ifdef || is_ifndef) {
-                    if (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; }
+                    if (if_n < 64) { if_parent_skip[if_n] = parent; if_taken[if_n] = cond && !parent; if_skip = parent || !cond; if_n++; } else budget_fail("预处理条件栈 if_n", 64);
                 } else if (is_elif) {
                     if (if_n > 0) { if (!if_taken[if_n-1] && !if_parent_skip[if_n-1]) { if_taken[if_n-1] = cond; if_skip = if_parent_skip[if_n-1] || !cond; } else if_skip = 1; }
                 } else if (is_else) {
@@ -1301,7 +1303,7 @@ static char *pp_include_expand(const char *src, int depth) {
                             strcpy(newdir3, inc_dir_stack[inc_dir_n - 1]);
                             if (fdir3[0]) { strcat(newdir3, "/"); strcat(newdir3, fdir3); }
                         } else { strcpy(newdir3, fdir3); }
-                        if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir3); inc_dir_n++; }
+                        if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir3); inc_dir_n++; } else budget_fail("include目录栈 inc_dir", 16);
                         char *exp3 = pp_include_expand(fc3, depth + 1);
                         inc_dir_n--;
                         free(fc3);
@@ -1325,7 +1327,7 @@ static char *pp_include_expand(const char *src, int depth) {
                         char newdir[1024]; newdir[0] = 0;
                         strcpy(newdir, g_inc_found_dir); /* fix 2026-08-26 ffmpeg: 基于实际找到的目录 (父链回溯命中), 再拼 fname 子目录 — 原从 inc_dir_stack 拼接 (父链找到的头记错位置 → 头内相对 include 解析错); libavutil/common.h 经父链在根找到, 实际目录=根+libavutil */
                         if (fdir[0]) { strcat(newdir, "/"); strcat(newdir, fdir); }
-                        if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir); inc_dir_n++; }
+                        if (inc_dir_n < 16) { strcpy(inc_dir_stack[inc_dir_n], newdir); inc_dir_n++; } else budget_fail("include目录栈 inc_dir", 16);
                         char *exp = pp_include_expand(fc, depth + 1);
                         inc_dir_n--;
                         free(fc);
@@ -1633,7 +1635,7 @@ static void tdef_add_fnptr(const char *n, int ret_dbl) {
 static char tdn[512][64]; static int tdn_n;
 static void td_reg(const char *n) {
     for (int i = 0; i < tdn_n; i++) if (!strcmp(tdn[i], n)) return;
-    if (tdn_n < 512) { strcpy(tdn[tdn_n], n); tdn_n++; }
+    if (tdn_n < 512) { strcpy(tdn[tdn_n], n); tdn_n++; } else budget_fail("typedef表 tdn", 512);
 }
 static int td_is(const char *n) {
     for (int i = 0; i < tdn_n; i++) if (!strcmp(tdn[i], n)) return 1;
@@ -1651,7 +1653,7 @@ static int e_lookup(const char *n) {
     return 0x80000000; /* ENUM_NOT_FOUND (fix 2026-08-09: 原 -1 与负值 enum 常量冲突 → RED=-2 被当未找到 → 当变量用=0) */
 }
 static struct { char name[64]; int vcnt; } disc_table[256]; static int disc_n; /* 判别表 (接入 2026-08-28 #97/#141): 判别类型名 → 变体数, 供依据 穷尽 检查 */
-static void disc_reg(const char *n, int vc) { if (disc_n < 256) { strcpy(disc_table[disc_n].name, n); disc_table[disc_n].vcnt = vc; disc_n++; } }
+static void disc_reg(const char *n, int vc) { if (disc_n < 256) { strcpy(disc_table[disc_n].name, n); disc_table[disc_n].vcnt = vc; disc_n++; } else budget_fail("判别表 disc", 256); }
 static int disc_vcnt(const char *n) { for (int i = 0; i < disc_n; i++) if (!strcmp(disc_table[i].name, n)) return disc_table[i].vcnt; return -1; }
 
 /* ?????????? double ??????????? */
@@ -2112,7 +2114,7 @@ static int stc_disp(int idx);
 static struct { char name[64]; int label; int defined; int ret_si; int declared; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1); declared (接入 2026-08-28 declare 声明先行): 声明 名字(参数) 返回 类型; 注册签名, 未实现生成 stub (缺失=警告非错误, AI 渐进补全) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
 static char fn_static_names[512][64]; static int fn_static_n;
-static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } }
+static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } else budget_fail("static函数表 fn_static", 512); }
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static void fn_static_unmark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) { for (int j = i; j < fn_static_n - 1; j++) strcpy(fn_static_names[j], fn_static_names[j + 1]); fn_static_n--; return; } }
 static int func_n = 0;
@@ -2667,7 +2669,7 @@ static int var_array(const char *n, int count, int esz) {
 static struct { char fname[64]; char pnames[32][64]; int pn; } fn_param_map[2048]; static int fn_param_map_n; static int cur_fn_pmap = -1; /* 当前解析函数在参数名表的索引 (-1=非函数参数上下文) */
 static int fn_param_find(const char *fname) { for (int i = 0; i < fn_param_map_n; i++) if (!strcmp(fn_param_map[i].fname, fname)) return i; return -1; }
 static int fn_param_pos(const char *fname, const char *pname) { int fi = fn_param_find(fname); if (fi < 0) return -1; for (int i = 0; i < fn_param_map[fi].pn; i++) if (!strcmp(fn_param_map[fi].pnames[i], pname)) return i; return -1; }
-static void fn_param_begin(const char *fname) { int fi = fn_param_find(fname); if (fi < 0) { if (fn_param_map_n >= 2048) return; fi = fn_param_map_n++; strcpy(fn_param_map[fi].fname, fname); } fn_param_map[fi].pn = 0; cur_fn_pmap = fi; } /* 函数定义/原型: 清空重收集 */
+static void fn_param_begin(const char *fname) { int fi = fn_param_find(fname); if (fi < 0) { if (fn_param_map_n >= 2048) budget_fail("参数映射表 fn_param", 2048); fi = fn_param_map_n++; strcpy(fn_param_map[fi].fname, fname); } fn_param_map[fi].pn = 0; cur_fn_pmap = fi; } /* 函数定义/原型: 清空重收集 */
 static void fn_param_end(void) { cur_fn_pmap = -1; }
 static int var_param(const char *n, int slot, int pesz, int esz, int stidx, int is_dbl, int is_ll) { /* is_ll: long long param -> 8-byte slot (fix 2026-08-05) */
     
@@ -5369,7 +5371,7 @@ static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; i
         return a;
     } if (!move_dst_parsing && lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错; 移入 dst 解析期跳过 (dst 是写目标, 可为已移动变量) */ if (!move_dst_parsing && lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错; 移入 dst 解析期跳过 (移入=初始化, fix 2026-08-28 #78回归: 移入 b,a 的 b 未初始化被误伤) */ return n; }
 static int pipe_chain(void) { int n = asgn(); while (tt[tk] == PIPE) { tk++; int f = asgn(); int call = Nd(4); Nc(call, n); Nc(call, f); n = call; } return n; } /* 接入 2026-08-27 管道操作符: a |> f = f(a) — call 节点 callee 是最后 Nc (case 4 L11080 反向找), 参数先挂 (fix 2026-08-27: 原 f 先挂 n0 → callee 变 a 字面量 → 垃圾函数名崩) */
-static int expr(void) { return pipe_chain(); }
+static int expr(void) { parse_depth++; if (parse_depth > 350) budget_fail("表达式递归深度", 350); int _er = pipe_chain(); parse_depth--; return _er; } /* 资源护栏 9b (2026-08-28): 深括号/三元/嵌套调用递归护栏 — 实测每层 expr 链烧 10-20 栈帧, 崩溃点 ~500-800, 护栏 350 安全线下; 超限 A5001 确定性拒绝 (防栈溢出 0xC0000005) */
 
 /* fix 2026-08-24 t35t: 循环条件顶层逗号表达式 — `} while (prev_ch = p_ch, (p_ch = *++p) != ']')`
    原 expr() 对顶层逗号 (非括号内) 只取第一部分 → 条件后半 (p_ch=*++p)!=']' 丢成循环后孤立表达式
@@ -5587,6 +5589,7 @@ static int compound_literal(int is_struct, int si, int is_array, int arr_n, int 
 static int const_expr_eval(int *val); /* fwd (fix 2026-08-15: blk 内局部数组维度用常量表达式) */
 static int blk(void) {
     int b = Nd(5); tk++;
+    parse_depth++; if (parse_depth > 350) budget_fail("块递归深度", 350); /* 资源护栏 9b (2026-08-28): 深块嵌套 {{{{...}}}} 递归护栏 (块每层 2-3 帧, 与表达式共用计数, 上限统一 350 安全线下) */
     borrow_depth++; /* 接入 2026-08-28 机制层 #4: 生命周期=词法块作用域 — 进入块深度+1, 块内借用记 scope, 块退出自动放还 */
     uninit_depth++; /* 接入 2026-08-28 机制层 #78: 未初始化变量表块深度 — 块退出清除本块声明 */
     int b_root = b;  /* first block = sequence root; extra blocks chain as children */
@@ -6681,6 +6684,7 @@ static int blk(void) {
     nv[b_root] = vcnt + 1; /* block end var bound for codegen scoping (fix 2026-08-16: sibling-block locals shadow earlier blocks) */
     for (int bvi = blk_vstart; bvi < vcnt; bvi++) if (vars[bvi].blk_end == 0) { vars[bvi].blk_start = blk_vstart; vars[bvi].blk_end = vcnt; } /* fix 2026-08-19: 本块直接声明的变量 blk 范围 = 本块 [start,end) (嵌套块变量已标记, 保持其块内作用域) */
     cl_blk = cl_prev; /* 恢复外层块 (compound literal, fix 2026-08-11) */
+    parse_depth--; /* 资源护栏 9b (2026-08-28): 块递归深度出栈 */
     return b_root;
 }
 
@@ -18301,6 +18305,28 @@ static void cache_sidecar_path(const char *outf, char *buf, int bufn) { strncpy(
 static int cache_sidecar_matches(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); char *k = read_file(sp); if (!k) return 0; int m = !strcmp(k, cache_key); free(k); return m; }
 static void cache_sidecar_write(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); FILE *f = fopen(sp, "wb"); if (f) { fwrite(cache_key, 1, 64, f); fclose(f); } }
 
+/* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
+static int budget_flag = 0; /* --budget */
+static void budget_report(void) {
+    printf("{\"budget\":["
+      "{\"name\":\"macros\",\"used\":%d,\"cap\":4096},"
+      "{\"name\":\"fn_macros\",\"used\":%d,\"cap\":2048},"
+      "{\"name\":\"obj_macros\",\"used\":%d,\"cap\":8192},"
+      "{\"name\":\"funcs\",\"used\":%d,\"cap\":65536},"
+      "{\"name\":\"vars\",\"used\":%d,\"cap\":65536},"
+      "{\"name\":\"tokens\",\"used\":%d,\"cap\":%d},"
+      "{\"name\":\"ast_nodes\",\"used\":%d,\"cap\":%d},"
+      "{\"name\":\"labels\",\"used\":%d,\"cap\":131072},"
+      "{\"name\":\"strings\",\"used\":%d,\"cap\":65536},"
+      "{\"name\":\"typedefs\",\"used\":%d,\"cap\":512},"
+      "{\"name\":\"discriminants\",\"used\":%d,\"cap\":256},"
+      "{\"name\":\"borrowed\",\"used\":%d,\"cap\":256},"
+      "{\"name\":\"moved\",\"used\":%d,\"cap\":256},"
+      "{\"name\":\"declares\",\"used\":%d,\"cap\":256}"
+      "]}\n",
+      macro_n, fn_macro_n, obj_macro_n, func_n, vcnt, ti, TS, nc, ASZ, lc, str_cnt, tdn_n, disc_n, borrowed_cnt, moved_cnt, decl_cnt);
+}
+
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
 char *qcc_prepend_rt(const char *src) { /* 可嵌入: rt 拼接封装 (fix 2026-08-28 大哥验收: reset 清宏 + 时序 → rt 守卫失效 → rt 实现剃光 → 嵌入产物缺代码段崩) — main 与 qcc_embed_driver 共用; 多路径搜索: 相对 cwd + 可执行文件目录 (Windows GetModuleFileName) */
@@ -18545,7 +18571,7 @@ int main(int argc, char **argv) {
     for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
     while (argc > argi) {
         if (strcmp(argv[argi], "--help") == 0) {
-            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
+            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n  --cache / --cache-verify  文件级哈希增量编译 (AI原生 #5, 可吞清单 P0-5)\n  --budget  编译期资源水位报告 (AI原生 #9b, 可吞清单 P0-9b)\n  --diagnostics=json | --dj  JSON 诊断输出\n  --selfcheck <sha256>  产物哈希对账不动点\n  --repeat <N>  同进程连续编译验证可重入\n");
             return 0;
         }
         if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); return 0; }
@@ -18568,6 +18594,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--repeat") == 0 && argc > argi + 1) { repeat_n = atoi(argv[argi + 1]); if (repeat_n < 1) repeat_n = 1; argi += 2; continue; } /* 接入 2026-08-28 AI原生 #6: 同进程连续编译 N 次验证可重入 */
         if (strcmp(argv[argi], "--cache") == 0) { cache_mode = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 (可吞清单 P0-5) — sidecar 式, 命中跳过编译 */
         if (strcmp(argv[argi], "--cache-verify") == 0) { cache_verify = 1; cache_mode = 1; argi++; continue; } /* 命中时新鲜编译+对账复验 (增量结果纳入不动点链) */
+        if (strcmp(argv[argi], "--budget") == 0) { budget_flag = 1; argi++; continue; } /* 资源护栏 9b (可吞清单 P0-9b): 编译期水位报告 (AI 可读 JSON) */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
@@ -18664,6 +18691,7 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
         if (qcc_compile_once(src, outf, asm_mode)) { fprintf(stderr, "[REPEAT] 第 %d 次编译失败 (可重入验证失败)\n", qri + 1); return 1; }
     }
     if (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (可重入无状态核心验证通过)\n", repeat_n);
+    if (budget_flag) budget_report(); /* 资源护栏 9b: 编译期水位报告 (AI 可读 JSON, 编译成功后) */
     return 0;
 
 }
