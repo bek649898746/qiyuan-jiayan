@@ -2435,8 +2435,20 @@ static void uninit_scope_exit(void) { uninit_depth--; if (uninit_depth < 0) unin
 int tk; /* fwd: token 索引 (定义在 L3020 token 系统区 — 2026-08-28 emit_error 定位行号需提前声明) */
 static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tline 可见处 (var_offset 前) — 2026-08-28 大哥评估: loc.line 真值 = tline[tk]-rt_line_skip (用户源码行号) */
     if (diagnostics_json) {
-        const char *fix = "查看错误码文档";
-        if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还借用/重新赋值恢复, 再读/写/移动";
+        /* fix 2026-08-28 真接入③: 修复建议按具体错误码精确给出 (原只按 A3/A4 族粗分, "查看错误码文档" 占位) */
+        const char *fix = "查看错误码文档 (error_codes/README.md)";
+        if (!strcmp(code, "A3001")) fix = "解除借用后再写/读: 可变借用先 放还; 只读借用写=自动放还 (借用自动化)";
+        else if (!strcmp(code, "A3002")) fix = "已有借用时不能再 可变借用: 先 放还 全部借用 (独占互斥)";
+        else if (!strcmp(code, "A3003")) fix = "借用中不能再 可变借用: 先 放还 (只读借用挡独占)";
+        else if (!strcmp(code, "A3004")) fix = "借用期间不能移动: 先 放还 再 移入 (所有权不可转)";
+        else if (!strcmp(code, "A3101")) fix = "move 后源失效: 读取前重新赋值恢复, 或改用其他变量 (#5)";
+        else if (!strcmp(code, "A3102")) fix = "已移动不能再移动: 先重新赋值恢复所有权 (#5)";
+        else if (!strcmp(code, "A3103")) fix = "已移动变量不能借用: 先重新赋值 (#10)";
+        else if (!strcmp(code, "A4001")) fix = "声明时初始化, 或先赋值再读取 (明确初始化 #78)";
+        else if (!strcmp(code, "A5001")) fix = "扩容对应容量宏或减小输入规模 (资源护栏 9b)";
+        else if (!strcmp(code, "A6002")) fix = "调用前保证前置条件成立: 修正常量参数, 或加调用点守卫 (#7 编译期审判)";
+        else if (!strcmp(code, "A7001")) fix = "先 契约 P; 登记契约类型, 或改用已定义结构体 (#8)";
+        else if (code[0] == 'A' && code[1] == '3') fix = "检查借用/所有权规则: 先放还/重新赋值恢复, 再读/写/移动";
         else if (code[0] == 'A' && code[1] == '4') fix = "声明时初始化, 或先赋值再读取";
         else if (code[0] == 'A' && code[1] == '1') fix = "检查语法/解析结构";
         else if (code[0] == 'A' && code[1] == '2') fix = "检查类型/声明/语义";
