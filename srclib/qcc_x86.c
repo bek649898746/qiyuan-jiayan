@@ -11236,6 +11236,14 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             if (tt[tk] == SK) tk++;
             continue;
         }
+        /* 契约 P; (2026-08-28 顶层真接入④): 登记契约结构 — 必须在全局变量检测前拦截 (否则被当未知 typedef + 注册假全局变量污染) */
+        if (tt[tk] == VR && !strcmp(tn[tk], "契约")) {
+            tk++; /* 契约 */
+            char ctag2[64]; strcpy(ctag2, tn[tk]); tk++;
+            if (tt[tk] == SK) tk++; /* ; */
+            cstr_register(ctag2);
+            continue;
+        }
         /* global variable declarations: [static] type name [= init] ; */
         int unknown_ty_decl = 0;
         { int _uty = tk; if (tt[_uty] == VK && !strcmp(tn[_uty], "static")) _uty++; /* fix 2026-08-14: static 前缀后 unknown typedef (static sig_handler_t timer_fn = SIG_DFL) */
@@ -11732,13 +11740,6 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
         }
         /* __attribute__((...)) �?skip balanced parens */
-        if (tt[tk] == VR && !strcmp(tn[tk], "契约")) { /* 接入 2026-08-28 可吞清单 P0-8: 顶层 契约 P; — 登记契约结构 (接口指纹哈希) */
-            tk++; /* 契约 */
-            char ctag2[64]; strcpy(ctag2, tn[tk]); tk++;
-            if (tt[tk] == SK) tk++; /* ; */
-            cstr_register(ctag2);
-            continue;
-        }
         if (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行: 顶层 声明 名字(参数) 返回 类型; — 注册签名 (与 stmt 分支同逻辑, 顶层不经过 stmt) */
             tk++;
             if (tk < TS && decl_cnt < 256) { strcpy(decl_names[decl_cnt++], tn[tk]); }
