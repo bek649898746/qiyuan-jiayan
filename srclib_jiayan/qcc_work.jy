@@ -9465,6 +9465,7 @@ __attribute__((unused))
         静 整 sw_seq2 = 0; 字 rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
         var_offset(iname); var_offset(rn2);
         整 vals[64]; 整 ress[64]; 整 ncase = 0; 整 has_def = 0; 整 e_def = 0;
+        整 or_vals[64]; 整 guard_vals[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) */
         循环 (1) {
             若 (tt[tk] == VR && !strcmp(tn[tk], "其他")) { /* 缺省分支 (可选, 须在最后) */
                 tk++; 若 (tt[tk] == CL) tk++; /* : */
@@ -9472,8 +9473,19 @@ __attribute__((unused))
                 若 (tt[tk] == SK) tk++; /* ; */
                 断;
             }
-            若 (ncase < 64) { vals[ncase] = expr(); 若 (tt[tk] == CL) tk++; /* : */ ress[ncase] = expr(); ncase++; }
-            否 { 若 (tt[tk] == SK) tk++; 断; }
+            若 (ncase < 64) {
+                整 v1 = band(); /* 模式值用 band() (不含 | 位或) — expr() 会把 `1 | 2` 的 | 当位或吃掉 → or 模式失效 */
+                整 v2 = -1; 整 guard = -1;
+                若 (tt[tk] == OR) { tk++; v2 = band(); } /* #132 or 模式: v1 | v2 (| = OR token 47) */
+                若 (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* #133 守卫模式: v 若 cond (若 词法映射为 if/IK) */
+                若 (tt[tk] == CL) tk++; /* : */
+                整 res = expr();
+                /* 2026-08-28 P1 #142 冗余/不可达模式检查: 常量模式与前面**无守卫**臂重复 → 后臂不可达 [ERR] (有守卫前臂可能失败, 不构成冗余) */
+                若 (nt[v1] == 0) { 整 cv = nv[v1]; 遍 (整 j = 0; j < ncase; j++) { 若 (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
+                若 (v2 >= 0 && nt[v2] == 0) { 整 cv2 = nv[v2]; 遍 (整 j = 0; j < ncase; j++) { 若 (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv2) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv2))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv2); exit(1); } } }
+                vals[ncase] = v1; ress[ncase] = res; or_vals[ncase] = v2; guard_vals[ncase] = guard;
+                ncase++;
+            } 否 { 若 (tt[tk] == SK) tk++; 断; }
             若 (tt[tk] == CK) { tk++; 续; }
             若 (tt[tk] == SK) { tk++; 断; }
             断;
@@ -9489,14 +9501,34 @@ __attribute__((unused))
         { 整 d = Nd(7); memcpy((字*)(nn + d), rn2, 32);
           若 (has_def) Nc(d, e_def); 否 { 整 zero = Nd(0); nv[zero] = 0; Nc(d, zero); }
           Nc(blk, d); } /* int __sr = 其他值/0; */
+        静 整 sw_seq3 = 0; 字 mname[64]; sprintf(mname, "__sm_%d_", sw_seq3++);
+        var_offset(mname);
+        { 整 d = Nd(7); memcpy((字*)(nn + d), mname, 32); 整 z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __sm = 0; 已匹配标志 (2026-08-28 P1 #133: 防守卫命中后后续臂覆盖) */
         { 整 i;
           遍 (i = 0; i < ncase; i++) {
               整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32);
-              整 cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == 值 */
+              整 cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == v1 */
+              若 (or_vals[i] >= 0) { /* 2026-08-28 P1 #132: || (__sw == v2) — or 模式多值合一 */
+                  整 cmp2 = Nd(2); nv[cmp2] = T_QK; Nc(cmp2, v_i); Nc(cmp2, or_vals[i]);
+                  整 orn = Nd(2); nv[orn] = LO; Nc(orn, cmp); Nc(orn, cmp2);
+                  cmp = orn;
+              }
+              若 (guard_vals[i] >= 0) { /* 2026-08-28 P1 #133: && (guard) — 守卫模式条件过滤 */
+                  整 andn = Nd(2); nv[andn] = LA; Nc(andn, cmp); Nc(andn, guard_vals[i]);
+                  cmp = andn;
+              }
+              { 整 v_m = Nd(1); memcpy((字*)(nn + v_m), mname, 32);
+                整 z2 = Nd(0); nv[z2] = 0;
+                整 notm = Nd(2); nv[notm] = T_QK; Nc(notm, v_m); Nc(notm, z2); /* __sm == 0 */
+                整 andn2 = Nd(2); nv[andn2] = LA; Nc(andn2, notm); Nc(andn2, cmp); /* !已匹配 && 条件 */
+                cmp = andn2; }
               整 ifn = Nd(8); Nc(ifn, cmp);
               整 ibd = Nd(5);
               { 整 v_r = Nd(1); memcpy((字*)(nn + v_r), rn2, 32);
                 整 asg = Nd(10); Nc(asg, v_r); Nc(asg, ress[i]); Nc(ibd, asg); } /* __sr = 结果; */
+              { 整 v_m2 = Nd(1); memcpy((字*)(nn + v_m2), mname, 32);
+                整 one = Nd(0); nv[one] = 1;
+                整 asg2 = Nd(10); Nc(asg2, v_m2); Nc(asg2, one); Nc(ibd, asg2); } /* __sm = 1; 标记已匹配 */
               Nc(ifn, ibd);
               Nc(blk, ifn);
           } }

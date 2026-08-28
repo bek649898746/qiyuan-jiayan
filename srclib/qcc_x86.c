@@ -9465,6 +9465,7 @@ static int stmt(void) {
         static int sw_seq2 = 0; char rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
         var_offset(iname); var_offset(rn2);
         int vals[64]; int ress[64]; int ncase = 0; int has_def = 0; int e_def = 0;
+        int or_vals[64]; int guard_vals[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) */
         while (1) {
             if (tt[tk] == VR && !strcmp(tn[tk], "其他")) { /* 缺省分支 (可选, 须在最后) */
                 tk++; if (tt[tk] == CL) tk++; /* : */
@@ -9472,8 +9473,19 @@ static int stmt(void) {
                 if (tt[tk] == SK) tk++; /* ; */
                 break;
             }
-            if (ncase < 64) { vals[ncase] = expr(); if (tt[tk] == CL) tk++; /* : */ ress[ncase] = expr(); ncase++; }
-            else { if (tt[tk] == SK) tk++; break; }
+            if (ncase < 64) {
+                int v1 = band(); /* 模式值用 band() (不含 | 位或) — expr() 会把 `1 | 2` 的 | 当位或吃掉 → or 模式失效 */
+                int v2 = -1; int guard = -1;
+                if (tt[tk] == OR) { tk++; v2 = band(); } /* #132 or 模式: v1 | v2 (| = OR token 47) */
+                if (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* #133 守卫模式: v 若 cond (若 词法映射为 if/IK) */
+                if (tt[tk] == CL) tk++; /* : */
+                int res = expr();
+                /* 2026-08-28 P1 #142 冗余/不可达模式检查: 常量模式与前面**无守卫**臂重复 → 后臂不可达 [ERR] (有守卫前臂可能失败, 不构成冗余) */
+                if (nt[v1] == 0) { int cv = nv[v1]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
+                if (v2 >= 0 && nt[v2] == 0) { int cv2 = nv[v2]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv2) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv2))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv2); exit(1); } } }
+                vals[ncase] = v1; ress[ncase] = res; or_vals[ncase] = v2; guard_vals[ncase] = guard;
+                ncase++;
+            } else { if (tt[tk] == SK) tk++; break; }
             if (tt[tk] == CK) { tk++; continue; }
             if (tt[tk] == SK) { tk++; break; }
             break;
@@ -9489,14 +9501,34 @@ static int stmt(void) {
         { int d = Nd(7); memcpy((char*)(nn + d), rn2, 32);
           if (has_def) Nc(d, e_def); else { int zero = Nd(0); nv[zero] = 0; Nc(d, zero); }
           Nc(blk, d); } /* int __sr = 其他值/0; */
+        static int sw_seq3 = 0; char mname[64]; sprintf(mname, "__sm_%d_", sw_seq3++);
+        var_offset(mname);
+        { int d = Nd(7); memcpy((char*)(nn + d), mname, 32); int z = Nd(0); nv[z] = 0; Nc(d, z); Nc(blk, d); } /* int __sm = 0; 已匹配标志 (2026-08-28 P1 #133: 防守卫命中后后续臂覆盖) */
         { int i;
           for (i = 0; i < ncase; i++) {
               int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
-              int cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == 值 */
+              int cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == v1 */
+              if (or_vals[i] >= 0) { /* 2026-08-28 P1 #132: || (__sw == v2) — or 模式多值合一 */
+                  int cmp2 = Nd(2); nv[cmp2] = T_QK; Nc(cmp2, v_i); Nc(cmp2, or_vals[i]);
+                  int orn = Nd(2); nv[orn] = LO; Nc(orn, cmp); Nc(orn, cmp2);
+                  cmp = orn;
+              }
+              if (guard_vals[i] >= 0) { /* 2026-08-28 P1 #133: && (guard) — 守卫模式条件过滤 */
+                  int andn = Nd(2); nv[andn] = LA; Nc(andn, cmp); Nc(andn, guard_vals[i]);
+                  cmp = andn;
+              }
+              { int v_m = Nd(1); memcpy((char*)(nn + v_m), mname, 32);
+                int z2 = Nd(0); nv[z2] = 0;
+                int notm = Nd(2); nv[notm] = T_QK; Nc(notm, v_m); Nc(notm, z2); /* __sm == 0 */
+                int andn2 = Nd(2); nv[andn2] = LA; Nc(andn2, notm); Nc(andn2, cmp); /* !已匹配 && 条件 */
+                cmp = andn2; }
               int ifn = Nd(8); Nc(ifn, cmp);
               int ibd = Nd(5);
               { int v_r = Nd(1); memcpy((char*)(nn + v_r), rn2, 32);
                 int asg = Nd(10); Nc(asg, v_r); Nc(asg, ress[i]); Nc(ibd, asg); } /* __sr = 结果; */
+              { int v_m2 = Nd(1); memcpy((char*)(nn + v_m2), mname, 32);
+                int one = Nd(0); nv[one] = 1;
+                int asg2 = Nd(10); Nc(asg2, v_m2); Nc(asg2, one); Nc(ibd, asg2); } /* __sm = 1; 标记已匹配 */
               Nc(ifn, ibd);
               Nc(blk, ifn);
           } }
