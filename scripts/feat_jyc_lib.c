@@ -60,6 +60,15 @@ int main(void) {
     if (字符串相等("hello", "world") != 0) { printf("FAIL neq\n"); return 1; }
     if (字符串比较("abc", "abd") >= 0) { printf("FAIL cmp\n"); return 1; }
 
+    /* 内存序吃狗粮: 原子计数器 (释放写/获取读) */
+    for (int i = 0; i < 5; i++) 原子增();
+    if (原子取() != 5) { printf("FAIL atom %d\n", 原子取()); return 1; }
+
+    /* 覆写移动吃狗粮: 自定义移动钩子 */
+    g_移动日志 = 0;
+    if (带钩子移动(7) != 7) { printf("FAIL ovr-move\n"); return 1; }
+    if (g_移动日志 != 7) { printf("FAIL ovr-log %d\n", g_移动日志); return 1; }
+
     printf("PASS\n");
     return 0;
 }
