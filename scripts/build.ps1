@@ -53,7 +53,7 @@ Write-Host "  v5: $h5"
 #            双指锟斤拷锟街段伙拷锟斤拷/锟斤拷锟斤拷锟斤拷锟斤拷 frow/mem_addr deref fsz/static struct 锟街段革拷值/锟斤拷锟斤拷 struct typedef 锟街讹拷;
 #            锟斤拷锟斤拷 QCC_DBG_VA varargs 锟斤拷锟皆诧拷桩 锟斤拷 -Wall -Werror 锟姐警锟斤拷):
 # qcc_boot == v1==v2==v3==v4==v5 = 6D8721FF (2026-08-23 t35j: const char *arr[] p_inner + %+d 锟斤拷锟斤拷锟斤拷)
-$expected = 'cc6f0c98'  # 接口文件+语义导航 (函数定义行号, 可吞清单 P1)  # 接口文件 --interface (可吞清单 P1, MoonBit #4)  # 编译DAG重放证明 (可吞清单 P0-9, AI原生 #9 — P0 收官)  # 结构契约审判 契约哈希 (可吞清单 P0-8, AI原生 #8)  # 契约审判 前置/后置 (可吞清单 P0-7, AI原生 #7)  # 编译检查点 (可吞清单 P0-6, AI原生 #6: --checkpoint 崩溃尸检)  # 编译器资源护栏 (可吞清单 P0-9b, AI原生 #9b)  # 文件级哈希增量编译 (可吞清单 P0-5, AI原生 #5)  # 借用自动化+移入dst修复 (2026-08-28 完善第2项)  # loc完善: line真值+codeLine (大哥评估) 新不动点
+$expected = '9e797e72'  # 编译黑匣子 --recorder (可吞清单 P1, 分歧逐帧定位)  # 接口文件+语义导航 (函数定义行号, 可吞清单 P1)  # 接口文件 --interface (可吞清单 P1, MoonBit #4)  # 编译DAG重放证明 (可吞清单 P0-9, AI原生 #9 — P0 收官)  # 结构契约审判 契约哈希 (可吞清单 P0-8, AI原生 #8)  # 契约审判 前置/后置 (可吞清单 P0-7, AI原生 #7)  # 编译检查点 (可吞清单 P0-6, AI原生 #6: --checkpoint 崩溃尸检)  # 编译器资源护栏 (可吞清单 P0-9b, AI原生 #9b)  # 文件级哈希增量编译 (可吞清单 P0-5, AI原生 #5)  # 借用自动化+移入dst修复 (2026-08-28 完善第2项)  # loc完善: line真值+codeLine (大哥评估) 新不动点
 if (($h1 -eq $h2) -and ($h2 -eq $h3) -and ($h3 -eq $h4) -and ($h4 -eq $h5) -and ($h1.Substring(0,8) -eq $expected)) {
     Write-Host "[OK] 锟皆撅拷 1-cycle 锟斤拷锟?: v1==v2==v3==v4==v5 = $($h1.Substring(0,8))" -ForegroundColor Green
 } else {

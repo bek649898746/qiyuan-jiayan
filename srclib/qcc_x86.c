@@ -1233,6 +1233,7 @@ static void sha256_buf(const char *data, int len, char out[65]); /* fwd: 定义�
 static char cstr_names[64][64]; static char cstr_hashes[64][65]; static int cstr_n; /* 接入 2026-08-28 可吞清单 P0-8: 结构契约表 (契约 struct 名 → 描述符 SHA256 接口指纹) — 声明在此, 定义函数在契约表区 */
 static int cstr_find(const char *n); static int cstr_register(const char *n); /* fwd */
 static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; static char dag_ast[65]; static void dag_hash_tokens(void); static void dag_hash_ast(void); /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 阶段哈希链 (定义在资源护栏区) */
+static int recorder_mode = 0; static char recorder_path[512]; static int rec_prev_cp = 0; static int rec_pass = 0; static void rec_line(const char *line); static void recorder_frame(const char *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 static int checkpoint_mode = 0; static char checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -17470,6 +17471,7 @@ void gen_code(void) {
     /* reset codegen state for two-pass (pass 1 estimates .data base, pass 2 real) */
     cp = 0; patch_n = 0; strpn = 0; fnpn = 0; dbl_patch_n = 0; sdp = 0; gfn = 0;
     coff_ginit_done = 0;
+    if (recorder_mode) { rec_prev_cp = 0; rec_pass++; char ph[80]; sprintf(ph, "{\"pass\":%d,\"start\":true}", rec_pass); rec_line(ph); } /* 编译黑匣子: 每 pass 起始帧 (gen_code 多遍, 每遍独立帧序) */
     func_n = 0; /* MUST re-register all functions in pass 2 with FRESH labels �?
                    otherwise pass-2 new_label() numbers overlap the pass-1 function
                    labels and epilogue/return jumps resolve to the wrong functions. */
@@ -17650,6 +17652,7 @@ void gen_code(void) {
             pop_r(5); /* pop rbp */
             ret();
         }
+        recorder_frame(fname); /* 编译黑匣子: 每函数代码增量哈希帧 (定位分歧: diff 两黑匣子, 首个不同 delta 即首个分歧函数) */
     }
     /* 接入 2026-08-28 declare 声明先行: 已声明的未实现函数 → stub (mov eax,0; ret), 缺失=警告非错误 (AI 渐进补全) */
     for (int di = 0; di < decl_cnt; di++) {
@@ -18473,6 +18476,18 @@ static void interface_emit(void) { /* 接口文件 (AI 可消费 JSON): 函数�
     printf("]");
     printf("}}\n");
 }
+/* 接入 2026-08-28 可吞清单 P1 (Agint flight-recorder 参考, 甲言化: 编译黑匣子): 每函数代码增量哈希帧 — 自举分歧时逐帧 diff 定位首个分歧函数 (黑匣子只读记录, 数据留底不死不灭); 全局声明在顶部 (gen_code 用) */
+static void rec_line(const char *line) { if (!recorder_mode || !recorder_path[0]) return; FILE *f = fopen(recorder_path, "ab"); if (!f) return; fwrite(line, 1, strlen(line), f); fputc('\n', f); fflush(f); fclose(f); } /* 独立开/写/刷/关 — 崩溃时已刷盘行即现场 */
+static void recorder_frame(const char *fn) { /* 每函数代码增量哈希帧: sha256(code[rec_prev_cp..cp)) — 增量 O(n) 总量, 分歧定位到函数级 */
+    if (!recorder_mode) return;
+    int ncp = cp;
+    if (ncp > rec_prev_cp) {
+        char h[65]; sha256_buf((const char*)code + rec_prev_cp, ncp - rec_prev_cp, h);
+        char lne[160]; sprintf(lne, "{\"pass\":%d,\"fn\":\"%s\",\"delta\":\"%.16s\",\"cp\":%d}", rec_pass, fn, h, ncp);
+        rec_line(lne);
+    }
+    rec_prev_cp = ncp;
+}
 
 /* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
 static void budget_report(void) {
@@ -18768,6 +18783,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--checkpoint") == 0 && argc > argi + 1) { checkpoint_mode = 1; strncpy(checkpoint_path, argv[argi + 1], 511); checkpoint_path[511] = 0; argi += 2; continue; } /* 编译检查点 (可吞清单 P0-6): 崩溃尸检 — 进度快照落盘 (lex/每函数parse/每函数codegen/done), 崩溃现场可查 */
         if (strcmp(argv[argi], "--dag") == 0) { dag_mode = 1; argi++; continue; } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 (源码→token→AST→产物), 编译过程可重放可验证 */
         if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
+        if (strcmp(argv[argi], "--recorder") == 0 && argc > argi + 1) { recorder_mode = 1; strncpy(recorder_path, argv[argi + 1], 511); recorder_path[511] = 0; argi += 2; continue; } /* 编译黑匣子 (可吞清单 P1, Agint flight-recorder 参考, 甲言化: 黑匣子) — 每函数代码增量哈希帧, 分歧逐帧定位 */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
