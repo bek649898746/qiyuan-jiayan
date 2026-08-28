@@ -1226,6 +1226,8 @@ static int line_at(const char *s, int pos) {
 }
 static char expect_sha[65] = ""; /* #expect (Phase 4 哈希审判) */
 static char selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
+#define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
+static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 static char *pp_include_expand(const char *src, int depth) {
     if (depth > 32) { fprintf(stderr, "[ERR] #include 嵌套超过 32 层\n"); exit(1); } /* fix 2026-08-26 ffmpeg: 8→32 — FFmpeg 头链深 (config.h→libavutil/xxx.h→common.h→mem.h→... 15+ 层), 原 8 层爆 */
     if (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; if (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n++; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
@@ -18277,6 +18279,28 @@ static void sha256_file(const char *path, char out[65]) {
     out[64] = 0;
 }
 
+/* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 内存 SHA256 (缓存键) + 文件拷贝 + sidecar 缓存读写 */
+static void sha256_buf(const char *data, int len, char out[65]) {
+    unsigned int h[8]; unsigned char pad[128]; int i, j, n, pn; unsigned long long total = 0, bits;
+    h[0]=0x6a09e667; h[1]=0xbb67ae85; h[2]=0x3c6ef372; h[3]=0xa54ff53a; h[4]=0x510e527f; h[5]=0x9b05688c; h[6]=0x1f83d9ab; h[7]=0x5be0cd19;
+    while (len >= 64) { sha256_block(h, (const unsigned char *)data); data += 64; len -= 64; total += 64; }
+    n = len; memcpy(pad, data, n); pn = n; pad[pn++] = 0x80;
+    while ((pn & 63) != 56) pad[pn++] = 0;
+    bits = (total + (unsigned long long)n) * 8;
+    for (i = 0; i < 8; i++) pad[pn++] = (unsigned char)(bits >> (56 - 8 * i));
+    for (i = 0; i < pn; i += 64) sha256_block(h, pad + i);
+    for (i = 0; i < 8; i++) for (j = 0; j < 4; j++) {
+        unsigned int b8 = (h[i] >> (24 - 8 * j)) & 0xFF;
+        out[i * 8 + j * 2] = "0123456789abcdef"[b8 >> 4];
+        out[i * 8 + j * 2 + 1] = "0123456789abcdef"[b8 & 15];
+    }
+    out[64] = 0;
+}
+static int copy_file_bytes(const char *srcp, const char *dstp) { char *d = read_file(srcp); if (!d) return 0; int n = (int)strlen(d); FILE *f = fopen(dstp, "wb"); if (!f) { free(d); return 0; } int w = (int)fwrite(d, 1, n, f); fclose(f); free(d); return w == n; }
+static void cache_sidecar_path(const char *outf, char *buf, int bufn) { strncpy(buf, outf, bufn - 8); buf[bufn - 8] = 0; strcat(buf, ".qcckey"); }
+static int cache_sidecar_matches(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); char *k = read_file(sp); if (!k) return 0; int m = !strcmp(k, cache_key); free(k); return m; }
+static void cache_sidecar_write(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); FILE *f = fopen(sp, "wb"); if (f) { fwrite(cache_key, 1, 64, f); fclose(f); } }
+
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
 char *qcc_prepend_rt(const char *src) { /* 可嵌入: rt 拼接封装 (fix 2026-08-28 大哥验收: reset 清宏 + 时序 → rt 守卫失效 → rt 实现剃光 → 嵌入产物缺代码段崩) — main 与 qcc_embed_driver 共用; 多路径搜索: 相对 cwd + 可执行文件目录 (Windows GetModuleFileName) */
@@ -18542,6 +18566,8 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; continue; }
         if (strcmp(argv[argi], "--diagnostics=json") == 0 || strcmp(argv[argi], "--dj") == 0) { diagnostics_json = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #1: JSON 诊断模式 — 报错输出 {code,severity,message}, AI 程序化消费 */
         if (strcmp(argv[argi], "--repeat") == 0 && argc > argi + 1) { repeat_n = atoi(argv[argi + 1]); if (repeat_n < 1) repeat_n = 1; argi += 2; continue; } /* 接入 2026-08-28 AI原生 #6: 同进程连续编译 N 次验证可重入 */
+        if (strcmp(argv[argi], "--cache") == 0) { cache_mode = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 (可吞清单 P0-5) — sidecar 式, 命中跳过编译 */
+        if (strcmp(argv[argi], "--cache-verify") == 0) { cache_verify = 1; cache_mode = 1; argi++; continue; } /* 命中时新鲜编译+对账复验 (增量结果纳入不动点链) */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
@@ -18596,9 +18622,44 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
        Every compiled program gets it, so stage2 is self-contained. */
     /* fix 2026-08-28: rt 拼接已移入 qcc_compile_once 内部 (reset 之后, 避免 macro_n=0 清 QCC_RT_PREPENDED → rt 剃光 → 嵌入产物崩); main 传纯用户源码 */
 
+    /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — sidecar 式缓存 (可吞清单 P0-5, MoonBit #3 + 生态 D5)
+       键 = SHA256(版本 + 选项签名 + 宏表 + 源码); 命中=跳过编译 (输出文件即缓存); <outf>.qcckey 记录键
+       --cache-verify: 命中时新鲜编译到 <outf>.qccfresh + 对账复验 (增量结果纳入不动点链); asm_mode/--repeat 不缓存 */
+    if (cache_mode && !asm_mode && repeat_n <= 1 && all_len > 0) {
+        char pre[3600]; int pi = 0;
+        /* 版本签名: --selfcheck 提供的不动点 > 自身 exe 哈希 (换编译器自动失效) > QCC_CACHE_VER 常量 (兜底) */
+        char ver_sel[65] = ""; int ver_len = 0;
+        if (selfcheck_sha[0]) { ver_len = (int)strlen(selfcheck_sha); memcpy(ver_sel, selfcheck_sha, ver_len); }
+        else { char mpx[1024]; DWORD mnx = GetModuleFileNameA(NULL, mpx, 1023); if (mnx > 0) { char vh[65]; sha256_file(mpx, vh); if (vh[0]) { memcpy(ver_sel, vh, 64); ver_len = 64; } } }
+        if (ver_len == 0) { ver_len = (int)strlen(QCC_CACHE_VER); memcpy(ver_sel, QCC_CACHE_VER, ver_len); }
+        memcpy(pre + pi, ver_sel, ver_len); pi += ver_len;
+        pre[pi++] = coff_mode ? 'c' : (bin_mode ? 'b' : 'x');
+        if (bare_metal) pre[pi++] = 'B';
+        if (is_compat_stat_c) pre[pi++] = 'C';
+        for (int mi = 0; mi < macro_n && pi < 3500; mi++) { int nl = (int)strlen(macros[mi].name); if (pi + nl + 12 < 3590) { memcpy(pre + pi, macros[mi].name, nl); pi += nl; pre[pi++] = '='; int vv = macros[mi].val; char vs[16]; int vi = 0; if (vv == 0) vs[vi++] = '0'; while (vv > 0) { vs[vi++] = (char)('0' + vv % 10); vv /= 10; } while (vi > 0) pre[pi++] = vs[--vi]; pre[pi++] = ';'; } }
+        int sl = (int)strlen(src);
+        char *kb = malloc(pi + sl + 1);
+        memcpy(kb, pre, pi); memcpy(kb + pi, src, sl); kb[pi + sl] = 0;
+        sha256_buf(kb, pi + sl, cache_key);
+        free(kb);
+        if (cache_sidecar_matches(outf)) { /* 命中: 输出文件即缓存, 跳过编译 */
+            if (selfcheck_sha[0]) { char sh2[65]; sha256_file(outf, sh2); if (strcmp(sh2, selfcheck_sha) != 0) { fprintf(stderr, "[CACHE] SELFCHECK-FAIL 缓存产物 %s != %s (不动点对账失败)\n", sh2, selfcheck_sha); return 1; } fprintf(stderr, "[CACHE] selfcheck OK %s (缓存产物对账不动点)\n", sh2); }
+            if (cache_verify) { /* 复验: 新鲜编译到 <outf>.qccfresh + SHA256 对账 (增量产物==新鲜编译 == 不动点链复验) */
+                char tf[560]; strcpy(tf, outf); strcat(tf, ".qccfresh");
+                if (qcc_compile_once(src, tf, asm_mode)) { fprintf(stderr, "[CACHE] VERIFY 新鲜编译失败\n"); return 1; }
+                char hc[65], hf[65]; sha256_file(outf, hc); sha256_file(tf, hf);
+                if (strcmp(hc, hf) == 0) { fprintf(stderr, "[CACHE] verify OK %s (增量产物==新鲜编译)\n", hc); }
+                else { fprintf(stderr, "[CACHE] VERIFY-MISMATCH %s != %s (缓存失效, 已用新鲜产物刷新)\n", hc, hf); copy_file_bytes(tf, outf); cache_sidecar_write(outf); }
+            }
+            printf("OK: %s (cached)\n", outf);
+            fprintf(stderr, "[CACHE] hit %.8s\n", cache_key);
+            return 0;
+        }
+    }
     /* 接入 2026-08-28 AI原生 #6: 编译核心函数化 — 同进程可重复调用 (可重入无状态核心) */
     int qc_rc = qcc_compile_once(src, outf, asm_mode);
     if (qc_rc) return qc_rc;
+    if (cache_mode && !asm_mode && repeat_n <= 1 && outf && cache_key[0]) { cache_sidecar_write(outf); fprintf(stderr, "[CACHE] miss %.8s\n", cache_key); } /* 编译成功 → 落缓存键 (miss 记键, 下次命中) */
     for (int qri = 1; qri < repeat_n; qri++) { /* --repeat: 同进程连续编译验证可重入 (每次独立分配数组, 产物应一致) */
         if (qcc_compile_once(src, outf, asm_mode)) { fprintf(stderr, "[REPEAT] 第 %d 次编译失败 (可重入验证失败)\n", qri + 1); return 1; }
     }
