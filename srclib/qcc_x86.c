@@ -9755,7 +9755,7 @@ static int stmt(void) {
         static int sw_seq2 = 0; char rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
         var_offset(iname); var_offset(rn2);
         int vals[64]; int ress[64]; int ncase = 0; int has_def = 0; int e_def = 0;
-        int or_vals[64]; int guard_vals[64]; int rng_lo[64]; int rng_hi[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) + P2 #144 区间模式 (范围 lo 到 hi) */
+        int or_vals[64]; int guard_vals[64]; int rng_lo[64]; int rng_hi[64]; int bind_ref[64]; char bind_names[64][64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) + P2 #144 区间模式 (范围 lo 到 hi) + P2 #138 引用模式 (引用 v) */
         while (1) {
             if (tt[tk] == VR && !strcmp(tn[tk], "其他")) { /* 缺省分支 (可选, 须在最后) */
                 tk++; if (tt[tk] == CL) tk++; /* : */
@@ -9766,6 +9766,14 @@ static int stmt(void) {
             if (ncase < 64) {
                 int v1 = band(); /* 模式值用 band() (不含 | 位或) — expr() 会把 `1 | 2` 的 | 当位或吃掉 → or 模式失效 */
                 int v2 = -1; int guard = -1;
+                int is_bind = 0; char bind_name[64]; bind_name[0] = 0; /* 2026-08-28 P2 #138 引用模式: 对照 引用 v: 结果 → 臂内绑定 v */
+                if (v1 >= 0 && nt[v1] == 1 && !strcmp((char*)(nn + v1), "引用")) {
+                    is_bind = 1;
+                    strcpy(bind_name, tn[tk]); tk++; /* 绑定变量名 */
+                    if (var_lookup(bind_name) < 0) var_offset(bind_name);
+                    uninit_remove(bind_name); /* 运行时臂内绑定初始化 — 解析期免未初始化误报 */
+                    v1 = -1; /* 引用模式不比较值 */
+                }
                 if (tt[tk] == OR) { tk++; v2 = band(); } /* #132 or 模式: v1 | v2 (| = OR token 47) */
                 if (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* #133 守卫模式: v 若 cond (若 词法映射为 if/IK) */
                 /* 2026-08-28 P2 #144 区间模式: 对照 范围 lo 到 hi: 结果 — 值域匹配 (sw >= lo && sw <= hi), 须在 : 前解析边界 */
@@ -9780,6 +9788,7 @@ static int stmt(void) {
                 if (v1 >= 0 && nt[v1] == 0) { int cv = nv[v1]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
                 if (v2 >= 0 && nt[v2] == 0) { int cv2 = nv[v2]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv2) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv2))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv2); exit(1); } } }
                 vals[ncase] = v1; ress[ncase] = res; or_vals[ncase] = v2; guard_vals[ncase] = guard;
+                bind_ref[ncase] = is_bind; strcpy(bind_names[ncase], bind_name);
                 ncase++;
             } else { if (tt[tk] == SK) tk++; break; }
             if (tt[tk] == CK) { tk++; continue; }
@@ -9803,7 +9812,9 @@ static int stmt(void) {
         { int i;
           for (i = 0; i < ncase; i++) {
               int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
-              int cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == v1 */
+              int cmp;
+              if (bind_ref[i]) { cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, v_i); } /* #138 引用模式: __sw == __sw 恒真 (绑定臂) */
+              else { cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); } /* __sw == v1 */
               if (rng_lo[i] >= 0) { /* 2026-08-28 P2 #144: 区间模式 (__sw >= lo && __sw <= hi) */
                   int c_lo = Nd(2); nv[c_lo] = T_YK; Nc(c_lo, v_i); Nc(c_lo, rng_lo[i]); /* __sw >= lo */
                   int c_hi = Nd(2); nv[c_hi] = T_HK; Nc(c_hi, v_i); Nc(c_hi, rng_hi[i]); /* __sw <= hi */
@@ -9815,7 +9826,7 @@ static int stmt(void) {
                   int orn = Nd(2); nv[orn] = LO; Nc(orn, cmp); Nc(orn, cmp2);
                   cmp = orn;
               }
-              if (guard_vals[i] >= 0) { /* 2026-08-28 P1 #133: && (guard) — 守卫模式条件过滤 */
+              if (guard_vals[i] >= 0 && !bind_ref[i]) { /* 2026-08-28 P1 #133: && (guard) — 守卫模式条件过滤 (bind_ref 臂守卫移到块内, 绑定后求值) */
                   int andn = Nd(2); nv[andn] = LA; Nc(andn, cmp); Nc(andn, guard_vals[i]);
                   cmp = andn;
               }
@@ -9826,8 +9837,22 @@ static int stmt(void) {
                 cmp = andn2; }
               int ifn = Nd(8); Nc(ifn, cmp);
               int ibd = Nd(5);
-              { int v_r = Nd(1); memcpy((char*)(nn + v_r), rn2, 32);
-                int asg = Nd(10); Nc(asg, v_r); Nc(asg, ress[i]); Nc(ibd, asg); } /* __sr = 结果; */
+              if (bind_ref[i]) { /* #138 引用模式: int v = __sw; (臂内绑定) */
+                  int d = Nd(7); memcpy((char*)(nn + d), bind_names[i], 64);
+                  int v_sw = Nd(1); memcpy((char*)(nn + v_sw), iname, 32);
+                  Nc(d, v_sw); Nc(ibd, d);
+              }
+              if (bind_ref[i] && guard_vals[i] >= 0) { /* #138+守卫: 绑定后守卫 → 内层 if (v 已初始化) */
+                  int gifn = Nd(8); Nc(gifn, guard_vals[i]);
+                  int gbd = Nd(5);
+                  { int v_r = Nd(1); memcpy((char*)(nn + v_r), rn2, 32);
+                    int asg = Nd(10); Nc(asg, v_r); Nc(asg, ress[i]); Nc(gbd, asg); }
+                  Nc(gifn, gbd);
+                  Nc(ibd, gifn);
+              } else {
+                  { int v_r = Nd(1); memcpy((char*)(nn + v_r), rn2, 32);
+                    int asg = Nd(10); Nc(asg, v_r); Nc(asg, ress[i]); Nc(ibd, asg); } /* __sr = 结果; */
+              }
               { int v_m2 = Nd(1); memcpy((char*)(nn + v_m2), mname, 32);
                 int one = Nd(0); nv[one] = 1;
                 int asg2 = Nd(10); Nc(asg2, v_m2); Nc(asg2, one); Nc(ibd, asg2); } /* __sm = 1; 标记已匹配 */
