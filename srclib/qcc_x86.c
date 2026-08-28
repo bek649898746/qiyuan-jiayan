@@ -4484,6 +4484,9 @@ static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 
 
 static char borrowed_names[256][64]; static int borrowed_mode[256]; static int borrowed_scope[256]; static int borrowed_cnt = 0; static int borrow_depth = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/4/10): 借用 x; 标记只读(0), 可变借用 x; 独占(1); #4 生命周期=词法块作用域 — borrowed_scope 记录借用声明时块深度, 块退出自动放还 (借用不跨块) */
 static int borrow_mode_of(const char *v) { for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) return borrowed_mode[i]; return -1; } /* 0=只读借用 1=可变借用(独占) -1=未借用 (vt_lifetime 状态机 2/3 对齐) */
+static void borrow_release(const char *v) { if (!v) return; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; return; } } /* 放还: 解除借用 (mode 一并清, 借用幂等注册 → 一次全清) — 放还语句/写自动放还共用 */
+static char *borrow_write_target(int n) { int rv = n; int dep = 0; while (rv >= 0 && dep < 8 && (nt[rv] == 14 || (nt[rv] == 15 && nv[rv] == 0))) { rv = n0[rv]; dep++; } if (rv >= 0 && nt[rv] == 1) return (char*)(nn + rv); return NULL; } /* 借用自动化 (2026-08-28 完善): 写目标基础变量 — 下钻数组下标/点成员, 遇箭头/解引用停止 (写的是指向对象, 不是指针变量本身) */
+static void borrow_write_policy(int n) { char *vn = borrow_write_target(n); if (!vn) return; int bm = borrow_mode_of(vn); if (bm == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能写 (可变借用后原变量冻结, v3.0 #3)", vn); emit_error("A3001", g_errbuf); } else if (bm == 0) borrow_release(vn); } /* 借用自动化 (2026-08-28 完善): 写目标 → 只读借用(0)自动放还 (显式写=解除只读借用的明确意图, 免手动 放还); 可变借用(1)硬错误 (独占冻结是本意, 读检查 L5014 已拦, 此处兜底) */
 static void borrow_scope_exit(void) { borrow_depth--; if (borrow_depth < 0) borrow_depth = 0; for (int i = 0; i < borrowed_cnt; ) { if (borrowed_scope[i] > borrow_depth) { for (int j = i; j < borrowed_cnt - 1; j++) { strcpy(borrowed_names[j], borrowed_names[j + 1]); borrowed_mode[j] = borrowed_mode[j + 1]; borrowed_scope[j] = borrowed_scope[j + 1]; } borrowed_cnt--; } else i++; } } /* 接入 2026-08-28 机制层 #4: 块退出 → 自动放还本块内新借用的变量 (生命周期=词法作用域, 数组压缩 O(n), 手动放还仍兼容) */
 static char moved_names[256][64]; static int moved_cnt = 0; static int move_dst_parsing = 0; static int asgn_lhs_parsing = 0; static char lv_moved[8][64]; static int lv_moved_n = 0; /* 接入 2026-08-28 机制层 #5 移动语义完整: moved 表(全局, L5014 读检查/L5296 写恢复需要); move_dst_parsing=移入目标解析(dst是写); asgn_lhs_parsing=赋值左值解析中; lv_moved=左值解析期遇到的 moved 变量缓冲 (事后判定: 赋值→重新初始化放行, 非赋值→右值读取报错) */
 static char guard_vars[64][64]; static char guard_fns[64][64]; static int guard_scope[64]; static int guard_cnt = 0; /* 接入 2026-08-28 机制层 #8 RAII 完整(析构): 守卫 x, 析构名; → 记录(变量,析构函数,块深度), 块退出自动调用 析构名(x) (作用域退出自动释放, 复用 borrow_depth 做作用域标记) */
@@ -5123,6 +5126,7 @@ static int prim(void) {
             } else if (tt[tk] == PP || tt[tk] == MM) {
                 /* postfix ++ / -- : return old value, then mutate (simple vars) */
                 int is_dec = (tt[tk] == MM); tk++;
+                borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): x++ = 写 → 只读借用自动放还, 可变借用 [ERR] */
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             } else if (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
@@ -5239,6 +5243,7 @@ static int prim(void) {
                 } else if (tt[tk] == OK) { tk++; int c = Nd(4); while (tt[tk] != KK && tt[tk] != EK) { int t0 = tk; if (tt[tk] == CK) tk++; Nc(c, expr()); if (tk == t0) break; } if (tt[tk] == KK) tk++; Nc(c, ce); ce = c; }
                 else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (cast)++ 后缀同样补齐 */
                     int is_dec = (tt[tk] == MM); tk++;
+                    borrow_write_policy(ce); /* 借用自动化 (2026-08-28 完善): (cast)++ = 写 → 借用策略 */
                     int m = Nd(23); nv[m] = is_dec;
                     Nc(m, ce); ce = m;
                 }
@@ -5305,6 +5310,7 @@ static int prim(void) {
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1 || !strcmp((char*)(nn + callee), "复数") || !strcmp((char*)(nn + callee), "复加"))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll; 2026-08-28: 复数/复加 builtin 64 位打包返回 */
             } else if (tt[tk] == PP || tt[tk] == MM) { /* fix 2026-08-08: (expr)++ 后缀被吞 → fn_macro `out[(*o)++]` 的 *o 不推进 (展开为空). 与变量后缀链一致 */
                 int is_dec = (tt[tk] == MM); tk++;
+                borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): (expr)++ = 写 → 借用策略 */
                 int m = Nd(23); nv[m] = is_dec;
                 Nc(m, n); n = m;
             }
@@ -5350,15 +5356,16 @@ static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
-static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); int bm = borrow_mode_of(vname); if (bm >= 0) { sprintf(g_errbuf, "借用检查: 变量 '%s' %s, 不能写 (%s, v3.0 #2/3)", vname, bm == 1 ? "被可变借用 (独占)" : "被借用 (只读)", bm == 1 ? "可变借用后原变量冻结" : "多读单写"); emit_error("A3001", g_errbuf); } if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
+static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
     if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         if (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
+        borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
         int o = tt[tk++];
         int op = (o == PA) ? PK : (o == MA) ? MK : (o == DA) ? DK : (o == SA) ? DV : (o == OA) ? OR : (o == AA) ? AN : (o == XA) ? XR : (o == SHR) ? SR : (o == MS) ? MD : SH; /* fix 2026-08-05: MS=%= → MD (remainder); was SA→DV so %= divided */
         int a = Nd(10); int bin = Nd(2); nv[bin] = op;
         Nc(a, n); Nc(bin, n); Nc(bin, asgn()); Nc(a, bin); /* a op= b → a = a op b */
         return a;
-    } if (lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错 */ if (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错 */ return n; }
+    } if (!move_dst_parsing && lv_moved_n > 0) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", lv_moved[0]); emit_error("A3101", g_errbuf); } /* 接入 2026-08-28 机制层 #5: 非赋值场景左值即右值读取 — 缓冲里的 moved 变量报错; 移入 dst 解析期跳过 (dst 是写目标, 可为已移动变量) */ if (!move_dst_parsing && lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: 非赋值场景左值即右值读取 — 缓冲里的未初始化变量报错; 移入 dst 解析期跳过 (移入=初始化, fix 2026-08-28 #78回归: 移入 b,a 的 b 未初始化被误伤) */ return n; }
 static int pipe_chain(void) { int n = asgn(); while (tt[tk] == PIPE) { tk++; int f = asgn(); int call = Nd(4); Nc(call, n); Nc(call, f); n = call; } return n; } /* 接入 2026-08-27 管道操作符: a |> f = f(a) — call 节点 callee 是最后 Nc (case 4 L11080 反向找), 参数先挂 (fix 2026-08-27: 原 f 先挂 n0 → callee 变 a 字面量 → 垃圾函数名崩) */
 static int expr(void) { return pipe_chain(); }
 
@@ -7041,7 +7048,7 @@ static int stmt(void) {
         char bn[64]; strcpy(bn, tn[tk]); tk++;
         if (tt[tk] == SK) tk++;
         if (is_rel) {
-            for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], bn)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; } /* 放还: 解除借用 (mode 一并清) */
+            borrow_release(bn); /* 放还: 解除借用 (借用幂等注册 → 一次全清, mode 一并清) */
         } else {
             if (is_moved(bn)) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能借用 (v3.0 #10)", bn); emit_error("A3103", g_errbuf); } /* 接入 2026-08-28 机制层 #10: moved 变量不能借用 (所有权已转移) */
             int bi = -1; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], bn)) { bi = i; break; }
@@ -7093,6 +7100,8 @@ static int stmt(void) {
             if (mi < moved_cnt) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能再次移动", srcn); emit_error("A3102", g_errbuf); }
             if (moved_cnt < 256) strcpy(moved_names[moved_cnt++], srcn);
         }
+        borrow_write_policy(e_d); /* 借用自动化 (2026-08-28 完善): 移入 dst = 写目标 → 只读借用自动放还, 可变借用 [ERR] (原此路径无 dst 借用检查) */
+        { int rvd = e_d; int depd = 0; while (rvd >= 0 && depd < 8 && (nt[rvd] == 14 || (nt[rvd] == 15 && nv[rvd] == 0))) { rvd = n0[rvd]; depd++; } if (rvd >= 0 && nt[rvd] == 1) { uninit_remove((char*)(nn + rvd)); moved_release((char*)(nn + rvd)); } } /* #78 完善 (2026-08-28 fix #78回归): 移入 dst = 初始化/重新绑定 → 解除 dst 的未初始化/已移动状态 (与 asgn 赋值同记账) */
         int blk = Nd(5);
         if (override) { /* #13: 覆写移动 → 调用钩子 钩子名(&dst, &src) (Nd(11)=取地址, callee 最后 Nc) */
             int call = Nd(4);
