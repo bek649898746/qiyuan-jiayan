@@ -4462,6 +4462,10 @@ static int prim(void) {
         int call = Nd(4);
         while (tt[tk] != KK && tt[tk] != EK && tt[tk] != SK) { Nc(call, expr()); if (tt[tk] == CK) tk++; } /* 参数 */
         if (tt[tk] == KK) tk++; /* ) */
+        if (tt[tk] == VR && !strcmp(tn[tk], "松散")) { strcat(fname, "_relaxed"); tk++; } /* 接入 2026-08-28 机制层 #44 内存序: 松散 (relaxed, 无屏障) */
+        else if (tt[tk] == VR && !strcmp(tn[tk], "获取")) { strcat(fname, "_acquire"); tk++; } /* 获取 (acquire, load 后屏障) */
+        else if (tt[tk] == VR && !strcmp(tn[tk], "释放")) { strcat(fname, "_release"); tk++; } /* 释放 (release, store 前屏障) */
+        else if (tt[tk] == VR && !strcmp(tn[tk], "顺序")) { tk++; } /* 顺序 (seq_cst, 默认, 双屏障) */
         { int fn = Nd(1); memcpy((char*)(nn + fn), fname, 64); Nc(call, fn); } /* callee 最后 */
         return call;
     }
@@ -13590,6 +13594,14 @@ static void emit_fileio(const char *fname) {
         add_rsp_imm(48);
         mov_rr64(4, 15);
         mov_reg_mbrp(0, scratch_base + 240 - cur_frame_sz); /* eax = bytes written */
+    } else if (!strncmp(fname, "atomic_load", 11)) {
+        /* 接入 2026-08-28 机制层 #44 内存序: 真原子读 — atomic_load(ptr=rcx) → mov rax, [rcx]; acquire/seq_cst 加 mfence */
+        b(0x48); b(0x8B); b(0x01); /* mov rax, [rcx] (REX.W=48 + 8B + modrm 01=[rcx]/rax) */
+        if (!strcmp(fname, "atomic_load") || strstr(fname, "_acquire")) { b(0x0F); b(0xAE); b(0xF0); } /* mfence (0F AE F0): 默认 seq_cst / acquire */
+    } else if (!strncmp(fname, "atomic_store", 12)) {
+        /* 接入 2026-08-28 机制层 #44 内存序: 真原子写 — atomic_store(ptr=rcx, v=rdx) → [release/seq_cst 前 mfence]; mov [rcx], rdx */
+        if (!strcmp(fname, "atomic_store") || strstr(fname, "_release")) { b(0x0F); b(0xAE); b(0xF0); } /* mfence: 默认 seq_cst / release */
+        b(0x48); b(0x89); b(0x11); /* mov [rcx], rdx (REX.W=48 + 89 + modrm 11=[rcx]/rdx) */
     } else if (!strcmp(fname, "atomic_compare_exchange")) {
         /* 接入 2026-08-28 机制层: 真原子 CAS — atomic_compare_exchange(ptr=rcx, expected=rdx, new=r8)
            → mov rax, rdx (expected); lock cmpxchg [rcx], r8; rax = 旧值 (cmpxchg 语义: [rcx]==rax 则 [rcx]=r8, 否则 rax=[rcx]) */
@@ -15283,7 +15295,7 @@ static void cg(int n) {
                 emit_sscanf(nargs);
             } else if (!strcmp(fname, "fscanf")) { /* fix 2026-08-25 step12: 文件输入变体 — fp=arg0, fmt=arg1, 读 4096 到 buf 再解析 */
                 emit_fscanf(nargs);
-            } else if (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc") || !strcmp(fname, "fseek") || !strcmp(fname, "ftell") || !strcmp(fname, "feof") || !strcmp(fname, "fflush") || !strcmp(fname, "fclose") || !strcmp(fname, "ferror") || !strcmp(fname, "rewind") || !strcmp(fname, "fgets") || !strcmp(fname, "atomic_compare_exchange") || !strcmp(fname, "atomic_fetch_add") || !strcmp(fname, "atomic_exchange")) {
+            } else if (!strcmp(fname, "fopen") || !strcmp(fname, "fread") || !strcmp(fname, "fwrite") || !strcmp(fname, "fputc") || !strcmp(fname, "fputs") || !strcmp(fname, "fgetc") || !strcmp(fname, "fseek") || !strcmp(fname, "ftell") || !strcmp(fname, "feof") || !strcmp(fname, "fflush") || !strcmp(fname, "fclose") || !strcmp(fname, "ferror") || !strcmp(fname, "rewind") || !strcmp(fname, "fgets") || !strcmp(fname, "atomic_compare_exchange") || !strcmp(fname, "atomic_fetch_add") || !strcmp(fname, "atomic_exchange") || !strncmp(fname, "atomic_load", 11) || !strncmp(fname, "atomic_store", 12)) {
                 emit_fileio(fname);
             } else if (!strcmp(fname, "sprintf")) {
                 emit_sprintf(nargs, 2);
