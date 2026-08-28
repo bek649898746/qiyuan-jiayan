@@ -1231,6 +1231,7 @@ static char selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
 static void sha256_buf(const char *data, int len, char out[65]); /* fwd: 定义在资源护栏区 (契约哈希/描述符需在 parse 期用) */
 static char cstr_names[64][64]; static char cstr_hashes[64][65]; static int cstr_n; /* 接入 2026-08-28 可吞清单 P0-8: 结构契约表 (契约 struct 名 → 描述符 SHA256 接口指纹) — 声明在此, 定义函数在契约表区 */
 static int cstr_find(const char *n); static int cstr_register(const char *n); /* fwd */
+static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; static char dag_ast[65]; static void dag_hash_tokens(void); static void dag_hash_ast(void); /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 阶段哈希链 (定义在资源护栏区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 static int checkpoint_mode = 0; static char checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -3499,7 +3500,7 @@ static int brace_fields(int si, int base) {
             /* nested struct/array field: memset(&base.field, 0, fsz) — 设计化初始化器未覆盖的
                嵌套字段必须清零 (C 语义; fix 2026-08-19: REV_INFO_INIT 的 prune_data 等嵌套字段
                原跳过 → 垃圾 → setup_revisions 读垃圾 nr → status 崩) */
-            char zf[64]; strcpy(zf, stypes[si].fnames[z]);
+            char zf[64]; memset(zf, 0, 64); strcpy(zf, stypes[si].fnames[z]); /* 2026-08-28 编译DAG: memset 清零 — strcpy 尾部栈垃圾 → memcpy(nn,zf,32) 使 nn 哈希非确定 */
             int zmem = Nd(15); memcpy((char*)(nn + zmem), zf, 32); nv[zmem] = 0;
             Nc(zmem, base);
             int zaddr = Nd(11); Nc(zaddr, zmem); /* &base.field */
@@ -3540,7 +3541,7 @@ static int brace_fields(int si, int base) {
                 Nc(nmem, base);
                 while (tt[tk] == DT && tt[tk + 1] == VR) {
                     tk++; /* . */
-                    char subf[64]; strcpy(subf, tn[tk]); tk++; /* member */
+                    char subf[64]; memset(subf, 0, 64); strcpy(subf, tn[tk]); tk++; /* member — 2026-08-28 编译DAG: memset 清零 (同 zf/vn, 栈缓冲尾部不置零 → memcpy(32) 拷垃圾 → nn 哈希非确定) */
                     if (tt[tk] == AK) tk++; /* = */
                     int subt = -1;
                     if (nf >= 0) for (int j = 0; j < stypes[nf].fn; j++) if (!strcmp(stypes[nf].fnames[j], subf)) { subt = j; break; }
@@ -5563,7 +5564,7 @@ static void brace_arr_init(int b, int d, int *dims, int nd, int depth, int esz) 
    初始化块挂到 cl_blk (blk() 当前块), 返回临时对象的地址节点 (Nd(1)). */
 static int cl_cnt = 0;
 static int compound_literal(int is_struct, int si, int is_array, int arr_n, int arr_esz) {
-    char vn[64]; snprintf(vn, 32, "_cl%d", cl_cnt++);
+    char vn[64]; memset(vn, 0, 64); snprintf(vn, 32, "_cl%d", cl_cnt++); /* 2026-08-28 编译DAG: memset 清零 — snprintf 尾部不置零, memcpy(nn,vn,32) 拷栈垃圾 → nn 哈希非确定 (功能无害, 过程级哈希须确定性) */
     int b = Nd(5); /* block: decl + init assigns */
     int d = Nd(7); memcpy((char*)(nn + d), vn, 32); /* decl node */
     int init_blk = Nd(5); /* init assignments (挂到 cl_blk) */
@@ -10180,6 +10181,7 @@ static int parse(const char *s) {
     if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
 
     { char _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
+    dag_hash_tokens(); /* 编译 DAG (可吞清单 P0-9): token 流阶段哈希 (tt/tv/tn/tline 入链) */
 
     
     free(exp_src);
@@ -18413,6 +18415,20 @@ static void cp_line(const char *line) { if (!checkpoint_mode || !checkpoint_path
 
 /* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
 static int budget_flag = 0; /* --budget */
+/* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 过程级哈希 (源码→token→AST→产物 每阶段哈希入链, 编译过程可重放可验证; 自举证明从产物级升级为过程级) */
+static void dag_hash_tokens(void) { if (!dag_mode) return; char h1[65], h2[65], h3[65], h4[65], all[300]; if (ti > 0) sha256_buf((const char*)tt, ti * 4, h1); else strcpy(h1, "0"); if (ti > 0) sha256_buf((const char*)tv, ti * 4, h2); else strcpy(h2, "0"); if (ti > 0) sha256_buf((const char*)tn, ti * 64, h3); else strcpy(h3, "0"); if (ti > 0) sha256_buf((const char*)tline, ti * 4, h4); else strcpy(h4, "0"); sprintf(all, "%s%s%s%s", h1, h2, h3, h4); sha256_buf(all, 256, dag_tok); }
+static void dag_hash_ast(void) { if (!dag_mode) return; char h1[65], h2[65], h3[65], h4[65], h5[65], all[340];
+    if (nc > 0) sha256_buf((const char*)nt, nc * 4, h1); else strcpy(h1, "0");
+    if (nc > 0) sha256_buf((const char*)nv, nc * 4, h2); else strcpy(h2, "0");
+    if (nc > 0) { char *nb = malloc((long long)nc * 64 + 16); int nbi = 0; for (int i = 0; i < nc && nbi < (int)((long long)nc * 64 - 16); i++) { int nl = (int)strlen((char*)(nn + i)); memcpy(nb + nbi, (char*)(nn + i), nl); nbi += nl; nb[nbi++] = 0x1F; } sha256_buf(nb, nbi, h3); free(nb); } else strcpy(h3, "0"); /* nn 按名哈希 (截 NUL): 节点名槽内部有 ASLR 相关历史尾字节 (功能无害, codegen 按 NUL 读) — 语义内容才入链, 保证确定性 */
+    if (nc > 0) sha256_buf((const char*)n0, nc * 4, h4); else strcpy(h4, "0");
+    if (nc > 0) sha256_buf((const char*)n1, nc * 4, h5); else strcpy(h5, "0");
+    sprintf(all, "%s%s%s%s%s", h1, h2, h3, h4, h5); sha256_buf(all, 320, dag_ast);
+}
+
+
+
+/* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
 static void budget_report(void) {
     printf("{\"budget\":["
       "{\"name\":\"macros\",\"used\":%d,\"cap\":4096},"
@@ -18432,7 +18448,6 @@ static void budget_report(void) {
       "]}\n",
       macro_n, fn_macro_n, obj_macro_n, func_n, vcnt, ti, TS, nc, ASZ, lc, str_cnt, tdn_n, disc_n, borrowed_cnt, moved_cnt, decl_cnt);
 }
-
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
 char *qcc_prepend_rt(const char *src) { /* 可嵌入: rt 拼接封装 (fix 2026-08-28 大哥验收: reset 清宏 + 时序 → rt 守卫失效 → rt 实现剃光 → 嵌入产物缺代码段崩) — main 与 qcc_embed_driver 共用; 多路径搜索: 相对 cwd + 可执行文件目录 (Windows GetModuleFileName) */
@@ -18513,6 +18528,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
     memset(str_offs, -1, sizeof(str_offs));
 
     int root = parse(src); /* fn_macro 收集+展开已在 parse 内 include 展开之后执行 (fix 2026-08-07: 头文件函数宏可见) */
+    dag_hash_ast(); /* 编译 DAG (可吞清单 P0-9): AST 阶段哈希 (nt/nv/nn/n0/n1 入链) */
     if (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); return 1; }
     root_global = root;
 
@@ -18703,6 +18719,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--cache-verify") == 0) { cache_verify = 1; cache_mode = 1; argi++; continue; } /* 命中时新鲜编译+对账复验 (增量结果纳入不动点链) */
         if (strcmp(argv[argi], "--budget") == 0) { budget_flag = 1; argi++; continue; } /* 资源护栏 9b (可吞清单 P0-9b): 编译期水位报告 (AI 可读 JSON) */
         if (strcmp(argv[argi], "--checkpoint") == 0 && argc > argi + 1) { checkpoint_mode = 1; strncpy(checkpoint_path, argv[argi + 1], 511); checkpoint_path[511] = 0; argi += 2; continue; } /* 编译检查点 (可吞清单 P0-6): 崩溃尸检 — 进度快照落盘 (lex/每函数parse/每函数codegen/done), 崩溃现场可查 */
+        if (strcmp(argv[argi], "--dag") == 0) { dag_mode = 1; argi++; continue; } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 (源码→token→AST→产物), 编译过程可重放可验证 */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
@@ -18757,6 +18774,8 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
        Every compiled program gets it, so stage2 is self-contained. */
     /* fix 2026-08-28: rt 拼接已移入 qcc_compile_once 内部 (reset 之后, 避免 macro_n=0 清 QCC_RT_PREPENDED → rt 剃光 → 嵌入产物崩); main 传纯用户源码 */
 
+    /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 源码阶段哈希 (独立于缓存, 每次 --dag 都算) */
+    if (dag_mode) { int _dsl = (int)strlen(src); sha256_buf(src, _dsl, dag_src); }
     /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — sidecar 式缓存 (可吞清单 P0-5, MoonBit #3 + 生态 D5)
        键 = SHA256(版本 + 选项签名 + 宏表 + 源码); 命中=跳过编译 (输出文件即缓存); <outf>.qcckey 记录键
        --cache-verify: 命中时新鲜编译到 <outf>.qccfresh + 对账复验 (增量结果纳入不动点链); asm_mode/--repeat 不缓存 */
@@ -18800,6 +18819,7 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
     }
     if (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (可重入无状态核心验证通过)\n", repeat_n);
     if (budget_flag) budget_report(); /* 资源护栏 9b: 编译期水位报告 (AI 可读 JSON, 编译成功后) */
+    if (dag_mode) { char dah[65]; sha256_file(outf, dah); printf("{\"dag\":{\"version\":\"%s\",\"stages\":{\"source\":\"%s\",\"tokens\":\"%s\",\"ast\":\"%s\",\"artifact\":\"%s\"}}}\n", QCC_CACHE_VER, dag_src, dag_tok, dag_ast, dah); } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 — 同输入+同编译器 → 同链 (编译过程可重放可验证) */
     return 0;
 
 }
