@@ -1236,6 +1236,7 @@ static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; stati
 static int recorder_mode = 0; static char recorder_path[512]; static int rec_prev_cp = 0; static int rec_pass = 0; static void rec_line(const char *line); static void recorder_frame(const char *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 static int serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
 static int refs_mode = 0; static void refs_record(const char *n, int line); static void refs_emit(void); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
+static struct { char fn[64]; int pre_stmt; int pre_root; int post_root; int post_str; int has_post; } contracts[256]; static int contract_cnt; static int cur_contract; static int contract_find(const char *fn); static long long contract_const_eval(int n, const char **argnames, const long long *argvals, int argc, int *known); /* 接入 2026-08-28 可吞清单 P0-7/P1: 契约表 + 编译期常量前置审判 (声明在此, prim/调用点用; 函数定义在契约表区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 static int checkpoint_mode = 0; static char checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -5174,6 +5175,31 @@ static int prim(void) {
                     else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                   else { for (int i = 0; i < an; i++) Nc(c, nargs[i]); } }
                 Nc(c, n); n = c; /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                { /* 编译期常量前置审判 (2026-08-28 可吞清单 P1, 兑现"证明器查"): 调用点参数全常量 → 折叠评估 前置 → 违反编译期报错 A6002 (不等运行时 abort) */
+                    if (nt[callee] == 1 && an <= 32) {
+                        int has_named = 0; for (int _ai = 0; _ai < an; _ai++) if (argpos[_ai] >= 0) { has_named = 1; break; }
+                        if (!has_named) {
+                            int cidx = contract_find((char*)(nn + callee));
+                            if (cidx >= 0 && contracts[cidx].pre_root >= 0) {
+                                int pm = fn_param_find((char*)(nn + callee)); int pn = (pm >= 0) ? fn_param_map[pm].pn : 0;
+                                if (pn >= 0 && pn <= 32) {
+                                    const char *argnames[32]; long long argvals[32]; int allk = 1;
+                                    for (int k = 0; k < 32; k++) { argnames[k] = (pm >= 0 && k < pn) ? fn_param_map[pm].pnames[k] : ""; argvals[k] = 0; }
+                                    for (int k = 0; k < an && k < 32 && allk; k++) { int kn; long long av = contract_const_eval(nargs[k], NULL, NULL, 0, &kn); if (!kn) { allk = 0; break; } if (k < pn) argvals[k] = av; }
+                                    if (allk) { int pkn; long long pv = contract_const_eval(contracts[cidx].pre_root, argnames, argvals, pn, &pkn);
+                                        if (pkn && pv == 0) {
+                                            char argstr[128]; int asp = 0; argstr[0] = 0;
+                                            for (int k = 0; k < an && k < 8; k++) { char ab[40]; sprintf(ab, "%s%lld", k ? "," : "", argvals[k]); int al = (int)strlen(ab); if (asp + al < 110) { memcpy(argstr + asp, ab, al); asp += al; } }
+                                            argstr[asp] = 0;
+                                            sprintf(g_errbuf, "契约审判(编译期): %s(%s) 前置违反 — 常量参数折叠, 条件不成立 (证明器查, 不等运行时)", (char*)(nn + callee), argstr);
+                                            emit_error("A6002", g_errbuf);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (nt[callee] == 1 && (fn_dbl_get_ret((char*)(nn + callee)) || fn_math_iat((char*)(nn + callee)) >= 0 || ext_fn_ret((char*)(nn + callee)) == 2)) ndbl[c] = 1; /* fix 2026-08-06: parse 时标记 double 返回调用 (callee 节点, 非 n=c 后) — 参数 push 判断在 cg 前 → 跨 .o 声明时参数按 int 压栈 (avg 返回 0.0); 2026-08-25 math21: 外部 math 函数 double 返回; step5 time: difftime double 返回 */
                 if (nt[callee] == 1 && (fn_ll_get_ret((char*)(nn + callee)) || ext_fn_ret((char*)(nn + callee)) == 1 || !strcmp((char*)(nn + callee), "复数") || !strcmp((char*)(nn + callee), "复加"))) nll[c] = 1; /* fix 2026-08-21 #27: 64-bit-return call → node is ll, so ll_ext32 won't truncate; step5 time: time/mktime 64 位返回; 2026-08-28: 复数/复加 builtin 64 位打包返回 */
             } else break;
@@ -6715,9 +6741,8 @@ static int blk(void) {
     return b_root;
 }
 
-/* 接入 2026-08-28 可吞清单 P0-7: 契约审判 — 前置/后置 子句表 (fn 名键) + 检查语句构建器
+/* 接入 2026-08-28 可吞清单 P0-7: 契约审判 — 前置/后置 子句表 (fn 名键, 声明在顶部) + 检查语句构建器
    前置=入口检查 (解析期脱糖成 if(!pre){printf;exit;} 包函数体首), 后置=出口检查 (代码生成期 epilogue 注入, 返回 占位=返回值) */
-static struct { char fn[64]; int pre_stmt; int post_root; int post_str; int has_post; } contracts[256]; static int contract_cnt; static int cur_contract = -1;
 static int contract_find(const char *fn) { for (int i = 0; i < contract_cnt; i++) if (!strcmp(contracts[i].fn, fn)) return i; return -1; }
 /* 接入 2026-08-28 可吞清单 P0-8: 结构契约审判 — 接口级哈希 (Turn 接口级审判 qcc 版): 契约 struct 名 → 规范描述符 SHA256 (确定性接口指纹, 外部数据过 Schema 才能绑定) */
 static int cstr_find(const char *n) { for (int i = 0; i < cstr_n; i++) if (!strcmp(cstr_names[i], n)) return i; return -1; }
@@ -6747,6 +6772,27 @@ static int build_contract_check(int cond_root, int msg_str) { /* if(!cond){ prin
     Nc(body, call_x);
     Nc(ifn, body);
     return ifn;
+}
+/* 接入 2026-08-28 可吞清单 P1 (兑现"证明器查"): 编译期常量前置审判 — 调用点参数全常量时折叠评估 前置, 违反 → 编译期报错 A6002 (不等运行时 abort) */
+static long long contract_const_eval(int n, const char **argnames, const long long *argvals, int argc, int *known) { /* 常量表达式折叠 (支持算术/比较/位/移位; 遇变量/调用/未知 → known=0 安全跳过) */
+    *known = 1;
+    if (n < 0) return 0;
+    int t = nt[n];
+    if (t == 0) return nv[n];
+    if (t == 1) { const char *nm = (char*)(nn + n); for (int i = 0; i < argc; i++) if (!strcmp(nm, argnames[i])) return argvals[i]; *known = 0; return 0; }
+    if (t == 2) { int k1, k2; long long a = contract_const_eval(n0[n], argnames, argvals, argc, &k1); long long b = contract_const_eval(n1[n], argnames, argvals, argc, &k2);
+        if (!k1 || !k2) { *known = 0; return 0; }
+        switch (nv[n]) {
+            case T_PK: return a + b; case T_MK: return a - b; case T_DK: return a * b;
+            case T_DV: if (b == 0) { *known = 0; return 0; } return a / b;
+            case T_MD: if (b == 0) { *known = 0; return 0; } return a % b;
+            case T_SH: return a << b; case T_SR: return a >> b;
+            case T_LK: return a < b; case T_GK: return a > b; case T_HK: return a <= b; case T_YK: return a >= b;
+            case T_QK: return a == b; case T_XK: return a != b;
+            default: *known = 0; return 0;
+        }
+    }
+    *known = 0; return 0;
 }
 
 static int stmt(void) {
@@ -11884,7 +11930,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             while (tt[tk] == VR && (!strcmp(tn[tk], "前置") || !strcmp(tn[tk], "后置"))) {
                 int is_pre = !strcmp(tn[tk], "前置");
                 tk++;
-                if (cur_contract < 0) { if (contract_cnt >= 256) budget_fail("契约表 contracts", 256); cur_contract = contract_cnt++; strcpy(contracts[cur_contract].fn, (char*)(nn + fdef)); contracts[cur_contract].pre_stmt = -1; contracts[cur_contract].post_root = -1; contracts[cur_contract].post_str = -1; contracts[cur_contract].has_post = 0; }
+                if (cur_contract < 0) { if (contract_cnt >= 256) budget_fail("契约表 contracts", 256); cur_contract = contract_cnt++; strcpy(contracts[cur_contract].fn, (char*)(nn + fdef)); contracts[cur_contract].pre_stmt = -1; contracts[cur_contract].pre_root = -1; contracts[cur_contract].post_root = -1; contracts[cur_contract].post_str = -1; contracts[cur_contract].has_post = 0; }
                 if (tt[tk] == OK) tk++; /* ( */
                 if (!is_pre && !contracts[cur_contract].has_post) var_offset("__qcc_ret"); /* 后置: 注册返回值隐藏局部槽 (先于表达式解析, 供 var_lookup) */
                 { int dp = 0; int tk_s = tk; while (tk < TS) { if (tt[tk] == OK) dp++; else if (tt[tk] == KK) { if (dp == 0) break; dp--; } tk++; } for (int q = tk_s; q < tk; q++) if (!strcmp(tn[q], "return")) { tt[q] = VR; strcpy(tn[q], "__qcc_ret"); } tk = tk_s; } /* 扫描本子句区间: 返回 → __qcc_ret (返回 词法层映射成 return 关键字 RK, 非 VR — 需连 token 类型一起转, 表达式解析前重命名走正常变量通道) */
@@ -11896,6 +11942,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
                     strcpy(str_tbl[str_cnt], msgb);
                     contracts[cur_contract].pre_stmt = build_contract_check(ce, str_cnt);
+                    contracts[cur_contract].pre_root = ce; /* 原始前置条件表达式 (编译期常量审判用) */
                     str_cnt++;
                 } else {
                     char msgb2[96]; sprintf(msgb2, "[契约] 后置违反: %s\n", (char*)(nn + fdef));
