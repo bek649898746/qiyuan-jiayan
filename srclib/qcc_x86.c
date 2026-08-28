@@ -1235,6 +1235,7 @@ static int cstr_find(const char *n); static int cstr_register(const char *n); /*
 static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; static char dag_ast[65]; static void dag_hash_tokens(void); static void dag_hash_ast(void); /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 阶段哈希链 (定义在资源护栏区) */
 static int recorder_mode = 0; static char recorder_path[512]; static int rec_prev_cp = 0; static int rec_pass = 0; static void rec_line(const char *line); static void recorder_frame(const char *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 static int serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
+static int refs_mode = 0; static void refs_record(const char *n, int line); static void refs_emit(void); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 static int checkpoint_mode = 0; static char checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -5104,7 +5105,7 @@ static int prim(void) {
         if (is_moved(tn[tk])) { if (asgn_lhs_parsing) { if (lv_moved_n < 8) { strcpy(lv_moved[lv_moved_n++], tn[tk]); } } else if (!move_dst_parsing) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", tn[tk]); emit_error("A3101", g_errbuf); } } /* 接入 2026-08-28 机制层 #5: 移动后源彻底失效 — 右值读即 [ERR]; 左值解析期(asgn_lhs_parsing)记入缓冲由 asgn 事后判定 (赋值=重新初始化放行/非赋值=右值读报错); 移入目标(dst)是写跳过 */
         if (uninit_has(tn[tk])) { if (asgn_lhs_parsing) { if (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } else if (!move_dst_parsing) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", tn[tk]); emit_error("A4001", g_errbuf); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
         if (borrow_mode_of(tn[tk]) == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)", tn[tk]); emit_error("A3001", g_errbuf); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
-        int n = Nd(1); memcpy((char*)(nn + n), tn[tk], 64); tk++;
+        int n = Nd(1); refs_record(tn[tk], tline[tk]); memcpy((char*)(nn + n), tn[tk], 64); tk++; /* 引用收集 (2026-08-28 可吞清单 P1): 变量/函数名 token 处记录 (读/写/调用统一路径) */
                 if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
         if (var_is_ll(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nll[n] = 1; /* long long VARIABLE (fix 2026-08-05) */
         if (var_is_uns(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) nuns[n] = 1; /* unsigned VARIABLE (fix 2026-08-06: (long long)u 必须零扩展, movsxd 判断靠 nuns) */
@@ -18480,6 +18481,27 @@ static void interface_emit(void) { /* 接口文件 (AI 可消费 JSON): 函数�
     printf("]");
     printf("}}\n");
 }
+/* 接入 2026-08-28 可吞清单 P1 (参考 MoonBit 语义导航, 甲言化: 引用收集): --refs 谁引用了 X — prim VR 名 token 处记录 (名, 用户行), 读/写/调用全覆盖; AI 查调用点/使用点不翻全文件 */
+static int refs_n = 0; static struct { char name[64]; int sites[64]; int n; } refs[4096];
+static void refs_record(const char *n, int line) { /* 引用登记 (按名去重, 行去重) */
+    if (!refs_mode || !n || !n[0]) return;
+    int ln = line - (rt_exp_lines ? rt_exp_lines : rt_line_skip); if (ln < 1) ln = 1;
+    for (int i = 0; i < refs_n; i++) if (!strcmp(refs[i].name, n)) {
+        for (int k = 0; k < refs[i].n; k++) if (refs[i].sites[k] == ln) return;
+        if (refs[i].n < 64) refs[i].sites[refs[i].n++] = ln;
+        return;
+    }
+    if (refs_n < 4096) { strcpy(refs[refs_n].name, n); refs[refs_n].sites[0] = ln; refs[refs_n].n = 1; refs_n++; }
+}
+static void refs_emit(void) { /* 引用表导出 (AI 可消费 JSON): {"refs":[{"name":"X","sites":[行,...]},...]} */
+    printf("{\"refs\":[");
+    for (int i = 0; i < refs_n; i++) {
+        printf("%s{\"name\":\"%s\",\"sites\":[", i ? "," : "", refs[i].name);
+        for (int k = 0; k < refs[i].n; k++) printf("%s%d", k ? "," : "", refs[i].sites[k]);
+        printf("]}");
+    }
+    printf("]}\n");
+}
 /* 接入 2026-08-28 可吞清单 P1 (Agint flight-recorder 参考, 甲言化: 编译黑匣子): 每函数代码增量哈希帧 — 自举分歧时逐帧 diff 定位首个分歧函数 (黑匣子只读记录, 数据留底不死不灭); 全局声明在顶部 (gen_code 用) */
 static void rec_line(const char *line) { if (!recorder_mode || !recorder_path[0]) return; FILE *f = fopen(recorder_path, "ab"); if (!f) return; fwrite(line, 1, strlen(line), f); fputc('\n', f); fflush(f); fclose(f); } /* 独立开/写/刷/关 — 崩溃时已刷盘行即现场 */
 static void recorder_frame(const char *fn) { /* 每函数代码增量哈希帧: sha256(code[rec_prev_cp..cp)) — 增量 O(n) 总量, 分歧定位到函数级 */
@@ -18545,6 +18567,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     rec_pass = 0; rec_prev_cp = 0; /* 黑匣子: pass 帧序每编译重置 (跨编译累积 → 分歧定位错帧) */
     fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
     ir_n = 0; crel_n = 0; csym_n = 0; /* fix 2026-08-28 可重入: IR 指令缓冲/coff 重定位残留 — ir_flush 只在表达式末尾清, 若上次编译末尾有未 flush IR → 下次首个 flush 发射残留指令 (首个函数代码多指令) */
+    refs_n = 0; /* 引用表每编译重置 */
     memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle) */
 }
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
@@ -18601,6 +18624,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
     dag_hash_ast(); /* 编译 DAG (可吞清单 P0-9): AST 阶段哈希 (nt/nv/nn/n0/n1 入链) */
     if (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); return 1; }
     if (interface_mode) { interface_emit(); return 0; } /* 接口文件 (可吞清单 P1): 只解析导出, 不产码 (gen_code 会重置 func_n 等表) */
+    if (refs_mode) { refs_emit(); return 0; } /* 引用收集 (可吞清单 P1): 只解析导出引用表, 不产码 */
     root_global = root;
 
 
@@ -18848,6 +18872,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
         if (strcmp(argv[argi], "--recorder") == 0 && argc > argi + 1) { recorder_mode = 1; strncpy(recorder_path, argv[argi + 1], 511); recorder_path[511] = 0; argi += 2; continue; } /* 编译黑匣子 (可吞清单 P1, Agint flight-recorder 参考, 甲言化: 黑匣子) — 每函数代码增量哈希帧, 分歧逐帧定位 */
         if (strcmp(argv[argi], "--serve") == 0) { serve_mode = 1; argi++; continue; } /* 编译服务器 qccd (甲言化, 可吞清单 P1): 长驻 stdin/stdout JSON-lines — AI 迭代循环毫秒级 */
+        if (strcmp(argv[argi], "--refs") == 0) { refs_mode = 1; argi++; continue; } /* 引用收集 (可吞清单 P1): 谁引用了 X — 解析期记录 (名, 行) 表, JSON 导出 */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
