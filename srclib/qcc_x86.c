@@ -18640,6 +18640,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
     ir_n = 0; crel_n = 0; csym_n = 0; /* fix 2026-08-28 可重入: IR 指令缓冲/coff 重定位残留 — ir_flush 只在表达式末尾清, 若上次编译末尾有未 flush IR → 下次首个 flush 发射残留指令 (首个函数代码多指令) */
     refs_n = 0; /* 引用表每编译重置 */
+    contract_cnt = 0; cur_contract = -1; cstr_n = 0; /* fix 2026-08-28 可重入 (nll 同类): 契约表/契约结构表跨编译残留 — serve 多次请求同进程 → 上次注册的 前置 契约在本次误触发常量审判 → 假 A6002 → 编译失败 (e2e ⑤ 用户程序无库却带 整数除法 契约) */
     memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle) */
 }
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
