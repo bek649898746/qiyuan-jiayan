@@ -762,5 +762,23 @@ int __qcc_vec_lenof(int id) {
     if (id < 0 || id >= 64) return 0;
     return __qcc_vec_len[id];
 }
+
+/* #12 内部可变性 (Cell): 运行时可变单元 — 单元 x, 初值; 放单元 x, v; 取单元 x; (全局表, 绕开借用检查 = 内部可变) */
+static int __qcc_cell[64];
+static int __qcc_cell_cnt = 0;
+int __qcc_cell_init(int v) {
+    int i = __qcc_cell_cnt; __qcc_cell_cnt = __qcc_cell_cnt + 1;
+    __qcc_cell[i] = v;
+    return i;
+}
+int __qcc_cell_set(int id, int v) {
+    if (id < 0 || id >= 64) return 0;
+    __qcc_cell[id] = v;
+    return v;
+}
+int __qcc_cell_get(int id) {
+    if (id < 0 || id >= 64) return 0;
+    return __qcc_cell[id];
+}
 #endif
 
