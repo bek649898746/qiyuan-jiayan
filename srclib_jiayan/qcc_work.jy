@@ -3086,6 +3086,12 @@ __attribute__((unused))
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
 静 整 *tt, *tv; 字 (*tn)[64]; 字 (*nn)[64]; 整 ti, tk; /* tn=token names, nn=NODE names (must be separate �?they collide! node index == token index clobbers) */
+/* ========== 编译期执行完整 CTFE (2026-08-28 type-root-16 #76): 编译期 f(常量...) — 用户纯函数编译期求值 ========== */
+静 构 { 字 name[64]; 整 body0; 整 body1; } ctfe_fns[2048]; 静 整 ctfe_fns_n = 0; /* 函数体 token 范围 (函数定义时记录) */
+静 整 ctfe_find(常 字 *n) { 遍 (整 i = 0; i < ctfe_fns_n; i++) 若 (!strcmp(ctfe_fns[i].name, n)) 返 i; 返 -1; }
+静 字 ctfe_names[64][64]; 静 整 ctfe_vals[64]; 静 整 ctfe_n = 0; /* CTFE 求值帧 (参数+局部, 栈式嵌套) */
+静 整 ctfe_lookup(常 字 *n) { 遍 (整 i = ctfe_n - 1; i >= 0; i--) 若 (!strcmp(ctfe_names[i], n)) 返 ctfe_vals[i]; 返 0x80000000; }
+静 整 ctfe_call(常 字 *fname, 整 *out); /* fwd: 编译期 f(常量...) 求值 (定义在 const_expr 区, prim 需前向) */
 静 整 *tuns; /* per-token unsigned-suffix flag (0xFFFFFFFFu) — fix 2026-08-05 */
 静 整 *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-08-05 */
 静 整 *tll_hi; /* per-token high 32 bits of a long-long literal (fix 2026-08-05) */
@@ -4701,12 +4707,19 @@ __attribute__((unused))
         { 整 fn = Nd(1); memcpy((字*)(nn + fn), fname, 64); Nc(call, fn); } /* callee 最后 */
         返 call;
     }
-        若 (tt[tk] == VR && !strcmp(tn[tk], "编译期")) { /* 接入 2026-08-27: 甲言 编译期执行 (Zig comptime): 编译期(expr) → const_expr_eval 求值 → 常量节点 — 运行时零计算 */
+        若 (tt[tk] == VR && !strcmp(tn[tk], "编译期")) { /* 接入 2026-08-27: 甲言 编译期执行 (Zig comptime): 编译期(expr) → const_expr_eval 求值 → 常量节点 — 运行时零计算; 2026-08-28 type-root-16 #76: 编译期 f(常量...) → CTFE 解释用户纯函数 */
         tk++; /* 编译期 */
         若 (tt[tk] == OK) tk++; /* ( */
         整 cval = 0;
-        const_expr_eval(&cval);
-        若 (tt[tk] == KK) tk++; /* ) */
+        整 ctfe_done = 0;
+        若 (tt[tk] == VR && tt[tk + 1] == OK && ctfe_find(tn[tk]) >= 0) { /* 编译期 f(args): CTFE 函数求值 */
+            tk += 2; /* 跳过 f ( — ctfe_call 期望 tk 在实参开始 */
+            若 (ctfe_call(tn[tk - 2], &cval)) { ctfe_done = 1; } /* 成功: tk 已在 ) 后 */
+            否 { 循环 (tk < TS && tt[tk] != KK && tt[tk] != EK) tk++; 若 (tt[tk] == KK) tk++; ctfe_done = 1; cval = 0; } /* 失败: 安全跳过, 常量=0 */
+        } 否 {
+            const_expr_eval(&cval);
+        }
+        若 (!ctfe_done && tt[tk] == KK) tk++; /* ) */
         整 n = Nd(0); nv[n] = cval; 返 n; /* 编译期常量 */
     }
         若 (tt[tk] == GN) { /* _Generic(ctrl, type: expr, ..., default: expr) — C11 泛型选择 (fix 2026-08-25 step6) */
@@ -10447,7 +10460,7 @@ __attribute__((unused))
         若 (tt[tk] == KK) tk++;
         *val = sz; 返 1;
     }
-    若 (tt[tk] == VR) { 整 ev = e_lookup(tn[tk]); 若 (ev == 0x80000000) ev = macro_find(tn[tk]); 若 (ev != 0x80000000 && ev != -1) { *val = ev; tk++; 返 1; } 返 0; }
+    若 (tt[tk] == VR) { 整 ev = e_lookup(tn[tk]); 若 (ev == 0x80000000) ev = macro_find(tn[tk]); 若 ((ev == 0x80000000 || ev == -1) && ctfe_n > 0) ev = ctfe_lookup(tn[tk]); /* 2026-08-28 type-root-16 #76: CTFE 帧内变量 (参数/局部) — macro_find 未定义返回 -1 也要尝试 */ 若 (ev != 0x80000000 && ev != -1) { *val = ev; tk++; 返 1; } 返 0; }
     若 (tt[tk] == OK) { tk++; 若 (!const_expr_eval(val)) 返 0; 若 (tt[tk] == KK) tk++; 返 1; }
     若 (tt[tk] == MK) { tk++; 若 (!const_expr_prim(val)) 返 0; *val = -*val; 返 1; }
     若 (tt[tk] == PK) { tk++; 返 const_expr_prim(val); }
@@ -10467,6 +10480,181 @@ __attribute__((unused))
                 例 GK: *val = (*val > r); 断; 例 HK: *val = (*val <= r); 断; 例 YK: *val = (*val >= r); 断; /* fix 2026-08-25: _Static_assert 比较运算符 */ }
         } 否 断;
     }
+    返 1;
+}
+
+/* ========== 编译期执行完整 CTFE 解释器 (2026-08-28 type-root-16 #76) ==========
+   在 [body0, body1) 解释纯函数体 (调用方把全局 tk 设为 body0, 用完恢复).
+   支持: 声明/赋值/if/while/for/return/块; 纯算术表达式 (const_expr_eval + CTFE 帧).
+   返回: 1=解释完成 0=无法解释 (known=0 安全跳过). */
+静 空 ctfe_bind(常 字 *n, 整 v) { /* 帧绑定: 同名更新, 新名压栈 */
+    遍 (整 i = ctfe_n - 1; i >= 0; i--) 若 (!strcmp(ctfe_names[i], n)) { ctfe_vals[i] = v; 返; }
+    若 (ctfe_n < 64) { strcpy(ctfe_names[ctfe_n], n); ctfe_vals[ctfe_n] = v; ctfe_n++; }
+}
+静 整 ctfe_failed = 0; /* CTFE 解释失败标志 (无法解释/副作用) — 区分 return 发生 vs 无法解释 */
+静 整 ctfe_skip_block(空) { /* tk 指向 {, 跳到匹配 } 之后; 返回 1 成功 */
+    整 d = 0;
+    循环 (tk < TS) { 若 (tt[tk] == FK) d++; 否 若 (tt[tk] == UK) { d--; 若 (d == 0) { tk++; 返 1; } } tk++; }
+    返 0;
+}
+静 整 ctfe_skip_to_semicolon(空) { /* 跳到顶层 ; (消费); 返回 1 成功 */
+    整 d = 0;
+    循环 (tk < TS) { 若 (tt[tk] == OK || tt[tk] == FK || tt[tk] == LB) d++; 否 若 (tt[tk] == KK || tt[tk] == UK || tt[tk] == RB) { 若 (d > 0) d--; } 否 若 (tt[tk] == SK && d == 0) { tk++; 返 1; } tk++; }
+    返 0;
+}
+静 整 ctfe_step(整 *v); /* fwd: for-step 解析 */
+静 整 ctfe_step_end(空) { /* 定位 for-step 结束位置 (不执行, 从 tk 扫到顶层 KK/SK) — step 在循环尾才执行 */
+    整 d = 0; 整 j = tk;
+    循环 (j < TS) {
+        若 (tt[j] == OK) d++;
+        否 若 (tt[j] == KK) { 若 (d == 0) 返 j; d--; }
+        否 若 (tt[j] == SK && d == 0) 返 j;
+        j++;
+    }
+    返 j;
+}
+静 整 ctfe_stmt(整 *ret) { /* 解释单条语句; 返回 1=继续 0=终止 (return 或块尾或无法解释 — 无法解释时 ctfe_failed=1) */
+    若 (tk >= TS) { ctfe_failed = 1; 返 0; }
+    若 (tt[tk] == SK) { tk++; 返 1; } /* 空语句 */
+    若 (tt[tk] == FK) { /* 块 */
+        tk++;
+        循环 (tk < TS && tt[tk] != UK) { 若 (!ctfe_stmt(ret)) { 若 (tt[tk] == UK) tk++; 返 0; } }
+        若 (tt[tk] == UK) tk++;
+        返 1;
+    }
+    若 (tt[tk] == RK) { /* return expr; */
+        tk++; 整 v = 0;
+        若 (!const_expr_eval(&v)) { ctfe_failed = 1; 返 0; }
+        若 (tt[tk] == SK) tk++;
+        *ret = v;
+        返 0;
+    }
+    若 (tt[tk] == VK) { /* 声明: int x = expr [, y = expr]; — CTFE 只支持标量 int 型常量初始化 */
+        循环 (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk]))) tk++; /* 类型 (int/char/.../typedef 名) */
+        循环 (tt[tk] == DK) tk++; /* 指针: 跳过, 但指针变量无法求值 → 下面对 VR 若带 * 初始化也难 — 先试 */
+        遍 (;;) {
+            若 (tt[tk] != VR) { ctfe_failed = 1; 返 0; }
+            字 vn[64]; strcpy(vn, tn[tk]); tk++;
+            若 (tt[tk] == AK) { tk++; 整 v = 0; 若 (!const_expr_eval(&v)) { ctfe_failed = 1; 返 0; } ctfe_bind(vn, v); }
+            否 { ctfe_failed = 1; 返 0; } /* 无初始化 → 未知 */
+            若 (tt[tk] == CK) { tk++; 续; }
+            断;
+        }
+        若 (tt[tk] == SK) tk++;
+        返 1;
+    }
+    若 (tt[tk] == IK) { /* if (cond) stmt [else stmt] */
+        tk++; 若 (tt[tk] == OK) tk++;
+        整 cv = 0; 若 (!const_expr_eval(&cv)) { ctfe_failed = 1; 返 0; }
+        若 (tt[tk] == KK) tk++;
+        若 (cv) {
+            若 (!ctfe_stmt(ret)) { /* then 执行, return 结束: 若 else 存在则跳过其体 */
+                若 (tt[tk] == ZK) { tk++; 若 (tt[tk] == FK) ctfe_skip_block(); 否 ctfe_skip_to_semicolon(); }
+                返 0;
+            }
+            若 (tt[tk] == ZK) { tk++; 若 (tt[tk] == FK) ctfe_skip_block(); 否 ctfe_skip_to_semicolon(); } /* then 未 return: 跳过 else 体 */
+        } 否 {
+            若 (tt[tk] == FK) ctfe_skip_block(); 否 ctfe_skip_to_semicolon(); /* cv=0: 跳过 then 体 */
+            若 (tt[tk] == ZK) { tk++; 若 (!ctfe_stmt(ret)) 返 0; }
+        }
+        返 1;
+    }
+    若 (tt[tk] == WK) { /* while (cond) stmt — 真循环 (上限防死循环) */
+        tk++; 若 (tt[tk] == OK) tk++;
+        整 cond_pos = tk; 整 body_pos = 0; 整 iters = 0;
+        遍 (;;) {
+            tk = cond_pos; 整 cv = 0;
+            若 (!const_expr_eval(&cv)) { ctfe_failed = 1; 返 0; }
+            若 (tt[tk] == KK) tk++;
+            body_pos = tk;
+            若 (!cv) 断;
+            若 (++iters > 1000000) { ctfe_failed = 1; 返 0; } /* 防死循环 */
+            tk = body_pos;
+            若 (tt[tk] == FK) { tk++; 循环 (tk < TS && tt[tk] != UK) { 若 (!ctfe_stmt(ret)) { 若 (tt[tk] == UK) tk++; 返 0; } } 若 (tt[tk] == UK) tk++; }
+            否 { 若 (!ctfe_stmt(ret)) 返 0; }
+        }
+        tk = body_pos;
+        若 (tt[tk] == FK) ctfe_skip_block(); 否 ctfe_skip_to_semicolon();
+        返 1;
+    }
+    若 (tt[tk] == JK) { /* for (init; cond; step) stmt — CTFE: init 为 int 声明/赋值 (ctfe_stmt 消费 ;), cond/step 常量表达式 */
+        tk++; 若 (tt[tk] == OK) tk++;
+        若 (!ctfe_stmt(NULL)) 返 0; /* init (声明/赋值, 消费 ;) — 失败已由 ctfe_failed 标记 */
+        整 cond_pos = tk; 整 body_pos = 0; 整 step_pos = 0; 整 step_end = 0; 整 iters = 0;
+        遍 (;;) {
+            tk = cond_pos; 整 cv = 0;
+            若 (tt[tk] == SK) cv = 1; /* for(;;) 无条件 */
+            否 若 (!const_expr_eval(&cv)) { ctfe_failed = 1; 返 0; }
+            若 (tt[tk] == SK) tk++;
+            step_pos = tk; step_end = tk;
+            若 (tt[tk] == KK) { tk++; body_pos = tk; } /* 无 step: for(;;cond;) — 直接到 ) */
+            否 { step_end = ctfe_step_end(); tk = step_end; 若 (tt[tk] == KK) tk++; body_pos = tk; } /* 只定位 step 结束, 不执行 (循环尾才执行) */
+            若 (!cv) { 若 (tt[tk] == FK) ctfe_skip_block(); 否 ctfe_skip_to_semicolon(); 断; } /* cond 假: 跳过 body 到 for 结束 (tk 停在 body 开始, 不跳则外层误解释 body) */
+            若 (++iters > 1000000) { ctfe_failed = 1; 返 0; } /* 防死循环 */
+            tk = body_pos;
+            若 (tt[tk] == FK) { tk++; 循环 (tk < TS && tt[tk] != UK) { 若 (!ctfe_stmt(ret)) { 若 (tt[tk] == UK) tk++; 返 0; } } 若 (tt[tk] == UK) tk++; }
+            否 { 若 (!ctfe_stmt(ret)) 返 0; }
+            tk = step_pos; /* 循环尾执行 step (重新解释到 step_end) */
+            若 (tk < step_end) { 整 sv = 0; 若 (!ctfe_step(&sv)) { ctfe_failed = 1; 返 0; } }
+        }
+        返 1;
+    }
+    若 (tt[tk] == VR) { /* x = expr; 或 x++; x--; x += n; */
+        字 vn[64]; strcpy(vn, tn[tk]); tk++;
+        若 (tt[tk] == AK) { tk++; 整 v = 0; 若 (!const_expr_eval(&v)) { ctfe_failed = 1; 返 0; } 若 (ctfe_lookup(vn) == 0x80000000) { ctfe_failed = 1; 返 0; } ctfe_bind(vn, v); 若 (tt[tk] == SK) tk++; 返 1; }
+        若 (tt[tk] == PP) { tk++; 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) { ctfe_failed = 1; 返 0; } ctfe_bind(vn, cur + 1); 若 (tt[tk] == SK) tk++; 返 1; }
+        若 (tt[tk] == MM) { tk++; 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) { ctfe_failed = 1; 返 0; } ctfe_bind(vn, cur - 1); 若 (tt[tk] == SK) tk++; 返 1; }
+        若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA) { 整 op = tt[tk]; tk++; 整 r = 0; 若 (!const_expr_eval(&r)) { ctfe_failed = 1; 返 0; } 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) { ctfe_failed = 1; 返 0; } 若 (op == PA) cur += r; 否 若 (op == MA) cur -= r; 否 若 (op == DA) cur *= r; 否 若 (op == SA) { 若 (!r) { ctfe_failed = 1; 返 0; } cur /= r; } 否 { 若 (!r) { ctfe_failed = 1; 返 0; } cur %= r; } ctfe_bind(vn, cur); 若 (tt[tk] == SK) tk++; 返 1; }
+        ctfe_failed = 1; 返 0; /* 函数调用等其他语句 → 无法解释 */
+    }
+    ctfe_failed = 1; 返 0;
+}
+静 整 ctfe_step(整 *v) { /* for-step: i++ / i-- / i+=n / i-=n / i*=n / i=n (无分号) */
+    若 (tt[tk] == VR) {
+        字 vn[64]; strcpy(vn, tn[tk]); tk++;
+        若 (tt[tk] == PP) { tk++; 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) 返 0; ctfe_bind(vn, cur + 1); 返 1; }
+        若 (tt[tk] == MM) { tk++; 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) 返 0; ctfe_bind(vn, cur - 1); 返 1; }
+        若 (tt[tk] == AK) { tk++; 整 r = 0; 若 (!const_expr_eval(&r)) 返 0; ctfe_bind(vn, r); 返 1; }
+        若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA) { 整 op = tt[tk]; tk++; 整 r = 0; 若 (!const_expr_eval(&r)) 返 0; 整 cur = ctfe_lookup(vn); 若 (cur == 0x80000000) 返 0; 若 (op == PA) cur += r; 否 若 (op == MA) cur -= r; 否 若 (op == DA) cur *= r; 否 若 (op == SA) { 若 (!r) 返 0; cur /= r; } 否 { 若 (!r) 返 0; cur %= r; } ctfe_bind(vn, cur); 返 1; }
+    }
+    返 0;
+}
+静 整 ctfe_call(常 字 *fname, 整 *out) { /* 编译期 f(常量...): 解析实参 (全常量) → 绑定参数帧 → 解释函数体 → *out=结果; 返回 1 成功 0 无法 */
+    整 fi = ctfe_find(fname);
+    若 (fi < 0) 返 0;
+    整 pmi = fn_param_find(fname);
+    若 (pmi < 0) 返 0;
+    整 base = ctfe_n;
+    ctfe_failed = 0;
+    /* 解析实参 (tk 已在 '(' 后): 常量表达式, 逗号分隔, 到 ) */
+    整 argc = 0; 整 args[32];
+    若 (tt[tk] != KK) {
+        遍 (;;) {
+            若 (argc >= 32) { ctfe_n = base; 返 0; }
+            整 av = 0;
+            若 (!const_expr_eval(&av)) { ctfe_n = base; 返 0; } /* 实参非常量 → 无法 */
+            args[argc++] = av;
+            若 (tt[tk] == CK) { tk++; 续; }
+            断;
+        }
+    }
+    若 (tt[tk] != KK) { ctfe_n = base; 返 0; }
+    tk++; /* ) */
+    遍 (整 i = 0; i < argc; i++) ctfe_bind(fn_param_map[pmi].pnames[i], args[i]);
+    /* 解释函数体 */
+    整 save_tk = tk;
+    tk = ctfe_fns[fi].body0; /* 指向 { */
+    整 rv = 0; 整 got_ret = 0;
+    若 (tt[tk] == FK) tk++; /* 跳过 { */
+    循环 (tk < TS && tt[tk] != UK && tk < ctfe_fns[fi].body1 && !ctfe_failed) {
+        若 (!ctfe_stmt(&rv)) { got_ret = 1; 断; } /* return 或失败 */
+    }
+    整 ok = !ctfe_failed;
+    若 (ok && !got_ret) rv = 0; /* 函数体自然结束 (无 return → 隐式 0) — return 后 rv 有效, 不覆盖 */
+    ctfe_n = base;
+    tk = save_tk;
+    若 (!ok) 返 0;
+    *out = rv;
     返 1;
 }
 
@@ -12384,7 +12572,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             }
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             cur_fn_defer_idx = fvn; defer_cnt[fvn] = 0; /* 接入 2026-08-27 defer: 当前函数 defer 收集目标 */
+            整 ctfe_b0 = tk; /* 2026-08-28 type-root-16 #76: CTFE 记录函数体 token 起点 ({) */
             整 bodyx = blk();
+            若 (ctfe_fns_n < 2048) { strcpy(ctfe_fns[ctfe_fns_n].name, (字*)(nn + fdef)); ctfe_fns[ctfe_fns_n].body0 = ctfe_b0; ctfe_fns[ctfe_fns_n].body1 = tk; ctfe_fns_n++; } /* CTFE: 函数体 token 范围 (编译期 f() 求值用) */
             若 (cur_contract >= 0 && contracts[cur_contract].pre_stmt >= 0) { 整 wrapx = Nd(5); Nc(wrapx, contracts[cur_contract].pre_stmt); Nc(wrapx, bodyx); bodyx = wrapx; } /* 契约前置 (2026-08-28 可吞清单 P0-7): 入口检查包函数体首 */
             Nc(fdef, bodyx); /* 函数体 (n0) */
             若 (defer_cnt[fvn] > 0) { /* 接入 2026-08-27 defer: LIFO 逆序打包 defer 语句 → n1[fdef] — return/函数尾跳 epi_label 处先执行 */
