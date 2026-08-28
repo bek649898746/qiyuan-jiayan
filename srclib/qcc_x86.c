@@ -18243,7 +18243,14 @@ static void sha256_file(const char *path, char out[65]) {
 
 
 /* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
+static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置跨编译累积的静态全局表 (parse 已重置 tk/vcnt/fdef_n/tt 等; 这里补宏/类型/字符串/函数/机制层/static槽/位域表) */
+    macro_n = 0; fn_macro_n = 0; obj_macro_n = 0; ginit_n = 0; func_n = 0; str_cnt = 0; pp_guard_n = 0; st_n = 0;
+    stc_n = 0; bit_slot = -1; bit_pos = 0; /* static 槽计数 + 位域打包状态 — 跨编译累积必须重置 */
+    borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
+    uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
+}
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
+    reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64);
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
     tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
