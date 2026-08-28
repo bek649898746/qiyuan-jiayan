@@ -1234,6 +1234,7 @@ __attribute__((unused))
 静 整 cstr_find(常 字 *n); 静 整 cstr_register(常 字 *n); /* fwd */
 静 整 dag_mode = 0; 静 字 dag_src[65]; 静 字 dag_tok[65]; 静 字 dag_ast[65]; 静 空 dag_hash_tokens(空); 静 空 dag_hash_ast(空); /* 接入 2026-08-28 可吞清单 P0-9: 编译 DAG 重放证明 — 阶段哈希链 (定义在资源护栏区) */
 静 整 recorder_mode = 0; 静 字 recorder_path[512]; 静 整 rec_prev_cp = 0; 静 整 rec_pass = 0; 静 空 rec_line(常 字 *line); 静 空 recorder_frame(常 字 *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
+静 整 serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 静 整 cache_mode = 0; 静 整 cache_verify = 0; 静 字 cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
 静 整 checkpoint_mode = 0; 静 字 checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
@@ -2513,8 +2514,8 @@ __attribute__((unused))
 }
 /* extern 全局变量声明: 负槽标记 (rsp_off < 0), 无 .data 分配, is_static=1 走 RIP 相对
    codegen; coff_mode 下 coff_slot_sym 生成 sec=0 未定义符号 + REL32 重定位 (Task 5.1 多 .o) */
+静 整 extern_n = 2; /* 2026-08-28 可重入修复: 文件作用域 — extern 负槽计数器, reset_compile_state 每编译重置 (原函数内静态跨编译累积 → 地址泄漏) */
 静 整 var_extern(常 字 *n, 整 is_char, 整 is_dbl, 整 pesz, 整 is_ll) {
-    静 整 extern_n = 2;
     遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, n) && vars[i].rsp_off < 0 && var_codegen_visible(i)) 返 vars[i].rsp_off;
     若 (vcnt >= 65536) { fprintf(stderr, "[ERR] 变量表满 vcnt=%d\n", vcnt); exit(1); }
     strcpy(vars[vcnt].name, n);
@@ -5564,7 +5565,9 @@ __attribute__((unused))
 /* C99 compound literal: (T){ init } — 匿名自动存储期临时对象 (fix 2026-08-11 Phase 2-3).
    cast 分支在 ')' 后见 FK 时调用。注册 _cl<N> 临时变量, 复用 brace_fields/brace_arr_init 填充,
    初始化块挂到 cl_blk (blk() 当前块), 返回临时对象的地址节点 (Nd(1)). */
-静 整 cl_cnt = 0;
+静 整 cl_cnt = 0; /* 2026-08-28 可重入修复: 复合字面量临时名计数器 — reset_compile_state 每编译重置 */
+静 整 rng_seq = 0; /* 2026-08-28 可重入修复: for-range 临时名计数器 — reset_compile_state 每编译重置 (原函数内静态跨编译累积 → 第 2 次编译临时名漂移) */
+静 整 er_seq = 0; /* 2026-08-28 可重入修复: 错 union 临时名计数器 — reset_compile_state 每编译重置 */
 静 整 compound_literal(整 is_struct, 整 si, 整 is_array, 整 arr_n, 整 arr_esz) {
     字 vn[64]; memset(vn, 0, 64); snprintf(vn, 32, "_cl%d", cl_cnt++); /* 2026-08-28 编译DAG: memset 清零 — snprintf 尾部不置零, memcpy(nn,vn,32) 拷栈垃圾 → nn 哈希非确定 (功能无害, 过程级哈希须确定性) */
     整 b = Nd(5); /* block: decl + init assigns */
@@ -6818,7 +6821,7 @@ __attribute__((unused))
                 若 (arr_len <= 0) { 整 si = var_stidx(avn); 若 (si >= 0 && st_field_size(stypes[si].name, "len") > 0 && st_field_is_ptr(si, "data")) slice_si = si; }
             }
             若 ((!avn && slice_si < 0 && str_len < 0) || (avn == NULL && slice_si < 0 && str_len < 0)) { fprintf(stderr, "[ERR] for-range 需要数组/切片/字符串: 遍 x 于 arr/sl/\"str\"\n"); exit(1); }
-            静 整 rng_seq = 0; 字 iname[32]; sprintf(iname, "_r_%d_", rng_seq++);
+                                    字 iname[32]; sprintf(iname, "_r_%d_", rng_seq++); /* rng_seq 文件级 (可重入修复) */
             var_offset(iname);
             整 blk2 = Nd(5);
             { 整 d_it = Nd(7); memcpy((字*)(nn + d_it), iname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d_it, z); } Nc(blk2, d_it); }
@@ -7006,7 +7009,7 @@ __attribute__((unused))
         tk++; /* 尝试 */
         整 e2 = expr(); /* 调用表达式 */
         若 (tt[tk] == SK) tk++; /* ; */
-        静 整 er_seq = 0; 字 iname[64]; sprintf(iname, "__e_%d_", er_seq++);
+                               字 iname[64]; sprintf(iname, "__e_%d_", er_seq++); /* er_seq 文件级 (可重入修复) */
         var_offset(iname);
         整 blk_e = Nd(5);
         { 整 d = Nd(7); memcpy((字*)(nn + d), iname, 32); Nc(d, e2); Nc(blk_e, d); } /* int __e = f(); */
@@ -17471,6 +17474,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     /* reset codegen state for two-pass (pass 1 estimates .data base, pass 2 real) */
     cp = 0; patch_n = 0; strpn = 0; fnpn = 0; dbl_patch_n = 0; sdp = 0; gfn = 0;
     coff_ginit_done = 0;
+    cg_addr_of = 0; cg_mem_dbl = 0; cg_mem_ptr = 0; cg_mem_chain_si = -1; cg_nested_cnt = 0; cg_fdepth = 0; cg_fdepth_max = 0; cg_incdec_target = 0; cg_no_deref = 0; cg_blk_start = 0; cg_ginit_ctx = 0; /* fix 2026-08-28 可重入: cg_* codegen 状态标志跨编译残留 → 进程内第 2 次编译首个函数代码不同 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
     若 (recorder_mode) { rec_prev_cp = 0; rec_pass++; 字 ph[80]; sprintf(ph, "{\"pass\":%d,\"start\":true}", rec_pass); rec_line(ph); } /* 编译黑匣子: 每 pass 起始帧 (gen_code 多遍, 每遍独立帧序) */
     func_n = 0; /* MUST re-register all functions in pass 2 with FRESH labels �?
                    otherwise pass-2 new_label() numbers overlap the pass-1 function
@@ -18537,6 +18541,11 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     vs_end = 0; /* fix 2026-08-28 可重入根因: vs_n() = vs_end?vs_end:vcnt — vs_end 残留(上次 codegen 的 fve[gfn]) → 第二次 parse 期 var_offset REUSE 搜索越界 → 复用 vars[169] 超出 vcnt → codegen DCL-MISS。parse 期必须 vs_end=0 (vs_n()=vcnt) */
     borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
+    extern_n = 2; cl_cnt = 0; rng_seq = 0; er_seq = 0; /* fix 2026-08-28 可重入漏洞: 临时名/extern 槽计数器跨编译累积 — extern 负偏移地址泄漏 + 临时名后缀漂移 → 进程内第 2 次编译产物 ≠ 第 1 次 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
+    rec_pass = 0; rec_prev_cp = 0; /* 黑匣子: pass 帧序每编译重置 (跨编译累积 → 分歧定位错帧) */
+    fn_ll_n = 0; fn_dbl_n = 0; fn_ret_name_n = 0; fn_param_map_n = 0; fn_static_n = 0; /* fix 2026-08-28 可重入: 函数签名名表跨编译累积 → fn_ll_get 命中旧条目 → 参数压栈选错 (I_PUSH_RAX vs I_PUSH_R64_RAX) → 进程内第 2 次编译产物 ≠ 第 1 次 */
+    ir_n = 0; crel_n = 0; csym_n = 0; /* fix 2026-08-28 可重入: IR 指令缓冲/coff 重定位残留 — ir_flush 只在表达式末尾清, 若上次编译末尾有未 flush IR → 下次首个 flush 发射残留指令 (首个函数代码多指令) */
+    memset(ndbl, 0, 大小(ndbl)); memset(nll, 0, 大小(nll)); memset(nll_hi, 0, 大小(nll_hi)); memset(nuns, 0, 大小(nuns)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle) */
 }
 整 qcc_compile_once(常 字 *src, 常 字 *outf, 整 asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
@@ -18719,7 +18728,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     若 (asm_out) { fclose(asm_out); asm_out = NULL; }
     若 (graph_mode) graph_export(); /* -graph 旁路导出 (产物写完后, 2026-08-25) */
 
-    若 (asm_mode) { printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { printf("OK: %s (%d bytes code)\n", outf, cp); }
+    若 (asm_mode) { 若 (!serve_mode) printf("OK: %s + %s.asm (%d bytes code)\n", outf, outf, cp); } 否 { 若 (!serve_mode) printf("OK: %s (%d bytes code)\n", outf, cp); } /* serve 模式抑制 OK 打印 (stdout 是响应通道, 诊断走 stderr) */
     若 (selfcheck_sha[0]) { /* Phase4 哈希审判: 编译产物 SHA256 对账不动点, fail-closed */
         字 sh[65]; sha256_file(outf, sh);
         若 (strcmp(sh, selfcheck_sha) != 0) {
@@ -18739,6 +18748,60 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     }
     若 (checkpoint_mode) { 字 hsh[65]; sha256_file(outf, hsh); 字 _cl[128]; sprintf(_cl, "{\"cp\":\"done\",\"artifact\":\"%.8s\"}", hsh); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): 完成快照 (产物哈希前 8 位) */
     返 0;
+}
+
+/* 接入 2026-08-28 可吞清单 P1 (甲言化: 编译服务器 qccd — AI 专用中文编译器的长驻核心): --serve stdin/stdout JSON-lines 协议
+   请求: {"cmd":"compile","src":"...","out":"a.exe","cache":true} / {"cmd":"compile","file":"foo.c"} / {"cmd":"ping"} / {"cmd":"quit"}
+   响应(stdout): {"ok":true,"cmd":"compile","out":"a.exe","artifact":"<sha16>"} — 诊断走 stderr (与 CLI 一致), 客户端双流读取
+   价值: 长驻进程免冷启动 (可重入核心重复调用) + 增量缓存命中免重编 — AI 迭代循环从秒级变毫秒级 (serve_mode 声明在顶部) */
+静 整 serve_get_str(常 字 *line, 常 字 *key, 字 *out, 整 outn) { /* 最小 JSON: "key":"value" (值去转义) */
+    字 pat[64]; sprintf(pat, "\"%s\":\"", key);
+    常 字 *p = strstr(line, pat);
+    若 (!p) 返 0;
+    p += strlen(pat);
+    整 oi = 0;
+    循环 (*p && *p != '"' && oi < outn - 1) {
+        若 (*p == '\\' && p[1]) { p++;
+            若 (*p == 'n') out[oi++] = '\n';
+            否 若 (*p == 'r') out[oi++] = '\r';
+            否 若 (*p == 't') out[oi++] = '\t';
+            否 若 (*p == '\\') out[oi++] = '\\';
+            否 若 (*p == '"') out[oi++] = '"';
+            否 out[oi++] = *p;
+            p++;
+        } 否 out[oi++] = *p++;
+    }
+    out[oi] = 0;
+    返 1;
+}
+静 整 serve_get_flag(常 字 *line, 常 字 *key) { 字 pat[64]; sprintf(pat, "\"%s\":true", key); 返 strstr(line, pat) != NULL; }
+静 空 serve_loop(空) {
+    字 line[1048576]; /* 单请求一行; 内嵌 src 换行须 \n 转义 (大文件用 file 模式) */
+    fprintf(stderr, "[SERVE] 甲言编译服务器就绪 (AI 专用中文编译器 qccd, 可重入核心 + 增量缓存)\n");
+    循环 (fgets(line, 大小(line), stdin)) {
+        若 (serve_get_flag(line, "quit")) { fprintf(stderr, "[SERVE] 退出\n"); fflush(stdout); 返; }
+        字 cmd[32] = ""; serve_get_str(line, "cmd", cmd, 大小(cmd));
+        若 (!strcmp(cmd, "compile")) {
+            字 src[786432]; 字 fn[512] = ""; 字 outf[512] = "a.exe";
+            整 use_file = serve_get_str(line, "file", fn, 大小(fn));
+            serve_get_str(line, "out", outf, 大小(outf));
+            整 want_cache = serve_get_flag(line, "cache");
+            字 *csrc = NULL;
+            若 (use_file) { csrc = read_file(fn); 若 (!csrc) { printf("{\"ok\":false,\"cmd\":\"compile\",\"err\":\"cannot open %s\"}\n", fn); fflush(stdout); 续; } }
+            否 { 若 (!serve_get_str(line, "src", src, 大小(src))) { printf("{\"ok\":false,\"cmd\":\"compile\",\"err\":\"no src/file\"}\n"); fflush(stdout); 续; } csrc = src; }
+            整 saved_cache = cache_mode; cache_mode = want_cache ? 1 : 0;
+            整 rc = qcc_compile_once(csrc, outf, 0);
+            cache_mode = saved_cache;
+            若 (rc == 0) { 字 ah[65]; sha256_file(outf, ah); printf("{\"ok\":true,\"cmd\":\"compile\",\"out\":\"%s\",\"artifact\":\"%.16s\"}\n", outf, ah); }
+            否 printf("{\"ok\":false,\"cmd\":\"compile\",\"out\":\"%s\"}\n", outf);
+            fflush(stdout);
+            若 (use_file) free(csrc);
+        } 否 若 (!strcmp(cmd, "ping")) {
+            printf("{\"ok\":true,\"cmd\":\"ping\",\"lang\":\"甲言 qcc\",\"serve\":true}\n"); fflush(stdout);
+        } 否 {
+            printf("{\"ok\":false,\"cmd\":\"%s\",\"err\":\"unknown command\"}\n", cmd); fflush(stdout);
+        }
+    }
 }
 
 /* 接入 2026-08-28 AI原生 #可嵌入: QCC_EMBEDDED 模式跳过 main — 编译器以库形式被调用 (qcc_compile_once 暴露为嵌入式 API) */
@@ -18784,6 +18847,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
         若 (strcmp(argv[argi], "--dag") == 0) { dag_mode = 1; argi++; 续; } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 (源码→token→AST→产物), 编译过程可重放可验证 */
         若 (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; 续; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
         若 (strcmp(argv[argi], "--recorder") == 0 && argc > argi + 1) { recorder_mode = 1; strncpy(recorder_path, argv[argi + 1], 511); recorder_path[511] = 0; argi += 2; 续; } /* 编译黑匣子 (可吞清单 P1, Agint flight-recorder 参考, 甲言化: 黑匣子) — 每函数代码增量哈希帧, 分歧逐帧定位 */
+        若 (strcmp(argv[argi], "--serve") == 0) { serve_mode = 1; argi++; 续; } /* 编译服务器 qccd (甲言化, 可吞清单 P1): 长驻 stdin/stdout JSON-lines — AI 迭代循环毫秒级 */
 若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
         若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
@@ -18810,6 +18874,7 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
         free(fb);
         argi++;
     }
+    若 (serve_mode) { serve_loop(); 返 0; } /* 编译服务器 qccd: 长驻循环 (stdin 请求 → stdout 响应, 诊断走 stderr) — 可重入核心 + 增量缓存, AI 迭代毫秒级 */
     若 (is_compat_stat_c) macro_add("QCC_COMPAT_STAT_C", 1); /* compat/stat.c 禁用 prelude 的 stat/lstat/fstat 自映射 */
     若 (all_len > 0) {
         整 total = hdr_len + all_len + 2;
@@ -18878,10 +18943,12 @@ typedef 构 { 整 id; 整 *result; 整 result_n; 整 invalidated; } IR_ANALYSIS;
     整 qc_rc = qcc_compile_once(src, outf, asm_mode);
     若 (qc_rc) 返 qc_rc;
     若 (cache_mode && !asm_mode && repeat_n <= 1 && outf && cache_key[0]) { cache_sidecar_write(outf); fprintf(stderr, "[CACHE] miss %.8s\n", cache_key); } /* 编译成功 → 落缓存键 (miss 记键, 下次命中) */
+    字 rp0[65] = ""; 若 (repeat_n > 1) sha256_file(outf, rp0); /* fix 2026-08-28 可重入盲点: 记录第 1 次产物哈希 — 原只验 2..N 自洽, 漏"首 vs 次" (nll 残留 bug 因此存活) */
     遍 (整 qri = 1; qri < repeat_n; qri++) { /* --repeat: 同进程连续编译验证可重入 (每次独立分配数组, 产物应一致) */
         若 (qcc_compile_once(src, outf, asm_mode)) { fprintf(stderr, "[REPEAT] 第 %d 次编译失败 (可重入验证失败)\n", qri + 1); 返 1; }
+        若 (rp0[0]) { 字 rp2[65]; sha256_file(outf, rp2); 若 (strcmp(rp0, rp2) != 0) { fprintf(stderr, "[REPEAT-FAIL] 第 %d 次编译产物 != 第 1 次 (可重入失败: %s != %s)\n", qri + 1, rp2, rp0); 返 1; } } /* 产物哈希对账: 首次 vs 每次 — 任何跨编译状态泄漏立即暴露 */
     }
-    若 (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (可重入无状态核心验证通过)\n", repeat_n);
+    若 (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (含首次对账, 可重入无状态核心验证通过)\n", repeat_n);
     若 (budget_flag) budget_report(); /* 资源护栏 9b: 编译期水位报告 (AI 可读 JSON, 编译成功后) */
     若 (dag_mode) { 字 dah[65]; sha256_file(outf, dah); printf("{\"dag\":{\"version\":\"%s\",\"stages\":{\"source\":\"%s\",\"tokens\":\"%s\",\"ast\":\"%s\",\"artifact\":\"%s\"}}}\n", QCC_CACHE_VER, dag_src, dag_tok, dag_ast, dah); } /* 编译 DAG 重放证明 (可吞清单 P0-9): 过程级哈希链 — 同输入+同编译器 → 同链 (编译过程可重放可验证) */
     返 0;
