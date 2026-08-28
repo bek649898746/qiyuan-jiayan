@@ -689,5 +689,12 @@ int __qcc_cv_broadcast(int *cv) {
     (*cv) = (*cv) + 1000; /* 大步前进, 唤醒所有等待者 */
     return 0;
 }
+
+/* #58 屏障 (barrier, 多线程汇合点): 栅栏 bar, n; + 汇合 bar; — 每个参与者到达计数+1, 忙等到 n 全部到达 (单次使用) */
+int __qcc_barrier_wait(int *bar, int n) {
+    原子 加(bar, 1); /* 到达登记 */
+    while (*bar < n) { } /* 等所有参与者到达 */
+    return 0;
+}
 #endif
 
