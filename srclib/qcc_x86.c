@@ -1230,6 +1230,8 @@ static char expect_sha[65] = ""; /* #expect (Phase 4 哈希审判) */
 static char selfcheck_sha[65] = ""; /* Phase4 --selfcheck */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
+static int checkpoint_mode = 0; static char checkpoint_path[512] = ""; /* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检快照 (lex/每函数parse/每函数codegen/done) */
+static void cp_line(const char *line); /* fwd: 崩溃尸检快照落盘 (定义在资源护栏区) */
 static char *pp_include_expand(const char *src, int depth) {
     if (depth > 32) { fprintf(stderr, "[ERR] #include 嵌套超过 32 层\n"); exit(1); } /* fix 2026-08-26 ffmpeg: 8→32 — FFmpeg 头链深 (config.h→libavutil/xxx.h→common.h→mem.h→... 15+ 层), 原 8 层爆 */
     if (depth == 0) { pp_guard_n = 0; inc_dir_n = 0; if (g_src_dir[0]) { strcpy(inc_dir_stack[inc_dir_n], g_src_dir); inc_dir_n++; } } /* fix 2026-08-13 Phase3: 顶层源文件目录入栈 */
@@ -10118,6 +10120,8 @@ static int parse(const char *s) {
     lex(exp_src);
     if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
 
+    { char _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
+
     
     free(exp_src);
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
@@ -11812,7 +11816,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             fr_end[fvn - 1] = rsp_used; /* frame-bound end (vars only; statics inside the body don't touch rsp_used) */
             parse_base = 0; /* back to file scope for the next top-level item */
             Nc(p, fdef);
-            if (fdef_n < 1024) fdef_list[fdef_n++] = fdef; /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢) */
+            if (fdef_n < 1024) fdef_list[fdef_n++] = fdef; else budget_fail("函数表 fdef_list", 1024); /* fix 2026-08-06: 根子槽只 256 个, 超出的函数用扁平列表保留 (否则 main 被丢); 2026-08-28 资源护栏: 满→确定性拒绝; 编译检查点: 每函数解析快照 */ { char _cl[96]; sprintf(_cl, "{\"cp\":\"parse\",\"func\":\"%s\",\"idx\":%d}", (char*)(nn + fdef), fdef_n - 1); cp_line(_cl); }
         } else {  break; } 
     }
     return p;
@@ -17402,6 +17406,7 @@ void gen_code(void) {
         char *fname = (char*)(nn + c);
         int fi = func_find(fname);
         strcpy(cur_fn_name, fname); /* for case-6 double-return routing */
+        { char _cl[96]; sprintf(_cl, "{\"cp\":\"codegen\",\"func\":\"%s\",\"idx\":%d}", fname, i); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): 每函数代码生成快照 */
         set_label(func_tbl[fi].label);
         asm_emit("\n; === %s ===\n%s:\n", fname, fname, (char*)(long long)0);
         func_tbl[fi].defined = 1;
@@ -18305,6 +18310,9 @@ static void cache_sidecar_path(const char *outf, char *buf, int bufn) { strncpy(
 static int cache_sidecar_matches(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); char *k = read_file(sp); if (!k) return 0; int m = !strcmp(k, cache_key); free(k); return m; }
 static void cache_sidecar_write(const char *outf) { char sp[540]; cache_sidecar_path(outf, sp, sizeof(sp)); FILE *f = fopen(sp, "wb"); if (f) { fwrite(cache_key, 1, 64, f); fclose(f); } }
 
+/* 接入 2026-08-28 AI原生 #6 (可吞清单 P0-6): 编译检查点 — 崩溃尸检 post-mortem (进度快照落盘, 数据留底不死不灭; Turn P0-4 快照的 qcc 版) */
+static void cp_line(const char *line) { if (!checkpoint_mode || !checkpoint_path[0]) return; FILE *f = fopen(checkpoint_path, "ab"); if (!f) return; fwrite(line, 1, strlen(line), f); fputc('\n', f); fflush(f); fclose(f); } /* 每条快照独立开/写/刷/关 — 崩溃时已刷盘的行即现场 (缓冲丢失=尸检失效) */
+
 /* 接入 2026-08-28 AI原生 9b: 编译器资源护栏 — 编译期水位报告 (AI 可读 JSON, 可吞清单 P0-9b) */
 static int budget_flag = 0; /* --budget */
 static void budget_report(void) {
@@ -18553,6 +18561,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
         }
         fprintf(stderr, "[EXPECT] OK: %s\n", eh);
     }
+    if (checkpoint_mode) { char hsh[65]; sha256_file(outf, hsh); char _cl[128]; sprintf(_cl, "{\"cp\":\"done\",\"artifact\":\"%.8s\"}", hsh); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): 完成快照 (产物哈希前 8 位) */
     return 0;
 }
 
@@ -18595,6 +18604,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--cache") == 0) { cache_mode = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 (可吞清单 P0-5) — sidecar 式, 命中跳过编译 */
         if (strcmp(argv[argi], "--cache-verify") == 0) { cache_verify = 1; cache_mode = 1; argi++; continue; } /* 命中时新鲜编译+对账复验 (增量结果纳入不动点链) */
         if (strcmp(argv[argi], "--budget") == 0) { budget_flag = 1; argi++; continue; } /* 资源护栏 9b (可吞清单 P0-9b): 编译期水位报告 (AI 可读 JSON) */
+        if (strcmp(argv[argi], "--checkpoint") == 0 && argc > argi + 1) { checkpoint_mode = 1; strncpy(checkpoint_path, argv[argi + 1], 511); checkpoint_path[511] = 0; argi += 2; continue; } /* 编译检查点 (可吞清单 P0-6): 崩溃尸检 — 进度快照落盘 (lex/每函数parse/每函数codegen/done), 崩溃现场可查 */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
