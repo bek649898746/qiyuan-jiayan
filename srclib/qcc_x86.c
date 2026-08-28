@@ -2345,9 +2345,10 @@ static int var_codegen_visible(int i) {
         if (var_static_kw[i]) return (i >= fvb[gfn]); /* fn-local static: ONLY its own function (fix 2026-08-11 BLOCKER-3) */
         return 1;                         /* global static: visible from any function */
     }
-    if (!vs_end) return (i >= parse_base); /* parse phase: ONLY current function body (parse_base floor).
+    if (!vs_end) return (i >= parse_base && (vars[i].blk_end == 0 || vars[i].blk_end == -1)); /* parse phase: ONLY current function body (parse_base floor).
                                               fix 2026-08-11 BLOCKER-1: 原 return 1 导致跨函数同名变量泄漏 —
-                                              var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因) */
+                                              var_is_dbl 等从其他函数找到同名变量 → ndbl[] 误标 → codegen 差异 (布局敏感根因)
+                                              fix 2026-08-28 type-root-13 #277: 块已退出的变量 (blk_end>0) 不可见 — 块内同名遮蔽外层, 块外恢复外层 (原 parse 期无视块标记 → 块内变量泄漏出块遮蔽外层) */
     if (cg_ginit_ctx) return 0; /* fix 2026-08-17: ginit 只初始化静态; 跨函数非静态同名变量 (char *suffix 遮蔽 static char *suffix[]) 在 ginit 子程序发射点 fvb[gfn]/cg_blk_end 未正确设置时全可见 → 数组元素赋值错编成指针解引用+字节存储 → 崩 */
     /* fix 2026-08-19: 嵌套块同名变量只在块内可见 — 当前 codegen 块 [cg_blk_start, cg_blk_end)
        必须被该变量的声明块 [blk_start, blk_end) 包含. 否则 `struct strbuf gitdir` 之后嵌套块
@@ -2504,7 +2505,7 @@ static int var_offset(const char *n) {
        into a LEA of its own address). Match only non-array entries. During parse the
        search floor is parse_base (this function's var start) so an unrelated function's
        same-named param/local can't be silently reused either. */
-    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && var_codegen_visible(i)) { vars[i].blk_end = -1; return vars[i].rsp_off; } /* fix 2026-08-19: 复用条目标记函数级可见 (blk_end=-1) — 同一槽被多块声明 (qcc_vsnprintf 两个块各 int r) 时 blk 作用域判定不得把条目限死在首个声明块 */
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && vars[i].arr_sz == 0 && vars[i].blk_end == -1) { return vars[i].rsp_off; } /* fix 2026-08-28 type-root-13 #277: 只复用函数级临时 (blk_end=-1, _sw 等); 普通同名变量 (外层块/函数级) 一律新槽 — 块遮蔽=独立存储, 块内写不污染外层 (原复用外层槽 → 块内 t 写覆盖外层 t) */
     if (vcnt >= 65536) { fprintf(stderr, "[ERR] too many vars\n"); exit(1); }
     strcpy(vars[vcnt].name, n);
     rsp_used += _psz; rsp_used = (rsp_used + 15) & ~15;
@@ -2514,7 +2515,7 @@ static int var_offset(const char *n) {
     vars[vcnt].pslot = -1; vars[vcnt].preg = -1;
     vars[vcnt].st_idx = -1; vars[vcnt].st_sz = 0; vars[vcnt].arr_sz = 0; vars[vcnt].arr_esz = 0;
     vars[vcnt].frows[0] = 0; vars[vcnt].frows[1] = 0; vars[vcnt].frows[2] = 0; vars[vcnt].frows[3] = 0; vars[vcnt].p_esz = 0; vars[vcnt].p_depth = 0; vars[vcnt].p_inner = 0; vars[vcnt].pstk = 0; vars[vcnt].pdisp = 0; vars[vcnt].is_dbl = 0; vars[vcnt].p_dbl = 0; vars[vcnt].is_char = 0; vars[vcnt].is_uns = 0; vars[vcnt].is_static = 0;
-    vars[vcnt].blk_end = -1; /* fix 2026-08-19: var_offset 临时变量 (switch _sw 等) 函数级可见 — 原 blk_end=0 默认 → codegen 作用域判定 (0>=cg_blk_end) 假 → cg(_sw) 静默丢弃 → if(_sw==1) 只生成常量 1 → switch 全走 default (t_sw f(1)=0) */
+    vars[vcnt].blk_end = (n[0] == '_') ? -1 : 0; /* fix 2026-08-28 type-root-13 #277: 内部临时 (_ 前缀, _sw 等) 函数级可见 (blk_end=-1); 普通用户局部 blk_end=0 → 块退出 L6891 标记 blk 范围 → 块遮蔽/块外恢复真生效 (原全部 -1 → 块作用域机制失效, 块内同名变量泄漏出块覆盖外层) */
     if (user_fn_active && n[0] != '_' && uninit_cnt < 256) { strcpy(uninit_names[uninit_cnt], n); uninit_scope[uninit_cnt] = uninit_depth; uninit_cnt++; } /* 接入 2026-08-28 机制层 #78 明确初始化: 用户代码(main 后)局部变量声明登记 (跳过 _ 前缀编译器内部变量/qcc_rt 运行时); 读取未初始化 → L5014 [ERR] */
     return vars[vcnt++].rsp_off;
 }
@@ -7048,6 +7049,7 @@ static int stmt(void) {
         }
         tk++; tk++; /* skip for and ( */
         int blk_node = Nd(5);
+        int fvstart = vcnt; /* type-root-13 #277: for 块作用域起点 — init/循环变量限于本 for (C 语义) */
         if (tt[tk] != SK) {
             if (tt[tk] == VK || tt[tk] == ST || (tt[tk] == VR && td_is(tn[tk]))) {
                 /* for(int i = 0; ...) �?declaration as init */
@@ -7097,6 +7099,8 @@ static int stmt(void) {
             nv[wh] = cl + 1; /* while continue target override �?step */
         }
         Nc(wh, body); /* while(cond) {body;step;} */
+        for (int _fv = fvstart; _fv < vcnt; _fv++) if (vars[_fv].blk_end == 0) { vars[_fv].blk_start = fvstart; vars[_fv].blk_end = vcnt; } /* type-root-13 #277: for 块作用域标记 — init 变量限于本 for (C 语义), 块退后不可见 */
+        nv[blk_node] = vcnt + 1; blk_vs[blk_node] = fvstart; /* codegen case-5: for 块作用域 [fvstart, vcnt) */
         Nc(blk_node, wh); /* { init; while... } */
         return blk_node;
     }
