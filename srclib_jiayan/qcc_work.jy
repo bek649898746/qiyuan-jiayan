@@ -2483,6 +2483,8 @@ __attribute__((unused))
 静 字 impl_iface[64][64]; 静 字 impl_type[64][64]; 静 字 impl_methods[64][16][64]; 静 字 impl_fns[64][16][64]; 静 整 impl_mcnt[64]; 静 整 impl_cnt = 0; /* type-root-8 #114 */
 静 整 iface_find(常 字 *n) { 遍 (整 i = 0; i < iface_cnt; i++) 若 (!strcmp(iface_names[i], n)) 返 i; 返 -1; }
 静 整 impl_find(常 字 *ifn, 常 字 *tn) { 遍 (整 i = 0; i < impl_cnt; i++) 若 (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) 返 i; 返 -1; }
+静 字 closure_names[64][64]; 静 字 closure_fn[64][64]; 静 字 closure_caps[64][8][64]; 静 整 closure_ccnt[64]; 静 整 closure_cnt = 0; /* 2026-08-28 type-root-9 #211: closure table */
+静 整 closure_find(常 字 *n) { 遍 (整 i = 0; i < closure_cnt; i++) 若 (!strcmp(closure_names[i], n)) 返 i; 返 -1; }
 静 整 fn_err_has(常 字 *n) { 遍 (整 i = 0; i < err_fn_cnt; i++) 若 (!strcmp(err_fn_names[i], n)) 返 1; 返 0; } /* 2026-08-28 type-root-2 */
 静 空 fn_err_mark(常 字 *n) { 若 (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
 静 整 expr_is_double(整 n); 静 整 var_lookup(常 字 *n); /* fwd (2026-08-28 type-root-4 #74) */
@@ -5282,7 +5284,7 @@ __attribute__((unused))
                 Nc(m, n); n = m;
             } 否 若 (tt[tk] == OK) { /* 函数调用 f(...): 并入后缀链 (fix 2026-08-06: 原在 while 外直接 return, f()[0] 的 [0] 悬空 → 条件变指针比较) */
                 整 callee = n;  tk++; 整 c = Nd(4);
-                整 nargs[256]; 整 argpos[256]; 整 an = 0; /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
+                整 nargs[256]; 整 argpos[256]; 整 an = 0; 整 cl_ci = (nt[callee] == 1) ? closure_find((字*)(nn + callee)) : -1; 若 (cl_ci >= 0) { 遍 (整 _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { 整 cv = Nd(1); memcpy((字*)(nn + cv), closure_caps[cl_ci][_cp], 32); nargs[an] = cv; argpos[an] = -1; an++; } memcpy((字*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 接入 2026-08-28 真具名参数: 收集后按签名重排 */
                 循环 (tt[tk] != KK && tt[tk] != EK) { 若 (tt[tk] == VR && !strcmp(tn[tk], "或返"))断; /* fix 2026-08-27 或返: f() 或返; — 或返 不是参数, 停止参数解析 (原被当第3参数 → 展开未执行) */ 整 t0 = tk; 若 (tt[tk] == CK) tk++; 整 pos = -1; 若 (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((字*)(nn + callee), tn[tk]) : -1; tk += 2; } 整 ev = expr(); 若 (ev >= 0 && nerr[ev]) { sprintf(g_errbuf, "错误 union: 函数参数不能ֱ接传δ检查的错误结果 — 先 尝试 检查 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } 若 (tk == t0) 断; /* 标注/具名: 名: 前缀 → 查签名位置 */ 若 (tk == t0) 断; 若 (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 若 (tt[tk] == KK) tk++;
                 { 整 has_n = 0; 遍 (整 i = 0; i < an; i++) 若 (argpos[i] >= 0) { has_n = 1; 断; }
@@ -5295,7 +5297,7 @@ __attribute__((unused))
                         否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
                     否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
                   否 { 遍 (整 i = 0; i < an; i++) Nc(c, nargs[i]); } }
-                Nc(c, n); n = c; 若 (nt[callee] == 1 && fn_err_has((字*)(nn + callee))) nerr[c] = 1; /* 2026-08-28 type-root-2 */ /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
+                Nc(c, n); n = c; 若 (nt[callee] == 1 && fn_err_has((字*)(nn + callee))) nerr[c] = 1; /* type-root-9 #211: closure call - if callee is closure name, replace with fn(caps..., args) */ /* type-root-9 #211: closure call - if callee is closure name, replace with fn(caps..., args) */ /* 2026-08-28 type-root-2 */ /* fix 2026-08-07: EK 防 EOF 死循环 + 进度守卫防 expr() 不前进 (缺 ) 或非法参数) */
                 { /* 编译期常量前置审判 (2026-08-28 可吞清单 P1, 兑现"证明器查"): 调用点参数全常量 → 折叠评估 前置 → 违反编译期报错 A6002 (不等运行时 abort) */
                     若 (nt[callee] == 1 && an <= 32) {
                         整 has_named = 0; 遍 (整 _ai = 0; _ai < an; _ai++) 若 (argpos[_ai] >= 0) { has_named = 1; 断; }
@@ -5468,7 +5470,7 @@ __attribute__((unused))
                     n = tern;
                 } 否 断;
             } 否 若 (tt[tk] == OK) { 整 callee = n; tk++; 整 c = Nd(4);
-                整 nargs[256]; 整 argpos[256]; 整 an = 0; /* 真具名参数: 收集后重排 (同主调用) */
+                整 nargs[256]; 整 argpos[256]; 整 an = 0; 整 cl_ci = (nt[callee] == 1) ? closure_find((字*)(nn + callee)) : -1; 若 (cl_ci >= 0) { 遍 (整 _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { 整 cv = Nd(1); memcpy((字*)(nn + cv), closure_caps[cl_ci][_cp], 32); nargs[an] = cv; argpos[an] = -1; an++; } memcpy((字*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 真具名参数: 收集后重排 (同主调用) */
                 循环 (tt[tk] != KK && tt[tk] != EK) { 整 t0 = tk; 若 (tt[tk] == CK) tk++; 整 pos = -1; 若 (tt[tk] == VR && tt[tk + 1] == CL) { pos = (nt[callee] == 1) ? fn_param_pos((字*)(nn + callee), tn[tk]) : -1; tk += 2; } 整 ev = expr(); 若 (tk == t0) 断; 若 (an < 256) { nargs[an] = ev; argpos[an] = pos; an++; } }
                 若 (tt[tk] == KK) tk++;
                 { 整 has_n = 0; 遍 (整 i = 0; i < an; i++) 若 (argpos[i] >= 0) { has_n = 1; 断; }
@@ -6408,7 +6410,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -7491,6 +7493,29 @@ __attribute__((unused))
         若 (tt[tk] == UK) tk++;
         若 (tt[tk] == SK) tk++;
         若 (impl_cnt < 64) impl_cnt++;
+        返 Nd(5);
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "闭包")) { /* 2026-08-28 type-root-9 #211: closure decl - 闭包 名 = fn 捕获(v1, v2); */
+        tk++; /* 闭包 */
+        字 clc_nm[64]; strcpy(clc_nm, tn[tk]); tk++;
+        若 (tt[tk] == AK) tk++; /* = */
+        字 clc_fn[64]; strcpy(clc_fn, tn[tk]); tk++;
+        整 clc_ci = -1;
+        若 (tt[tk] == VR && !strcmp(tn[tk], "捕获")) { tk++;
+            若 (tt[tk] == OK) tk++; /* ( */
+            clc_ci = closure_cnt;
+            若 (clc_ci < 64) { strcpy(closure_names[clc_ci], clc_nm); strcpy(closure_fn[clc_ci], clc_fn); closure_ccnt[clc_ci] = 0; } 若 (var_lookup(clc_nm) < 0) var_offset(clc_nm); /* type-root-9 #211 var reg */ 若 (var_lookup(clc_nm) < 0) var_offset(clc_nm); /* type-root-9 #211 var reg */
+            循环 (tt[tk] != KK && tt[tk] != EK) {
+                若 (tt[tk] == VR) {
+                    若 (clc_ci < 64 && closure_ccnt[clc_ci] < 8) { strcpy(closure_caps[clc_ci][closure_ccnt[clc_ci]], tn[tk]); closure_ccnt[clc_ci]++; }
+                    tk++;
+                }
+                若 (tt[tk] == CK) tk++;
+            }
+            若 (tt[tk] == KK) tk++;
+        }
+        若 (tt[tk] == SK) tk++;
+        若 (clc_ci >= 0 && clc_ci < 64) closure_cnt++;
         返 Nd(5);
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "使用")) { /* 接入 2026-08-28 with/using 上下文管理 (蓝图 §二): 使用 前置, 后置 { body } → { 前置; body; 后置(defer) } — 进入执行前置 (如 打开文件), 退出自动执行后置 (如 关文件, defer 收集同锁住升级, 提前 return 也执行) */
