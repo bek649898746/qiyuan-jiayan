@@ -4525,7 +4525,7 @@ static int stmt(void);
 static int expr(void);
 static int const_expr_eval(int *val); /* fwd: 接入 2026-08-27 编译期(expr) 需在 prim() 前声明 (原 fwd 在 L6589 晚于 prim) */
 
-static char borrowed_names[256][64]; static int borrowed_mode[256]; static int borrowed_scope[256]; static int borrowed_cnt = 0; static int borrow_depth = 0; /* 借用检查表 (接入 2026-08-28 机制层 #2/3/4/10): 借用 x; 标记只读(0), 可变借用 x; 独占(1); #4 生命周期=词法块作用域 — borrowed_scope 记录借用声明时块深度, 块退出自动放还 (借用不跨块) */
+static char borrowed_names[256][64]; static int borrowed_mode[256]; static int borrowed_scope[256]; static int borrowed_cnt = 0; static int borrow_depth = 0; static int borrowed_lastuse[256]; /* 2026-08-28 type-root-3 NLL: last-read token pos of borrowed var (last-use auto-yields to mut borrow/write) */ /* 借用检查表 (接入 2026-08-28 机制层 #2/3/4/10): 借用 x; 标记只读(0), 可变借用 x; 独占(1); #4 生命周期=词法块作用域 — borrowed_scope 记录借用声明时块深度, 块退出自动放还 (借用不跨块) */
 static int borrow_mode_of(const char *v) { for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) return borrowed_mode[i]; return -1; } /* 0=只读借用 1=可变借用(独占) -1=未借用 (vt_lifetime 状态机 2/3 对齐) */
 static void borrow_release(const char *v) { if (!v) return; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], v)) { borrowed_names[i][0] = 0; borrowed_mode[i] = 0; return; } } /* 放还: 解除借用 (mode 一并清, 借用幂等注册 → 一次全清) — 放还语句/写自动放还共用 */
 static char *borrow_write_target(int n) { int rv = n; int dep = 0; while (rv >= 0 && dep < 8 && (nt[rv] == 14 || (nt[rv] == 15 && nv[rv] == 0))) { rv = n0[rv]; dep++; } if (rv >= 0 && nt[rv] == 1) return (char*)(nn + rv); return NULL; } /* 借用自动化 (2026-08-28 完善): 写目标基础变量 — 下钻数组下标/点成员, 遇箭头/解引用停止 (写的是指向对象, 不是指针变量本身) */
@@ -5147,6 +5147,7 @@ static int prim(void) {
         if (is_moved(tn[tk])) { if (asgn_lhs_parsing) { if (lv_moved_n < 8) { strcpy(lv_moved[lv_moved_n++], tn[tk]); } } else if (!move_dst_parsing) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能读取 (v3.0 #5)", tn[tk]); emit_error("A3101", g_errbuf); } } /* 接入 2026-08-28 机制层 #5: 移动后源彻底失效 — 右值读即 [ERR]; 左值解析期(asgn_lhs_parsing)记入缓冲由 asgn 事后判定 (赋值=重新初始化放行/非赋值=右值读报错); 移入目标(dst)是写跳过 */
         if (uninit_has(tn[tk])) { if (asgn_lhs_parsing) { if (lv_uninit_n < 8) { strcpy(lv_uninit[lv_uninit_n++], tn[tk]); } } else if (!move_dst_parsing) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (声明须初始化或先赋值, v3.0 #78)", tn[tk]); emit_error("A4001", g_errbuf); } } /* 接入 2026-08-28 机制层 #78: 读取未初始化变量 = C 头号隐蔽 bug → 编译期拦截 (赋值左值记缓冲由 asgn 事后判定/移入目标跳过) */
         if (borrow_mode_of(tn[tk]) == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 被可变借用 (独占), 不能读取 (v3.0 #3)", tn[tk]); emit_error("A3001", g_errbuf); } /* 接入 2026-08-28 机制层 #3: 可变借用期间原变量冻结 */
+        if (!asgn_lhs_parsing && !move_dst_parsing) { for (int _bl = 0; _bl < borrowed_cnt; _bl++) if (!strcmp(borrowed_names[_bl], tn[tk])) { borrowed_lastuse[_bl] = tk; break; } } /* 2026-08-28 type-root-3 NLL: record last-read pos */
         int n = Nd(1); refs_record(tn[tk], tline[tk]); memcpy((char*)(nn + n), tn[tk], 64); tk++; /* 引用收集 (2026-08-28 可吞清单 P1): 变量/函数名 token 处记录 (读/写/调用统一路径) */
         if (nullable_has(tn[tk - 1]) && (tt[tk] == AR || tt[tk] == LB)) { sprintf(g_errbuf, "可空类型: 变量 '%s' 未解包就解引用 (箭头/下标) — 先 解包 %s; (类型根治①, v3.0 #75)", tn[tk - 1], tn[tk - 1]); emit_error("A8001", g_errbuf); } /* 类型根治① (2026-08-28): 可空变量未解包解引用 → 编译期拦截 (变量在解引用符前: p->x / p[0]; 前缀 *p 在 L5412 DK 分支单独拦 — 原含 DK 条件会误伤 `可空 int x; x*2` 乘法; 判空/赋值/传参不拦, 解引用才拦) */
                 if (var_is_dbl(tn[tk - 1]) && var_arrsz(tn[tk - 1]) == 0) ndbl[n] = 1; /* double VARIABLE (array NAME decays to its address, not a double — fix 2026-08-05: double arr name was marked ndbl → p/d comparisons took the float path) */
@@ -7217,12 +7218,13 @@ static int stmt(void) {
         } else {
             if (is_moved(bn)) { sprintf(g_errbuf, "所有权错误: 变量 '%s' 已移动 (move 后源失效), 不能借用 (v3.0 #10)", bn); emit_error("A3103", g_errbuf); } /* 接入 2026-08-28 机制层 #10: moved 变量不能借用 (所有权已转移) */
             int bi = -1; for (int i = 0; i < borrowed_cnt; i++) if (!strcmp(borrowed_names[i], bn)) { bi = i; break; }
+            if (bi >= 0 && is_mut && borrowed_mode[bi] == 0 && borrowed_lastuse[bi] < tk) { borrow_release(bn); bi = -1; } /* 2026-08-28 type-root-3 NLL: read-only borrow last-use passed, auto-yield to mut borrow */
             if (bi >= 0) { /* 已有借用 → 独占互斥 (v3.0 #3) */
                 if (is_mut) { sprintf(g_errbuf, "借用检查: 变量 '%s' 已被借用, 不能可变借用 (独占, v3.0 #3)", bn); emit_error("A3002", g_errbuf); }
                 if (borrowed_mode[bi] == 1) { sprintf(g_errbuf, "借用检查: 变量 '%s' 已被可变借用 (独占), 不能再借用 (v3.0 #3)", bn); emit_error("A3003", g_errbuf); }
                 /* 只读借用可叠加 (多读单写, 现有语义) */
             }
-            if (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_scope[borrowed_cnt] = borrow_depth; borrowed_cnt++; } /* #4: 记录借用声明时块深度, 块退出自动放还 */
+            if (bi < 0 && borrowed_cnt < 256) { strcpy(borrowed_names[borrowed_cnt], bn); borrowed_mode[borrowed_cnt] = is_mut ? 1 : 0; borrowed_scope[borrowed_cnt] = borrow_depth; borrowed_lastuse[borrowed_cnt] = -1; borrowed_cnt++; } /* 2026-08-28 type-root-3 NLL: lastuse init -1 (unread) */ /* #4: 记录借用声明时块深度, 块退出自动放还 */
         }
         return Nd(5);
     }
@@ -18659,7 +18661,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     decl_cnt = 0; tdn_n = 0; eval_n = 0; disc_n = 0; tdef_n = 0; dbl_n = 0; /* declare声明表 + typedef名 + 枚举常量 + 判别表 + typedef定义 + double常量表 */
     if_skip = 0; if_n = 0; cl_if_skip = 0; cl_if_n = 0; /* lex 预处理条件编译栈 */
     vs_end = 0; /* fix 2026-08-28 可重入根因: vs_n() = vs_end?vs_end:vcnt — vs_end 残留(上次 codegen 的 fve[gfn]) → 第二次 parse 期 var_offset REUSE 搜索越界 → 复用 vars[169] 超出 vcnt → codegen DCL-MISS。parse 期必须 vs_end=0 (vs_n()=vcnt) */
-    borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0;
+    borrowed_cnt = 0; borrow_depth = 0; moved_cnt = 0; move_dst_parsing = 0; asgn_lhs_parsing = 0; lv_moved_n = 0; for (int _bl = 0; _bl < 256; _bl++) borrowed_lastuse[_bl] = -1; /* 2026-08-28 type-root-3 NLL: reset */
     uninit_cnt = 0; uninit_depth = 0; lv_uninit_n = 0; user_fn_active = 0; guard_cnt = 0;
     nullable_cnt = 0; nullable_depth = 0; qcc_nullable_pending = 0; qcc_nullable_pending_tok = -1;
     err_fn_cnt = 0; qcc_err_pending = 0; qcc_err_pending_tok = -1; qcc_cur_fn_err = 0; qcc_skip_err_check = 0; memset(nerr, 0, sizeof(nerr)); /* 2026-08-28 type-root-2 */ /* 2026-08-28 type-root-fix: reset pending tok too */ /* 类型根治① (2026-08-28): 可空表每编译重置 */
