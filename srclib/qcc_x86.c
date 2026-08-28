@@ -2473,6 +2473,8 @@ static void emit_error(const char *code, const char *msg) { /* 定义在 tk/tlin
 }
 static int fn_err_has(const char *n) { for (int i = 0; i < err_fn_cnt; i++) if (!strcmp(err_fn_names[i], n)) return 1; return 0; } /* 2026-08-28 type-root-2 */
 static void fn_err_mark(const char *n) { if (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
+static int expr_is_double(int n); static int var_lookup(const char *n); /* fwd (2026-08-28 type-root-4 #74) */
+static void implicit_cast_check(int rhs, const char *lhs_var) { if (rhs < 0 || !lhs_var) return; if (!user_fn_active) return; /* qcc_rt exempt (#74) */ if (lhs_var[0] == '_') return; if (!expr_is_double(rhs)) return; int vi = var_lookup(lhs_var); if (vi >= 0 && !vars[vi].is_dbl && !vars[vi].p_dbl) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 '%s' — 用 转 int(...) 显式转换 (类型根治④, v3.0 #74)", lhs_var); emit_error("A9002", g_errbuf); } } /* 2026-08-28 type-root-4 #74: no-implicit-cast double->int narrowing */
 static void err_union_check(int node) { if (node >= 0 && nerr[node]) { sprintf(g_errbuf, "错误 union: 错误函数的结果必须检查 — 用 尝试 f(); 传播(有错即返回), 或显ʽ判断后ʹ用 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } } /* 2026-08-28 type-root-2 */
 static int var_offset(const char *n) {
     int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
@@ -4738,6 +4740,33 @@ static int prim(void) {
         if (al_had_paren && tt[tk] == KK) tk++;
         int n = Nd(0); nv[n] = al; return n;
     }
+    if (tt[tk] == VR && !strcmp(tn[tk], "转")) { /* 2026-08-28 type-root-4 #74: explicit cast 转 T(x) - no-implicit-cast explicit means (int/char/short/ll/double/unsigned/ptr) */
+        tk++; /* zhuan kw */
+        int zty = 0; int zptr = 0; int zuns = 0; /* 0=int 1=char 2=short 4=double 6=ll -1=void */
+        if (tt[tk] == VK) {
+            if (!strcmp(tn[tk], "int")) zty = 0;
+            else if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) zty = 1;
+            else if (!strcmp(tn[tk], "short")) zty = 2;
+            else if (!strcmp(tn[tk], "double") || !strcmp(tn[tk], "float")) zty = 4;
+            else if (!strcmp(tn[tk], "long")) { zty = 6; tk++; if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; }
+            else if (!strcmp(tn[tk], "unsigned")) { zuns = 1; zty = 0; tk++; if (tt[tk] == VK && !strcmp(tn[tk], "long")) { zty = 6; tk++; if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; } }
+            else if (!strcmp(tn[tk], "void")) zty = -1;
+            tk++;
+        }
+        while (tt[tk] == DK) { zptr = 1; tk++; }
+        if (tt[tk] == OK) tk++; /* ( */
+        int zce = prim();
+        if (tt[tk] == KK) tk++; /* ) */
+        if (zptr) { if (zce >= 0) pesz[zce] = (zty == 1 ? 1 : zty == 2 ? 2 : zty == 6 ? 8 : 4); return zce; }
+        if (zty == -1) return zce;
+        if (zty == 4) { if (zce >= 0) ndbl[zce] = 1; return zce; } /* cast double */
+        if (zty == 1) { if (zce >= 0) pesz[zce] = -1; return zce; }
+        if (zty == 2) { if (zce >= 0) pesz[zce] = -1; return zce; }
+        if (zty == 6) { if (zce >= 0) { if (ndbl[zce] || expr_is_double(zce)) { int zm = Nd(19); Nc(zm, zce); nll[zm] = 1; ndbl[zm] = 0; return zm; } nll[zce] = 1; } return zce; }
+        if (zce >= 0 && (ndbl[zce] || expr_is_double(zce))) { int zm = Nd(19); Nc(zm, zce); ndbl[zm] = 0; return zm; }
+        if (zce >= 0) { nuns[zce] = zuns ? 1 : 0; pesz[zce] = -1; }
+        return zce;
+    }
     if (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
         int sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
@@ -5456,7 +5485,7 @@ static int cmp(void) { int n = bor(); while (tt[tk] == LK || tt[tk] == GK || tt[
 static int land(void) { int n = cmp(); while (tt[tk] == LA) { tk++; int a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } return n; }
 static int lor(void) { int n = land(); while (tt[tk] == LO) { tk++; int a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } return n; }
 static int tern(void) { int n = lor(); if (tt[tk] == QU) { tk++; int t = lor(); if (tt[tk] == CL) tk++; int f = tern(); int a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); return a; } return n; }
-static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); if (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); Nc(a, asgn());  return a; }
+static int asgn(void) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; int n = tern(); if (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; if (tt[tk] == AK) { tk++; if (n >= 0 && nt[n] == 1) { char *vname = (char*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ if (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } else { int rv = n; while (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; if (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ if (is_moved((char*)(nn + rv))) moved_release((char*)(nn + rv)); uninit_remove((char*)(nn + rv)); nullable_remove((char*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } int a = Nd(10); Nc(a, n); int _a_rhs = asgn(); if (n >= 0 && nt[n] == 1) implicit_cast_check(_a_rhs, (char*)(nn + n)); Nc(a, _a_rhs); return a; }
     if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         if (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
@@ -5856,7 +5885,7 @@ static int blk(void) {
                                 tk++; int bi = brace_fields(si, idn); if (tt[tk] == UK) tk++; int bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++;
                             }
                         }
-                        else Nc(d, expr());
+                        else { int _r2 = expr(); implicit_cast_check(_r2, vn); Nc(d, _r2); } /* type-root-4 #74 decl-init */
                     }
                     Nc(b, d); b_cnt++;
                     while (tt[tk] == CK) { /* 逗号指针 `struct Tag *a, *b;` */
@@ -6608,7 +6637,7 @@ static int blk(void) {
                     vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
                 }
             } else {
-                Nc(d, expr());
+                { int _r3 = expr(); if (!is_double && _r3 >= 0 && expr_is_double(_r3)) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 (声明) — 用 转 int(...) 显式转换 (v3.0 #74)"); emit_error("A9002", g_errbuf); } Nc(d, _r3); } /* #74 scalar */
             }
         } Nc(b, d); b_cnt++;
             if (brace_init_blk >= 0) { Nc(b, brace_init_blk); b_cnt++; } /* 延迟挂 struct brace init 块 (fix 2026-08-15: merge.c autogen 逗号声明) */

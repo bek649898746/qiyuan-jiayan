@@ -2473,6 +2473,8 @@ __attribute__((unused))
 }
 静 整 fn_err_has(常 字 *n) { 遍 (整 i = 0; i < err_fn_cnt; i++) 若 (!strcmp(err_fn_names[i], n)) 返 1; 返 0; } /* 2026-08-28 type-root-2 */
 静 空 fn_err_mark(常 字 *n) { 若 (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
+静 整 expr_is_double(整 n); 静 整 var_lookup(常 字 *n); /* fwd (2026-08-28 type-root-4 #74) */
+静 空 implicit_cast_check(整 rhs, 常 字 *lhs_var) { 若 (rhs < 0 || !lhs_var) 返; 若 (!user_fn_active) 返; /* qcc_rt exempt (#74) */ 若 (lhs_var[0] == '_') 返; 若 (!expr_is_double(rhs)) 返; 整 vi = var_lookup(lhs_var); 若 (vi >= 0 && !vars[vi].is_dbl && !vars[vi].p_dbl) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 '%s' — 用 转 int(...) 显式转换 (类型根治④, v3.0 #74)", lhs_var); emit_error("A9002", g_errbuf); } } /* 2026-08-28 type-root-4 #74: no-implicit-cast double->int narrowing */
 静 空 err_union_check(整 node) { 若 (node >= 0 && nerr[node]) { sprintf(g_errbuf, "错误 union: 错误函数的结果必须检查 — 用 尝试 f(); 传播(有错即返回), 或显ʽ判断后ʹ用 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } } /* 2026-08-28 type-root-2 */
 静 整 var_offset(常 字 *n) {
     整 _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
@@ -4738,6 +4740,33 @@ __attribute__((unused))
         若 (al_had_paren && tt[tk] == KK) tk++;
         整 n = Nd(0); nv[n] = al; 返 n;
     }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "转")) { /* 2026-08-28 type-root-4 #74: explicit cast 转 T(x) - no-implicit-cast explicit means (int/char/short/ll/double/unsigned/ptr) */
+        tk++; /* zhuan kw */
+        整 zty = 0; 整 zptr = 0; 整 zuns = 0; /* 0=int 1=char 2=short 4=double 6=ll -1=void */
+        若 (tt[tk] == VK) {
+            若 (!strcmp(tn[tk], "int")) zty = 0;
+            否 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) zty = 1;
+            否 若 (!strcmp(tn[tk], "short")) zty = 2;
+            否 若 (!strcmp(tn[tk], "double") || !strcmp(tn[tk], "float")) zty = 4;
+            否 若 (!strcmp(tn[tk], "long")) { zty = 6; tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; }
+            否 若 (!strcmp(tn[tk], "unsigned")) { zuns = 1; zty = 0; tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) { zty = 6; tk++; 若 (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; } }
+            否 若 (!strcmp(tn[tk], "void")) zty = -1;
+            tk++;
+        }
+        循环 (tt[tk] == DK) { zptr = 1; tk++; }
+        若 (tt[tk] == OK) tk++; /* ( */
+        整 zce = prim();
+        若 (tt[tk] == KK) tk++; /* ) */
+        若 (zptr) { 若 (zce >= 0) pesz[zce] = (zty == 1 ? 1 : zty == 2 ? 2 : zty == 6 ? 8 : 4); 返 zce; }
+        若 (zty == -1) 返 zce;
+        若 (zty == 4) { 若 (zce >= 0) ndbl[zce] = 1; 返 zce; } /* cast double */
+        若 (zty == 1) { 若 (zce >= 0) pesz[zce] = -1; 返 zce; }
+        若 (zty == 2) { 若 (zce >= 0) pesz[zce] = -1; 返 zce; }
+        若 (zty == 6) { 若 (zce >= 0) { 若 (ndbl[zce] || expr_is_double(zce)) { 整 zm = Nd(19); Nc(zm, zce); nll[zm] = 1; ndbl[zm] = 0; 返 zm; } nll[zce] = 1; } 返 zce; }
+        若 (zce >= 0 && (ndbl[zce] || expr_is_double(zce))) { 整 zm = Nd(19); Nc(zm, zce); ndbl[zm] = 0; 返 zm; }
+        若 (zce >= 0) { nuns[zce] = zuns ? 1 : 0; pesz[zce] = -1; }
+        返 zce;
+    }
     若 (tt[tk] == BK) { /* sizeof */
         tk++; /* skip sizeof */
         整 sizeof_had_paren = (tt[tk] == OK); /* fix 2026-08-16 根因F: 记录是否有 '(' — sizeof("str") 的 ')' 必须消费, sizeof "str" 没有 */
@@ -5456,7 +5485,7 @@ __attribute__((unused))
 静 整 land(空) { 整 n = cmp(); 循环 (tt[tk] == LA) { tk++; 整 a = Nd(2); nv[a] = LA; Nc(a, n); Nc(a, cmp()); n = a; } 返 n; }
 静 整 lor(空) { 整 n = land(); 循环 (tt[tk] == LO) { tk++; 整 a = Nd(2); nv[a] = LO; Nc(a, n); Nc(a, land()); n = a; } 返 n; }
 静 整 tern(空) { 整 n = lor(); 若 (tt[tk] == QU) { tk++; 整 t = lor(); 若 (tt[tk] == CL) tk++; 整 f = tern(); 整 a = Nd(22); Nc(a, n); Nc(a, t); Nc(a, f); 返 a; } 返 n; }
-静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); 若 (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); nullable_remove((字*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); Nc(a, asgn());  返 a; }
+静 整 asgn(空) { lv_moved_n = 0; lv_uninit_n = 0; asgn_lhs_parsing = 1; 整 n = tern(); 若 (!qcc_skip_err_check) err_union_check(n); /* 2026-08-28 type-root-2: try-branch exempt */ asgn_lhs_parsing = 0; 若 (tt[tk] == AK) { tk++; 若 (n >= 0 && nt[n] == 1) { 字 *vname = (字*)(nn + n); borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 只读借用写=自动放还, 可变借用写=[ERR] — 原: bm>=0 一律 [ERR] 需手动 放还 */ 若 (is_moved(vname)) moved_release(vname); /* 接入 2026-08-28 机制层 #5: 写已移动变量 = 重新赋值/重新初始化 → 恢复可用 (Rust 式 move 后重绑定) */ uninit_remove(vname); nullable_remove(vname); /* 类型根治① (2026-08-28): 赋值 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 赋值 = 已初始化 */ } 否 { 整 rv = n; 循环 (rv >= 0 && (nt[rv] == 14 || nt[rv] == 15 || nt[rv] == 13)) rv = n0[rv]; 若 (rv >= 0 && nt[rv] == 1) { borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 成员/数组写 → 基础变量借用策略 (s.v=5 触发 s 的只读借用自动放还; 箭头链写指向对象跳过) */ 若 (is_moved((字*)(nn + rv))) moved_release((字*)(nn + rv)); uninit_remove((字*)(nn + rv)); nullable_remove((字*)(nn + rv)); /* 类型根治①: 成员/数组写 = 重新绑定 → 清除可空标记 */ /* 接入 2026-08-28 机制层 #78: 成员/数组赋值 = 基础变量已初始化 */ } } 整 a = Nd(10); Nc(a, n); 整 _a_rhs = asgn(); 若 (n >= 0 && nt[n] == 1) implicit_cast_check(_a_rhs, (字*)(nn + n)); Nc(a, _a_rhs); 返 a; }
     若 (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA || tt[tk] == AA || tt[tk] == XA || tt[tk] == SHR || tt[tk] == SHL || tt[tk] == MS) {
         若 (lv_uninit_n > 0) { sprintf(g_errbuf, "明确初始化: 变量 '%s' 未初始化就读取 (复合赋值隐含读, 声明须初始化或先赋值, v3.0 #78)", lv_uninit[0]); emit_error("A4001", g_errbuf); } /* 接入 2026-08-28 机制层 #78: x += 3 等价 x = x + 3 (读 x) — 未初始化复合赋值拦截 */
         borrow_write_policy(n); /* 借用自动化 (2026-08-28 完善): 复合赋值=写 → 只读借用自动放还, 可变借用 [ERR] (原此路径无借用检查, 与 = 不一致) */
@@ -5856,7 +5885,7 @@ __attribute__((unused))
                                 tk++; 整 bi = brace_fields(si, idn); 若 (tt[tk] == UK) tk++; 整 bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++;
                             }
                         }
-                        否 Nc(d, expr());
+                        否 { 整 _r2 = expr(); implicit_cast_check(_r2, vn); Nc(d, _r2); } /* type-root-4 #74 decl-init */
                     }
                     Nc(b, d); b_cnt++;
                     循环 (tt[tk] == CK) { /* 逗号指针 `struct Tag *a, *b;` */
@@ -6608,7 +6637,7 @@ __attribute__((unused))
                     vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
                 }
             } 否 {
-                Nc(d, expr());
+                { 整 _r3 = expr(); 若 (!is_double && _r3 >= 0 && expr_is_double(_r3)) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 (声明) — 用 转 int(...) 显式转换 (v3.0 #74)"); emit_error("A9002", g_errbuf); } Nc(d, _r3); } /* #74 scalar */
             }
         } Nc(b, d); b_cnt++;
             若 (brace_init_blk >= 0) { Nc(b, brace_init_blk); b_cnt++; } /* 延迟挂 struct brace init 块 (fix 2026-08-15: merge.c autogen 逗号声明) */
