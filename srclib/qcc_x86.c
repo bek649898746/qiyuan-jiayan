@@ -32,6 +32,7 @@
    ⚠️ 自举教训 (2026-08-28): emit_error 原用 va_list 变参(vsnprintf/vfprintf) — qcc 编译该复杂模式生成的编译器
    在编译含 va_list 代码时崩溃 (0xC0000005) → H1≠H2。改为无变参签名 + EMIT_ERR 宏(sprintf 在调用处展开, 绕开 va_list 传参) */
 static int diagnostics_json = 0; /* --diagnostics=json: 报错输出 JSON */
+static int repeat_n = 1; /* --repeat N (接入 2026-08-28 AI原生 #6 可重入验证): 同进程连续编译 N 次, 验证可重入无状态核心 */
 static char g_errbuf[256]; /* 报错消息缓冲 — 调用处 sprintf 填充 (不用变参宏 __VA_ARGS__: qcc fn_macro 不支持变参宏展开, 2026-08-28 自举崩教训) */
 static void emit_error(const char *code, const char *msg) {
     if (diagnostics_json) {
@@ -18184,138 +18185,8 @@ static void sha256_file(const char *path, char out[65]) {
 }
 
 
-int main(int argc, char **argv) {
-    const char *src = "int main() { return 42; }";
-    const char *outf = NULL;
-    int argi = 1;
-    int asm_mode = 0;
-    char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
-    char *all_src = NULL; int all_len = 0;
-    int is_compat_stat_c = 0;
-
-    /* fix 2026-08-10 Gate 9: ������ "__bare__" ��Ǳ������������ */
-    for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
-    while (argc > argi) {
-        if (strcmp(argv[argi], "--help") == 0) {
-            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
-            return 0;
-        }
-        if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); return 0; }
-        if (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; continue; }
-        if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
-        if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
-        if (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
-        if (strcmp(argv[argi], "-D") == 0 && argc > argi + 1) { /* -D NAME=VALUE (fix 2026-08-13: Git 编译需要 C99 环境宏 __STDC_VERSION__ 等) */
-            const char *dp = argv[argi + 1]; const char *eq = dp;
-            while (*eq && *eq != '=') eq++;
-            if (eq > dp && eq - dp < 32) {
-                char nm[64]; int dl = (int)(eq - dp);
-                memcpy(nm, dp, dl); nm[dl] = 0;
-                if (*eq == '=') macro_add(nm, atoi(eq + 1)); else macro_add(nm, 1);
-            }
-            argi += 2; continue;
-        }
-        if (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; continue; }
-        if (strcmp(argv[argi], "--diagnostics=json") == 0 || strcmp(argv[argi], "--dj") == 0) { diagnostics_json = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #1: JSON 诊断模式 — 报错输出 {code,severity,message}, AI 程序化消费 */
-if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
-        if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
-            char *hb = read_file(argv[argi + 1]);
-            if (hb) {
-                int hl = (int)strlen(hb);
-                if (hdr_len + hl + 2 >= hdr_cap) { hdr_cap = hdr_len + hl + 4096; hdrs = realloc(hdrs, hdr_cap); }
-                memcpy(hdrs + hdr_len, hb, hl); hdr_len += hl;
-                hdrs[hdr_len++] = '\n'; hdrs[hdr_len] = 0;
-                free(hb);
-            }
-            argi += 2; continue;
-        }
-        /* input file */
-        char *fb = read_file(argv[argi]);
-        if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
-        dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录, 供子目录 #include 相对搜索 */
-        { const char *pp2 = argv[argi];
-          if (strstr(pp2, "compat/stat.c") || strstr(pp2, "compat\\stat.c")) is_compat_stat_c = 1; }
-        int fl = (int)strlen(fb);
-        all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1; +5=(needed+3)&~3: +4 under-allocates 1 byte when (all_len+fl)%4==3 -> all_src[all_len]=0 OOB */
-        memcpy(all_src + all_len, fb, fl); all_len += fl;
-        all_src[all_len++] = '\n'; all_src[all_len] = 0;
-        free(fb);
-        argi++;
-    }
-    if (is_compat_stat_c) macro_add("QCC_COMPAT_STAT_C", 1); /* compat/stat.c 禁用 prelude 的 stat/lstat/fstat 自映射 */
-    if (all_len > 0) {
-        int total = hdr_len + all_len + 2;
-        char *combined = malloc((total + 3) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 */
-        int pos = 0;
-        if (hdr_len > 0) { memcpy(combined, hdrs, hdr_len); pos = hdr_len; }
-        memcpy(combined + pos, all_src, all_len); pos += all_len;
-        combined[pos] = 0;
-        src = combined;
-        free(all_src);
-    }
-    free(hdrs);
-    if (!outf) {
-        static char of[512]; strcpy(of, "a.exe"); outf = of;
-    }
-
-    if (asm_mode) {
-        char af[512]; strcpy(af, outf);
-        strcat(af, ".asm"); /* fix 2026-08-05: was stripping ".exe" then appending → `qcc -S f.c` wrote a.asm but printed a.exe.asm (misleading); now always outf+".asm" */
-        strcpy(asm_name, af); /* fix 2026-08-06: 最终代越界重稳定时需截断重开 asm 文件 */
-        asm_out = fopen(af, "wb");
-    }
-
-    /* prepend the self-host runtime (qcc_rt.c): heap realloc, fseek/ftell/rewind,
-       exit/abort, strcpy/strncmp/isdigit/isalpha shadow the broken inline stubs.
-       Every compiled program gets it, so stage2 is self-contained.
-       NOTE: copy from src (the combined buffer), NOT all_src �?all_src is already
-       free()d by the combined block above (use-after-free). */
-    if (!coff_mode)
-    {
-        char *rtb = read_file("srclib/qcc_rt.c");
-        if (!rtb) rtb = read_file("qcc_rt.c");
-        if (!rtb && argc > 1) { /* cwd 无关: 基于源码路径推导运行时 (fix 2026-08-05: 原相对 cwd, 非根目录编译静默缺运行时) */
-            char sp[1024];
-            strncpy(sp, argv[1], 1023); sp[1023] = 0;
-            char *sl = strrchr(sp, '/');
-            char *bs = strrchr(sp, '\\');
-            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
-            if (last) {
-                *last = 0;
-                strcat(sp, "/srclib/qcc_rt.c");
-                rtb = read_file(sp);
-            }
-        }
-        if (!rtb && argc > 0) { /* fix 2026-08-26: 从编译器自身路径推导 — rt 在编译器目录不在源码目录; 原从 argv[1](源码) 推导 → 语料目录编译时 rt 静默缺失 → strncmp/strcspn/strspn/strdup 未定义恒 0/崩 (diff_gate strlib/math 85 差异) */
-            char sp[1024];
-            strncpy(sp, argv[0], 1023); sp[1023] = 0;
-            char *sl = strrchr(sp, '/');
-            char *bs = strrchr(sp, '\\');
-            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
-            if (last) {
-                *last = 0;
-                char sp2[1024];
-                strcpy(sp2, sp); strcat(sp2, "/srclib/qcc_rt.c");
-                rtb = read_file(sp2);
-                if (!rtb) { strcpy(sp2, sp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); }
-            }
-        }
-        if (rtb) {
-            int rl = (int)strlen(rtb);
-            int al = (int)strlen(src);
-            macro_add("QCC_RT_PREPENDED", 1); /* 修复 2026-08-25: 标记 rt 已预置 — qcc_rt.c 守卫改为认此宏而非 __GNUC__ (diff_gate -D __GNUC__=5 曾把 rt 实现全部剃光 → strcspn/strspn/strncmp/strdup 恒返 0) */
-            rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
-            char *combined2 = malloc((rl + al + 5) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — rl+al+2 misaligned the bump counter -> tt..tll misaligned -> tll[tk] reads garbage -> spurious nll=1 -> 2-cycle */
-            memcpy(combined2, rtb, rl);
-            combined2[rl] = '\n';
-            memcpy(combined2 + rl + 1, src, al);
-            combined2[rl + 1 + al] = 0;
-            src = combined2;
-            free(rtb);
-        }
-    }
-
-    /* ????????*/
+/* 接入 2026-08-28 AI原生编译器 #6 可重入无状态核心 (大哥定 地基打桩第二桩): 编译核心函数化 — 每次调用独立分配 token/AST 数组 + 独立编译, 同进程可多次调用 (编译服务器/增量/并行前置) */
+static int qcc_compile_once(const char *src, const char *outf, int asm_mode) {
     tt = calloc(TS, 4); tv = calloc(TS, 4); tn = calloc(TS, 64); nn = calloc(ASZ, 64);
     tuns = calloc(TS, 4); /* unsigned-suffix flags (fix 2026-08-05) */
     tll = calloc(TS, 4); /* long-long-suffix flags (fix 2026-08-05) */
@@ -18510,4 +18381,147 @@ if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strn
         fprintf(stderr, "[EXPECT] OK: %s\n", eh);
     }
     return 0;
+}
+
+int main(int argc, char **argv) {
+    const char *src = "int main() { return 42; }";
+    const char *outf = NULL;
+    int argi = 1;
+    int asm_mode = 0;
+    char *hdrs = NULL; int hdr_len = 0, hdr_cap = 0;
+    char *all_src = NULL; int all_len = 0;
+    int is_compat_stat_c = 0;
+
+    /* fix 2026-08-10 Gate 9: ������ "__bare__" ��Ǳ������������ */
+    for (int bi = 1; bi < argc; bi++) { if (argv[bi] && !strcmp(argv[bi], "__bare__")) { bare_metal = 1; break; } }
+    while (argc > argi) {
+        if (strcmp(argv[argi], "--help") == 0) {
+            printf("甲言 qcc_x86 v5.0 · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\nUsage: qcc_x86 [-S] [-I header.h] [-o out.exe] file.c [file2.c ...]\n  -S  output asm text\n");
+            return 0;
+        }
+        if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); return 0; }
+        if (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; continue; }
+        if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
+        if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
+        if (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
+        if (strcmp(argv[argi], "-D") == 0 && argc > argi + 1) { /* -D NAME=VALUE (fix 2026-08-13: Git 编译需要 C99 环境宏 __STDC_VERSION__ 等) */
+            const char *dp = argv[argi + 1]; const char *eq = dp;
+            while (*eq && *eq != '=') eq++;
+            if (eq > dp && eq - dp < 32) {
+                char nm[64]; int dl = (int)(eq - dp);
+                memcpy(nm, dp, dl); nm[dl] = 0;
+                if (*eq == '=') macro_add(nm, atoi(eq + 1)); else macro_add(nm, 1);
+            }
+            argi += 2; continue;
+        }
+        if (strcmp(argv[argi], "--selfcheck") == 0 && argc > argi + 1) { strncpy(selfcheck_sha, argv[argi + 1], 64); selfcheck_sha[64] = 0; argi += 2; continue; }
+        if (strcmp(argv[argi], "--diagnostics=json") == 0 || strcmp(argv[argi], "--dj") == 0) { diagnostics_json = 1; argi++; continue; } /* 接入 2026-08-28 AI原生 #1: JSON 诊断模式 — 报错输出 {code,severity,message}, AI 程序化消费 */
+        if (strcmp(argv[argi], "--repeat") == 0 && argc > argi + 1) { repeat_n = atoi(argv[argi + 1]); if (repeat_n < 1) repeat_n = 1; argi += 2; continue; } /* 接入 2026-08-28 AI原生 #6: 同进程连续编译 N 次验证可重入 */
+if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
+        if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
+            char *hb = read_file(argv[argi + 1]);
+            if (hb) {
+                int hl = (int)strlen(hb);
+                if (hdr_len + hl + 2 >= hdr_cap) { hdr_cap = hdr_len + hl + 4096; hdrs = realloc(hdrs, hdr_cap); }
+                memcpy(hdrs + hdr_len, hb, hl); hdr_len += hl;
+                hdrs[hdr_len++] = '\n'; hdrs[hdr_len] = 0;
+                free(hb);
+            }
+            argi += 2; continue;
+        }
+        /* input file */
+        char *fb = read_file(argv[argi]);
+        if (!fb) { fprintf(stderr, "qcc_x86: cannot open %s\n", argv[argi]); return 1; }
+        dir_of_path(argv[argi], g_src_dir, sizeof(g_src_dir)); /* fix 2026-08-13 Phase3: 记录源文件目录, 供子目录 #include 相对搜索 */
+        { const char *pp2 = argv[argi];
+          if (strstr(pp2, "compat/stat.c") || strstr(pp2, "compat\\stat.c")) is_compat_stat_c = 1; }
+        int fl = (int)strlen(fb);
+        all_src = realloc(all_src, (all_len + fl + 5) & ~3); /* fix 2026-08-12 UB-cleanup: realloc is a REAL bump alloc (not no-op)! all_len+fl+2 non-4-multiple -> tt..tll misaligned -> tll[tk] garbage -> spurious nll=1; +5=(needed+3)&~3: +4 under-allocates 1 byte when (all_len+fl)%4==3 -> all_src[all_len]=0 OOB */
+        memcpy(all_src + all_len, fb, fl); all_len += fl;
+        all_src[all_len++] = '\n'; all_src[all_len] = 0;
+        free(fb);
+        argi++;
+    }
+    if (is_compat_stat_c) macro_add("QCC_COMPAT_STAT_C", 1); /* compat/stat.c 禁用 prelude 的 stat/lstat/fstat 自映射 */
+    if (all_len > 0) {
+        int total = hdr_len + all_len + 2;
+        char *combined = malloc((total + 3) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 */
+        int pos = 0;
+        if (hdr_len > 0) { memcpy(combined, hdrs, hdr_len); pos = hdr_len; }
+        memcpy(combined + pos, all_src, all_len); pos += all_len;
+        combined[pos] = 0;
+        src = combined;
+        free(all_src);
+    }
+    free(hdrs);
+    if (!outf) {
+        static char of[512]; strcpy(of, "a.exe"); outf = of;
+    }
+
+    if (asm_mode) {
+        char af[512]; strcpy(af, outf);
+        strcat(af, ".asm"); /* fix 2026-08-05: was stripping ".exe" then appending → `qcc -S f.c` wrote a.asm but printed a.exe.asm (misleading); now always outf+".asm" */
+        strcpy(asm_name, af); /* fix 2026-08-06: 最终代越界重稳定时需截断重开 asm 文件 */
+        asm_out = fopen(af, "wb");
+    }
+
+    /* prepend the self-host runtime (qcc_rt.c): heap realloc, fseek/ftell/rewind,
+       exit/abort, strcpy/strncmp/isdigit/isalpha shadow the broken inline stubs.
+       Every compiled program gets it, so stage2 is self-contained.
+       NOTE: copy from src (the combined buffer), NOT all_src �?all_src is already
+       free()d by the combined block above (use-after-free). */
+    if (!coff_mode)
+    {
+        char *rtb = read_file("srclib/qcc_rt.c");
+        if (!rtb) rtb = read_file("qcc_rt.c");
+        if (!rtb && argc > 1) { /* cwd 无关: 基于源码路径推导运行时 (fix 2026-08-05: 原相对 cwd, 非根目录编译静默缺运行时) */
+            char sp[1024];
+            strncpy(sp, argv[1], 1023); sp[1023] = 0;
+            char *sl = strrchr(sp, '/');
+            char *bs = strrchr(sp, '\\');
+            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
+            if (last) {
+                *last = 0;
+                strcat(sp, "/srclib/qcc_rt.c");
+                rtb = read_file(sp);
+            }
+        }
+        if (!rtb && argc > 0) { /* fix 2026-08-26: 从编译器自身路径推导 — rt 在编译器目录不在源码目录; 原从 argv[1](源码) 推导 → 语料目录编译时 rt 静默缺失 → strncmp/strcspn/strspn/strdup 未定义恒 0/崩 (diff_gate strlib/math 85 差异) */
+            char sp[1024];
+            strncpy(sp, argv[0], 1023); sp[1023] = 0;
+            char *sl = strrchr(sp, '/');
+            char *bs = strrchr(sp, '\\');
+            char *last = sl && bs ? (sl > bs ? sl : bs) : (sl ? sl : bs);
+            if (last) {
+                *last = 0;
+                char sp2[1024];
+                strcpy(sp2, sp); strcat(sp2, "/srclib/qcc_rt.c");
+                rtb = read_file(sp2);
+                if (!rtb) { strcpy(sp2, sp); strcat(sp2, "/qcc_rt.c"); rtb = read_file(sp2); }
+            }
+        }
+        if (rtb) {
+            int rl = (int)strlen(rtb);
+            int al = (int)strlen(src);
+            macro_add("QCC_RT_PREPENDED", 1); /* 修复 2026-08-25: 标记 rt 已预置 — qcc_rt.c 守卫改为认此宏而非 __GNUC__ (diff_gate -D __GNUC__=5 曾把 rt 实现全部剃光 → strcspn/strspn/strncmp/strdup 恒返 0) */
+            rt_line_skip = 1; for (int rk = 0; rk < rl; rk++) if (rtb[rk] == '\n') rt_line_skip++; /* fix 2026-08-06 Task 5.3: 行号校正 */
+            char *combined2 = malloc((rl + al + 5) & ~3); /* fix 2026-08-11 BLOCKER-3: round to 4 — rl+al+2 misaligned the bump counter -> tt..tll misaligned -> tll[tk] reads garbage -> spurious nll=1 -> 2-cycle */
+            memcpy(combined2, rtb, rl);
+            combined2[rl] = '\n';
+            memcpy(combined2 + rl + 1, src, al);
+            combined2[rl + 1 + al] = 0;
+            src = combined2;
+            free(rtb);
+        }
+    }
+
+    /* 接入 2026-08-28 AI原生 #6: 编译核心函数化 — 同进程可重复调用 (可重入无状态核心) */
+    int qc_rc = qcc_compile_once(src, outf, asm_mode);
+    if (qc_rc) return qc_rc;
+    for (int qri = 1; qri < repeat_n; qri++) { /* --repeat: 同进程连续编译验证可重入 (每次独立分配数组, 产物应一致) */
+        if (qcc_compile_once(src, outf, asm_mode)) { fprintf(stderr, "[REPEAT] 第 %d 次编译失败 (可重入验证失败)\n", qri + 1); return 1; }
+    }
+    if (repeat_n > 1) fprintf(stderr, "[REPEAT] 连续编译 %d 次一致 (可重入无状态核心验证通过)\n", repeat_n);
+    return 0;
+
 }
