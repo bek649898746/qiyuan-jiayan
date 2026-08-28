@@ -2621,15 +2621,15 @@ static int data_rva_base = 0x2000; /* .data RVA (provisional; text may grow) */
 static char asm_name[512]; /* -S 模式 asm 文件名 (最终代越界重稳定时截断重开用, fix 2026-08-06) */
 static int stc_disp(int idx) { return (data_rva_base + DATA_RVA_OFF + 4 * idx) - (0x1000 + cp + 6); }
 /* IAT entry (kernel32): slot 0=GetStdHandle at .data+8, 1=WriteFile at .data+0x10 */
-static int iat_disp_at(int at, int slot) { int iat_off = slot < 15 ? (8 + 8 * slot) : (0x88 + 8 * (slot - 15)); return (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32(15) / IAT2@+0x88 msvcrt (2026-08-28 type-root-15 #41: kernel32 11→15 槽) */
+static int iat_disp_at(int at, int slot) { int iat_off = slot < 17 ? (8 + 8 * slot) : (0x98 + 8 * (slot - 17)); return (data_rva_base + iat_off) - (0x1000 + at + 6); } /* IAT1@+0x08 kernel32(17) / IAT2@+0x98 msvcrt (2026-08-28 P1 #246: kernel32 15→17, IAT2 0x88→0x98) */ /* IAT1@+0x08 kernel32(15) / IAT2@+0x88 msvcrt (2026-08-28 type-root-15 #41: kernel32 11→15 槽) */
 static void call_iat(int slot) {
     asm_emit("    调系统 %d\n", (char*)(long long)(slot), (char*)(long long)0, (char*)(long long)0);
     int at = cp; /* instruction start (FF 15 + disp32 = 6 bytes) */
     b(0xFF); b(0x15);
     if (coff_mode) {
-        static const char *impn[32] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
+        static const char *impn[34] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
             "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA",
-            "__imp_CreateThread", "__imp_WaitForSingleObject", "__imp_CloseHandle", "__imp_CreateFiber", "__imp_SwitchToFiber", "__imp_DeleteFiber", "__imp_ConvertThreadToFiber", /* 2026-08-28 type-root-15 #41: kernel32 11→15 */
+            "__imp_CreateThread", "__imp_WaitForSingleObject", "__imp_CloseHandle", "__imp_CreateFiber", "__imp_SwitchToFiber", "__imp_DeleteFiber", "__imp_ConvertThreadToFiber", "__imp_LoadLibraryA", "__imp_GetProcAddress", /* 2026-08-28 P1 #246: +LoadLibraryA/GetProcAddress (kernel32 15→17) */
             "__imp_pow", "__imp_atan2", "__imp_fmod", "__imp_remainder", "__imp_sqrt", "__imp_cbrt", "__imp_cos", "__imp_sin",
             "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor",
             "__imp__write" };
@@ -2642,7 +2642,7 @@ static void call_iat(int slot) {
 /* 外部数学函数 → IAT slot 8-31（非 coff 模式；fix 2026-08-06 BUG-1; 2026-08-25 math24: 16→24, frexp/ldexp/modf 走混合 ABI 专用分支） */
 static int fn_math_iat(const char *n) {
     static const char *maths[24] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs","cosh","sinh","tanh","copysign","hypot","frexp","ldexp","modf" };
-    for (int i = 0; i < 24; i++) if (!strcmp(maths[i], n)) return 15 + i; /* 2026-08-28 type-root-15 #41: kernel32 11→15 槽 → msvcrt 槽 11→15 起 */
+    for (int i = 0; i < 24; i++) if (!strcmp(maths[i], n)) return 17 + i; /* 2026-08-28 P1 #246: kernel32 15→17 槽 → msvcrt 槽 17 起 */
     return -1;
 }
 /* 外部库函数注册表 (fix 2026-08-25 step5 time 全系): 非 builtin 非 math 的 msvcrt IAT 函数,
@@ -2651,7 +2651,7 @@ static int fn_math_iat(const char *n) {
    slot 33-41 对应 mnames[25..33] (64 位变体映射标准名: time→_time64 等) */
 static const char *ext_fn_names[34] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs","islower","isupper","iscntrl","isgraph","isprint","ispunct","labs","atof","strcoll","strxfrm","strncat","strncpy","strtod" }; /* isblank/strcasecmp/strtoll 等不在传统 msvcrt.dll 导出, 勿入表 */
 static int ext_fn_slot(const char *n) {
-    for (int i = 0; i < 34; i++) if (!strcmp(ext_fn_names[i], n)) return 40 + i; /* 2026-08-28 type-root-15 #41: msvcrt 槽 36→40 起 (kernel32 +4) */
+    for (int i = 0; i < 34; i++) if (!strcmp(ext_fn_names[i], n)) return 42 + i; /* 2026-08-28 P1 #246: msvcrt 槽 40→42 起 (kernel32 +2) */
     return -1;
 }
 static int ext_fn_ret(const char *n) {
@@ -4675,6 +4675,17 @@ static int prim(void) {
             { int fn = Nd(1); memcpy((char*)(nn + fn), "__qcc_pool_alloc", 17); Nc(call, fn); }
             return call;
         }
+        if (tt[tk] == VR && (!strcmp(tn[tk], "加载库") || !strcmp(tn[tk], "取函数"))) { /* 接入 2026-08-28 P1 #246 动态库加载: 加载库 "name" → load_library; 取函数 h, "name" → get_proc_address (LoadLibraryA/GetProcAddress 真调用) */
+            int is_ga = !strcmp(tn[tk], "取函数");
+            tk++;
+            if (tt[tk] == OK) tk++; /* ( */
+            int call = Nd(4);
+            while (tt[tk] != KK && tt[tk] != EK && tt[tk] != SK) { Nc(call, expr()); if (tt[tk] == CK) tk++; }
+            if (tt[tk] == KK) tk++; /* ) */
+            if (is_ga) { int fn = Nd(1); memcpy((char*)(nn + fn), "get_proc_address", 17); Nc(call, fn); }
+            else { int fn = Nd(1); memcpy((char*)(nn + fn), "load_library", 13); Nc(call, fn); }
+            return call;
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "协程")) { /* 接入 2026-08-27 协程初始化 (表达式层, 同生成器模式): 协程(c, fn, ctx) → coro_init(&c, fn, ctx); — 用户定义 coro_init/coro_step (确定性 stackless 状态机协程) */
         tk++; /* 协程 */
         if (tt[tk] == OK) tk++; /* ( */
@@ -6508,7 +6519,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && strcmp(tn[tk], "加载库") != 0 && strcmp(tn[tk], "取函数") != 0 && (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -13304,7 +13315,7 @@ static void emit_print(const char *fname, int nargs) {
             b(0xE8); b4(0); /* call rel32 - jyld resolves _write -> msvcrt import */
             coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0);
         } else {
-            call_iat(39); /* _write IAT slot (msvcrt, 2026-08-28 type-root-15 #41: kernel32 11→15 → _write 35→39) */
+            call_iat(41); /* _write IAT slot (msvcrt, 2026-08-28 P1 #246: kernel32 15→17 → _write 39→41) */
         }
         add_rsp_imm(32);
         jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
@@ -13386,7 +13397,7 @@ static void emit_vfprintf(int nargs) {
     mov_rr64(1, 10); /* rcx = fd */
     mov_rr64(2, 14); /* rdx = buf */
     if (coff_mode) { b(0xE8); b4(0); coff_crel(cp - 4, 0x0004, coff_func_name_sym("_write"), 0); }
-    else call_iat(39); /* _write (2026-08-28 type-root-15 #41: 35→39) */
+    else call_iat(41); /* _write (2026-08-28 P1 #246: 39→41) */
     add_rsp_imm(32);
     jmp_rel(-1); patch_label(cp - 4, lwdone2, 2);
     set_label(lwf);
@@ -16698,6 +16709,27 @@ static void cg(int n) {
                 mov_rr64(4, 15); pop_r(15);
                 add_rsp_imm(total_h);
                 math_done = 1;
+            } else if (!strcmp(fname, "load_library")) { /* 2026-08-28 P1 #246: 动态库加载 — load_library("name") → LoadLibraryA(rcx=arg0) → rax=HMODULE (真运行时加载) */
+                mov_reg_mrsp64(1, argbase + total_h - slot_h[0] - 8); /* rcx = arg0 (DLL 名) */
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+                sub_rsp_imm(32);
+                call_iat(15); /* LoadLibraryA */
+                add_rsp_imm(32);
+                mov_rr64(4, 15); pop_r(15);
+                add_rsp_imm(total_h);
+                math_done = 1;
+            } else if (!strcmp(fname, "get_proc_address")) { /* 2026-08-28 P1 #246: 动态函数解析 — get_proc_address(h, "name") → GetProcAddress(rcx=arg0, rdx=arg1) → rax=函数指针 */
+                mov_reg_mrsp64(1, argbase + total_h - slot_h[0] - 8); /* rcx = arg0 (HMODULE) */
+                mov_reg_mrsp64(2, argbase + total_h - slot_h[1] - 8); /* rdx = arg1 (函数名) */
+                push_r(15); mov_rr64(15, 4);
+                asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0);
+                sub_rsp_imm(32);
+                call_iat(16); /* GetProcAddress */
+                add_rsp_imm(32);
+                mov_rr64(4, 15); pop_r(15);
+                add_rsp_imm(total_h);
+                math_done = 1;
             } else if (!strcmp(fname, "CreateFiber")) { /* 2026-08-28 type-root-15 #41: CreateFiber(dwStackSize=rcx, lpStartAddress=rdx, lpParameter=r8) → rax = 纤维句柄 */
                 push_r(15); mov_rr64(15, 4);
                 asm_emit("    对齐栈\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xE4); b(0xF0); /* and rsp,-16 */
@@ -18447,7 +18479,7 @@ static void write_pe(FILE *f, int entry_rva) {
     /* data directory 0: exports (none) */
     w4(f, 0); w4(f, 0);
     /* data directory 1: import table (kernel32) */
-    w4(f, data_rva_base + 0x4C8); w4(f, 60); /* RVA of import descriptors + size (2026-08-28 type-root-15 #41: desc@+0x4C8 kernel32 15 槽) */
+    w4(f, data_rva_base + 0x4E8); w4(f, 60); /* RVA of import descriptors + size (2026-08-28 P1 #246: desc@+0x4E8 kernel32 17 槽) */
     /* data directories 2-15: none */
     for (int di = 2; di < 16; di++) { w4(f, 0); w4(f, 0); }
 
@@ -18495,35 +18527,35 @@ static void write_pe(FILE *f, int entry_rva) {
     heap_start = (heap_start + 7) & ~7; /* fix 2026-08-12 BLOCKER-3: bump heap BASE 8-byte aligned — 布局变化 (data_rva_base/__pad0 尺寸) 不得影响堆对齐 (tll[tk] 错位读 → 伪 nll=1 → 2-cycle) */
     w4(f, heap_start); /* heap counter initialized */
     w4(f, 0);          /* padding */
-    static const char *knames[15] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle", "CreateFiber", "SwitchToFiber", "DeleteFiber", "ConvertThreadToFiber" }; /* 2026-08-28 type-root-15 #41: +CreateFiber/SwitchToFiber/DeleteFiber/ConvertThreadToFiber (协程 stackful) */
+    static const char *knames[17] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle", "CreateFiber", "SwitchToFiber", "DeleteFiber", "ConvertThreadToFiber", "LoadLibraryA", "GetProcAddress" }; /* 2026-08-28 type-root-15 #41: +CreateFiber/SwitchToFiber/DeleteFiber/ConvertThreadToFiber; 2026-08-28 P1 #246: +LoadLibraryA/GetProcAddress (动态库加载, 15→17 槽) */
     static const char *mnames[59] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime", "strtok", "strrchr", "strnlen", "strpbrk", "memcmp", "toupper", "isalnum", "isxdigit", "isspace", "rand", "srand", "abs", "islower", "isupper", "iscntrl", "isgraph", "isprint", "ispunct", "labs", "atof", "strcoll", "strxfrm", "strncat", "strncpy", "strtod" };
-    int iat1 = 0x08, iat2 = 0x88, ilt1 = 0x268, ilt2 = 0x2E8, desc_off = 0x4C8, name_off = 0x504; /* 2026-08-28 type-root-15 #41: kernel32 11→15 槽 (16*8=128B=0x80); IAT1@0x08(128B→0x88), IAT2@0x88(480B→0x268), ILT1@0x268(128B→0x2E8), ILT2@0x2E8(480B→0x4C8), desc@0x4C8(60B→0x504), names@0x504 (至 ~0x7D0 < DATA_RVA_OFF 0x800) */
-    int n_off[74];
+    int iat1 = 0x08, iat2 = 0x98, ilt1 = 0x278, ilt2 = 0x308, desc_off = 0x4E8, name_off = 0x524; /* 2026-08-28 P1 #246: kernel32 15→17 槽 (18*8=144=0x90); IAT1@0x08(144B→0x98), IAT2@0x98(480B→0x278), ILT1@0x278(144B→0x308), ILT2@0x308(480B→0x4E8), desc@0x4E8(60B→0x524), names@0x524 (至 ~0x8E0 < DATA_RVA_OFF 0x900) */
+    int n_off[76];
     /* IAT/ILT 占位 */
-    fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 16; i++) w8(f, 0);
+    fseek(f, data_foff + iat1, SEEK_SET); for (int i = 0; i < 18; i++) w8(f, 0);
     fseek(f, data_foff + iat2, SEEK_SET); for (int i = 0; i < 60; i++) w8(f, 0);
-    fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 16; i++) w8(f, 0);
+    fseek(f, data_foff + ilt1, SEEK_SET); for (int i = 0; i < 18; i++) w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET); for (int i = 0; i < 60; i++) w8(f, 0);
     /* names（hint 2B + name + \0） */
     fseek(f, data_foff + name_off, SEEK_SET);
-    for (int i = 0; i < 15; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
-    for (int i = 0; i < 59; i++) { n_off[15 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
+    for (int i = 0; i < 17; i++) { n_off[i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(knames[i], f); fputc(0, f); }
+    for (int i = 0; i < 59; i++) { n_off[17 + i] = (int)ftell(f) - data_foff; w2(f, 0); fputs(mnames[i], f); fputc(0, f); }
     int kdll = (int)ftell(f) - data_foff; fputs("kernel32.dll", f); fputc(0, f);
     int mdll = (int)ftell(f) - data_foff; fputs("msvcrt.dll", f); fputc(0, f);
-    /* 回填 IAT1（15 + term） */
+    /* 回填 IAT1（17 + term） */
     fseek(f, data_foff + iat1, SEEK_SET);
-    for (int i = 0; i < 15; i++) w8(f, data_rva_base + n_off[i]);
+    for (int i = 0; i < 17; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     /* 回填 IAT2（59 + term） */
     fseek(f, data_foff + iat2, SEEK_SET);
-    for (int i = 0; i < 59; i++) w8(f, data_rva_base + n_off[15 + i]);
+    for (int i = 0; i < 59; i++) w8(f, data_rva_base + n_off[17 + i]);
     w8(f, 0);
     /* 回填 ILT1/ILT2 */
     fseek(f, data_foff + ilt1, SEEK_SET);
-    for (int i = 0; i < 15; i++) w8(f, data_rva_base + n_off[i]);
+    for (int i = 0; i < 17; i++) w8(f, data_rva_base + n_off[i]);
     w8(f, 0);
     fseek(f, data_foff + ilt2, SEEK_SET);
-    for (int i = 0; i < 59; i++) w8(f, data_rva_base + n_off[15 + i]);
+    for (int i = 0; i < 59; i++) w8(f, data_rva_base + n_off[17 + i]);
     w8(f, 0);
     /* import descriptors: kernel32 (IAT1/ILT1), msvcrt (IAT2/ILT2) */
     fseek(f, data_foff + desc_off, SEEK_SET);
