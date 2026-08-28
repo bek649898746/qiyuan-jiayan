@@ -621,6 +621,16 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
     fn_scan_depth++;
     int in_str = 0; /* 顶层串内逐字复制 (fix 2026-08-07: 字符串字面量里的 NAME( 不展开) */
     for (int i = 0; seg[i]; ) {
+        if (!in_str && seg[i] == '\xe6' && seg[i+1] == '\xb3' && seg[i+2] == '\x9b' && seg[i+3] == '\xe5' && seg[i+4] == '\x9e' && seg[i+5] == '\x8b') { /* 泛型定义行 (接入 2026-08-28 #96): 激活 fn_active (同 #define 位置语义, 之后的调用才展开), 定义行删除不输出 (lexer 无需跳过, fix 2026-08-28: 复制残留导致 lexer 跳过交互 SEGV) */
+            int q3 = i + 6; while (seg[q3] == ' ' || seg[q3] == '\t') q3++;
+            char fnm[64]; int fni2 = 0;
+            while (isalnum((unsigned char)seg[q3]) || seg[q3] == '_' || ((unsigned char)seg[q3] >= 0x80)) { if (fni2 < 63) fnm[fni2++] = seg[q3]; q3++; }
+            fnm[fni2] = 0;
+            while (seg[q3] == ' ' || seg[q3] == '\t') q3++;
+            if (seg[q3] == '(') for (int k = 0; k < fn_macro_n; k++) if (!strcmp(fn_macros[k].name, fnm)) { fn_active[k] = 1; break; }
+            while (seg[i] && seg[i] != '\n') i++;
+            continue;
+        }
         if (seg[i] == '#') { int q2 = i + 1; while (seg[q2] == ' ' || seg[q2] == '\t') q2++; if (seg[q2] == 'd' || seg[q2] == 'u' || seg[q2] == 'i' || seg[q2] == 'e' || seg[q2] == 'l' || seg[q2] == 'p' || seg[q2] == 'n') { /* fix 2026-08-13: 预处理行不展开 (#define 行内宏名会被当调用展开); fix 2026-08-13 Phase3: # 后空白 (缩进 #  define __REPB_PREFIX(name) 原被展开成 #define name name) */
             if (!strncmp(seg + q2, "define", 6) && (seg[q2+6] == 0 || seg[q2+6] == ' ' || seg[q2+6] == '\t')) { /* fix 2026-08-26 sqlite: 位置语义 — 记录函数宏定义点, 之后的调用才展开 */
                 int q3 = q2 + 6; while (seg[q3] == ' ' || seg[q3] == '\t') q3++;
@@ -662,9 +672,9 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
             out[(*o)++] = seg[i++];
             continue;
         }
-        if (isalnum((unsigned char)seg[i]) || seg[i] == '_') {
+        if (isalnum((unsigned char)seg[i]) || seg[i] == '_' || (unsigned char)seg[i] >= 0x80) { /* fix 2026-08-28 #96: 中文宏名 (泛型 最大值) 也扫描 */
             char nm[64]; int ni = 0;
-            while (isalnum((unsigned char)seg[i]) || seg[i] == '_') { if (ni < 63) nm[ni++] = seg[i]; i++; }
+            while (isalnum((unsigned char)seg[i]) || seg[i] == '_' || (unsigned char)seg[i] >= 0x80) { if (ni < 63) nm[ni++] = seg[i]; i++; }
             nm[ni] = 0;
             int name_start = i - ni; /* 宏名起始下标 — 必须在此处保存, 后面跳过空白到 ( 后 i 已移动 (fix 2026-08-15: obstack_free 原型带空格被误展开) */
             int fmi = -1;
@@ -680,6 +690,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                 while (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--;
                 while (_b > 0 && seg[_b] == '*') { _b--; while (_b > 0 && (seg[_b] == ' ' || seg[_b] == '\t' || seg[_b] == '\r' || seg[_b] == '\n')) _b--; } /* 跳过指针返回类型 char *_(...) — 否则 gettext.h 的 static inline _ 被当宏调用展开 (fix 2026-08-15: undefined symbol '_') */
                 int _is_decl = 0;
+                if (_b >= 6 && !memcmp(seg + _b - 5, "\xe6\xb3\x9b\xe5\x9e\x8b", 6)) _is_decl = 1; /* 泛型定义行 (接入 2026-08-28 #96): 宏名前是 "泛型" → 是定义不是调用, 不展开 (否则 泛型 最大值(x,y) 的 (x,y) 被当实参展开破坏定义行) */
                 if (_b > 0 && (seg[_b] == '.' || (seg[_b] == '>' && seg[_b - 1] == '-'))) _is_decl = 1; /* t35m 2026-08-24: 字段名与函数宏冲突 — iter->select(...) 的 select 是结构体字段, compat_prelude.h `#define select(n,r,w,e,t) 0` (Winsock stub) 文本展开破坏字段访问 → merge_ref_iterator_advance 缺 select 调用 → show-ref/branch/tag 死循环; 注意: 仅 `->`(前为 -) 或 `.` 才算字段访问, 裸 `>` 是比较运算符 (maximum_unsigned_value_of_type 前 (b) > 不能误伤) */
                 if (_b > 0 && (isalnum((unsigned char)seg[_b]) || seg[_b] == '_')) {
                     int _e = _b;
@@ -835,7 +846,43 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
     *outp = out;
 }
 
+/* 泛型定义预扫描 (接入 2026-08-28 机制层 #96): lex 前扫源码 "泛型 名字(params) = body;" → 注册 fn_macro
+   (fn_macro_expand 在 lex 前文本展开调用, 中文 fn_macro 调用按实参类型天然多类型) */
+static void generic_prepass(const char *s) {
+    const char *p = s;
+    while (*p) {
+        if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }
+        if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0] == '*' && p[1] == '/')) p++; if (*p) p += 2; continue; }
+        if (p[0] == '"') { p++; while (*p && *p != '"') { if (*p == '\\') p++; p++; } if (*p) p++; continue; }
+        if (p[0] == '\'') { p++; while (*p && *p != '\'') { if (*p == '\\') p++; p++; } if (*p) p++; continue; }
+        if (p[0] == '\xe6' && p[1] == '\xb3' && p[2] == '\x9b' && p[3] == '\xe5' && p[4] == '\x9e' && p[5] == '\x8b') { /* "泛型" */
+            const char *q = p + 6;
+            while (*q == ' ' || *q == '\t') q++;
+            char nm[64]; int qn = 0; while ((isalnum((unsigned char)*q) || *q == '_' || (unsigned char)*q >= 0x80) && qn < 63) nm[qn++] = *q++;
+            nm[qn] = 0;
+            if (nm[0]) {
+                int dup = 0; for (int i = 0; i < fn_macro_n; i++) if (!strcmp(fn_macros[i].name, nm)) { dup = 1; break; }
+                if (!dup && fn_macro_n < 2048) {
+                    strcpy(fn_macros[fn_macro_n].name, nm);
+                    fn_macro_multiline[fn_macro_n] = 0;
+                    while (*q == ' ' || *q == '\t') q++;
+                    if (*q == '(') { q++; int pi = 0; while (*q && *q != ')' && pi < 16) { while (*q==' '||*q=='\t'||*q==',') q++; if (*q==')') break; int q2=0; while ((isalnum((unsigned char)*q)||*q=='_') && q2<63) fn_macros[fn_macro_n].params[pi][q2++]=*q++; fn_macros[fn_macro_n].params[pi][q2]=0; pi++; /* fix 2026-08-28: 每次参数后 ++ (pn 少 1 → 只替换第一个参数) */ if (*q==')') break; } if (*q==')') q++; fn_macros[fn_macro_n].pn=pi; }
+                    else fn_macros[fn_macro_n].pn = 0;
+                    while (*q == ' ' || *q == '\t') q++;
+                    if (*q == '=') { q++; while (*q==' '||*q=='\t') q++; }
+                    int b = 0; while (*q && *q != '\n' && *q != ';' && b < 16383) fn_macros[fn_macro_n].body[b++] = *q++; /* body 到 ; 停 (fix 2026-08-28: 含 ; 展开后双分号 → 结果 0) */
+                    fn_macros[fn_macro_n].body[b] = 0;
+                    fn_macro_n++;
+                }
+            }
+            p = q;
+            continue;
+        }
+        p++;
+    }
+}
 static char *fn_macro_expand(const char *s) {
+    generic_prepass(s); /* lex 前: 预扫描 泛型 定义注册 fn_macro (查重防重复) */
     int cap = (int)strlen(s) * 2 + 1024;
     char *out = malloc(cap);
     int o = 0;
@@ -4028,6 +4075,39 @@ static void lex(const char *s) {
             }
             else if (!strcmp(tn[ti], "__extension__") || !strcmp(tn[ti], "__MINGW_EXTENSION")) { continue; } /* fix 2026-08-22 #29: GCC __extension__ prefix (time.h __MINGW_EXTENSION typedef) was not swallowed -> parse broke, struct tm lost (sizeof=0) */
             else if (!strcmp(tn[ti], "可空")) { continue; } /* 接入 2026-08-27: 甲言 Option 类型标记 (可空): 词法层吞掉 = 等价普通声明 (可空 T x == T x), 显式声明可空性 (NULL 合法). 同 __extension__ 吞掉不占 token 位 */
+            else if (!strcmp(tn[ti], "泛型")) { /* 接入 2026-08-28 机制层: 泛型函数宏 (#96, v3.0) — 泛型 名字(参数) = 体; → 注册 fn_macro (文本级模板, 调用按实参类型展开): 泛型 最大值(x, y) = ((x) > (y) ? (x) : (y)); — lexer 层注册, 调用 最大值(a,b) 在 lex 时展开 (fn_macro 机制), 天然多类型 */
+                int gp = i; while (s[gp] == ' ' || s[gp] == '\t') gp++;
+                char gnm[64]; int gq = 0; while ((isalnum((unsigned char)s[gp]) || s[gp] == '_' || (unsigned char)s[gp] >= 0x80) && gq < 63) gnm[gq++] = s[gp++]; gnm[gq] = 0;
+                if (!gnm[0]) { /* 无名字: 当普通标识符 泛型 发射 */ }
+                else {
+                    int gdup = 0; for (int gi = 0; gi < fn_macro_n; gi++) if (!strcmp(fn_macros[gi].name, gnm)) { gdup = 1; break; }
+                    /* 无条件推进 gp (参数+体) 跳过定义行 — 即使 dup 也要到行尾 (fix 2026-08-28: gdup 时残留定义行 → 最大值(x,y) 被 fn_macro 展开破坏) */
+                    int gpi = 0;
+                    if (s[gp] == '(') { gp++; while (s[gp] && s[gp] != ')' && gpi < 16) {
+                            while (s[gp] == ' ' || s[gp] == '\t' || s[gp] == ',') gp++;
+                            if (s[gp] == ')') break;
+                            int gq2 = 0; while ((isalnum((unsigned char)s[gp]) || s[gp] == '_') && gq2 < 63) fn_macros[fn_macro_n].params[gpi][gq2++] = s[gp++];
+                            fn_macros[fn_macro_n].params[gpi][gq2] = 0;
+                            gpi++; /* fix 2026-08-28: 每次参数后 ++ */
+                            if (s[gp] == ')') break;
+                        }
+                        if (s[gp] == ')') gp++;
+                    }
+                    while (s[gp] == ' ' || s[gp] == '\t') gp++;
+                    if (s[gp] == '=') { gp++; while (s[gp] == ' ' || s[gp] == '\t') gp++; } /* 泛型 名字(x) = 体; — 跳过 = */
+                    int gb = 0;
+                    while (s[gp] && s[gp] != '\n' && s[gp] != ';' && gb < 16383) { fn_macros[fn_macro_n].body[gb++] = s[gp++]; } /* body 到 ; 停 (fix 2026-08-28) */
+                    fn_macros[fn_macro_n].body[gb] = 0;
+                    if (!gdup && fn_macro_n < 2048) { /* 预扫描已注册则只跳过 (注册信息预扫描已填) */
+                        strcpy(fn_macros[fn_macro_n].name, gnm);
+                        fn_macro_multiline[fn_macro_n] = 0;
+                        fn_macros[fn_macro_n].pn = gpi;
+                        fn_macro_n++;
+                    }
+                    i = gp; /* 跳过定义行 */
+                }
+                continue; /* 不发射 token */
+            }
             else if (!strcmp(tn[ti], "_Alignas")) { /* fix 2026-08-25 step21: C11 对齐声明 — 吐 AG token 携带对齐值 (原吞掉无语义; 语义在 st_field_sz_r 消费: 字段/struct 级显式对齐) */
                 int av = 0;
                 int aj = i; while (s[aj] == ' ' || s[aj] == '\t' || s[aj] == '\r' || s[aj] == '\n') aj++;
@@ -9877,6 +9957,7 @@ static int parse(const char *s) {
     fn_macro_collect(exp_src); /* fix 2026-08-07: 移到 include 展开之后 — 头文件里的函数宏才能被收集展开 */
      
     obj_macro_collect(exp_src); /* fix 2026-08-13: 对象宏收集 (lex 前, Git hash-ll.h) */
+    generic_prepass(exp_src); /* 泛型定义预扫描 (接入 2026-08-28 #96): 无条件执行, 注册 泛型 fn_macro (lex 前, 展开调用) */
      
     if (fn_macro_n > 0) {
         char *msrc = fn_macro_expand(exp_src);
