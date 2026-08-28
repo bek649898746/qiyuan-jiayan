@@ -2486,7 +2486,7 @@ static char impl_iface[64][64]; static char impl_type[64][64]; static char impl_
 static int iface_find(const char *n) { for (int i = 0; i < iface_cnt; i++) if (!strcmp(iface_names[i], n)) return i; return -1; }
 static int impl_find(const char *ifn, const char *tn) { for (int i = 0; i < impl_cnt; i++) if (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) return i; return -1; }
 static char closure_names[64][64]; static char closure_fn[64][64]; static char closure_caps[64][8][64]; static int closure_ccnt[64]; static int closure_cnt = 0; static int closure_mode[64]; /* 2026-08-28 type-root-9 #211: closure table */ /* 2026-08-28 P1 #32 闭包捕获模式: 0=by-ref(默认) 1=by-move(快照+源失效) 2=by-mut(传址) */
-static char const_names[128][64]; static int const_vals[128]; static int const_cnt = 0; static char immut_names[128][64]; static int immut_cnt = 0; /* 2026-08-28 type-root-10 #278: compile-time const table */ /* 2026-08-28 P1 #209 不可变性(局部默认): 不变 x = expr; 声明后只读 (赋值 A9006) */
+static char const_names[128][64]; static int const_vals[128]; static int const_cnt = 0; static char immut_names[128][64]; static int immut_cnt = 0; static char panic_hook_fn[64]; /* 2026-08-28 type-root-10 #278: compile-time const table */ /* 2026-08-28 P1 #209 不可变性(局部默认): 不变 x = expr; 声明后只读 (赋值 A9006) */ /* 2026-08-28 P2 #162 恐慌钩子: 恐慌钩子 fn; 注册, 恐慌先调钩子 */
 static int const_find(const char *n) { for (int i = 0; i < const_cnt; i++) if (!strcmp(const_names[i], n)) return i; return -1; }
 static char cnst_node[ASZ]; /* type-root-10 #278: node is const-read */
 static int closure_find(const char *n) { for (int i = 0; i < closure_cnt; i++) if (!strcmp(closure_names[i], n)) return i; return -1; }
@@ -7503,12 +7503,16 @@ static int stmt(void) {
         if (cv == 0) { fprintf(stderr, "[ERR] 编译期断言失败: 表达式非真 (v3.0 #176)\n"); exit(1); }
         return Nd(5); /* 断言通过: 无运行时代码 */
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "恐慌")) { /* 接入 2026-08-28 P1 #88: 恐慌机制 (panic) — 恐慌 "消息"; → { printf("消息\n"); exit(1); } 致命错误路径, 确定性终止 */
+    if (tt[tk] == VR && !strcmp(tn[tk], "恐慌")) { /* 接入 2026-08-28 P1 #88: 恐慌机制 (panic) — 恐慌 "消息"; → { if (钩子) 钩子(); printf("消息\n"); exit(1); } 致命错误路径, 确定性终止 */ /* 2026-08-28 P2 #162: 恐慌钩子 (panic hook) — 恐慌钩子 fn; 注册, 恐慌时先调钩子再终止 */
         tk++; /* 恐慌 */
         char msg[200]; strcpy(msg, "恐慌\n"); /* 默认消息 */
         if (tt[tk] == STR) { char *m0 = str_tbl[tv[tk]]; if (m0) snprintf(msg, 200, "%s\n", m0); tk++; } /* 自定义消息 */
         if (tt[tk] == SK) tk++;
         int blk = Nd(5);
+        if (panic_hook_fn[0]) { /* #162: 恐慌钩子 — 先调钩子 (确定性: 钩子=资源收尾) */
+            int call_h = Nd(4); { int fn = Nd(1); memcpy((char*)(nn + fn), panic_hook_fn, 64); Nc(call_h, fn); }
+            Nc(blk, call_h);
+        }
         if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
         if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
         strcpy(str_tbl[str_cnt], msg);
@@ -7518,6 +7522,13 @@ static int stmt(void) {
         int call_x = Nd(4); { int one = Nd(0); nv[one] = 1; Nc(call_x, one); } { int en2 = Nd(1); memcpy((char*)(nn + en2), "exit", 5); Nc(call_x, en2); } /* exit(1) */
         Nc(blk, call_x);
         return blk;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "恐慌钩子")) { /* 接入 2026-08-28 P2 #162 恐慌捕获/处理钩子: 恐慌钩子 fn; → 注册钩子, 恐慌时先调用 */
+        tk++; /* 恐慌钩子 */
+        char hf[64]; strcpy(hf, tn[tk]); tk++;
+        if (tt[tk] == SK) tk++;
+        strcpy(panic_hook_fn, hf);
+        return Nd(5);
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行 (AI启动单/MoonBit#1): 声明 名字(参数) 返回 类型; → 注册签名, 实现后补(stub), 缺失=警告非错误 */
         tk++; /* 声明 */
@@ -9677,7 +9688,7 @@ static int stmt(void) {
         static int sw_seq2 = 0; char rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
         var_offset(iname); var_offset(rn2);
         int vals[64]; int ress[64]; int ncase = 0; int has_def = 0; int e_def = 0;
-        int or_vals[64]; int guard_vals[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) */
+        int or_vals[64]; int guard_vals[64]; int rng_lo[64]; int rng_hi[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) + P2 #144 区间模式 (范围 lo 到 hi) */
         while (1) {
             if (tt[tk] == VR && !strcmp(tn[tk], "其他")) { /* 缺省分支 (可选, 须在最后) */
                 tk++; if (tt[tk] == CL) tk++; /* : */
@@ -9690,10 +9701,16 @@ static int stmt(void) {
                 int v2 = -1; int guard = -1;
                 if (tt[tk] == OR) { tk++; v2 = band(); } /* #132 or 模式: v1 | v2 (| = OR token 47) */
                 if (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* #133 守卫模式: v 若 cond (若 词法映射为 if/IK) */
+                /* 2026-08-28 P2 #144 区间模式: 对照 范围 lo 到 hi: 结果 — 值域匹配 (sw >= lo && sw <= hi), 须在 : 前解析边界 */
+                int rng_lo_n = -1, rng_hi_n = -1;
+                if (v1 >= 0 && nt[v1] == 1 && !strcmp((char*)(nn + v1), "范围")) {
+                    rng_lo_n = expr(); if (tt[tk] == VR && !strcmp(tn[tk], "到")) tk++; rng_hi_n = expr();
+                }
                 if (tt[tk] == CL) tk++; /* : */
                 int res = expr();
+                rng_lo[ncase] = rng_lo_n; rng_hi[ncase] = rng_hi_n;
                 /* 2026-08-28 P1 #142 冗余/不可达模式检查: 常量模式与前面**无守卫**臂重复 → 后臂不可达 [ERR] (有守卫前臂可能失败, 不构成冗余) */
-                if (nt[v1] == 0) { int cv = nv[v1]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
+                if (v1 >= 0 && nt[v1] == 0) { int cv = nv[v1]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
                 if (v2 >= 0 && nt[v2] == 0) { int cv2 = nv[v2]; for (int j = 0; j < ncase; j++) { if (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv2) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv2))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv2); exit(1); } } }
                 vals[ncase] = v1; ress[ncase] = res; or_vals[ncase] = v2; guard_vals[ncase] = guard;
                 ncase++;
@@ -9720,6 +9737,12 @@ static int stmt(void) {
           for (i = 0; i < ncase; i++) {
               int v_i = Nd(1); memcpy((char*)(nn + v_i), iname, 32);
               int cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == v1 */
+              if (rng_lo[i] >= 0) { /* 2026-08-28 P2 #144: 区间模式 (__sw >= lo && __sw <= hi) */
+                  int c_lo = Nd(2); nv[c_lo] = T_YK; Nc(c_lo, v_i); Nc(c_lo, rng_lo[i]); /* __sw >= lo */
+                  int c_hi = Nd(2); nv[c_hi] = T_HK; Nc(c_hi, v_i); Nc(c_hi, rng_hi[i]); /* __sw <= hi */
+                  int andr = Nd(2); nv[andr] = LA; Nc(andr, c_lo); Nc(andr, c_hi);
+                  cmp = andr;
+              }
               if (or_vals[i] >= 0) { /* 2026-08-28 P1 #132: || (__sw == v2) — or 模式多值合一 */
                   int cmp2 = Nd(2); nv[cmp2] = T_QK; Nc(cmp2, v_i); Nc(cmp2, or_vals[i]);
                   int orn = Nd(2); nv[orn] = LO; Nc(orn, cmp); Nc(orn, cmp2);

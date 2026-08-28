@@ -2486,7 +2486,7 @@ __attribute__((unused))
 静 整 iface_find(常 字 *n) { 遍 (整 i = 0; i < iface_cnt; i++) 若 (!strcmp(iface_names[i], n)) 返 i; 返 -1; }
 静 整 impl_find(常 字 *ifn, 常 字 *tn) { 遍 (整 i = 0; i < impl_cnt; i++) 若 (!strcmp(impl_iface[i], ifn) && !strcmp(impl_type[i], tn)) 返 i; 返 -1; }
 静 字 closure_names[64][64]; 静 字 closure_fn[64][64]; 静 字 closure_caps[64][8][64]; 静 整 closure_ccnt[64]; 静 整 closure_cnt = 0; 静 整 closure_mode[64]; /* 2026-08-28 type-root-9 #211: closure table */ /* 2026-08-28 P1 #32 闭包捕获模式: 0=by-ref(默认) 1=by-move(快照+源失效) 2=by-mut(传址) */
-静 字 const_names[128][64]; 静 整 const_vals[128]; 静 整 const_cnt = 0; 静 字 immut_names[128][64]; 静 整 immut_cnt = 0; /* 2026-08-28 type-root-10 #278: compile-time const table */ /* 2026-08-28 P1 #209 不可变性(局部默认): 不变 x = expr; 声明后只读 (赋值 A9006) */
+静 字 const_names[128][64]; 静 整 const_vals[128]; 静 整 const_cnt = 0; 静 字 immut_names[128][64]; 静 整 immut_cnt = 0; 静 字 panic_hook_fn[64]; /* 2026-08-28 type-root-10 #278: compile-time const table */ /* 2026-08-28 P1 #209 不可变性(局部默认): 不变 x = expr; 声明后只读 (赋值 A9006) */ /* 2026-08-28 P2 #162 恐慌钩子: 恐慌钩子 fn; 注册, 恐慌先调钩子 */
 静 整 const_find(常 字 *n) { 遍 (整 i = 0; i < const_cnt; i++) 若 (!strcmp(const_names[i], n)) 返 i; 返 -1; }
 静 字 cnst_node[ASZ]; /* type-root-10 #278: node is const-read */
 静 整 closure_find(常 字 *n) { 遍 (整 i = 0; i < closure_cnt; i++) 若 (!strcmp(closure_names[i], n)) 返 i; 返 -1; }
@@ -7503,12 +7503,16 @@ __attribute__((unused))
         若 (cv == 0) { fprintf(stderr, "[ERR] 编译期断言失败: 表达式非真 (v3.0 #176)\n"); exit(1); }
         返 Nd(5); /* 断言通过: 无运行时代码 */
     }
-    若 (tt[tk] == VR && !strcmp(tn[tk], "恐慌")) { /* 接入 2026-08-28 P1 #88: 恐慌机制 (panic) — 恐慌 "消息"; → { printf("消息\n"); exit(1); } 致命错误路径, 确定性终止 */
+    若 (tt[tk] == VR && !strcmp(tn[tk], "恐慌")) { /* 接入 2026-08-28 P1 #88: 恐慌机制 (panic) — 恐慌 "消息"; → { if (钩子) 钩子(); printf("消息\n"); exit(1); } 致命错误路径, 确定性终止 */ /* 2026-08-28 P2 #162: 恐慌钩子 (panic hook) — 恐慌钩子 fn; 注册, 恐慌时先调钩子再终止 */
         tk++; /* 恐慌 */
         字 msg[200]; strcpy(msg, "恐慌\n"); /* 默认消息 */
         若 (tt[tk] == STR) { 字 *m0 = str_tbl[tv[tk]]; 若 (m0) snprintf(msg, 200, "%s\n", m0); tk++; } /* 自定义消息 */
         若 (tt[tk] == SK) tk++;
         整 blk = Nd(5);
+        若 (panic_hook_fn[0]) { /* #162: 恐慌钩子 — 先调钩子 (确定性: 钩子=资源收尾) */
+            整 call_h = Nd(4); { 整 fn = Nd(1); memcpy((字*)(nn + fn), panic_hook_fn, 64); Nc(call_h, fn); }
+            Nc(blk, call_h);
+        }
         若 (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
         若 (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
         strcpy(str_tbl[str_cnt], msg);
@@ -7518,6 +7522,13 @@ __attribute__((unused))
         整 call_x = Nd(4); { 整 one = Nd(0); nv[one] = 1; Nc(call_x, one); } { 整 en2 = Nd(1); memcpy((字*)(nn + en2), "exit", 5); Nc(call_x, en2); } /* exit(1) */
         Nc(blk, call_x);
         返 blk;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "恐慌钩子")) { /* 接入 2026-08-28 P2 #162 恐慌捕获/处理钩子: 恐慌钩子 fn; → 注册钩子, 恐慌时先调用 */
+        tk++; /* 恐慌钩子 */
+        字 hf[64]; strcpy(hf, tn[tk]); tk++;
+        若 (tt[tk] == SK) tk++;
+        strcpy(panic_hook_fn, hf);
+        返 Nd(5);
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行 (AI启动单/MoonBit#1): 声明 名字(参数) 返回 类型; → 注册签名, 实现后补(stub), 缺失=警告非错误 */
         tk++; /* 声明 */
@@ -9677,7 +9688,7 @@ __attribute__((unused))
         静 整 sw_seq2 = 0; 字 rn2[64]; sprintf(rn2, "__sr_%d_", sw_seq2++);
         var_offset(iname); var_offset(rn2);
         整 vals[64]; 整 ress[64]; 整 ncase = 0; 整 has_def = 0; 整 e_def = 0;
-        整 or_vals[64]; 整 guard_vals[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) */
+        整 or_vals[64]; 整 guard_vals[64]; 整 rng_lo[64]; 整 rng_hi[64]; /* 2026-08-28 P1 #132 or模式 (v1|v2) + #133 守卫模式 (v 若 cond) + P2 #144 区间模式 (范围 lo 到 hi) */
         循环 (1) {
             若 (tt[tk] == VR && !strcmp(tn[tk], "其他")) { /* 缺省分支 (可选, 须在最后) */
                 tk++; 若 (tt[tk] == CL) tk++; /* : */
@@ -9690,10 +9701,16 @@ __attribute__((unused))
                 整 v2 = -1; 整 guard = -1;
                 若 (tt[tk] == OR) { tk++; v2 = band(); } /* #132 or 模式: v1 | v2 (| = OR token 47) */
                 若 (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* #133 守卫模式: v 若 cond (若 词法映射为 if/IK) */
+                /* 2026-08-28 P2 #144 区间模式: 对照 范围 lo 到 hi: 结果 — 值域匹配 (sw >= lo && sw <= hi), 须在 : 前解析边界 */
+                整 rng_lo_n = -1, rng_hi_n = -1;
+                若 (v1 >= 0 && nt[v1] == 1 && !strcmp((字*)(nn + v1), "范围")) {
+                    rng_lo_n = expr(); 若 (tt[tk] == VR && !strcmp(tn[tk], "到")) tk++; rng_hi_n = expr();
+                }
                 若 (tt[tk] == CL) tk++; /* : */
                 整 res = expr();
+                rng_lo[ncase] = rng_lo_n; rng_hi[ncase] = rng_hi_n;
                 /* 2026-08-28 P1 #142 冗余/不可达模式检查: 常量模式与前面**无守卫**臂重复 → 后臂不可达 [ERR] (有守卫前臂可能失败, 不构成冗余) */
-                若 (nt[v1] == 0) { 整 cv = nv[v1]; 遍 (整 j = 0; j < ncase; j++) { 若 (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
+                若 (v1 >= 0 && nt[v1] == 0) { 整 cv = nv[v1]; 遍 (整 j = 0; j < ncase; j++) { 若 (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv); exit(1); } } }
                 若 (v2 >= 0 && nt[v2] == 0) { 整 cv2 = nv[v2]; 遍 (整 j = 0; j < ncase; j++) { 若 (guard_vals[j] < 0 && ((vals[j] >= 0 && nt[vals[j]] == 0 && nv[vals[j]] == cv2) || (or_vals[j] >= 0 && nt[or_vals[j]] == 0 && nv[or_vals[j]] == cv2))) { fprintf(stderr, "[ERR] 冗余模式: 值 #%d 已被前臂匹配 (不可达分支, v3.0 #142)\n", cv2); exit(1); } } }
                 vals[ncase] = v1; ress[ncase] = res; or_vals[ncase] = v2; guard_vals[ncase] = guard;
                 ncase++;
@@ -9720,6 +9737,12 @@ __attribute__((unused))
           遍 (i = 0; i < ncase; i++) {
               整 v_i = Nd(1); memcpy((字*)(nn + v_i), iname, 32);
               整 cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, v_i); Nc(cmp, vals[i]); /* __sw == v1 */
+              若 (rng_lo[i] >= 0) { /* 2026-08-28 P2 #144: 区间模式 (__sw >= lo && __sw <= hi) */
+                  整 c_lo = Nd(2); nv[c_lo] = T_YK; Nc(c_lo, v_i); Nc(c_lo, rng_lo[i]); /* __sw >= lo */
+                  整 c_hi = Nd(2); nv[c_hi] = T_HK; Nc(c_hi, v_i); Nc(c_hi, rng_hi[i]); /* __sw <= hi */
+                  整 andr = Nd(2); nv[andr] = LA; Nc(andr, c_lo); Nc(andr, c_hi);
+                  cmp = andr;
+              }
               若 (or_vals[i] >= 0) { /* 2026-08-28 P1 #132: || (__sw == v2) — or 模式多值合一 */
                   整 cmp2 = Nd(2); nv[cmp2] = T_QK; Nc(cmp2, v_i); Nc(cmp2, or_vals[i]);
                   整 orn = Nd(2); nv[orn] = LO; Nc(orn, cmp); Nc(orn, cmp2);
