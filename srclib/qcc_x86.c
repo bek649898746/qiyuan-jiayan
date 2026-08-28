@@ -17714,6 +17714,7 @@ void gen_code(void) {
             asm_emit("    取指64 r0, [rsp]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8B); modrm(0, 0, 4); b(0x24); /* mov rax, [rsp] */
             add_rsp_imm(16);
         }
+        { int cidx = contract_find(fname); if (cidx >= 0 && contracts[cidx].has_post) { int ro2 = var_lookup("__qcc_ret"); if (ro2 >= 0) mov_mbrp_reg(ro2 - cur_frame_sz, 0); cg(build_contract_check(contracts[cidx].post_root, contracts[cidx].post_str)); if (ro2 >= 0) mov_reg_mbrp(0, ro2 - cur_frame_sz); } } /* 契约后置 (2026-08-28 可吞清单 P0-7): epilogue 处 __qcc_ret=返回值; if(!后置){printf;exit;} — 每个 return 都跳 epi_label, 在此统一检查; 检查后恢复 rax=返回值 (cg 求值会踩 rax); fix 2026-08-28: RAII 回滚误删此检查 (回归, _verify_contract ⑤ 后置违反不拦) */
         gfn++; /* next function's var range */
 
         if (is_isr) {
