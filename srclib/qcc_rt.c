@@ -804,6 +804,27 @@ void __qcc_str_free(int id) {
     __qcc_vec_data[id] = 0; __qcc_vec_len[id] = 0; __qcc_vec_cap[id] = 0;
 }
 
+/* #192 编译期测试/文档 (接入 2026-08-29 P2): 测试表 — 测试 "名" 用 func; 注册; 跑测试; 执行全部 (func 返回 0=通过 非0=失败) */
+static struct { char name[64]; int (*fn)(void); } __qcc_tests[128];
+static int __qcc_test_n = 0;
+int __qcc_test_reg(const char *name, int (*fn)(void)) {
+    if (__qcc_test_n >= 128) return 1;
+    strcpy(__qcc_tests[__qcc_test_n].name, name);
+    __qcc_tests[__qcc_test_n].fn = fn;
+    __qcc_test_n++;
+    return 0;
+}
+int __qcc_test_run_all(void) {
+    int fail = 0;
+    for (int i = 0; i < __qcc_test_n; i++) {
+        int r = __qcc_tests[i].fn ? __qcc_tests[i].fn() : 1;
+        printf("[测试] %s: %s\n", __qcc_tests[i].name, r == 0 ? "通过" : "失败");
+        if (r != 0) fail = 1;
+    }
+    printf("测试结果: %d/%d 通过\n", __qcc_test_n - fail, __qcc_test_n);
+    return fail;
+}
+
 /* #12 内部可变性 (Cell): 运行时可变单元 — 单元 x, 初值; 放单元 x, v; 取单元 x; (全局表, 绕开借用检查 = 内部可变) */
 static int __qcc_cell[64];
 static int __qcc_cell_cnt = 0;
