@@ -7235,12 +7235,12 @@ static int stmt(void) {
         int e_depth = expr(); /* 深度上限 */
         if (tt[tk] == SK) tk++;
         char recn[32]; sprintf(recn, "__rec_%d_", fvn); /* 每函数唯一计数器 (static 全局 int, 跨调用保持) */
-        var_static(recn, 4); uninit_remove(recn); /* 2026-08-29 P2 #155: 计数器须显式注册 (未注册标识符被当函数名取址) */
+        var_static(recn, 0); uninit_remove(recn); /* 2026-08-29 P2 #155 fix: pesz=0 普通 int (原 pesz=4 → 指针缩放 ++ 每层 +4 → 误触) */
         int blk = Nd(5);
         { int v_r = Nd(1); memcpy((char*)(nn + v_r), recn, 32); /* __rec_<fvn>++ */
           int pl = Nd(2); nv[pl] = PK; Nc(pl, v_r); { int one = Nd(0); nv[one] = 1; Nc(pl, one); }
           int asg = Nd(10); Nc(asg, v_r); Nc(asg, pl); Nc(blk, asg); }
-        { int cmp = Nd(2); nv[cmp] = T_YK; { int v_r = Nd(1); memcpy((char*)(nn + v_r), recn, 32); Nc(cmp, v_r); } Nc(cmp, e_depth); /* __rec_<fvn> >= 深度 */
+        { int cmp = Nd(2); nv[cmp] = T_GK; { int v_r = Nd(1); memcpy((char*)(nn + v_r), recn, 32); Nc(cmp, v_r); } Nc(cmp, e_depth); /* __rec_<fvn> > 深度 (fix: 计数=深度+1 含根调用, > 使深度N触发/深度N-1允许) */
           int ifn = Nd(8); Nc(ifn, cmp);
           int bd = Nd(5);
           if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
