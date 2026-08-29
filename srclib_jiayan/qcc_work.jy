@@ -7259,10 +7259,12 @@ __attribute__((unused))
             字 idxv[64]; 整 has_idx = 0;
             若 (tt[tk + 1] == CK) { strcpy(idxv, tn[tk]); tk++; tk++; has_idx = 1; } /* 接入 2026-08-27 for-range 索引: 遍 i, x 于 arr — i 索引, x 值 */
             字 rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代值变量 */
+            fprintf(stderr, "[DBG-FR] rvn=%s tk=%d tt=%d tn=%.20s\n", rvn, tk, tt[tk], tn[tk]);
             tk++; /* 于 */
             { 整 save_tk = tk; 整 start_e = expr(); /* 区间检测: 遍 x 于 a 到 b — 迭代表达式 */
               若 (tt[tk] == VR && !strcmp(tn[tk], "到")) { /* 接入 2026-08-27 for-range 区间: { x=a; while(x<b){body;x++;} } */
                 tk++; 整 end_e = expr();
+                若 (var_lookup(rvn) < 0) { var_offset(rvn); uninit_remove(rvn); } /* 2026-08-29 P2 #263: 区间迭代变量同样注册 (同数组/切片路径) */
                 整 blk3 = Nd(5);
                 整 v_x3 = Nd(1); memcpy((字*)(nn + v_x3), rvn, 32);
                 { 整 assign0 = Nd(10); Nc(assign0, v_x3); Nc(assign0, start_e); Nc(blk3, assign0); }
@@ -7279,6 +7281,39 @@ __attribute__((unused))
               tk = save_tk; /* 非区间: 重置 token, 走数组/切片/字符串路径 */
             }
             整 arrn = expr(); /* 数组/切片/字符串表达式 */
+            { /* 接入 2026-08-29 P2 #263 切片运算符: 遍 x 于 a 从 lo 到 hi — 数组区间迭代 (a[lo..hi) 切片; 避开 .. 词法冲突用 从/到 关键字) */
+                整 sl_lo = -1, sl_hi = -1; 字 sl_arr[64]; sl_arr[0] = 0;
+                若 (tt[tk] == VR && !strcmp(tn[tk], "从") && arrn >= 0 && nt[arrn] == 1) {
+                    tk++; /* 从 */
+                    整 lo_e = expr();
+                    若 (tt[tk] == VR && !strcmp(tn[tk], "到")) tk++; /* 到 */
+                    整 hi_e = expr();
+                    strcpy(sl_arr, (字*)(nn + arrn)); sl_lo = lo_e; sl_hi = hi_e;
+                }
+                若 (sl_lo >= 0) { /* 切片迭代: { _i=lo; while(_i<hi){ [i=_i;] x=a[_i]; body; _i++; } } */
+                    字 iname[32]; sprintf(iname, "_rs_%d_", rng_seq++);
+                    var_offset(iname);
+                    若 (var_lookup(rvn) < 0) { var_offset(rvn); uninit_remove(rvn); } /* 迭代值变量注册 (同数组路径) */
+                    若 (has_idx && var_lookup(idxv) < 0) { var_offset(idxv); uninit_remove(idxv); }
+                    整 blk_s = Nd(5);
+                    { 整 d = Nd(7); memcpy((字*)(nn + d), iname, 32); Nc(d, sl_lo); Nc(blk_s, d); } /* int _i = lo; */
+                    整 wh_s = Nd(9);
+                    { 整 cmp = Nd(2); nv[cmp] = T_LK; { 整 v = Nd(1); memcpy((字*)(nn + v), iname, 32); Nc(cmp, v); } Nc(cmp, sl_hi); Nc(wh_s, cmp); } /* _i < hi */
+                    整 bd_s = Nd(5);
+                    若 (has_idx) { 整 ia = Nd(10); { 整 v_iv = Nd(1); memcpy((字*)(nn + v_iv), idxv, 32); Nc(ia, v_iv); } { 整 v_it = Nd(1); memcpy((字*)(nn + v_it), iname, 32); Nc(ia, v_it); } Nc(bd_s, ia); }
+                    { 整 assign = Nd(10); { 整 v_x = Nd(1); memcpy((字*)(nn + v_x), rvn, 32); Nc(assign, v_x); }
+                      { 整 v_a = Nd(1); memcpy((字*)(nn + v_a), sl_arr, 32);
+                        整 idx = Nd(14); Nc(idx, v_a); { 整 v_it = Nd(1); memcpy((字*)(nn + v_it), iname, 32); Nc(idx, v_it); }
+                        Nc(assign, idx); }
+                      Nc(bd_s, assign); } /* x = a[_i]; */
+                    { 整 body_s = stmt(); Nc(bd_s, body_s); }
+                    { 整 cl_s = new_label(); 整 setl = Nd(20); nv[setl] = cl_s + 1; Nc(bd_s, setl); nv[wh_s] = cl_s + 1; }
+                    { 整 step = Nd(23); nv[step] = 0; { 整 v_it = Nd(1); memcpy((字*)(nn + v_it), iname, 32); Nc(step, v_it); } Nc(bd_s, step); }
+                    Nc(wh_s, bd_s);
+                    Nc(blk_s, wh_s);
+                    返 blk_s;
+                }
+            }
             字 *avn = NULL; 整 arr_len = -1; 整 slice_si = -1; 整 str_len = -1;
             若 (arrn >= 0 && nt[arrn] == STR) { str_len = (整)strlen(str_tbl[tv[arrn]]); } /* 字符串: 遍 c 于 "abc" */
             否 若 (arrn >= 0 && nt[arrn] == 1) {
@@ -7289,6 +7324,8 @@ __attribute__((unused))
             若 ((!avn && slice_si < 0 && str_len < 0) || (avn == NULL && slice_si < 0 && str_len < 0)) { fprintf(stderr, "[ERR] for-range 需要数组/切片/字符串: 遍 x 于 arr/sl/\"str\"\n"); exit(1); }
                                     字 iname[32]; sprintf(iname, "_r_%d_", rng_seq++); /* rng_seq 文件级 (可重入修复) */
             var_offset(iname);
+            若 (var_lookup(rvn) < 0) { var_offset(rvn); uninit_remove(rvn); } /* 2026-08-29 P2 #263: 迭代值变量必须注册 — 循环体读取 x 时 var_lookup 否则 -1 → codegen 当函数名 (既有 bug) */
+            若 (has_idx && var_lookup(idxv) < 0) { var_offset(idxv); uninit_remove(idxv); } /* 索引变量同样 */
             整 blk2 = Nd(5);
             { 整 d_it = Nd(7); memcpy((字*)(nn + d_it), iname, 32); { 整 z = Nd(0); nv[z] = 0; Nc(d_it, z); } Nc(blk2, d_it); }
             整 wh2 = Nd(9);
