@@ -5846,7 +5846,16 @@ static int prim(void) {
             }
             if (cast_nstar == 0 && ce >= 0) pesz[ce] = -1; /* t35k 2026-08-23: 非指针 cast (uintptr_t/size_t/int/long) → 整数语义 — 原无操作 cast 保留指针属性 → (uintptr_t)p-1 按 node_psz(p)=4 缩放 → cb_node_of 返回 p-4 → cbtree 多节点树崩 (short_sha 修复后暴露: %cI 等 log 格式 SIGSEGV) */
             if (cast_nstar == 0 && cast_ty && !strcmp(cast_ty, "double") && ce >= 0) ndbl[ce] = 1; /* fix 2026-08-27 特性#concepts: (double)0 cast 标记 double — 原无操作 cast 不设标记 → _Generic((double)0,...) expr_type_of 判 int → 概念分派选错分支 */
-            return ce; /* cast is no-op: value unchanged */
+            { int _csz = 0; /* fix 2026-08-30 csmith B族: 窄类型 cast 截断 — (int16_t)x 原 no-op 保留 32 位垃圾 (s62 g_1143 存 0x3ae35569 应 0x5568; s182/s83/s121 同族) */
+              if (cast_nstar == 0) {
+                if (cast_ty && (!strcmp(cast_ty, "char") || !strcmp(cast_ty, "_Bool"))) _csz = 1;
+                else if (cast_ty && !strcmp(cast_ty, "short")) _csz = 2;
+                else if (cast_ty2 && (!strcmp(cast_ty2, "char") || !strcmp(cast_ty2, "_Bool"))) _csz = 1;
+                else if (cast_ty2 && !strcmp(cast_ty2, "short")) _csz = 2;
+                else if (cast_td) { int _ctc = tdef_lookup(cast_td); if (_ctc >= 0 && !tdefs[_ctc].is_struct && !tdefs[_ctc].is_fnptr && !tdefs[_ctc].is_dbl && (tdefs[_ctc].sz == 1 || tdefs[_ctc].sz == 2)) _csz = tdefs[_ctc].sz; }
+                if (_csz && ce >= 0 && n0[ce] != -2) { int m = Nd(27); Nc(m, ce); nv[m] = _csz; nuns[m] = nuns[ce]; ce = m; }
+              } }
+            return ce; /* cast 截断节点: 窄类型不再 no-op (fix 2026-08-30 csmith B族) */
         }
         tk++; int n = expr();
         /* comma operator inside parens: (a, b, c) �?needed for (i++, PP) in the
@@ -18380,6 +18389,12 @@ static void cg(int n) {
                 add_rsp_imm(8);       /* drop &target */
             }
         } break;
+        case 27: { /* 窄类型截断 — (int16_t)/(uint8_t) cast 值掩码+符号扩展 (fix 2026-08-30 csmith B族: 原 cast no-op 保留 32 位垃圾, s62 g_1143 应 0x5568) */
+            cg(n0[n]); /* 原值 → eax */
+            if (nv[n] == 1) { asm_emit("    掩码字节 eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x25); b4(0xFF); if (!nuns[n]) { asm_emit("    符号扩展字节 eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); b(0xC0); } }
+            else { asm_emit("    掩码字 eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x25); b4(0xFFFF); if (!nuns[n]) { asm_emit("    符号扩展字 eax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x66); b(0x0F); b(0xBF); b(0xC0); } }
+            break;
+        }
         case 17: /* !expr */
             cg(n0[n]); ir_emit(I_TEST_SETE, 0, 0, 0); ir_flush(); /* Phase3-IR: !expr */
         break;
