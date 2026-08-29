@@ -8090,6 +8090,8 @@ static int stmt(void) {
         if (tt[tk] == SK) tk++;
         int zsi = st_find(zn);
         if (zsi < 0) { zsi = st_add(zn); stypes[zsi].sz = 0; stypes[zsi].fn = 0; }
+        td_reg(zn); /* 2026-08-29 P2 批13: td_is 查 tdn 表 — 空类型名须进 tdn 才能被 sizeof/声明识别 */
+        if (tdef_lookup(zn) < 0) tdef_add(zn, 0, NULL, 0, 0, 0); /* 2026-08-29 P2 批13: sizeof(空类型名) 直接查 tdef 表 (原只 st 表 → sizeof(T)=4 误判) */
         return Nd(5);
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "文档")) { /* 接入 2026-08-28 P2 #288 文档注释: 文档 "文本"; → 收集到文档表 (docgen), 文档数; 编译期返回条数 */
@@ -9889,7 +9891,7 @@ static int stmt(void) {
           } }
         { int v_r2 = Nd(1); memcpy((char*)(nn + v_r2), resn, 32);
           int v_s = Nd(1); memcpy((char*)(nn + v_s), rn2, 32);
-          int asg = Nd(10); Nc(asg, v_r2); Nc(asg, v_s); Nc(blk, asg); } /* r = __sr; */
+          int asg = Nd(10); Nc(asg, v_r2); Nc(asg, v_s); Nc(blk, asg); uninit_remove(resn); } /* r = __sr; (2026-08-29 P2 批13: 结果变量手工赋值必须标记已初始化 — 否则 return r 误报 A4001) */
         return blk;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "展平")) { /* 接入 2026-08-28 二维展平一维 (flatten): 展平 dst, src, rows, cols; → { __cl=cols; __fl=0; __fr=0; while(__fr<rows){ __fc=0; while(__fc<__cl){ dst[__fl]=src[__fr][__fc]; __fl++; __fc++; } __fr++; } } — 行主序展平 (两级下标, 复用 qcc 原生多维数组机制) */
