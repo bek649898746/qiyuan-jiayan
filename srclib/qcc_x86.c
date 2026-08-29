@@ -6266,7 +6266,9 @@ static int blk(void) {
                             else var_static_arr(vn, 0, 4, scnt);
                         } else {
                             var_array(vn, scnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
-                            if (si >= 0 && !is_ptr) { vars[vcnt - 1].p_esz = stypes[si].sz; if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; if (sdims >= 1) { vars[vcnt - 1].frows[sdims - 1] = stypes[si].sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; } } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 */
+                            if (si >= 0 && !is_ptr) { vars[vcnt - 1].p_esz = stypes[si].sz; if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 */
+                            if (is_ptr && sdims > 1 && sadim[0] > 0) { vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * 8; vars[vcnt - 1].p_esz = 8; } /* fix 2026-08-30 csmith t5: struct 指针 2D+ 数组行宽 (s2 l_1272[10][4][6] / l_2406[4][10] 原无行宽 → [i] 缩放 8 而非行宽 → 越界写崩) */
+                            if (sdims >= 1) { int _e_sz = is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4); vars[vcnt - 1].frows[sdims - 1] = _e_sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; }
                         }
                         vars[vcnt - 1].st_idx = si; /* fix 2026-08-20: T** 数组 st_idx 保留 si — mem_addr 链需要 pointee 结构体类型 */
                     } else if (is_ptr) {
@@ -6872,8 +6874,8 @@ static int blk(void) {
                 tk++;
             }
             int is_ptr = 0, ptr_depth = 0;
-            while (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* fix 2026-08-18: 数指针层级 — char ** / int ** 元素=指针 8B (原只记 is_ptr → p_esz=1/4 → *pp 窄加载、pp[i] 窄步长 → 解引用垃圾地址崩) */
-            while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* fix 2026-08-13: * 后的 const — `const char *const arr[]` 第二个 const 不消费 → 声明被跳过 → 变量未注册 → 运行时 0xC0000005 (revision.c lookup_other_head) */
+            while (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } /* fix 2026-08-18: 数指针层级 — char ** / int ** 元素=指针 8B (原只记 is_ptr → p_esz=1/4 → *pp 窄加载、pp[i] 窄步长 → 解引用垃圾地址崩); fix 2026-08-30 csmith t5: 指针链中间 volatile (const int16_t **** volatile *l) 原残留 → 变量未注册 → 未定义函数 (s17) */
+            while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* fix 2026-08-13: * 后的 const/volatile — `const char *const arr[]` 第二个 const 不消费 → 声明被跳过 → 变量未注册 → 运行时 0xC0000005 (revision.c lookup_other_head) */
             int d = Nd(7);
             int acnt = 0, adims = 0, adimv[8]; /* array elems/dims/sizes, seen by ={...} below (adimv fix 2026-08-05: multi-dim brace init) */
             for (int i = 0; i < 8; i++) adimv[i] = 0;
@@ -13569,6 +13571,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 /* global variable(s): int a, b, c; (comma-separated) */
                 int g_is_char = 0;
                 for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && (!strcmp(tn[ti2], "char") || !strcmp(tn[ti2], "_Bool"))) g_is_char = 1;
+                if (!g_is_char) { int tdi_gch = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gch >= 0 && !tdefs[tdi_gch].is_struct && !tdefs[tdi_gch].is_fnptr && !tdefs[tdi_gch].is_dbl && tdefs[tdi_gch].sz == 1) g_is_char = 1; } /* fix 2026-08-30 csmith t5: typedef char 全局数组 (int8_t g[5]) — 原 g_is_char=0 → g_esz=4 → brace_arr_init memset 清 5*4=20 字节越界覆盖 argv 数组区 → 有参 main strcmp(argv[1]) 崩 (103 崩溃家族) */
                 int g_is_csgn = 0; /* fix 2026-08-29 csmith: 全局 signed char / int8_t 标量+数组 — 原缺 → 读 movzx 零扩展 (0xBB→179) s94 家族静默 */
                 for (int ti2 = save_tk; ti2 < tk; ti2++) if (tt[ti2] == VK && !strcmp(tn[ti2], "signed")) { for (int tj2 = ti2 + 1; tj2 < tk; tj2++) if (tt[tj2] == VK && !strcmp(tn[tj2], "char")) { g_is_csgn = 1; } }
                 if (!g_is_csgn) { int tdi_gc = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gc >= 0 && !tdefs[tdi_gc].is_struct && !tdefs[tdi_gc].is_fnptr && !tdefs[tdi_gc].is_dbl && tdefs[tdi_gc].sz == 1 && !tdefs[tdi_gc].is_uns) g_is_csgn = 1; } /* typedef signed char 全局 (int8_t) */
