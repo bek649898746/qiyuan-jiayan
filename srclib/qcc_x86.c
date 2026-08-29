@@ -3087,6 +3087,27 @@ static int fn_ll_get_ret(const char *name) {
         if (!strcmp(fn_ll_sig[i].name, name)) return fn_ll_sig[i].ret_ll;
     return 0;
 }
+/* fix 2026-08-30 csmith t4: 函数返回宽度记录 (short/char 返回值原不截断 → return uint32 expr 到 uint16 函数返回 32 位值; _l5test func_1 ret=0xA53061EC 应 0x61EC) */
+static struct { char name[64]; char ret_sz; char ret_uns; } fn_ret_sz_sig[1024]; static int fn_ret_sz_n;
+static void fn_ret_sz_put(const char *name, int sz, int uns) {
+    for (int i = 0; i < fn_ret_sz_n; i++)
+        if (!strcmp(fn_ret_sz_sig[i].name, name)) { fn_ret_sz_sig[i].ret_sz = (char)sz; fn_ret_sz_sig[i].ret_uns = (char)uns; return; }
+    if (fn_ret_sz_n >= 1024) return;
+    strcpy(fn_ret_sz_sig[fn_ret_sz_n].name, name);
+    fn_ret_sz_sig[fn_ret_sz_n].ret_sz = (char)sz;
+    fn_ret_sz_sig[fn_ret_sz_n].ret_uns = (char)uns;
+    fn_ret_sz_n++;
+}
+static int fn_ret_sz_get(const char *name) {
+    for (int i = 0; i < fn_ret_sz_n; i++)
+        if (!strcmp(fn_ret_sz_sig[i].name, name)) return fn_ret_sz_sig[i].ret_sz;
+    return 0;
+}
+static int fn_ret_uns_get(const char *name) {
+    for (int i = 0; i < fn_ret_sz_n; i++)
+        if (!strcmp(fn_ret_sz_sig[i].name, name)) return fn_ret_sz_sig[i].ret_uns;
+    return 0;
+}
 static char cur_fn_name[64]; /* function currently being codegen'd (case-6 double return) */
 static void fn_dbl_put(const char *name, int pr, int dbl) {
     if (pr < 0 || pr >= 8) return;
@@ -13807,15 +13828,16 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         /* function definition */
         int fn_ret_dbl = 0;
         int fn_ret_ll = 0; /* fix 2026-08-21 #27: 记录 long-long/64-bit 整数返回 (parse_timestamp 等) */
+        int fn_ret_sz = 0; int fn_ret_uns = 0; /* fix 2026-08-30 csmith t4: 返回宽度 1/2 (char/short) + unsigned — return 值须按函数返回类型截断 */
         int fn_is_static = 0; /* fix 2026-08-06: static 函数 → 局部符号 (scl=3), 多 .o 头库不冲突 */
         if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((noreturn)) 前置 (fix 2026-08-14: NORETURN void die(...) — 空宏后 tt=SK 非 VR, 按 tn 匹配) */
-        while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; if (!strcmp(tn[tk], "long") && tk + 1 < TS && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) fn_ret_ll = 1; tk++; } /* skip type keywords, catch double return; catch "long long" (64-bit) */
+        while (tt[tk] == VK) { if (!strcmp(tn[tk], "static")) fn_is_static = 1; if (!strcmp(tn[tk], "double")) fn_ret_dbl = 1; if (!strcmp(tn[tk], "long") && tk + 1 < TS && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long")) fn_ret_ll = 1; if (!strcmp(tn[tk], "short")) fn_ret_sz = 2; else if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) fn_ret_sz = 1; else if (!strcmp(tn[tk], "unsigned")) fn_ret_uns = 1; tk++; } /* skip type keywords, catch double return; catch "long long" (64-bit); fix 2026-08-30 t4: catch short/char 返回宽度 + unsigned */
         int fn_ret_si = -1; /* struct return type index (sret candidates) */
         int fn_ret_ptr = 0; /* struct return type is a POINTER (not sret) */
         int fn_ret_depth = 0; /* fix 2026-08-20: 返回指针层数计数 (*=1, **=2) — case-12 *f() 解引用宽度 */
         if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { fn_ret_si = st_find(tn[tk]); tk++; } } /* struct return type: struct B *fn(...) */
         else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK && tt[tk] != EK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } } /* fix 2026-08-15: 匿名/带体 enum 返回类型 static enum { ... } fn(...) — 原只跳 enum 名, 见 { 落 fn 检测 break → ls_refs_advertise 被吞 */
-        else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; if (tdx >= 0 && !tdefs[tdx].is_dbl && !tdefs[tdx].is_struct && !tdefs[tdx].is_fnptr && tdefs[tdx].sz == 8) fn_ret_ll = 1; if (tdx >= 0 && tdefs[tdx].is_struct) fn_ret_si = td_st_index(tn[tk]); /* fix 2026-08-27 第三批#2: typedef struct 返回类型 (Buffer) — 原 fn_ret_si 恒 -1 → >8B 结构走普通 ABI 返回损坏; 指针返回由下方 fn_ret_ptr 守卫剔除 */ tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
+        else if (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != OK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) fn_ret_dbl = 1; if (tdx >= 0 && !tdefs[tdx].is_dbl && !tdefs[tdx].is_struct && !tdefs[tdx].is_fnptr && tdefs[tdx].sz == 8) fn_ret_ll = 1; if (tdx >= 0 && tdefs[tdx].is_struct) fn_ret_si = td_st_index(tn[tk]); if (tdx >= 0 && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && !tdefs[tdx].is_fnptr && (tdefs[tdx].sz == 1 || tdefs[tdx].sz == 2)) { fn_ret_sz = tdefs[tdx].sz; if (tdefs[tdx].is_uns) fn_ret_uns = 1; } else if (tdx < 0) { if (!strcmp(tn[tk], "int8_t") || !strcmp(tn[tk], "uint8_t")) { fn_ret_sz = 1; if (!strcmp(tn[tk], "uint8_t")) fn_ret_uns = 1; } else if (!strcmp(tn[tk], "int16_t") || !strcmp(tn[tk], "uint16_t")) { fn_ret_sz = 2; if (!strcmp(tn[tk], "uint16_t")) fn_ret_uns = 1; } } /* fix 2026-08-30 t4: typedef short/char 返回宽度 (stdint.h 桩未注册时按名字兜底) */ tk++; } /* typedef return type — 但 VR 后跟 ( 时该 VR 是函数名 (typedef 被遮蔽), 不是返回类型 (fix 2026-08-14) */
         else if (tt[tk] == VR && tt[tk + 1] == VR && tt[tk + 2] == OK) { tk++; } /* unknown-type return (time_t etc) — treat as int (fix 2026-08-03: `static time_t parse_iso(...)` forward decl/definition swallowed main) */
         if (tt[tk] == VK) tk++; /* skip 2nd keyword */
         while (tt[tk] == DK || (tt[tk] == VK && !strcmp(tn[tk], "const"))) { if (tt[tk] == DK) { fn_ret_ptr = 1; fn_ret_depth++; } tk++; } /* skip pointer(s) and interspersed const (fix 2026-08-15: `static const char * const *fn(...)` broke parse -> revert.c/cmd_cherry_pick missing; fix 2026-08-20: 计数指针层数) */
@@ -13868,6 +13890,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             fn_ret_name_put((char*)(nn + fdef), fn_ret_si, fn_ret_ptr, fn_ret_depth); /* name-keyed: survives func_tbl index renumbering */
             fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); /* double-return routing (xmm0) */
             fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); /* fix 2026-08-21 #27: 64-bit return record */
+                    if (fn_ret_sz > 0 && !fn_ret_ptr) fn_ret_sz_put((char*)(nn + fdef), fn_ret_sz, fn_ret_uns); /* fix 2026-08-30 t4: short/char 返回宽度记录 (指针返回不截断) */
             cur_fn_sret = (fn_ret_si >= 0 && stypes[fn_ret_si].sz > 8 && !fn_ret_ptr); /* Win64: hidden sret ptr in rcx (struct by value only) */
             fvb[fvn] = vcnt; /* record var-range start (before params) */
             fr_start[fvn] = rsp_used; /* record frame-bound start: rsp_used is the pure frame footprint (globals/statics live in .data, never touch rsp_used) */
@@ -17977,6 +18000,16 @@ static void cg(int n) {
                 cg(call);
             } else {
                 cg(n0[n]);
+                /* fix 2026-08-30 csmith t4: 返回宽度截断 — uint16_t 函数 return uint32 表达式原不截断
+                   (func_1 返回 0xA53061EC 应 0x61EC); 按函数返回宽度 movzx/movsx 扩展到 eax */
+                int _rsz = fn_ret_sz_get(cur_fn_name);
+                if (_rsz == 1) {
+                    if (fn_ret_uns_get(cur_fn_name)) { asm_emit("    零扩展字节 eax, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0xC0); } /* movzx eax, al */
+                    else { asm_emit("    符号扩展字节 eax, al\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); b(0xC0); } /* movsx eax, al */
+                } else if (_rsz == 2) {
+                    if (fn_ret_uns_get(cur_fn_name)) { asm_emit("    零扩展字 eax, ax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); b(0xC0); } /* movzx eax, ax */
+                    else { asm_emit("    符号扩展字 eax, ax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); b(0xC0); } /* movsx eax, ax */
+                }
             }
             jmp_rel(-1); patch_label(cp - 4, epi_label, 2);
         } break;
