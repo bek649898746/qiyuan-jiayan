@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # 行为正确性测试：编译 + 运行 + 断言 stdout == .expected（防"编译过但全错"）
-# 用法: python tests/behavior/run_behavior.py [qcc路径]
+# 用法: python tests/behavior/run_behavior.py [qcc路径] [base目录]
 import subprocess, io, os, sys, glob
 
-BASE = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
+BASE = sys.argv[2] if len(sys.argv) > 2 else r'C:\Users\Administrator\Desktop\qiyuan-jiayan'  # 2026-08-29 验收漏洞修复: BASE 参数化 — 隔离目录验证时用隔离目录, 防 os.chdir 回主仓库
 os.chdir(BASE)
 QCC = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else 'qcc_x86.exe')
 BDIR = 'tests/behavior'
