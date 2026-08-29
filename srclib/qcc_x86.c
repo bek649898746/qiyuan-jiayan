@@ -3097,6 +3097,21 @@ static int ctfe_find(const char *n) { for (int i = 0; i < ctfe_fns_n; i++) if (!
 static char ctfe_names[64][64]; static int ctfe_vals[64]; static int ctfe_n = 0; /* CTFE 求值帧 (参数+局部, 栈式嵌套) */
 static int ctfe_lookup(const char *n) { for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n)) return ctfe_vals[i]; return 0x80000000; }
 static char cur_parse_fn[64]; /* 2026-08-28 P1 #11: 当前解析的函数名 (悬垂引用检测用) */
+/* ========== 过程宏 (2026-08-29 P2 #172): 编译期跑函数生成代码 — CTFE 字符串返回 + 调用点 token 拼接 ==========
+   语义: 过程宏 函数名; 注册 (函数须先定义, CTFE 需函数体 token 范围); 调用点 宏名(常量...)
+   → ctfe_call_str 解释函数体得生成代码串 → pm_tokenize 落位 → memmove 就地拼接 → 续解析。 */
+static char pm_names[256][64]; static int pm_n = 0; /* 已注册过程宏函数名表 (parse 重置) */
+static int pm_find(const char *n) { for (int i = 0; i < pm_n; i++) if (!strcmp(pm_names[i], n)) return 1; return 0; }
+static char ctfe_isstr[64]; /* CTFE 帧槽是否存字符串 (int/串 双态) */
+static char ctfe_str_vals[64][4096]; /* CTFE 字符串帧值 (parallel to ctfe_names/ctfe_vals) */
+static char ctfe_ret_str[8192]; /* CTFE 字符串返回缓冲 */
+static int ctfe_ret_is_str = 0; /* 最近一次 return 是否字符串 (ctfe_call_str 读取) */
+static void ctfe_bind_str(const char *n, const char *v);
+static int ctfe_str_of(const char *n, char *out, int outsz);
+static int ctfe_is_str(const char *n);
+static int ctfe_str_expr(char *out, int outsz); /* fwd: 字符串表达式求值 (ctfe_stmt 用) */
+static int ctfe_call_str(const char *fname, char *out, int outsz); /* fwd: 字符串版 CTFE 调用 (过程宏展开用) */
+static int pm_tokenize(const char *s, int at); /* fwd: 生成代码 token 化 */
 static int fn_tco_label[8192]; /* 接入 2026-08-29 P2 #152 TCO (重试): 每函数参数复制点标签 (尾递归 jmp 目标, 跳过 prologue 栈分配) */
 static char cur_fn_tco[65536]; /* #152 TCO: 当前函数是否显式 尾调用优化; (qcc 自身源码不用 → 自举不触发 TCO → 收敛稳定) */
 static int ctfe_call(const char *fname, int *out); /* fwd: 编译期 f(常量...) 求值 (定义在 const_expr 区, prim 需前向) */
@@ -4612,6 +4627,70 @@ static void guard_mark_ready(const char *v) { /* 2026-08-28 P1 #15 Drop 标记: 
 static int is_moved(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!strcmp(moved_names[i], v)) return 1; return 0; } /* 2026-08-28 #5: 0/1 moved 状态 */
 static void moved_release(const char *v) { for (int i = 0; i < moved_cnt; i++) if (!strcmp(moved_names[i], v)) { moved_names[i][0] = 0; return; } } /* 2026-08-28 #5: 重新赋值 = 重新初始化, 恢复可用 (Rust 式 move 后重绑定) */
 
+static int pm_tokenize(const char *s, int at) { /* 过程宏 #172: 生成代码文本 token 化 → 落位 [at, at+n); 返回生成 token 数 (失败 -1) */
+    int o = at; const char *p = s;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+        if (!*p) break;
+        if (o + 1 >= TS) return -1;
+        memset(tn[o], 0, 64);
+        tline[o] = 0; tuns[o] = 0; tll[o] = 0; tll_hi[o] = 0;
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || *p == '_') { /* 标识符 */
+            int j = 0;
+            while (j < 63 && ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '_')) tn[o][j++] = *p++;
+            tt[o] = VR; tv[o] = 0; o++;
+        } else if (*p >= '0' && *p <= '9') { /* 数字 */
+            int v = 0; int is_hex = 0;
+            if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) { is_hex = 1; p += 2; }
+            while ((*p >= '0' && *p <= '9') || (is_hex && ((*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')))) {
+                int d = (*p >= 'a') ? (*p - 'a' + 10) : (*p >= 'A') ? (*p - 'A' + 10) : (*p - '0');
+                v = v * (is_hex ? 16 : 10) + d; p++;
+            }
+            tt[o] = NK; tv[o] = v; o++;
+        } else if (*p == '"') { /* 字符串字面量 */
+            p++; char sbuf[4096]; int j = 0;
+            while (*p && *p != '"' && j < 4095) { if (*p == '\\' && p[1]) { p++; if (*p == 'n') sbuf[j++] = '\n'; else if (*p == 't') sbuf[j++] = '\t'; else if (*p == '0') sbuf[j++] = 0; else sbuf[j++] = *p; } else sbuf[j++] = *p; p++; }
+            if (*p == '"') p++;
+            sbuf[j] = 0;
+            if (str_cnt >= 65536) return -1;
+            if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+            strcpy(str_tbl[str_cnt], sbuf);
+            tt[o] = STR; tv[o] = str_cnt; str_cnt++; o++;
+        } else { /* 运算符 */
+            char c = *p;
+            char c2 = p[1];
+            int t;
+            if (c == '+' ) { if (c2 == '+') { t = PP; p++; } else if (c2 == '=') { t = PA; p++; } else t = PK; }
+            else if (c == '-') { if (c2 == '>') { t = AR; p++; } else if (c2 == '-') { t = MM; p++; } else if (c2 == '=') { t = MA; p++; } else t = MK; }
+            else if (c == '*') { if (c2 == '=') { t = DA; p++; } else t = DK; }
+            else if (c == '/') { if (c2 == '=') { t = SA; p++; } else t = DV; }
+            else if (c == '%') { if (c2 == '=') { t = MS; p++; } else t = MD; }
+            else if (c == '&') { if (c2 == '&') { t = LA; p++; } else t = PT; }
+            else if (c == '|') { if (c2 == '|') { t = LO; p++; } else t = OR; }
+            else if (c == '^') { if (c2 == '=') { t = XA; p++; } else t = XR; }
+            else if (c == '!') { if (c2 == '=') { t = XK; p++; } else t = NT; }
+            else if (c == '=') { if (c2 == '=') { t = QK; p++; } else t = AK; }
+            else if (c == '<') { if (c2 == '<') { t = SH; p++; } else if (c2 == '=') { t = HK; p++; } else t = LK; }
+            else if (c == '>') { if (c2 == '>') { t = SR; p++; } else if (c2 == '=') { t = YK; p++; } else t = GK; }
+            else if (c == '(') t = OK;
+            else if (c == ')') t = KK;
+            else if (c == '[') t = LB;
+            else if (c == ']') t = RB;
+            else if (c == '{') t = FK;
+            else if (c == '}') t = UK;
+            else if (c == ';') t = SK;
+            else if (c == ',') t = CK;
+            else if (c == '.') t = DT;
+            else if (c == ':') t = CL;
+            else if (c == '?') t = QU;
+            else if (c == '~') t = BN;
+            else return -1;
+            tt[o] = t; tv[o] = 0; tn[o][0] = c; o++; p++;
+        }
+    }
+    return o - at;
+}
+
 static int prim(void) {
         if (tt[tk] == VR && !strcmp(tn[tk], "契约哈希")) { /* 接入 2026-08-28 可吞清单 P0-8: 契约哈希(P) → 结构契约描述符 SHA256 字符串常量 (接口指纹, strcmp 校验外部数据 Schema) */
             tk++; /* 契约哈希 */
@@ -5348,6 +5427,42 @@ static int prim(void) {
     if (tt[tk] == NK) { int n = Nd(0); nv[n] = tv[tk]; if (tuns[tk]) nuns[n] = 1; if (tll[tk]) { nll[n] = 1; nll_hi[n] = tll_hi[tk]; } tk++; return n; } /* u-/LL-suffix literals → flags (fix 2026-08-05) */
     if (tt[tk] == FP) { int n = Nd(0); nv[n] = tv[tk]; nt[n] = FP; ndbl[n] = 1; tk++; return n; } /* double literal */
     if (tt[tk] == VR) {
+        /* 过程宏调用 (2026-08-29 P2 #172): 注册名 + ( → 编译期执行函数 → 生成代码文本 → token 化就地拼接 → 续解析表达式 */
+        if (pm_find(tn[tk]) && tt[tk + 1] == OK) {
+            int mstart = tk;
+            char mfn[64]; strcpy(mfn, tn[tk]);
+            tk += 2; /* 跳过 宏名 ( — ctfe_call_str 期望 tk 在实参开始 */
+            static char pm_gen[65536]; /* ⚠️ 静态缓冲 (fix 2026-08-29 #172): 64KB 栈局部会让 prim 帧 +64KB — parse 深递归叠加 serve_loop 1.75MB 栈帧 → 栈溢出 0xC00000FD (serve 崩基线不崩) */
+            pm_gen[0] = 0;
+            if (!ctfe_call_str(mfn, pm_gen, sizeof(pm_gen))) {
+                while (tk < TS && tt[tk] != KK && tt[tk] != EK) { tk++; } if (tt[tk] == KK) tk++;
+                sprintf(g_errbuf, "过程宏: %s 展开失败 (函数须已定义且返回字符串, 参数须编译期常量, 函数体须 CTFE 可解释纯函数)", mfn);
+                emit_error("A9101", g_errbuf);
+                int n0x = Nd(0); nv[n0x] = 0; return n0x;
+            }
+            int p_end = tk; /* ) 之后 */
+            int tail = ti - p_end;
+            /* ⚠️ 拼接顺序 (fix 2026-08-29 #172): 尾部 [p_end, p_end+tail) 必须先备份 —
+               pm_tokenize 落位 [mstart, mstart+gn) 在 gn 大于消费区时会覆盖尾部源,
+               (平方和(3,4)→'(3*3)+(4*4)' 11>6 token → 尾部读成 '(' '4' → 表达式错乱成 call) */
+            static int pm_tail_tt[4096]; static int pm_tail_tv[4096]; static int pm_tail_tl[4096];
+            static int pm_tail_tu[4096]; static int pm_tail_tll[4096]; static int pm_tail_th[4096];
+            static char pm_tail_tn[4096][64];
+            int tcap = tail; if (tcap > 4096) tcap = 4096;
+            for (int _t = 0; _t < tcap; _t++) { pm_tail_tt[_t] = tt[p_end + _t]; pm_tail_tv[_t] = tv[p_end + _t]; pm_tail_tl[_t] = tline[p_end + _t]; pm_tail_tu[_t] = tuns[p_end + _t]; pm_tail_tll[_t] = tll[p_end + _t]; pm_tail_th[_t] = tll_hi[p_end + _t]; memcpy(pm_tail_tn[_t], tn[p_end + _t], 64); }
+            int gn = pm_tokenize(pm_gen, mstart); /* 生成代码落位 [mstart, mstart+gn) */
+            if (gn <= 0) {
+                sprintf(g_errbuf, "过程宏: %s 生成代码含非法字符 (token 化失败)", mfn);
+                emit_error("A9102", g_errbuf);
+                int n0y = Nd(0); nv[n0y] = 0; return n0y;
+            }
+            int dst = mstart + gn;
+            if (dst + tail >= TS) { fprintf(stderr, "[ERR] 过程宏展开后 token 溢出\n"); exit(1); }
+            for (int _t = 0; _t < tcap; _t++) { tt[dst + _t] = pm_tail_tt[_t]; tv[dst + _t] = pm_tail_tv[_t]; tline[dst + _t] = pm_tail_tl[_t]; tuns[dst + _t] = pm_tail_tu[_t]; tll[dst + _t] = pm_tail_tll[_t]; tll_hi[dst + _t] = pm_tail_th[_t]; memcpy(tn[dst + _t], pm_tail_tn[_t], 64); }
+            ti = dst + tail;
+            tk = mstart;
+            return prim(); /* 递归解析生成代码 (作表达式) */
+        }
         /* NULL = 0 (fix 2026-08-03: the self-host lexer has no preprocessor, so
            <stddef.h>'s #define NULL never reaches the parser — it fell through to
            an undefined identifier and compiled to a stale-register store) */
@@ -11474,7 +11589,7 @@ static int const_expr_prim(int *val) {
         if (tt[tk] == KK) tk++;
         *val = sz; return 1;
     }
-    if (tt[tk] == VR) { int ev = e_lookup(tn[tk]); if (ev == 0x80000000) ev = macro_find(tn[tk]); if ((ev == 0x80000000 || ev == -1) && ctfe_n > 0) ev = ctfe_lookup(tn[tk]); /* 2026-08-28 type-root-16 #76: CTFE 帧内变量 (参数/局部) — macro_find 未定义返回 -1 也要尝试 */ if (ev != 0x80000000 && ev != -1) { *val = ev; tk++; return 1; } return 0; }
+    if (tt[tk] == VR) { int ev = e_lookup(tn[tk]); int evf = (ev != 0x80000000 && ev != -1); if (!evf) { ev = macro_find(tn[tk]); evf = (ev != 0x80000000 && ev != -1); } /* e_lookup 缺失=0x80000000, macro_find 缺失=-1 — 两者都算未找到 */ if (!evf && ctfe_n > 0) { int ev2 = ctfe_lookup(tn[tk]); if (ev2 != 0x80000000) { ev = ev2; evf = 1; } } /* 2026-08-28 type-root-16 #76: CTFE 帧内变量 (参数/局部); fix 2026-08-29 #172: 帧内查到 -1 (负参数) 必须接受, 不能当"未找到"拒绝 */ if (evf) { *val = ev; tk++; return 1; } return 0; }
     if (tt[tk] == OK) { tk++; if (!const_expr_eval(val)) return 0; if (tt[tk] == KK) tk++; return 1; }
     if (tt[tk] == MK) { tk++; if (!const_expr_prim(val)) return 0; *val = -*val; return 1; }
     if (tt[tk] == PK) { tk++; return const_expr_prim(val); }
@@ -11502,8 +11617,49 @@ static int const_expr_eval(int *val) {
    支持: 声明/赋值/if/while/for/return/块; 纯算术表达式 (const_expr_eval + CTFE 帧).
    返回: 1=解释完成 0=无法解释 (known=0 安全跳过). */
 static void ctfe_bind(const char *n, int v) { /* 帧绑定: 同名更新, 新名压栈 */
-    for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n)) { ctfe_vals[i] = v; return; }
-    if (ctfe_n < 64) { strcpy(ctfe_names[ctfe_n], n); ctfe_vals[ctfe_n] = v; ctfe_n++; }
+    for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n)) { ctfe_vals[i] = v; ctfe_isstr[i] = 0; return; }
+    if (ctfe_n < 64) { strcpy(ctfe_names[ctfe_n], n); ctfe_vals[ctfe_n] = v; ctfe_isstr[ctfe_n] = 0; ctfe_n++; }
+}
+static void ctfe_bind_str(const char *n, const char *v) { /* 字符串帧绑定: 同名覆盖类型, 新名压栈 */
+    for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n)) { ctfe_isstr[i] = 1; strncpy(ctfe_str_vals[i], v, 4095); ctfe_str_vals[i][4095] = 0; return; }
+    if (ctfe_n < 64) { strcpy(ctfe_names[ctfe_n], n); ctfe_isstr[ctfe_n] = 1; strncpy(ctfe_str_vals[ctfe_n], v, 4095); ctfe_str_vals[ctfe_n][4095] = 0; ctfe_n++; }
+}
+static int ctfe_str_of(const char *n, char *out, int outsz) { /* 读字符串帧值; 返回 1=是字符串 */
+    for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n) && ctfe_isstr[i]) { strncpy(out, ctfe_str_vals[i], outsz - 1); out[outsz - 1] = 0; return 1; }
+    return 0;
+}
+static int ctfe_is_str(const char *n) { /* 帧槽是否字符串 */
+    for (int i = ctfe_n - 1; i >= 0; i--) if (!strcmp(ctfe_names[i], n) && ctfe_isstr[i]) return 1;
+    return 0;
+}
+static int ctfe_str_expr(char *out, int outsz) { /* 求值字符串表达式: 字面量 / 串变量 / 串(n) 数字转串 / + 拼接; 消费成功返回 1 (失败恢复 tk) */
+    int save = tk;
+    char buf[4096]; buf[0] = 0;
+    if (tt[tk] == STR) { strncpy(buf, str_tbl[tv[tk]], 4095); buf[4095] = 0; tk++; }
+    else if (tt[tk] == VR && ctfe_is_str(tn[tk])) { ctfe_str_of(tn[tk], buf, sizeof(buf)); tk++; }
+    else if (tt[tk] == VR && !strcmp(tn[tk], "串")) { /* 串(n): int → 十进制串 (作首操作数) */
+        tk++; if (tt[tk] == OK) tk++;
+        int v = 0; if (!const_expr_eval(&v)) { tk = save; return 0; }
+        char tmp[32]; sprintf(tmp, "%d", v);
+        strncpy(buf, tmp, 4095); buf[4095] = 0;
+        if (tt[tk] == KK) tk++;
+    }
+    else return 0;
+    while (tt[tk] == PK) { /* + 拼接 (lexer: 二元加=PK, +=复合=PA) */
+        tk++;
+        if (tt[tk] == STR) { strncat(buf, str_tbl[tv[tk]], 4095 - (int)strlen(buf)); tk++; }
+        else if (tt[tk] == VR && ctfe_is_str(tn[tk])) { char tmp[4096]; ctfe_str_of(tn[tk], tmp, sizeof(tmp)); strncat(buf, tmp, 4095 - (int)strlen(buf)); tk++; }
+        else if (tt[tk] == VR && !strcmp(tn[tk], "串")) { /* 串(n): int → 十进制串 */
+            tk++; if (tt[tk] == OK) tk++;
+            int v = 0; if (!const_expr_eval(&v)) { tk = save; return 0; }
+            char tmp[32]; sprintf(tmp, "%d", v);
+            strncat(buf, tmp, 4095 - (int)strlen(buf));
+            if (tt[tk] == KK) tk++;
+        }
+        else { tk = save; return 0; }
+    }
+    strncpy(out, buf, outsz); out[outsz - 1] = 0;
+    return 1;
 }
 static int ctfe_failed = 0; /* CTFE 解释失败标志 (无法解释/副作用) — 区分 return 发生 vs 无法解释 */
 static int ctfe_skip_block(void) { /* tk 指向 {, 跳到匹配 } 之后; 返回 1 成功 */
@@ -11536,20 +11692,27 @@ static int ctfe_stmt(int *ret) { /* 解释单条语句; 返回 1=继续 0=终止
         if (tt[tk] == UK) tk++;
         return 1;
     }
-    if (tt[tk] == RK) { /* return expr; */
-        tk++; int v = 0;
+    if (tt[tk] == RK) { /* return expr; — int 或 字符串 (过程宏代码生成 #172) */
+        tk++;
+        char sret[8192];
+        if (ctfe_str_expr(sret, sizeof(sret))) { /* 字符串返回 */
+            strncpy(ctfe_ret_str, sret, 8191); ctfe_ret_str[8191] = 0; ctfe_ret_is_str = 1;
+            if (tt[tk] == SK) tk++;
+            return 0;
+        }
+        int v = 0;
         if (!const_expr_eval(&v)) { ctfe_failed = 1; return 0; }
         if (tt[tk] == SK) tk++;
         *ret = v;
         return 0;
     }
-    if (tt[tk] == VK) { /* 声明: int x = expr [, y = expr]; — CTFE 只支持标量 int 型常量初始化 */
+    if (tt[tk] == VK) { /* 声明: int x = expr [, y = expr]; — CTFE 支持标量 int + 字符串 (过程宏 #172) */
         while (tt[tk] == VK || (tt[tk] == VR && td_is(tn[tk]))) tk++; /* 类型 (int/char/.../typedef 名) */
-        while (tt[tk] == DK) tk++; /* 指针: 跳过, 但指针变量无法求值 → 下面对 VR 若带 * 初始化也难 — 先试 */
+        while (tt[tk] == DK) tk++; /* 指针: 跳过 (字符串变量即 char* 声明) */
         for (;;) {
             if (tt[tk] != VR) { ctfe_failed = 1; return 0; }
             char vn[64]; strcpy(vn, tn[tk]); tk++;
-            if (tt[tk] == AK) { tk++; int v = 0; if (!const_expr_eval(&v)) { ctfe_failed = 1; return 0; } ctfe_bind(vn, v); }
+            if (tt[tk] == AK) { tk++; char sv[8192]; if (ctfe_str_expr(sv, sizeof(sv))) { ctfe_bind_str(vn, sv); } else { int v = 0; if (!const_expr_eval(&v)) { ctfe_failed = 1; return 0; } ctfe_bind(vn, v); } }
             else { ctfe_failed = 1; return 0; } /* 无初始化 → 未知 */
             if (tt[tk] == CK) { tk++; continue; }
             break;
@@ -11613,9 +11776,9 @@ static int ctfe_stmt(int *ret) { /* 解释单条语句; 返回 1=继续 0=终止
         }
         return 1;
     }
-    if (tt[tk] == VR) { /* x = expr; 或 x++; x--; x += n; */
+    if (tt[tk] == VR) { /* x = expr; 或 x++; x--; x += n; — 赋值支持字符串 (过程宏 #172) */
         char vn[64]; strcpy(vn, tn[tk]); tk++;
-        if (tt[tk] == AK) { tk++; int v = 0; if (!const_expr_eval(&v)) { ctfe_failed = 1; return 0; } if (ctfe_lookup(vn) == 0x80000000) { ctfe_failed = 1; return 0; } ctfe_bind(vn, v); if (tt[tk] == SK) tk++; return 1; }
+        if (tt[tk] == AK) { tk++; char sv[8192]; if (ctfe_str_expr(sv, sizeof(sv))) { ctfe_bind_str(vn, sv); if (tt[tk] == SK) tk++; return 1; } int v = 0; if (!const_expr_eval(&v)) { ctfe_failed = 1; return 0; } if (ctfe_lookup(vn) == 0x80000000) { ctfe_failed = 1; return 0; } ctfe_bind(vn, v); if (tt[tk] == SK) tk++; return 1; }
         if (tt[tk] == PP) { tk++; int cur = ctfe_lookup(vn); if (cur == 0x80000000) { ctfe_failed = 1; return 0; } ctfe_bind(vn, cur + 1); if (tt[tk] == SK) tk++; return 1; }
         if (tt[tk] == MM) { tk++; int cur = ctfe_lookup(vn); if (cur == 0x80000000) { ctfe_failed = 1; return 0; } ctfe_bind(vn, cur - 1); if (tt[tk] == SK) tk++; return 1; }
         if (tt[tk] == PA || tt[tk] == MA || tt[tk] == DA || tt[tk] == SA || tt[tk] == OA) { int op = tt[tk]; tk++; int r = 0; if (!const_expr_eval(&r)) { ctfe_failed = 1; return 0; } int cur = ctfe_lookup(vn); if (cur == 0x80000000) { ctfe_failed = 1; return 0; } if (op == PA) cur += r; else if (op == MA) cur -= r; else if (op == DA) cur *= r; else if (op == SA) { if (!r) { ctfe_failed = 1; return 0; } cur /= r; } else { if (!r) { ctfe_failed = 1; return 0; } cur %= r; } ctfe_bind(vn, cur); if (tt[tk] == SK) tk++; return 1; }
@@ -11669,6 +11832,44 @@ static int ctfe_call(const char *fname, int *out) { /* 编译期 f(常量...): �
     tk = save_tk;
     if (!ok) return 0;
     *out = rv;
+    return 1;
+}
+
+static int ctfe_call_str(const char *fname, char *out, int outsz) { /* 过程宏 #172: 同 ctfe_call 但期望字符串返回 → out; 返回 1 成功 */
+    int fi = ctfe_find(fname);
+    if (fi < 0) return 0;
+    int pmi = fn_param_find(fname);
+    if (pmi < 0) return 0;
+    int base = ctfe_n;
+    ctfe_failed = 0;
+    ctfe_ret_is_str = 0; ctfe_ret_str[0] = 0;
+    int argc = 0; int args[32];
+    if (tt[tk] != KK) {
+        for (;;) {
+            if (argc >= 32) { ctfe_n = base; return 0; }
+            int av = 0;
+            if (!const_expr_eval(&av)) { ctfe_n = base; return 0; }
+            args[argc++] = av;
+            if (tt[tk] == CK) { tk++; continue; }
+            break;
+        }
+    }
+    if (tt[tk] != KK) { ctfe_n = base; return 0; }
+    tk++; /* ) */
+    for (int i = 0; i < argc; i++) ctfe_bind(fn_param_map[pmi].pnames[i], args[i]);
+    int save_tk = tk;
+    tk = ctfe_fns[fi].body0; /* 指向 { */
+    int rv = 0;
+    if (tt[tk] == FK) tk++;
+    while (tk < TS && tt[tk] != UK && tk < ctfe_fns[fi].body1 && !ctfe_failed) {
+        if (!ctfe_stmt(&rv)) break; /* return (int 或字符串) 或解释失败 */
+    }
+    int ok = !ctfe_failed;
+    ctfe_n = base;
+    tk = save_tk;
+    if (!ok) return 0;
+    if (!ctfe_ret_is_str) return 0; /* 未返回字符串 → 非代码生成宏 */
+    strncpy(out, ctfe_ret_str, outsz - 1); out[outsz - 1] = 0;
     return 1;
 }
 
@@ -11825,6 +12026,7 @@ static int parse(const char *s) {
     memset(ndbl, 0, sizeof(ndbl)); /* per-node double flags must not leak across compiles */
     memset(nuns, 0, sizeof(nuns)); /* per-node unsigned flags (fix 2026-08-05) */
     fvn = 0; /* reset per-function var-range table */
+    pm_n = 0; /* 过程宏注册表每编译重置 (嵌入模式多文件编译防残留) */
     memset(tt, 0, TS * 4);
     char *exp_src = pp_include_expand(s, 0); /* #include 预展开（fix 2026-08-06） */
     
@@ -11981,6 +12183,13 @@ lex(exp_src);
               int cn = Nd(0); nv[cn] = nread;
               int asg = Nd(10); Nc(asg, v); Nc(asg, cn); Nc(gblk, asg); } /* 长度 = nread; */
             if (ginit_n < 16384) ginit[ginit_n++] = gblk; /* main 入口执行 */
+            continue;
+        }
+        if (tt[tk] == VR && !strcmp(tn[tk], "过程宏")) { /* 接入 2026-08-29 P2 #172 过程宏: 过程宏 函数名; — 前置注册代码生成宏 (须在函数定义之前; 定义体只进 CTFE 表, 不做代码生成) */
+            tk++; /* 过程宏 */
+            char mname[64]; strcpy(mname, tn[tk]); tk++; /* 函数名 */
+            if (tt[tk] == SK) tk++;
+            if (pm_n < 256 && !pm_find(mname)) { strcpy(pm_names[pm_n], mname); pm_n++; }
             continue;
         }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
@@ -13713,6 +13922,16 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             cur_fn_defer_idx = fvn; defer_cnt[fvn] = 0; /* 接入 2026-08-27 defer: 当前函数 defer 收集目标 */
             int ctfe_b0 = tk; /* 2026-08-28 type-root-16 #76: CTFE 记录函数体 token 起点 ({) */
+            if (pm_find((char*)(nn + fdef))) { /* 过程宏 #172: 函数体只进 CTFE 表 (token 区间), 不做代码生成 — 串(n)/字符串拼接是 CTFE 专用语法, 正常 codegen 无法编译
+                ⚠️ 不 bump fvn/fdef_list: gfn(codegen 按 fdef_list 顺序) 必须与 parse fvn 同序; 跳过的宏函数不占索引 (参数 var 成为孤儿, 被下一函数 fvb 覆盖, 永不引用) */
+                if (tt[tk] != FK) { fprintf(stderr, "[ERR] 过程宏函数 '%s' 须用 {} 函数体 (对照多子句语法不能做过程宏)\n", (char*)(nn + fdef)); exit(1); }
+                int _d = 0;
+                while (tk < TS) { if (tt[tk] == FK) _d++; else if (tt[tk] == UK) { _d--; if (_d == 0) { tk++; break; } } tk++; }
+                if (ctfe_fns_n < 2048) { strcpy(ctfe_fns[ctfe_fns_n].name, (char*)(nn + fdef)); ctfe_fns[ctfe_fns_n].body0 = ctfe_b0; ctfe_fns[ctfe_fns_n].body1 = tk; ctfe_fns_n++; }
+                qcc_cur_fn_err = 0;
+                parse_base = 0;
+                continue;
+            }
             int bodyx;
             if (tt[tk] == VR && !strcmp(tn[tk], "对照")) { /* 接入 2026-08-29 P2 #222 多子句函数定义: fn(a, ...) 对照 值: 结果, 值 若 守卫: 结果, ..., 其他: 默认; — 匹配第一个参数, 等值分派脱糖 → { int __mcf=默认/0; if(a==v1){__mcf=r1;} ...; return __mcf; } */
                 tk++; /* 对照 */
