@@ -2061,6 +2061,13 @@ static void mov_rip_eax(int disp) { asm_emit("    存静32 [rip%+d], eax\n", (ch
 static void mov_rax_rip64(int disp) { asm_emit("    取静64 rax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8B); b(0x05); b4(disp); } /* mov rax, [rip+disp] */
 static void mov_rip_rax64(int disp) { asm_emit("    存静64 [rip%+d], rax\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); b(0x05); b4(disp); } /* mov [rip+disp], rax */
 static void lea_rax_rip(int disp) { asm_emit("    取静址 rax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x8D); b(0x05); b4(disp); }   /* lea rax, [rip+disp] */
+/* static 8/16 位标量 RMW 辅助 (fix 2026-08-30 csmith t6: static uint8_t/int16_t ++/--/store 须按元素宽读写掩码, s75/s88) */
+static void movzx_eax_rip_byte(int disp) { asm_emit("    取静字节零扩 eax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0x05); b4(disp); } /* movzx eax, byte [rip+disp] (7B: disp-1) */
+static void movsx_eax_rip_byte(int disp) { asm_emit("    取静字节符扩 eax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); b(0x05); b4(disp); } /* movsx eax, byte [rip+disp] (7B) */
+static void movzx_eax_rip_word(int disp) { asm_emit("    取静字零扩 eax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x66); b(0x0F); b(0xB7); b(0x05); b4(disp); } /* movzx eax, word [rip+disp] (8B: disp-2) */
+static void movsx_eax_rip_word(int disp) { asm_emit("    取静字符扩 eax, [rip%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x66); b(0x0F); b(0xBF); b(0x05); b4(disp); } /* movsx eax, word [rip+disp] (8B) */
+static void mov_rip_al_byte(int disp) { asm_emit("    存静字节 [rip%+d], al\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x88); b(0x05); b4(disp); } /* mov byte [rip+disp], al (6B) */
+static void mov_rip_ax_word(int disp) { asm_emit("    存静字 [rip%+d], ax\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0); b(0x66); b(0x89); b(0x05); b4(disp); } /* mov word [rip+disp], ax (7B: disp-1) */
 /* MOV byte [rip+disp], imm8 — 7 bytes (C6 05 disp32 imm8). stc_disp() assumes a
    6-byte instruction, so callers must pass stc_disp()-1 (the 7-byte RIP base is
    one byte further). Non-coff only (fix 2026-08-05: global char arr = "lit"). */
@@ -2641,6 +2648,11 @@ static int var_extern(const char *n, int is_char, int is_dbl, int pesz, int is_l
 }
 static int var_isstatic(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_static;
+    return 0;
+}
+static int var_stsz(const char *n) { /* fix 2026-08-30 csmith t6: 标量字节宽 (1/2 for uint8_t/int16_t 静态标量); struct/union 变量 (st_idx>=0) 排除 */
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) { if (vars[i].st_idx >= 0) return 0; return vars[i].st_sz; }
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) { if (vars[i].st_idx >= 0) return 0; return vars[i].st_sz; } /* 全局回退 (同 var_is_csgn) */
     return 0;
 }
 /* static array: N contiguous .data slots (4 bytes each), arr_sz records element count */
@@ -13753,6 +13765,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     if (g_is_short && g_is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned short 全局 */
                     if (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 标量 is_csgn — 不设 is_char (普通 char 数组/标量不被 var_is_char 误判 → 自举死循环) */
                     if (g_is_uns) vars[vcnt - 1].is_uns = 1;
+                    if (gcnt == 0 && ptrd == 0 && g_stidx < 0 && !g_is_fnptr) { int _gsw = g_is_char ? 1 : (g_is_short ? 2 : 0); if (_gsw) vars[vcnt - 1].st_sz = _gsw; } /* fix 2026-08-30 csmith t6: 记录 8/16 位全局标量字节宽 (static uint8_t/int16_t 存储/++-- 须掩码, s75/s88) */
                     if (g_static) var_file_static[vcnt - 1] = 1; /* 文件级 static → scl=3 局部符号 (fix 2026-08-14) */
                     if (tt[tk] == AK) { /* = init */
                         if (ginit_n >= 16384) { fprintf(stderr, "[ERR] 全局初始化器超过 16384 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
@@ -16620,6 +16633,12 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_STORE_XMM0_RIP 56  /* MOVSD [rip+disp], xmm0 (b(0xF2);b(0x0F);b(0x11);b(0x05);b4) — static double 写 */
 #define I_STORE_RIP_RAX64 57 /* MOV [rip+disp], rax (rex1;b(0x89);b(0x05);b4) — static 64写 */
 #define I_STORE_RIP_EAX32 58 /* MOV [rip+disp], eax (b(0x89);b(0x05);b4) — static 32写 */
+#define I_STORE_RIP_BYTE 90  /* MOV byte [rip+disp], al (b(0x88);b(0x05);b4) — static 8写 (fix 2026-08-30 csmith t6) */
+#define I_STORE_RIP_WORD 91  /* MOV word [rip+disp], ax (b(0x66);b(0x89);b(0x05);b4) — static 16写 (fix 2026-08-30 csmith t6) */
+#define I_LOAD_RIP_BYTE_Z 92 /* movzx eax, byte [rip+disp] (0F B6 05 disp32, 7B) — static 8位零扩展读 (fix 2026-08-30 csmith t6) */
+#define I_LOAD_RIP_BYTE_S 93 /* movsx eax, byte [rip+disp] (0F BE 05 disp32, 7B) — static 8位符号扩展读 */
+#define I_LOAD_RIP_WORD_Z 94 /* movzx eax, word [rip+disp] (66 0F B7 05 disp32, 8B) — static 16位零扩展读 */
+#define I_LOAD_RIP_WORD_S 95 /* movsx eax, word [rip+disp] (66 0F BF 05 disp32, 8B) — static 16位符号扩展读 */
 #define I_MOVZX_EAX_RBP 59   /* movzx eax, byte [rbp+disp] (0F B6 85 disp32) — char 局部读 */
 #define I_MOVZX_EAX_RBP_W 60 /* movzx eax, word [rbp+disp] (0F B7 85 disp32) — short 零扩展读 */
 #define I_MOVSX_EAX_RBP_W 61 /* movsx eax, word [rbp+disp] (0F BF 85 disp32) — short 符号扩展读 */
@@ -16707,6 +16726,12 @@ static void ir_flush(void) {
             case I_STORE_XMM0_RIP: movsd_rip_xmm0(coff_static_disp(ir_a[i], ir_b[i]) - 2); break;
             case I_STORE_RIP_RAX64: mov_rip_rax64(coff_static_disp(ir_a[i], ir_b[i]) - 1); break;
             case I_STORE_RIP_EAX32: mov_rip_eax(coff_static_disp(ir_a[i], ir_b[i])); break;
+            case I_STORE_RIP_BYTE: { int _d = coff_static_disp(ir_a[i], ir_b[i]); b(0x88); b(0x05); b4(_d); } break; /* MOV byte [rip+disp], al — disp 须在发射前求值 (stc_disp 假设指令 6B, 求值时机错位会 -2, fix 2026-08-30 csmith t6) */
+            case I_STORE_RIP_WORD: { int _d = coff_static_disp(ir_a[i], ir_b[i]) - 1; b(0x66); b(0x89); b(0x05); b4(_d); } break; /* MOV word [rip+disp], ax — 7B 指令需 -1 (同 RAX64, fix 2026-08-30 csmith t6) */
+            case I_LOAD_RIP_BYTE_Z: { int _d = coff_static_disp(ir_a[i], ir_b[i]) - 1; b(0x0F); b(0xB6); b(0x05); b4(_d); } break; /* movzx eax, byte [rip+disp] (7B: disp-1, fix 2026-08-30 csmith t6) */
+            case I_LOAD_RIP_BYTE_S: { int _d = coff_static_disp(ir_a[i], ir_b[i]) - 1; b(0x0F); b(0xBE); b(0x05); b4(_d); } break; /* movsx eax, byte [rip+disp] (7B) */
+            case I_LOAD_RIP_WORD_Z: { int _d = coff_static_disp(ir_a[i], ir_b[i]) - 2; b(0x66); b(0x0F); b(0xB7); b(0x05); b4(_d); } break; /* movzx eax, word [rip+disp] (8B: disp-2) */
+            case I_LOAD_RIP_WORD_S: { int _d = coff_static_disp(ir_a[i], ir_b[i]) - 2; b(0x66); b(0x0F); b(0xBF); b(0x05); b4(_d); } break; /* movsx eax, word [rip+disp] (8B) */
             case I_MOVZX_EAX_RBP: b(0x0F); b(0xB6); b(0x85); b4(ir_a[i]); break;
             case I_MOVZX_EAX_RBP_W: b(0x0F); b(0xB7); b(0x85); b4(ir_a[i]); break;
             case I_MOVSX_EAX_RBP_W: b(0x0F); b(0xBF); b(0x85); b4(ir_a[i]); break;
@@ -18114,7 +18139,7 @@ static void cg(int n) {
                 } else {
                 if (n0[n] >= 0 && ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } else cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS (fix 2026-08-16: n0[n]=-1 守卫) */
                 if (var_is_ll(vname)) ll_ext32(n0[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06: long long v=-7 → 4294967289) */
-                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case7: static 变量写 */
+                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else if (var_stsz(vname) == 1) { ir_emit(I_STORE_RIP_BYTE, off, 0, 0); ir_flush(); } else if (var_stsz(vname) == 2) { ir_emit(I_STORE_RIP_WORD, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case7: static 变量写 — fix 2026-08-30 csmith t6: 8/16 位标量掩码 (同 case-10; static uint8_t g=-17 原 32 位写 → 读 4294967279) */
                 else if (var_pesz(vname) > 0) {  mov_mbrp_reg64(off - cur_frame_sz, 0); }
                 else if (var_is_ll(vname)) {  mov_mbrp_reg64(off - cur_frame_sz, 0); } /* long long: 64-bit store (fix 2026-08-05) */
                             else if (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18198,7 +18223,9 @@ static void cg(int n) {
                     if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
                     ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); /* [rip+off] = 新值 */
                     pop_r64(0); nll[n] = 1; did_ll64 = 1;            /* rax = 旧值; nll 标记 64 位 */
-                } else { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); } }
+                } else if (var_stsz(vn) == 1) { if (var_is_csgn(vn)) { ir_emit(I_LOAD_RIP_BYTE_S, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RIP_BYTE_Z, off, 1, 0); ir_flush(); } } /* static 8 位: byte 读旧值 (fix 2026-08-30 csmith t6, s75/s88) */
+                  else if (var_stsz(vn) == 2) { if (var_is_uns(vn)) { ir_emit(I_LOAD_RIP_WORD_Z, off, 2, 0); ir_flush(); } else { ir_emit(I_LOAD_RIP_WORD_S, off, 2, 0); ir_flush(); } } /* static 16 位: word 读旧值 */
+                  else { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); } }
                 else if (var_is_ll(vn)) { /* 局部 LL: 64 位读-改-写, 旧值完整 64 位返回 */
                     ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush();   /* rax = 旧值 */
                     ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();                    /* 栈存旧值 */
@@ -18222,6 +18249,14 @@ static void cg(int n) {
                         b(0x48); b(0x63); modrm(3, 1, 1); /* movsxd rcx, ecx — step 符号扩展 */
                         if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
                         mov_rip_rax64(coff_static_disp(off, 1) - 1);
+                    } else if (var_stsz(vn) == 1) { /* static 8 位标量: byte 读改写掩码 (fix 2026-08-30 csmith t6, s75/s88) */
+                        if (var_is_csgn(vn)) { ir_emit(I_LOAD_RIP_BYTE_S, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RIP_BYTE_Z, off, 1, 0); ir_flush(); }
+                        ir_emit(I_ALU_EAX_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx (无 pop) */
+                        ir_emit(I_STORE_RIP_BYTE, off, 0, 0); ir_flush();
+                    } else if (var_stsz(vn) == 2) { /* static 16 位标量: word 读改写掩码 */
+                        if (var_is_uns(vn)) { ir_emit(I_LOAD_RIP_WORD_Z, off, 2, 0); ir_flush(); } else { ir_emit(I_LOAD_RIP_WORD_S, off, 2, 0); ir_flush(); }
+                        ir_emit(I_ALU_EAX_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx (无 pop) */
+                        ir_emit(I_STORE_RIP_WORD, off, 1, 0); ir_flush();
                     } else {
                         ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush();
                         ir_emit(I_ALU_EAX_EBX, T_PK, 0, 0); ir_flush(); /* Phase3-IR: eax += ebx (无 pop) */
@@ -18285,6 +18320,16 @@ static void cg(int n) {
                         b(0x48); b(0x63); modrm(3, 1, 1); /* movsxd rcx, ecx — step 符号扩展 */
                         if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
                         mov_rip_rax64(coff_static_disp(off, 1) - 1);
+                    } else if (var_stsz(vn) == 1) { /* static 8 位标量: byte 读改写 + 重读 (fix 2026-08-30 csmith t6, s75/s88) */
+                        if (var_is_csgn(vn)) { movsx_eax_rip_byte(coff_static_disp(off, 1) - 1); } else { movzx_eax_rip_byte(coff_static_disp(off, 1) - 1); }
+                        alu_rr(T_PK, 0, 1); /* eax += ecx */
+                        mov_rip_al_byte(coff_static_disp(off, 0)); /* [rip+off] = al */
+                        if (var_is_csgn(vn)) { movsx_eax_rip_byte(coff_static_disp(off, 1) - 1); } else { movzx_eax_rip_byte(coff_static_disp(off, 1) - 1); } /* 重读: 精确新值 (uint8_t 255+1 应回绕 0) */
+                    } else if (var_stsz(vn) == 2) { /* static 16 位标量: word 读改写 + 重读 */
+                        if (var_is_uns(vn)) { movzx_eax_rip_word(coff_static_disp(off, 2) - 2); } else { movsx_eax_rip_word(coff_static_disp(off, 2) - 2); }
+                        alu_rr(T_PK, 0, 1); /* eax += ecx */
+                        mov_rip_ax_word(coff_static_disp(off, 1) - 1); /* [rip+off] = ax */
+                        if (var_is_uns(vn)) { movzx_eax_rip_word(coff_static_disp(off, 2) - 2); } else { movsx_eax_rip_word(coff_static_disp(off, 2) - 2); } /* 重读: 精确新值 */
                     } else { mov_eax_rip(coff_static_disp(off, 0)); alu_rr(T_PK, 0, 1); mov_rip_eax(coff_static_disp(off, 0)); }
                 }
                 else if (var_is_ll(vn)) { /* 局部 LL: 64 位读-改-写 (fix 2026-08-29 csmith: 原 32 位 mov_reg_mbrp/alu/mov_mbrp_reg → 低 32 位进位/借位边界错; ecx 重新载 +step 防双负) */
@@ -18943,7 +18988,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                         else cg(n1[n]);
                         if (var_is_ll(vname)) ll_ext32(n1[n]);
                         if (off >= 0 || (coff_mode && var_isstatic(vname) && off < 0)) {
-                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
+                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else if (var_stsz(vname) == 1) { ir_emit(I_STORE_RIP_BYTE, off, 0, 0); ir_flush(); } else if (var_stsz(vname) == 2) { ir_emit(I_STORE_RIP_WORD, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 — fix 2026-08-30 csmith t6: 8/16 位标量掩码 (static uint8_t g_8=-17 原存 0xFFFFFFEF, s88) */
                             else if (var_pesz(vname) > 0) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                             else if (var_is_ll(vname)) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                             else if (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18957,7 +19002,7 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
                 else cg(n1[n]);
                 if (var_is_ll(vname)) ll_ext32(n1[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06) */
                 if (off >= 0 || (coff_mode && var_isstatic(vname) && off < 0)) { /* fix 2026-08-17: coff 模式 extern 全局赋值 (off<0 负槽 + is_static=1) — 原 if(off>=0) 排除 → git_work_tree_cfg=xgetcwd() 只发 call 不存储 → init_db 兜底失效 → 崩 */
-                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
+                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else if (var_stsz(vname) == 1) { ir_emit(I_STORE_RIP_BYTE, off, 0, 0); ir_flush(); } else if (var_stsz(vname) == 2) { ir_emit(I_STORE_RIP_WORD, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 — fix 2026-08-30 csmith t6: 8/16 位标量掩码 (static uint8_t g_8=-17 原存 0xFFFFFFEF, s88) */
                             else if (var_pesz(vname) > 0) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                             else if (var_is_ll(vname)) { ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                             else if (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -20510,6 +20555,8 @@ static void write_coff_obj(FILE *f) {
                 } else {
                     int v = nv[val_node];
                     if (var_is_ll(vn)) { long long lv = (long long)v; memcpy(ddata + 4 * off, &lv, 8); } /* ll 全局常量: 符号扩展 8 字节 (fix 2026-08-06: 原 4 字节 → 高 4 字节 0, -5 变 4294967291) */
+                    else if (var_stsz(vn) == 1) { unsigned char bv = (unsigned char)v; memcpy(ddata + 4 * off, &bv, 1); } /* fix 2026-08-30 csmith t6: 8 位标量 .data 初始化窄化 — static uint8_t g=-17 原写 0xFFFFFFEF → 32 位读 4294967279 (s88 族根治) */
+                    else if (var_stsz(vn) == 2) { unsigned short sv = (unsigned short)v; memcpy(ddata + 4 * off, &sv, 2); } /* fix 2026-08-30 csmith t6: 16 位标量 .data 初始化窄化 — static uint16_t g=-1 原写 0xFFFFFFFF → 读 4294967295 */
                     else memcpy(ddata + 4 * off, &v, 4);
                 }
             }
