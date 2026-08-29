@@ -11901,6 +11901,32 @@ lex(exp_src);
             if (sealed_n < 64 && !sealed_find(sn)) strcpy(sealed_names[sealed_n++], sn);
             continue;
         }
+        if (tt[tk] == VR && !strcmp(tn[tk], "部分应用")) { /* 接入 2026-08-29 P2 #212 柯里化/部分应用: 部分应用 g, f, a; → 生成 int g(int __pa_x) { return f(a, __pa_x); } (绑定第一个参数, 顶层函数定义) */
+            tk++; /* 部分应用 */
+            char gname[64]; strcpy(gname, tn[tk]); tk++; /* g 包装函数名 */
+            if (tt[tk] == CK) tk++;
+            char fname[64]; strcpy(fname, tn[tk]); tk++; /* f 原函数名 */
+            if (tt[tk] == CK) tk++;
+            int e_a = expr(); /* 绑定参数 a */
+            if (tt[tk] == SK) tk++;
+            static int pa_seq = 0; char parg[32]; sprintf(parg, "__pa_%d_", pa_seq++);
+            int fdef = Nd(4); memcpy((char*)(nn + fdef), gname, 64);
+            fvb[fvn] = vcnt; /* 2026-08-29 P2 #212: 函数变量起点 (缺则 g 变量范围含全部 → 序言 40+ 垃圾存帧) */
+            var_param(parg, 0, 0, 4, -1, 0, 0); /* int __pa_x (第 1 参数 slot=0→rcx, 原 slot=1→rdx 错位) */
+            int bodyx = Nd(5);
+            { int call = Nd(4);
+              Nc(call, e_a); /* 参数1: 绑定值 a */
+              { int v_p = Nd(1); memcpy((char*)(nn + v_p), parg, 32); Nc(call, v_p); } /* 参数2: x */
+              { int fn = Nd(1); memcpy((char*)(nn + fn), fname, 64); Nc(call, fn); } /* callee: f */
+              int rn = Nd(6); Nc(rn, call); Nc(bodyx, rn); } /* return f(a, x); */
+            Nc(fdef, bodyx);
+            if (fvn >= 65536) { fprintf(stderr, "[ERR] 函数体表超过 65536 上限\n"); exit(1); }
+            fve[fvn] = vcnt; fvn++; fr_end[fvn - 1] = rsp_used; qcc_cur_fn_err = 0;
+            parse_base = 0;
+            Nc(p, fdef);
+            if (fdef_n < 1024) { fn_lines[fdef_n] = 0; fdef_list[fdef_n++] = fdef; }
+            continue;
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "嵌入")) { /* 接入 2026-08-29 P2 #189 编译期文件读取 (#embed 中文版): 嵌入 "file" 于 数据, 长度; — 编译期读文件 → 全局 char*数据 + int长度 (ginit 初始化) */
             tk++; /* 嵌入 */
             char fname[256]; fname[0] = 0;
