@@ -6200,7 +6200,7 @@ static int blk(void) {
             if (tt[tk] != FK && (tt[tk] == DK || (tt[tk] == VR && (tt[tk + 1] == LB || tt[tk + 1] == CK || tt[tk + 1] == AK)))) {
                 int is_ptr = (tt[tk] == DK);
                 int ptr_depth = 0;
-                while (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; } /* fix 2026-08-20: 数指针层级 — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件 */
+                while (tt[tk] == DK) { is_ptr = 1; ptr_depth++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } /* fix 2026-08-20: 数指针层级 — struct X ** 原只消费一个 * → 第二个 * 残留 → VR 检查失败 → 声明被跳过 → 变量走隐式注册 p_esz=4 → prune_directory src/dst 步进/缩放全错 → add 丢文件; fix 2026-08-30 csmith t5: 指针链中间 const/volatile (struct S0 ** volatile * volatile *volatile *l — s116/s162 原残留 → 变量未注册 → 未定义函数) */
                 if (tt[tk] == OK && tt[tk + 1] == VR && (tt[tk + 2] == LB || tt[tk + 2] == KK)) {
                     /* struct X *(name[N]) paren-array (fix 2026-08-23: builtin_diff_tree oid[2] unregistered) */
                     tk++; /* ( */
