@@ -132,6 +132,7 @@ static int cg_incdec_target = 0;
 static int cg_addr_of = 0; /* case 11 &取地址时置位: case 15 “指针字段作数组基”解引用应跳过 (否则 &p->buf 取地址多解引用, fix 2026-08-18) */ /* case 23/26 求 ++/-- 目标地址时置位: case 15 “指针字段作数组基”解引用应跳过 (否则 size_t 字段 sb->len++ 被误解引用, fix 2026-08-18) */ /* case 14: skip the final deref (nested-store base address) */
 static int cg_mem_frow = 0; /* case 15: row size of the last static-struct array member read (2D field: fnames[idx]) */
 static int cg_mem_sgn = 0; /* case 14: 数组元素 signed 标记 — 1=signed char, 2=signed short; 嵌套 deref 选 movsx (fix 2026-08-29 csmith) */
+static int cg_mem_uns = 0; /* case 14: 数组元素 unsigned 标记 — 嵌套 deref 后 nuns[n] (fix 2026-08-29 csmith: s175) */
 static int cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
 static int cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
 static int cg_mem_chain_si = -1; /* mem_addr: 嵌套链 (a->b->c) 最终字段所在结构体索引 — case-15 指针字段作数组基判定用 (fix 2026-08-18: iter->map->table[i] 嵌套链原只在简单箭头分支解引用, 嵌套链 no_deref 返回字段地址 → 索引进结构体内部, hashmap_iter_next 崩) */
@@ -13552,6 +13553,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 int g_is_ll = 0; /* global long long: 8-byte .data slot (fix 2026-08-05) */
                 int g_is_uns = 0; /* global unsigned (fix 2026-08-18: size_t 全局 → is_uns → seta 无符号比较) */
                 for (int ti2 = save_tk; ti2 + 1 < tk; ti2++) { if (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1; if (tt[ti2] == VK && !strcmp(tn[ti2], "unsigned")) g_is_uns = 1; }
+                if (!g_is_uns) { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz < 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参符号扩展 crc 错 (s175 g_2) */
                 if (!g_is_ll) { int tdi2 = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi2 >= 0 && !tdefs[tdi2].is_fnptr && !tdefs[tdi2].is_struct && !tdefs[tdi2].is_dbl && tdefs[tdi2].sz == 8 && !g_is_double) g_is_ll = 1; } /* fix 2026-08-18: typedef 8B 基类型 (size_t) 全局 → 8 字节 .data */
                 { int tdi_gsh = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gsh >= 0 && !tdefs[tdi_gsh].is_struct && !tdefs[tdi_gsh].is_fnptr && !tdefs[tdi_gsh].is_dbl && tdefs[tdi_gsh].sz == 2) { g_is_short = 1; if (tdefs[tdi_gsh].is_uns) g_is_uns = 1; } } /* fix 2026-08-29 csmith: typedef short 全局 (int16_t/uint16_t) — 原只认 short 关键字 → int16_t g 标量 32 位零扩展 → 传参错 (seed102/18/64) */
                 { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz < 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参按 signed 符号扩展 → crc 错 (s94 g_26) */
@@ -13699,6 +13701,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             if (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = g_esz; for (int fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                             if (g_is_double) vars[vcnt - 1].is_dbl = 1; /* global double array */
                             if (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 数组元素 is_csgn — 不设 is_char (普通 char 数组不被 var_is_char 误判) */
+                            if (g_is_uns) vars[vcnt - 1].is_uns = 1; /* fix 2026-08-29 csmith: 全局 uint 数组元素 is_uns → 传参零扩展 (s175 g_2[i][j]) */
                             if (g_is_short) vars[vcnt - 1].is_short = 1;
                             if (g_is_uns) vars[vcnt - 1].is_uns = 1;
                         }
@@ -19305,6 +19308,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                    same-named var (e.g. a runtime `int c`) and hijack the access. */
                 cg_mem_frow = 0; /* set by cg(n0[n]) if it reads a static-struct array member */
                 cg_mem_sgn = 0; /* 嵌套 deref 元素 signed 标记 — 内层数组分支设置 (fix 2026-08-29 csmith) */
+                cg_mem_uns = 0; /* 嵌套 deref 元素 unsigned 标记 — 内层数组分支设置 (fix 2026-08-29 csmith) */
                 cg_mem_dbl = 0; /* set by cg(n0[n]) if the base is a double array */
                 cg_mem_ptr = 0; /* set by cg(n0[n]) if it is a pointer-array element (int *rva[4]) whose slot address must be dereferenced once (fix 2026-08-16) */
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* outer idx �?eax */
@@ -19345,6 +19349,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (cg_mem_frow == 2) { if (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
                     else if (cg_mem_frow == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
+                    if (cg_mem_uns) nuns[n] = 1; /* fix 2026-08-29 csmith: 嵌套数组元素 unsigned — uint32 2D 数组传参零扩展 (s175 g_2[i][j]) */
                 }
             } else if (off >= 0 || (off < 0 && var_isstatic(vname))) {
                 { int save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* index �?eax */
@@ -19353,7 +19358,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     if (!strcmp(vars[vi].name, vname) && (vars[vi].arr_sz > 0 || vars[vi].vla_dim > 0) && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) { /* fix step31: VLA (arr_sz==0) 也是数组 */
                         int esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         int elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
-                        { int pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1); fix 2026-08-29: cg_mem_sgn 元素 signed 标记 */
+                        { int pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); cg_mem_uns = vars[vi].is_uns; } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1); fix 2026-08-29: cg_mem_sgn/cg_mem_uns 元素 signed/unsigned 标记 */
                         cg_fdepth = 1; for (int fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows (fix 2026-08-05) */
                         cg_fdepth_max = 1; for (int fk = 0; fk < 4; fk++) if (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
@@ -19403,7 +19408,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         if (!strcmp(vars[vi].name, vname) && vars[vi].is_static && vars[vi].arr_esz > 0) {
                             esz = vars[vi].arr_esz;
                             is_row = (vars[vi].p_esz > 0 && vars[vi].arr_esz > vars[vi].p_esz); /* 2D+ array: a[i] is a ROW (array), decays to ADDRESS (fix 2026-08-16: secnames[i] 源被当 8 字节值 load → memcpy 源 0) */
-                            { int pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放; fix 2026-08-23 t35j: p_inner 优先; fix 2026-08-29: cg_mem_sgn 元素 signed 标记 */
+                            { int pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); cg_mem_uns = vars[vi].is_uns; } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放; fix 2026-08-23 t35j: p_inner 优先; fix 2026-08-29: cg_mem_sgn/cg_mem_uns 元素 signed/unsigned 标记 */
                             /* ADDRESS for: struct arrays, 2D rows (esz>8), and 2D rows where
                                arr_esz > element size (char buf[4][8]: esz=8, elem=1).
                                8-byte POINTER arrays (char *names[3]: esz=8, elem=8) load 64-bit. */
