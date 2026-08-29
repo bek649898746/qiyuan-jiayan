@@ -3220,6 +3220,7 @@ static int arr_base_node(int n) {
 /* does this expression subtree yield an unsigned value? (fix 2026-08-05) */
 static int expr_is_unsigned(int n) {
     if (n < 0) return 0;
+    if (nuns[n]) return 1; /* fix 2026-08-30 csmith s61: cast/typedef 设的 nuns 标记优先 (uint32_t)X 原只字面量 nt==0 看 nuns → 比较仍按有符号 setl 分支翻转) */
     if (nt[n] == 1) return var_is_uns((char*)(nn + n)); /* unsigned var */
     if (nt[n] == 0) return nuns[n];                       /* 0xFFFFFFFFu literal */
     if (nt[n] == 2) { /* binary op: 结果类型按 C 通常算术转换 (fix 2026-08-06 M1 传播: (u-1)>0 判 unsigned) */
@@ -3243,7 +3244,7 @@ static int expr_is_unsigned(int n) {
 static int expr_is_ll(int n) {
     if (n < 0) return 0;
     if (nll[n]) return 1; /* cast (long long)x / literal / pre-marked */
-    if (nt[n] == 1) return var_is_ll((char*)(nn + n)); /* long long var */
+    if (nt[n] == 1) { char *_vn = (char*)(nn + n); for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, _vn) && vars[i].arr_sz == 0 && var_codegen_visible(i)) return vars[i].is_ll; return 0; } /* long long var — fix 2026-08-30 csmith s61: var_is_ll 返回 rsp_off (局部负偏移) → expr_is_ll 返回负判假 → 局部 int64 比较误走 32 位路径 */
     if (nt[n] == 0) return tll[n]; /* 1000000000LL literal */
     if (nt[n] == 4) { /* function call returning long long (fix #27) */
             for (int sci = 0; sci < 20; sci++) {
@@ -3255,11 +3256,12 @@ static int expr_is_ll(int n) {
     if (nt[n] == 2) {
         int o = nv[n];
         if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK || o == LA || o == LO) return 0;
+        if (nuns[n] && !nll[n]) return 0; /* fix 2026-08-30 csmith s61: (unsigned)cast 32 位值 (nuns=1, nll 清) — 原递归到 64 位字面量 (-6L) 判 ll → & 传播 nll → uint32<int64 比较误判无符号 */
         if (o == T_SR || o == T_SH) return expr_is_ll(n0[n]); /* shift: result type = LHS */
         return expr_is_ll(n0[n]) || expr_is_ll(n1[n]); /* + - * / % & | ^ */
     }
     if (nt[n] == 14) return expr_is_ll(n0[n]); /* arr[i]: result = element type */
-    if (nt[n] == 12) return expr_is_ll(n0[n]); /* *p: element type */
+    if (nt[n] == 12) { int _pn = n0[n]; if (_pn >= 0 && node_psz(_pn) == 8) return 1; return expr_is_ll(_pn); } /* *p: element type — fix 2026-08-30 csmith s61: int64_t* 解引用原递归到指针 is_ll=0 → 64 位比较误走 32 位 (uint32<int64 g_143 分支翻转) */
     return 0;
 }
 
@@ -5803,6 +5805,14 @@ static int prim(void) {
             if (cast_ty && !strcmp(cast_ty, "long") && ce >= 0) nll[ce] = 1; /* (long long)x -> 64-bit operand (fix 2026-08-05) */
     if (cast_ty && !strcmp(cast_ty, "int") && ce >= 0) nuns[ce] = 0; /* fix 2026-08-25 bug#29b: (int)cast 清除 unsigned 标记 → signed 语义 ((int)0xFFFFFFFF > 0 = 0) */
     if (cast_ull && ce >= 0) { nll[ce] = 1; if (nt[ce] == 1 && var_is_uns((char*)(nn + ce))) nuns[ce] = 1; } /* fix 2026-08-25 bug#28c: (unsigned long long)x -> 64-bit; unsigned 源 (uint32_t) 零扩展, signed 源 (int/short) 符号扩展 (t28 修正) */
+    { int _cuns = 0; int _cast64 = 0; /* fix 2026-08-30 csmith s61/s168: cast 类型符号性统一 — unsigned typedef (uint32_t/uint8_t/uint64_t) cast 设 nuns (比较/除法无符号: s61 (uint32_t)<int64 原按有符号 setl 分支翻转); signed typedef (int64_t) cast 清 nuns (s168 (int64_t) 原不清 → use_udiv 无符号除法 120/-1=0); 32 位 cast 清 nll ((uint32_t)(-6L>>29) 原残留 64 位标记 → & 传播 nll → 比较误判 64 位无符号) */
+      if (cast_ty && (!strcmp(cast_ty, "unsigned") || !strcmp(cast_ty, "char") || !strcmp(cast_ty, "_Bool"))) _cuns = 1;
+      else if (cast_ty2 && !strcmp(cast_ty2, "unsigned")) _cuns = 1;
+      else if (cast_td) { int _ctui = tdef_lookup(cast_td); if (_ctui >= 0 && !tdefs[_ctui].is_struct && !tdefs[_ctui].is_fnptr && !tdefs[_ctui].is_dbl && tdefs[_ctui].is_uns) _cuns = 1; }
+      if (cast_ty && !strcmp(cast_ty, "long")) _cast64 = 1;
+      else if (cast_ty2 && !strcmp(cast_ty2, "long")) _cast64 = 1;
+      else if (cast_td) { int _ct64 = tdef_lookup(cast_td); if (_ct64 >= 0 && !tdefs[_ct64].is_struct && !tdefs[_ct64].is_fnptr && !tdefs[_ct64].is_dbl && tdefs[_ct64].sz == 8) _cast64 = 1; }
+      if (ce >= 0) { if (_cuns) nuns[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nuns[ce] = 0; if (!_cast64 && (cast_ty || cast_ty2 || cast_td)) nll[ce] = 0; } }
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
                 if (tt[tk] == LB) {
@@ -13761,7 +13771,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     else if (g_is_ll && lead_ptr == 0) { var_static(gname, 4); vars[var_last_idx].is_ll = 1; if (g_is_uns) vars[vcnt - 1].is_uns = 1; } /* fix 2026-08-18: 全局 unsigned long long → is_uns (seta 无符号比较) */ /* global long long: 8-byte .data slot (fix 2026-08-05); fix 2026-08-30 csmith s9/s147: lead_ptr==0 守卫 — uint64_t * 指针落此分支原 4 字节槽 (p_esz=4) + is_uns=0 → 指针截断 + 解引用判 signed (setg 替 seta 分支翻转) */
                     else if (g_is_double) { var_static(gname, 4); vars[var_last_idx].is_dbl = 1; } /* global double: 8-byte .data slot */
                     else var_static(gname, pesz);
-                    if (ptrd >= 2 && gcnt == 0 && !g_is_fnptr) { vars[vcnt - 1].p_depth = ptrd; vars[vcnt - 1].p_esz = 8; vars[vcnt - 1].p_inner = pesz > 0 ? pesz : 4; } /* fix 2026-08-30 csmith t5: 文件级多级指针全局标量 (int32_t ***g_2383) — 原 p_depth=0 → case-12 链宽度推断 el=1 字节 → 指针值截断崩 (p7). 仅 ptrd>=2 非数组 (指针数组/单指针保持原状防自编译回归) */
+                    if (ptrd >= 2 && gcnt == 0 && !g_is_fnptr) { vars[vcnt - 1].p_depth = ptrd; vars[vcnt - 1].p_esz = 8; vars[vcnt - 1].p_inner = g_is_char ? 1 : (g_is_short ? 2 : (g_is_ll ? 8 : (g_is_double ? 8 : (tdi_gsz > 0 ? tdi_gsz : 4)))); } /* fix 2026-08-30 csmith t5: 文件级多级指针全局标量 (int32_t ***g_2383) — 原 p_depth=0 → case-12 链宽度推断 el=1 字节 → 指针值截断崩 (p7). 仅 ptrd>=2 非数组 (指针数组/单指针保持原状防自编译回归); fix 2026-08-30 csmith s9: p_inner 用最内层标量 (原=pesz 取 8 (char** 直接元素) → **g_462 (=*g_463=g_464[2] uint8_t) 写 8 字节覆盖相邻元素) */
                     if (g_is_short) vars[vcnt - 1].is_short = 1; /* fix 2026-08-29 csmith: 全局 short 标量标 is_short (原只数组用 → 标量 32 位读 0xC789 零扩展 → 传参 0x0000C789 非 0xFFFFC789, seed102/18/64 静默错误) */
                     if (g_is_short && g_is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned short 全局 */
                     if (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 标量 is_csgn — 不设 is_char (普通 char 数组/标量不被 var_is_char 误判 → 自举死循环) */
@@ -16930,7 +16940,7 @@ static void cg(int n) {
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            if (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || ((o != T_SH && o != T_SR) && n1[n] >= 0 && nll[n1[n]])) {
+            if (nll[n] || (n0[n] >= 0 && expr_is_ll(n0[n])) || ((o != T_SH && o != T_SR) && n1[n] >= 0 && expr_is_ll(n1[n]))) {
                 /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负); fix 2026-08-29 csmith: 移位 (T_SH/T_SR) 排除右操作数 nll — 结果宽度=左操作数, `x << (int8_t)uint64` 原走 64 位 (mod64) → 0x381E<<102→<<38 而非 32 位 (mod32)→<<6 (s137 静默) */
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { int pel64 = node_psz(n0[n]);
@@ -16968,9 +16978,10 @@ static void cg(int n) {
                     break;
                 }
                 if (o == T_LK || o == T_GK || o == T_QK || o == T_XK || o == T_HK || o == T_YK) {
+                    int _c64u_pre = ((expr_is_ll(n0[n]) && expr_is_unsigned(n0[n])) || (expr_is_ll(n1[n]) && expr_is_unsigned(n1[n])) || (expr_is_ll(n0[n]) && expr_is_ll(n1[n]) && (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])))) ? 1 : 0; /* fix 2026-08-30 csmith s61: cg 前静态计算 — cg 后 nll/nuns 被传播污染 expr_is_ll 动态结果 → uint32<int64 误判无符号 */
                     cg(n0[n]); ll_ext32(n0[n]); ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();
                     cg(n1[n]); ll_ext32(n1[n]); ir_emit(I_MOV_RBX_RAX64, 0, 0, 0); ir_flush();
-                    ir_emit(I_CMP64_SETCC, o, (expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n])) ? 1 : 0, 0); ir_flush();
+                    ir_emit(I_CMP64_SETCC, o, _c64u_pre, 0); ir_flush(); /* fix 2026-08-30 csmith s61: 64位比较按 C 整数转换 — int64 能表示 uint32 全值 → 有符号比较 (uint32<int64 原判无符号 → 分支翻转 s61 g_143); uint64 一方 → 无符号 */
                     break;
                 }
             }
@@ -18871,6 +18882,14 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                 if (pbase >= 0) { /* fix 2026-08-16 根因I: pbase>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c */
                 if (nt[pbase] == 23 || nt[pbase] == 26) pbase = n0[pbase]; /* *p++ / *++p / *p--: resolve through inc/dec for the WIDTH only; cg(pnode) below must keep the inc/dec side effect (fix 2026-08-16: char* d++ store was 32-bit → in-place normalize truncates) */
                 if (nt[pbase] == 1) { pe = var_esz((char*)(nn + pbase)); p_sti = var_stidx((char*)(nn + pbase)); pname = (char*)(nn + pbase); }
+                else if (nt[pbase] == 12) { /* **X / ***X 链写: 解引用宽度按剩余层级 — fix 2026-08-30 csmith s9: (**g_462)=expr (**g_462 = *g_463 = g_464[2] uint8_t) 原 pe=4 默认 → dword store 覆盖 g_464[2][3][4][5] (镜像 case-12 读侧 L19090 层级算法) */
+                    int dp = 1, q = pbase;
+                    while (q >= 0 && nt[q] == 12) { dp++; q = n0[q]; if (q >= 0 && (nt[q] == 23 || nt[q] == 26)) q = n0[q]; }
+                    if (q >= 0 && nt[q] == 1) {
+                        int d = var_pdepth((char*)(nn + q));
+                        if (d > dp) pe = 8; else if (d == dp) pe = var_pinner((char*)(nn + q)); else pe = 1;
+                    }
+                }
                 else if (nt[pbase] == 13 || nt[pbase] == 15) { /* fix 2026-08-23 t49g: member-chain ptr deref write width -- `*oi->contentp = unpack_loose_rest(...)` was 32-bit store (pe defaulted 4), upper 32 bits garbage -> parse_commit_buffer corrupted buffer -> HEAD~2 crash. Element width = final field byte size. */
                     char *pbf2 = (char*)(nn + pbase);
                     int pbsi2 = (n0[pbase] >= 0) ? var_stidx((char*)(nn + n0[pbase])) : -1;
