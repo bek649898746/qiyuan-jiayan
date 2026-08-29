@@ -104,7 +104,7 @@ static char *str_slot_alloc(void) { /* 从块链切一个 12288 槽 (str_tbl 分
     char *r = str_arena_pos; str_arena_pos += 12288;
     return r;
 }
-static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[65536]; /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
+static struct { char name[64]; int rsp_off, is_param, pslot, preg, pstk, pdisp, st_idx, st_sz, arr_sz, arr_esz, p_esz, p_depth, p_inner, is_static, is_dbl; char p_dbl, is_char, is_short, is_uns, is_ll, is_csgn; int frows[4]; int blk_start, blk_end; int alignN, align_base; int vla_dim; } vars[65536]; /* fix 2026-08-29 csmith: +is_csgn — signed char 变量 (movsx 符号扩展读; qcc 约定 char=unsigned movzx, signed char 须显式符号扩展) */ /* fix 2026-08-26 step30: +alignN/align_base — 局部 _Alignas(>16) 数组: alignN=对齐需求, align_base=候选区基址 rsp_off (地址槽存运行时对齐后的地址); fix 2026-08-26 step31: +vla_dim — VLA 变长数组: 维度表达式 AST 节点 (声明处 cg 求值动态 sub rsp, 基址存地址槽, alignN=1 标记间接访问); fix 2026-08-25 bug#31b: +is_short 字段 (uint16_t/short 变量 2 字节槽读写, t43); fix 2026-08-14: 4096→16384 — revision.c/sequencer.c 大文件变量数超 4000 (头部静态 inline 函数累积); p_depth/p_inner (fix 2026-08-18): 指针层级 + 基类型元素大小 — (*X)[i] 外层缩放/解引用宽度 (char** 参数 p_esz=8 但元素 1, 原按 8 缩放 → config 写坏); blk_start/blk_end (fix 2026-08-19): 声明所在块的 var 范围 — codegen 作用域判定: 嵌套块同名变量 (const char *gitdir 遮蔽 struct strbuf gitdir) 只在其块内可见, 防止遮蔽外层 struct 变量 */
 static char var_static_kw[65536]; /* fix 2026-08-06: 函数内 static 变量 (save 等) → scl=3 局部符号, 多 .o 头库不冲突 */
 static char var_file_static[65536]; /* 文件级 static 全局 → scl=3 (fix 2026-08-14: khash.h __ac_HASH_* 重复符号) */
 int vcnt; /* is_ll: long long (8-byte int) var (fix 2026-08-05) */
@@ -1174,6 +1174,42 @@ static char *pp_read_file_inc(const char *fname) {
         if (stub2) { memcpy(stub2, st, sl); stub2[sl] = 0; }
         return stub2;
     }
+    if (!strcmp(fname, "stdint.h")) {
+        /* fix 2026-08-29 csmith 崩溃族根因: <stdint.h> 系统头被跳过 (角括号 include 找不到即弃)
+           → uint64_t/int64_t/size_t/intptr_t 无 typedef 注册 → 类型尺寸落默认 4 (错)
+           → crc32_8bytes(uint64_t val) 参数 32 位 → (val>>32) 在 x86 移位计数 mod32 环绕成 >>0
+           → 字节重复 → 校验和错 + 多维指针/volatile 崩溃族 (csmith 20 种子 17 崩)。
+           内置 stdint.h: 标准整数类型 (x86_64 Win64), 值同 mingw; 已有 limits.h/stdarg.h 同款先例。
+           注意 custom_stdint_x86.h 的 #define uint64_t 多 token 值 qcc 宏系统不支持 → 死宏, 无冲突。 */
+        const char *st =
+            "typedef signed char int8_t;\n"
+            "typedef unsigned char uint8_t;\n"
+            "typedef short int16_t;\n"
+            "typedef unsigned short uint16_t;\n"
+            "typedef int int32_t;\n"
+            "typedef unsigned int uint32_t;\n"
+            "typedef long long int64_t;\n"
+            "typedef unsigned long long uint64_t;\n"
+            "typedef long long intptr_t;\n"
+            "typedef unsigned long long uintptr_t;\n"
+            "typedef unsigned long long size_t;\n"
+            "typedef long long ssize_t;\n"
+            "typedef long long ptrdiff_t;\n"
+            "typedef long long intmax_t;\n"
+            "typedef unsigned long long uintmax_t;\n"
+            "typedef long long int_least64_t;\n"
+            "typedef unsigned long long uint_least64_t;\n"
+            "typedef int int_least32_t;\n"
+            "typedef unsigned int uint_least32_t;\n"
+            "typedef long long int_fast64_t;\n"
+            "typedef unsigned long long uint_fast64_t;\n"
+            "typedef int int_fast32_t;\n"
+            "typedef unsigned int uint_fast32_t;\n";
+        size_t sl = strlen(st);
+        char *stub2 = malloc(sl + 1);
+        if (stub2) { memcpy(stub2, st, sl); stub2[sl] = 0; }
+        return stub2;
+    }
     if (!strcmp(fname, "stdarg.h")) {
         /* fix 2026-08-23 t35e: <stdarg.h> is skipped by qcc (angle-bracket includes are
            dropped), so mingw's __builtin_va_start/__builtin_va_arg become undefined-function
@@ -1910,6 +1946,11 @@ static void movzx_eax_mbrp(int disp) {
     asm_emit("    零扩展字节 r0, [rbp%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0);
     b(0x0F); b(0xB6); b(0x85); b4(disp); /* movzx eax, byte [rbp+disp] */
 }
+/* 局部 signed char 变量读取: movsx eax, byte [rbp+disp] (符号扩展, fix 2026-08-29 csmith) */
+static void movsx_eax_mbrp(int disp) {
+    asm_emit("    符号扩展字节 r0, [rbp%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0);
+    b(0x0F); b(0xBE); b(0x85); b4(disp); /* movsx eax, byte [rbp+disp] */
+}
 /* 局部 short 变量读取: movzx eax, word [rbp+disp] (零扩展, uint16_t/unsigned short, fix 2026-08-25 bug#31b) */
 static void movzx_eax_mbrp_w(int disp) {
     asm_emit("    零扩展字 r0, [rbp%+d]\n", (char*)(long long)(disp), (char*)(long long)0, (char*)(long long)0);
@@ -2372,6 +2413,12 @@ static int var_is_ll(const char *n) {
 static int var_is_char(const char *n) {
     for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_char;
     for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_char; /* 全局 char */
+    return 0;
+}
+/* signed char var: movsx 符号扩展读 (fix 2026-08-29 csmith: signed char x=0xB3 须返回 -77 非 179) */
+static int var_is_csgn(const char *n) {
+    for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, n) && var_codegen_visible(i)) return vars[i].is_csgn;
+    for (int i = parse_base - 1; i >= 0; i--) if (!strcmp(vars[i].name, n) && vars[i].is_static && !var_static_kw[i]) return vars[i].is_csgn;
     return 0;
 }
 /* short var: 2-byte loads/stores (fix 2026-08-25 bug#31b: 局部 short/uint16_t 32 位读/写 → 16 位值高位污染) */
@@ -6107,13 +6154,13 @@ static int blk(void) {
             if (tt[tk] == SK) tk++; /* ; */
             continue;
         }
-        if (tt[tk] == ST || (tt[tk] == VK && (!strcmp(tn[tk], "static") || !strcmp(tn[tk], "const")) && tt[tk + 1] == ST) || (tt[tk] == VR && !strcmp(tn[tk], "register") && tt[tk + 1] == ST) || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "const") && tt[tk + 2] == ST)) {
-            /* function-local struct var: [static] [const] [register] struct C c; (fix 2026-08-15: static const struct opentry; register struct _obstack_chunk *chunk) */
+        if (tt[tk] == ST || (tt[tk] == VK && (!strcmp(tn[tk], "static") || !strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile")) && tt[tk + 1] == ST) || (tt[tk] == VR && !strcmp(tn[tk], "register") && tt[tk + 1] == ST) || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == VK && (!strcmp(tn[tk + 1], "const") || !strcmp(tn[tk + 1], "volatile")) && tt[tk + 2] == ST)) {
+            /* function-local struct var: [static] [const] [volatile] [register] struct C c; (fix 2026-08-15: static const struct opentry; register struct _obstack_chunk *chunk; fix 2026-08-29 csmith: volatile struct S0 **l_299 原不认 volatile → 声明跳过 → 未定义函数) */
             
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             if (is_static) tk++; /* static */
             if (tt[tk] == VR && !strcmp(tn[tk], "register")) tk++; /* register 存储类忽略 (fix 2026-08-15: obstack.c _obstack_begin chunk undefined) */
-            while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; /* const */
+            while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; /* const/volatile */
             tk++; /* struct */
             int si = -1;
             if (tt[tk] == VR) { si = st_find(tn[tk]); tk++; } /* tag name C */
@@ -6740,6 +6787,7 @@ static int blk(void) {
             int is_void = (tt[tk] == VK && !strcmp(tn[tk], "void")); /* t35o 2026-08-24: void* 指针算术按 1 字节 (GCC 扩展) — delta_buf + delta_size 原 p_esz=4 → *4 缩放 → patch_delta top 超界 → "unexpected delta opcode 0" → status/shortlog SEGV */
             int is_double = (tt[tk] == VK && !strcmp(tn[tk], "double"));
             int is_uns = (tt[tk] == VK && !strcmp(tn[tk], "unsigned"));
+            int is_csgn = 0; int is_sgn_seen = (tt[tk] == VK && !strcmp(tn[tk], "signed")); /* fix 2026-08-29 csmith: signed char — 首 token signed 也要标记 (tk++ 先消费首 token, VK 循环从第二 token 起, 漏则 signed char 不设 is_csgn) */
             int is_static = (tt[tk] == VK && !strcmp(tn[tk], "static"));
             int is_ll = (tt[tk] == VK && !strcmp(tn[tk], "long") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long"))
                      || (tt[tk] == VK && !strcmp(tn[tk], "unsigned") && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "long") && tt[tk + 2] == VK && !strcmp(tn[tk + 2], "long")); /* long long / unsigned long long → 8-byte int (fix 2026-08-06: unsigned 前缀组合) */
@@ -6763,7 +6811,8 @@ static int blk(void) {
                 if (tt[tk] == UK) tk++; /* } */
             }
             while (tt[tk] == VK) { /* fix 2026-08-13: 循环消费所有类型关键字 (static const int / const char * — 原只消费 2 个, const 后 int/char 残留 → 变量未注册 → 运行 0xC0000005; revision.c lookup_other_head static const char *const []) */
-                if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) is_char = 1;
+                if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { is_char = 1; if (is_sgn_seen) is_csgn = 1; } /* fix 2026-08-29 csmith: signed char → is_csgn */
+                else if (!strcmp(tn[tk], "signed")) is_sgn_seen = 1; /* signed 前缀 (signed char) */
                 else if (!strcmp(tn[tk], "void")) is_void = 1; /* t35o: const void *p 的 void 在循环里消费时识别 */
                 else if (!strcmp(tn[tk], "double")) is_double = 1;
                 else if (!strcmp(tn[tk], "short")) is_short = 1;
@@ -6937,7 +6986,7 @@ static int blk(void) {
             else if (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; if (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
             else if (is_ll) {  var_ll(vn); if (is_uns) vars[vcnt - 1].is_uns = 1; } /* long long / unsigned long long: 8-byte int (fix 2026-08-06: ULL 同时标 is_uns) */
             else if (is_double) { var_double(vn); }
-            else { var_offset(vn); if (is_char) vars[vcnt - 1].is_char = 1; if (is_short) vars[vcnt - 1].is_short = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05); fix 2026-08-25 bug#31b: is_short */
+            else { var_offset(vn); if (is_char) vars[vcnt - 1].is_char = 1; if (is_short) vars[vcnt - 1].is_short = 1; if (is_uns) vars[vcnt - 1].is_uns = 1; if (is_csgn) vars[vcnt - 1].is_csgn = 1; } /* sizeof(char var)/unsigned var marks (fix 2026-08-05); fix 2026-08-25 bug#31b: is_short; fix 2026-08-29 csmith: is_csgn signed char */
             memcpy((char*)(nn + d), vn, 32);
             
         } if (tt[tk] == AK) {
@@ -13201,8 +13250,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             else if (tt[tk] == VR && td_is(tn[tk])) { g_stidx = td_st_index(tn[tk]); g_tdef = tdef_lookup(tn[tk]); is_type = 1; tk++; } /* typedef'd type: remember struct index if it aliases a struct (fix 2026-08-03: was -1 → typedef struct arrays registered as int arrays, main() body was silently dropped) */
             else if (tt[tk] == EN) { tk++; if (tt[tk] == VR) tk++; if (tt[tk] == FK) { tk++; int ev = 0; while (tk < TS && tt[tk] != UK) { int tk0 = tk; if (tt[tk] == VR) { char ename[64]; strcpy(ename, tn[tk]); tk++; if (tt[tk] == AK) { tk++; int evv = 0; if (const_expr_eval(&evv)) ev = evv; } e_reg(ename, ev); ev++; } if (tt[tk] == CK) tk++; if (tt[tk] == SK) tk++; if (tk == tk0) tk++; } if (tt[tk] == UK) tk++; } is_type = 1; } /* static enum log_destination {..} log_destination = X: 解析并注册枚举常量 (fix 2026-08-14: 原枚举体 {..} 落到匿名结构体分支 → 死循环; fix 2026-08-15: JUNK_LEAVE_NONE undefined) */
             else if (tt[tk] == ST) { tk++; if (tt[tk] == VR) { g_stidx = st_find(tn[tk]); tk++; } is_type = 1; } /* struct type */
-            if (tt[tk] == DK && tt[tk + 1] == VK && !strcmp(tn[tk + 1], "const")) tk += 2; /* *const (fix 2026-08-15: static char const * const archive_usage[] / builtin_rebase_usage[]) */
-            while (tt[tk] == DK) { tk++; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* 返回类型指针在 fnptr 变量/函数定义前: void *(*fp)(...) / static void *fn(...) — 原不消费 * → 落函数定义 break (fix 2026-08-15: reftable_malloc_ptr undefined) */
+            if (tt[tk] == DK && tt[tk + 1] == VK && (!strcmp(tn[tk + 1], "const") || !strcmp(tn[tk + 1], "volatile"))) tk += 2; /* *const / *volatile (fix 2026-08-15: static char const * const archive_usage[]; fix 2026-08-29 csmith: static int * volatile g5 卡死 volatile 吞 main) */
+            while (tt[tk] == DK) { tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } /* 返回类型指针在 fnptr 变量/函数定义前: void *(*fp)(...) / static void *fn(...) — 原不消费 * → 落函数定义 break; csmith: * volatile 同 * const 处理 */
             if (is_type && tt[tk] == VR && tt[tk + 1] == OK) {
                 tk = save_tk; /* function definition �?fall through */
             } else if (is_type && tt[tk] == FK) {
@@ -13790,7 +13839,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 if (tt[tk] == VK) { if (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) pis_char = 1; else if (!strcmp(tn[tk], "void")) pis_void = 1; else if (!strcmp(tn[tk], "double")) pis_dbl = 1; else if (!strcmp(tn[tk], "unsigned")) pis_uns = 1; else if (!strcmp(tn[tk], "short")) pis_short = 1; else if (!strcmp(tn[tk], "long")) pis_ll = 1; tk++; } /* 2nd keyword */
                 if (tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && tt[tk + 1] != CK && tt[tk + 1] != KK) { int tdx = tdef_lookup(tn[tk]); if (tdx >= 0 && tdefs[tdx].is_dbl && !tdefs[tdx].is_struct) pis_dbl = 1; if (tdx >= 0 && tdefs[tdx].is_fnptr) { p_fptr = 1; p_fptr_dbl = tdefs[tdx].fnptr_dbl; } if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 8) pis_ll = 1; if (tdx >= 0 && tdefs[tdx].is_uns) pis_uns = 1; if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 1) pis_char = 1; if (tdx >= 0 && !tdefs[tdx].is_fnptr && !tdefs[tdx].is_struct && !tdefs[tdx].is_dbl && tdefs[tdx].sz == 2) pis_short = 1; /* fix 2026-08-25 bug#31b: typedef 2B 标量参数 (uint16_t) */ /* t35k 2026-08-23: typedef 1B 标量指针参数 (const uint8_t *kpfx) — 原 pis_char 不设 → esz 落 int* 兜底 4 → kpfx[i] 索引 ×4 → cb_each 前缀比较错 → cat-file 短 SHA 失败 */ /* fix 2026-08-18: typedef 8B 基类型 (size_t) 参数 → 8 字节槽 + unsigned */ p_stidx = st_find(tn[tk]); if (p_stidx < 0) p_stidx = td_st_index(tn[tk]); /* fix 2026-08-22 #42e: 同上 typedef struct 参数回退 */ tk++; } /* fix 2026-08-13 Phase3; 2026-08-15: 参数名与 struct 标签同名 (int line) */
                 if (tt[tk] == VK && !strcmp(tn[tk], "long")) tk++; /* 3rd keyword of unsigned long long (fix 2026-08-06) */
-                while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; while (tt[tk] == VK && !strcmp(tn[tk], "const")) tk++; } /* pointer(s) * - skip const after each * (t49c fix: const struct X * const *src middle const broke ptr chain) */
+                while (tt[tk] == DK) { pis_ptr = 1; ptr_depth++; tk++; while (tt[tk] == VK && (!strcmp(tn[tk], "const") || !strcmp(tn[tk], "volatile"))) tk++; } /* pointer(s) * - skip const/volatile after each * (t49c fix: const struct X * const *src middle const broke ptr chain; 2026-08-29 csmith: * volatile 同) */
                 if (tt[tk] == OK && tt[tk + 1] == DK) { /* function pointer param: int (*fp)(int,int) */
                     tk++; tk++; /* skip ( * */
                     if (tt[tk] == VR) {
@@ -16497,6 +16546,8 @@ static void ir_emit(int op, int a, int b, int c) {
 #define I_MOVZX_EAX_RBP 59   /* movzx eax, byte [rbp+disp] (0F B6 85 disp32) — char 局部读 */
 #define I_MOVZX_EAX_RBP_W 60 /* movzx eax, word [rbp+disp] (0F B7 85 disp32) — short 零扩展读 */
 #define I_MOVSX_EAX_RBP_W 61 /* movsx eax, word [rbp+disp] (0F BF 85 disp32) — short 符号扩展读 */
+#define I_MOVSX_EAX_RBP 78   /* movsx eax, byte [rbp+disp] (0F BE 85 disp32) — signed char 符号扩展读 (fix 2026-08-29 csmith) */
+#define I_MOVSX_RAX_BYTE 79  /* movsx eax, byte [rax] (0F BE 00) — signed char 字段符号扩展读 (fix 2026-08-29 csmith) */
 #define I_TEST_SETE 62       /* test eax,eax; sete al; movzx eax,al — !expr */
 #define I_NOT_EAX 63         /* NOT eax (F7 D0) — ~expr */
 #define I_ALU_EAX_EBX 64     /* alu_rr(op, 0, 1): eax op ebx (无 pop!) — ++/-- 用 */
@@ -16550,6 +16601,7 @@ static void ir_flush(void) {
             case I_DEREF64: mov_reg_mreg64(0, 0); break;
             case I_DEREF32: mov_reg_mreg(0, 0); break;
             case I_MOVZX_RAX_BYTE: asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); break;
+            case I_MOVSX_RAX_BYTE: asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); break; /* signed char 字段符号扩展 (fix 2026-08-29 csmith) */
             case I_MOVZX_RAX_WORD: asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break;
             case I_MOVSX_RAX_WORD: asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); break;
             case I_LOAD_RBP64: mov_reg_mbrp64(ir_a[i], ir_b[i]); break;
@@ -16581,6 +16633,7 @@ static void ir_flush(void) {
             case I_MOVZX_EAX_RBP: b(0x0F); b(0xB6); b(0x85); b4(ir_a[i]); break;
             case I_MOVZX_EAX_RBP_W: b(0x0F); b(0xB7); b(0x85); b4(ir_a[i]); break;
             case I_MOVSX_EAX_RBP_W: b(0x0F); b(0xBF); b(0x85); b4(ir_a[i]); break;
+            case I_MOVSX_EAX_RBP: b(0x0F); b(0xBE); b(0x85); b4(ir_a[i]); break; /* signed char 符号扩展读 (fix 2026-08-29 csmith) */
             case I_TEST_SETE: test_rr(0, 0); b(0x0F); b(0x94); modrm(3, 0, 0); movzx_eax_al(); break;
             case I_NOT_EAX: b(0xF7); b(0xD0); break;
             case I_ALU_EAX_EBX: alu_rr(ir_a[i], 0, 1); break;
@@ -16748,7 +16801,7 @@ static void cg(int n) {
                     else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     else if (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
-                    else if (var_is_char(vn)) { movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错) */
+                    else if (var_is_char(vn)) { if (var_is_csgn(vn)) movsx_eax_mbrp(off - cur_frame_sz); else movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错); fix 2026-08-29 csmith: signed char 符号扩展 movsx */
                     else if (var_is_short(vn)) { if (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); else movsx_eax_mbrp_w(off - cur_frame_sz); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-25 bug#31b: 局部 short 16 位读; nll 时 movsxd 64 位扩展 (t42 (unsigned long long)short) */
                     else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); } /* Phase3-IR: 局部 int 读 */
                 }
@@ -17972,7 +18025,7 @@ static void cg(int n) {
                 } else {
                 if (n0[n] >= 0 && ndbl[n0[n]] && var_pesz(vname) == 0 && !var_pdbl(vname)) { cg_f(n0[n]); cvttsd2si_eax_xmm0(); } else cg(n0[n]); /* double rhs → int target: truncate; POINTER targets take the ADDRESS (fix 2026-08-16: n0[n]=-1 守卫) */
                 if (var_is_ll(vname)) ll_ext32(n0[n]); /* ll 目标: int RHS 符号扩展 (fix 2026-08-06: long long v=-7 → 4294967289) */
-                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case10: static 变量写 */
+                            if (var_isstatic(vname)) { if (var_pesz(vname) > 0 || var_small_struct(vname) || var_is_ll(vname)) { ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); } else { ir_emit(I_STORE_RIP_EAX32, off, 0, 0); ir_flush(); } } /* Phase3-IR case7: static 变量写 */
                 else if (var_pesz(vname) > 0) {  mov_mbrp_reg64(off - cur_frame_sz, 0); }
                 else if (var_is_ll(vname)) {  mov_mbrp_reg64(off - cur_frame_sz, 0); } /* long long: 64-bit store (fix 2026-08-05) */
                             else if (var_small_struct(vname)) { ir_emit(I_STORE_RBP64, var_sbase(vname, off) - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18047,7 +18100,7 @@ static void cg(int n) {
                 int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; else if (vars[vi].p_esz > 0) step = vars[vi].p_esz; break; }
                 if (var_isstatic(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); }
-                else if (var_is_char(vn)) { ir_emit(I_MOVZX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } else if (var_is_short(vn)) { if (var_is_uns(vn)) { ir_emit(I_MOVZX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVSX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/-- */
+                else if (var_is_char(vn)) { if (var_is_csgn(vn)) { ir_emit(I_MOVSX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVZX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } } else if (var_is_short(vn)) { if (var_is_uns(vn)) { ir_emit(I_MOVZX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVSX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/--; fix 2026-08-29 csmith: signed char movsx */
                 ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
                 ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 if (var_isstatic(vn)) {
