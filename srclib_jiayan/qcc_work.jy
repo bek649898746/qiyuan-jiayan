@@ -18655,20 +18655,21 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
                     若 (nt[n0[ac]] == 12) { 整 pn0 = n0[n0[ac]]; 若 (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; 若 (pn0 >= 0 && nt[pn0] == 1) { 若 (var_esz((字*)(nn + pn0)) == 8) ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((字*)(nn + pn0)); }  } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
                     pop_r(11);
-                    若 (getenv("QCC_DBG_ST")) fprintf(stderr, "[ST] nested store vn=%s ac_nt=%d cg_mem_frow=%d cg_mem_ptr=%d\n", vn, nt[n0[ac]], cg_mem_frow, cg_mem_ptr);
                     若 (cg_mem_ptr) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); cg_mem_ptr = 0; } /* Phase3-IR case10 */
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
-                    若 (cg_mem_frow > 1) {
+                    { 整 _store_scale = cg_mem_frow; 若 (cg_fdepth >= 0 && cg_fdepth < 4 && cg_frows[cg_fdepth] > 0) _store_scale = cg_frows[cg_fdepth]; /* fix 2026-08-29 csmith: 3D 嵌套基 store 用 per-dim 行宽 — g[0][0][1] 原 cg_mem_frow=4 (中间行宽) → 写入偏移 4 应 2 + 32 位写应 word (g3d16/s137 g_2182) */
+                    若 (_store_scale > 1) {
                         
-                        ir_emit(I_MOV_R9_IMM, cg_mem_frow, 0, 0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); /* Phase3-IR case10: nested 索引缩放 */
+                        ir_emit(I_MOV_R9_IMM, _store_scale, 0, 0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); /* Phase3-IR case10: nested 索引缩放 */
                     }
                         ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 索引符号扩展 */
                         ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 地址+=索引 */
                         若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若(cg_mem_frow == 1 || cg_mem_frow == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若(cg_mem_frow == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
-                        否 若(cg_mem_frow == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(_store_scale == 1 || _store_scale == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(_store_scale == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        否 若(_store_scale == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否{ ir_emit(I_STORE_RAX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    }
                     mov_rr(0, 3); /* eax = stored value (chained assignments) */
                 } 否 若(off>=0){
                     整 did=0;
@@ -19344,11 +19345,12 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 整 _need_deref_single = cg_mem_ptr_need; /* fix 2026-08-22 t41b: 单层指针字段取值 (slab[i] max=2 但只 1 层下标) 需 deref — 数组字段 (st[si].fnames[i] 参数) 不 deref (数组衰减取址) */
                 cg_mem_ptr_need = 0; /* 单层场景不留残留 */
                 若 (!cg_no_deref && (cg_fdepth >= cg_fdepth_max || (_need_deref_single && cg_nested_cnt == 0))) { /* deref only at OUTERMOST index (fix 2026-08-05); t41b: 指针字段 max=2 但只有单层下标时 (slab[i]) 也必须 deref */
+                    整 _el_w = (cg_fdepth_max > 0 && cg_fdepth_max <= 4 && cg_frows[cg_fdepth_max - 1] > 0) ? cg_frows[cg_fdepth_max - 1] : cg_mem_frow; /* fix 2026-08-29 csmith: 3D 嵌套 deref 用元素宽度 — cg_mem_frow=中间行宽 (int16 3D cg_mem_frow=4 应 2) → 32 位读错 */
                     若 (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
-                    否 若 (cg_mem_frow == 1 || cg_mem_frow == 0) { 若 (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
-                    否 若 (cg_mem_frow == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
-                    否 若 (cg_mem_frow == 2) { 若 (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
-                    否 若 (cg_mem_frow == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
+                    否 若 (_el_w == 1 || _el_w == 0) { 若 (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
+                    否 若 (_el_w == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
+                    否 若 (_el_w == 2) { 若 (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
+                    否 若 (_el_w == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                     若 (cg_mem_uns) nuns[n] = 1; /* fix 2026-08-29 csmith: 嵌套数组元素 unsigned — uint32 2D 数组传参零扩展 (s175 g_2[i][j]) */
                 }
