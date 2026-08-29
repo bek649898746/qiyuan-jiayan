@@ -6207,13 +6207,14 @@ static int blk(void) {
                     int d = Nd(7); memcpy((char*)(nn + d), vn, 32);
                     int scnt = 1;
                     int is_arr = 0; /* 数组声明标记 (fix 2026-08-18: static struct 数组误走栈帧 var_array → .data 槽全 0 → path.c pathname_array gitdir 乱码) */
+                    int sdims = 0; int sadim[8] = {0}; /* fix 2026-08-29 csmith: 每维大小 — 原只乘扁平 scnt, 局部 2D struct 数组 brace init {{..},{..}} 按扁平 nd=1 解析, 行闭合 } 提前断 → 只初始化第一行; 独立声明 (逗号声明+数组{init} qcc 自编译不消费 ={ 会错位) */
                     if (tt[tk] == LB) { /* struct Tag *arr[N] / struct Tag arr[N] */
                         is_arr = 1;
                         scnt = 1;
                         int unsized = 0;
                         while (tt[tk] == LB) {
                             tk++; int cdim = 0;
-                            if (const_expr_eval(&cdim)) { scnt *= cdim > 0 ? cdim : 1; }
+                            if (const_expr_eval(&cdim)) { if (sdims < 8) sadim[sdims] = cdim; sdims++; scnt *= cdim > 0 ? cdim : 1; }
                             else { if (tt[tk] == RB) unsized = 1; else { while (tk < TS && tt[tk] != RB && tt[tk] != EK) tk++; } }
                             if (tt[tk] == RB) tk++;
                         }
@@ -6233,13 +6234,18 @@ static int blk(void) {
                             }
                             tk = save_u;
                             scnt = n;
+                            if (sdims == 1 && sadim[0] == 0) { sadim[0] = n; } /* 未定长第一维推断 */
                         }
                         if (is_static) { /* fix 2026-08-18: 原无条件 var_array → 栈帧局部, .data 槽 0 + 函数返回后失效 */
                             if (is_ptr) var_static_arr(vn, 0, 8, scnt); /* static struct Tag *arr[N]: 8B 指针元素 */
-                            else if (si >= 0) var_static_struct(vn, si, scnt); /* static struct Tag arr[N] */
+                            else if (si >= 0) { var_static_struct(vn, si, scnt); /* static struct Tag arr[N] */
+                                if (sdims >= 1) { vars[vcnt - 1].frows[sdims - 1] = stypes[si].sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; } /* 2D+ 行宽 (fix 2026-08-29) */
+                                if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz;
+                            }
                             else var_static_arr(vn, 0, 4, scnt);
                         } else {
                             var_array(vn, scnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
+                            if (si >= 0 && !is_ptr) { vars[vcnt - 1].p_esz = stypes[si].sz; if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; if (sdims >= 1) { vars[vcnt - 1].frows[sdims - 1] = stypes[si].sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; } } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 */
                         }
                         vars[vcnt - 1].st_idx = si; /* fix 2026-08-20: T** 数组 st_idx 保留 si — mem_addr 链需要 pointee 结构体类型 */
                     } else if (is_ptr) {
@@ -6272,8 +6278,8 @@ static int blk(void) {
                                     Nc(blk, d); /* declare first */
                                     for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                                     str_row = 0;
-                                    int adimv[8] = {0}; adimv[0] = scnt;
-                                    brace_arr_init(blk, d, adimv, 1, 0, stypes[si].sz);
+                                    int adimv[8] = {0}; for (int _dd = 0; _dd < 8; _dd++) adimv[_dd] = sadim[_dd] > 0 ? sadim[_dd] : 1; /* fix 2026-08-29 csmith: 2D+ struct 数组用真实每维大小 (原 adimv[0]=scnt 扁平 → 行闭合 } 提前断) */
+                                    brace_arr_init(blk, d, adimv, sdims > 0 ? sdims : 1, 0, stypes[si].sz);
                                     if (ginit_n < 4096) ginit[ginit_n++] = blk;
                                     vars[vcnt - 1].pdisp = ginit_n - 1;
                                     if (tt[tk] == UK) tk++;
@@ -6295,8 +6301,8 @@ static int blk(void) {
                             if (is_arr) { /* 局部 struct Tag arr[N] = { {...} } — 数组用 brace_arr_init (fix 2026-08-18: 原 brace_fields 遇多元素 { 解析错) */
                                 for (int i = 0; i < 8; i++) gi_idx[i] = 0;
                                 str_row = 0;
-                                int adimv[8] = {0}; adimv[0] = scnt;
-                                brace_arr_init(b, idn, adimv, 1, 0, is_ptr ? 8 : stypes[si].sz); /* t49f: ptr array elem = 8B */
+                                int adimv[8] = {0}; for (int _dd = 0; _dd < 8; _dd++) adimv[_dd] = sadim[_dd] > 0 ? sadim[_dd] : 1; /* fix 2026-08-29 csmith: 2D+ struct 数组真实每维大小 */
+                                brace_arr_init(b, idn, adimv, sdims > 0 ? sdims : 1, 0, is_ptr ? 8 : stypes[si].sz); /* t49f: ptr array elem = 8B */
                                 if (tt[tk] == UK) tk++;
                             } else {
                                 tk++; int bi = brace_fields(si, idn); if (tt[tk] == UK) tk++; int bt = Nd(5); Nc(bt, bi); Nc(b, bt); b_cnt++;
@@ -13687,6 +13693,12 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             /* struct-typed array var: struct B globals[N]; */
                             if (getenv("QCC_DBG_NS")) if (strstr(gname, "ref_namespace")) fprintf(stderr, "[NS] global-array '%s' gcnt=%d g_stidx=%d sz=%d ptrd=%d\n", gname, gcnt, g_stidx, stypes[g_stidx].sz, ptrd);
                             var_static_struct(gname, g_stidx, gcnt);
+                            /* fix 2026-08-29 csmith: 2D+ struct array (S0 g_614[5][9]) -
+                               var_static_struct 只登记扁平 arr_esz=struct 大小, 无行宽 →
+                               g[i][j] 两维都按元素大小缩放相加 (g[1][0] 落到 g+1*8 而非 g+1*row)
+                               → s137 g_614/g_949 静默错. 镜像非 struct 2D 路径补 frows + 行宽 */
+                            if (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = stypes[g_stidx].sz; for (int fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; }
+                            if (gfirst > 0 && gcnt > gfirst && ptrd <= 0) vars[vcnt - 1].arr_esz = gcnt / gfirst * stypes[g_stidx].sz; /* 2D+: ROW byte size */
                         } else {
                             /* multi-dim: the first index's element is the inner array (row). e.g.
                                char str_tbl[512][512] -> arr_esz=512 so str_tbl[i] yields a row
@@ -18286,7 +18298,17 @@ static void cg(int n) {
                 char *fname = (char*)(nn + mc);     /* field name */
                 if (nt[n0[mc]] == 14) {
                     /* arr[i].field = expr */
-                    char *av = (char*)(nn + n0[n0[mc]]); /* array variable name */
+                    /* fix 2026-08-29 csmith: 2D+ struct array g[i][j].f = v - n0[n0[mc]] 是
+                       内层 case-14 节点 (垃圾字符串) - var_stidx=-1 - foff=-1 - store 静默丢弃
+                       (ginit 写 2D struct 数组初值全丢 -> 读全 0). 镜像 case-15 读路径修复 */
+                    char *av;
+                    int _qa2 = n0[mc], _pure2 = 1;
+                    while (_qa2 >= 0 && (nt[_qa2] == 14 || nt[_qa2] == 15 || nt[_qa2] == 13)) {
+                        if (nt[_qa2] != 14) { _pure2 = 0; break; }
+                        _qa2 = n0[_qa2];
+                    }
+                    if (_pure2 && _qa2 >= 0 && nt[_qa2] == 1) av = (char*)(nn + _qa2);
+                    else av = (char*)(nn + n0[n0[mc]]); /* array variable name */
                     int s2 = var_stidx(av);
                     int foff = s2 >= 0 ? st_off(stypes[s2].name, fname) : -1;
                     if (foff < 0) { /* fix 2026-08-18: arr[i].field=expr 的基是字段链 (store->parsed[nr].begin=begin) — av 是字段名 (parsed) 非变量 → 沿基链解析元素 struct (原 foff=-1 整段跳过 → 事件数组从未写入 → config 写循环读全 0)
@@ -19040,7 +19062,17 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
             char *fn = (char*)(nn + n);
             if (nt[n0[n]] == 14) {
                 /* arr[i].field: n0 = array access �?cg gives element address, +fo �?deref */
-                char *av = (char*)(nn + n0[n0[n]]); /* array variable name */
+                /* fix 2026-08-29 csmith: 2D+ struct array g[i][j].f - n0[n0[n]] 是内层 case-14
+                   节点 (字符串槽是垃圾) - var_stidx=-1 - fo=-1 - 成员读静默丢弃 (printf 打出 &g 地址).
+                   纯下标链 (全 case-14) 沿链走到底取根变量名; 含成员链 (字段数组) 保持原 av */
+                char *av;
+                int _qa = n0[n], _pure = 1;
+                while (_qa >= 0 && (nt[_qa] == 14 || nt[_qa] == 15 || nt[_qa] == 13)) {
+                    if (nt[_qa] != 14) { _pure = 0; break; }
+                    _qa = n0[_qa];
+                }
+                if (_pure && _qa >= 0 && nt[_qa] == 1) av = (char*)(nn + _qa);
+                else av = (char*)(nn + n0[n0[n]]); /* array variable name */
                 int s2 = var_stidx(av);
                 int fo = s2 >= 0 ? st_off(stypes[s2].name, fn) : -1;
                 if (fo < 0) { /* fix 2026-08-18: arr[i].field 的基是字段链 (store.parsed[0].begin) — av 是字段名 (parsed) 非变量 → 沿基链解析元素 struct 类型 (原 fo=-1 整段跳过 → 事件数组读写空转 → config 写循环坏)
@@ -19350,7 +19382,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                     else if (_el_w == 1 || _el_w == 0) { if (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
                     else if (_el_w == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
                     else if (_el_w == 2) { if (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
-                    else if (_el_w == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
+                    else if (_el_w == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* mov rax, [rax] — fix 2026-08-29 csmith: 补 nll (嵌套 deref int64 元素原未标 → g_223[3][1] uint64 参数丢高 32, s137; 本会话未提交修复, 勿丢) */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                     if (cg_mem_uns) nuns[n] = 1; /* fix 2026-08-29 csmith: 嵌套数组元素 unsigned — uint32 2D 数组传参零扩展 (s175 g_2[i][j]) */
                 }
