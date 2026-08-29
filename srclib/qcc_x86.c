@@ -13156,6 +13156,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         if (!strcmp(tn[tk], "__attribute__")) { tk++; if (tt[tk] == OK) { int d = 1; tk++; while (tk < TS && d > 0) { if (tt[tk] == OK) d++; else if (tt[tk] == KK) { d--; if (d <= 0) { tk++; break; } } tk++; } } } /* __attribute__((...)) 后置跳过 — 注意 #define __attribute__(x) 空宏后 tt=SK 非 VR, 只能按 tn 匹配 (fix 2026-08-14) */
         int fdef = Nd(4);
         int fn_ok = 0, fdef_is_fnptr_ret = 0;
+        char fn_first_param[64]; fn_first_param[0] = 0; /* 接入 2026-08-29 P2 #222 多子句函数定义: 记录第一个参数名 (匹配对象) */
         int fn_name_tk = -1; /* 2026-08-28 type-root-fix: 函数名 token 位置 — 参数表内 可空 区间判定用 (防误清函数体 可空) */
         if (tt[tk] == VR && tt[tk + 1] == OK) { /* fn name must be followed by ( */
             fn_name_tk = tk;
@@ -13260,6 +13261,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     continue;
                 }
                 if (tt[tk] == VR) {
+                    if (!fn_first_param[0] && !(tt[tk + 1] == VR && tt[tk + 2] != OK)) strcpy(fn_first_param, tn[tk]); /* 2026-08-29 P2 #222: 第一个参数名 (排除未知类型 VR VR 两连) */
                     if (tt[tk + 1] == VR && tt[tk + 2] != OK) { tk++; } /* 未知类型参数: `mode_t native_mode` — 类型未注册 (系统头被跳过) 时 VR VR 两连, 第一个是类型名非参数名; 原把类型注册成参数占掉 rcx 槽 → 真参数绑到 rdx → 调用方传 rcx 读到垃圾 (fix 2026-08-19: git compat/stat.c mode_t 未注册 → mode_native_to_git 读错槽 → S_ISREG 判定错 → git status 把 HEAD 当目录 → SEGV) */
                     if (p_fptr) { /* typedef'd fnptr param: fp_t cb — 8-byte pointer slot (fix 2026-08-03) */
                         var_param(tn[tk], pr, 4, 8, -1, 0, 0);
@@ -13353,8 +13355,65 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             lbl_n = 0; /* fix 2026-08-18: 标签表按函数隔离 — 原跨函数共享同一 id (refs.c 两个 out:), goto out 跳到后一函数 out 标签 → 用垃圾栈执行 ref_transaction_free → 调用栈地址 SEGV (git init check_refname_format) */
             cur_fn_defer_idx = fvn; defer_cnt[fvn] = 0; /* 接入 2026-08-27 defer: 当前函数 defer 收集目标 */
             int ctfe_b0 = tk; /* 2026-08-28 type-root-16 #76: CTFE 记录函数体 token 起点 ({) */
-            int bodyx = blk();
-            if (ctfe_fns_n < 2048) { strcpy(ctfe_fns[ctfe_fns_n].name, (char*)(nn + fdef)); ctfe_fns[ctfe_fns_n].body0 = ctfe_b0; ctfe_fns[ctfe_fns_n].body1 = tk; ctfe_fns_n++; } /* CTFE: 函数体 token 范围 (编译期 f() 求值用) */
+            int bodyx;
+            if (tt[tk] == VR && !strcmp(tn[tk], "对照")) { /* 接入 2026-08-29 P2 #222 多子句函数定义: fn(a, ...) 对照 值: 结果, 值 若 守卫: 结果, ..., 其他: 默认; — 匹配第一个参数, 等值分派脱糖 → { int __mcf=默认/0; if(a==v1){__mcf=r1;} ...; return __mcf; } */
+                tk++; /* 对照 */
+                if (!fn_first_param[0]) { fprintf(stderr, "[ERR] 多子句函数 '%s' 需要至少一个参数 (匹配对象为第一个参数, v3.0 #222)\n", (char*)(nn + fdef)); exit(1); }
+                static int mcf_seq = 0; char srname[64]; sprintf(srname, "__mcf_%d_", mcf_seq++);
+                static int mcf_seq2 = 0; char mmname[64]; sprintf(mmname, "__mmm_%d_", mcf_seq2++);
+                var_offset(srname); uninit_remove(srname); var_offset(mmname); uninit_remove(mmname); /* 结果/匹配标志 (声明即赋值, 防 A4001) */
+                bodyx = Nd(5);
+                int e_sel = Nd(1); memcpy((char*)(nn + e_sel), fn_first_param, 64); /* 匹配对象 = 第一个参数 */
+                int has_def = 0; int e_def = 0;
+                int vv[64]; int rr[64]; int has_guard[64]; int gv[64]; int ng = 0;
+                while (1) {
+                    if (tt[tk] == VR && !strcmp(tn[tk], "其他")) { tk++; if (tt[tk] == CL) tk++; e_def = expr(); has_def = 1; if (tt[tk] == SK) tk++; break; }
+                    if (ng < 64) {
+                        int v1 = band(); /* 模式值 (不含 | 位或, 等值分派) */
+                        int guard = -1;
+                        if (tt[tk] == IK && !strcmp(tn[tk], "if")) { tk++; guard = expr(); } /* 守卫: 值 若 cond */
+                        if (tt[tk] == CL) tk++; /* : */
+                        int res = expr();
+                        if (tt[tk] == SK) tk++; /* 尾分号 */
+                        vv[ng] = v1; rr[ng] = res; has_guard[ng] = (guard >= 0); gv[ng] = guard;
+                        ng++;
+                    }
+                    if (tt[tk] == CK) { tk++; continue; }
+                    break;
+                }
+                { int d = Nd(7); memcpy((char*)(nn + d), srname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(bodyx, d); } /* int __mcf = 0; (2026-08-29 fix: 其他不得作初始值 — 会无条件求值递归, 作未匹配兜底分支) */
+                { int d = Nd(7); memcpy((char*)(nn + d), mmname, 32); { int z = Nd(0); nv[z] = 0; Nc(d, z); } Nc(bodyx, d); } /* int __mmm = 0; 已匹配标志 */
+                for (int i = 0; i < ng; i++) {
+                    int cmp = Nd(2); nv[cmp] = T_QK; Nc(cmp, e_sel); Nc(cmp, vv[i]); /* a == v1 */
+                    if (has_guard[i]) { int andn = Nd(2); nv[andn] = LA; Nc(andn, cmp); Nc(andn, gv[i]); cmp = andn; }
+                    int ifn = Nd(8); Nc(ifn, cmp);
+                    int ibd = Nd(5);
+                    { int v_sr = Nd(1); memcpy((char*)(nn + v_sr), srname, 32);
+                      int asg = Nd(10); Nc(asg, v_sr); Nc(asg, rr[i]); Nc(ibd, asg); } /* __mcf = 结果; */
+                    { int v_mm = Nd(1); memcpy((char*)(nn + v_mm), mmname, 32);
+                      int one = Nd(0); nv[one] = 1;
+                      int asg2 = Nd(10); Nc(asg2, v_mm); Nc(asg2, one); Nc(ibd, asg2); } /* __mmm = 1; */
+                    Nc(ifn, ibd);
+                    Nc(bodyx, ifn);
+                }
+                if (has_def) { /* 其他: if (!__mmm) { __mcf = e_def; } — 未匹配兜底 (修复: 原作初始值无条件求值 → 递归崩溃) */
+                    int v_mm = Nd(1); memcpy((char*)(nn + v_mm), mmname, 32);
+                    int zero = Nd(0); nv[zero] = 0;
+                    int notm = Nd(2); nv[notm] = T_QK; Nc(notm, v_mm); Nc(notm, zero); /* __mmm == 0 */
+                    int ifn = Nd(8); Nc(ifn, notm);
+                    int ibd = Nd(5);
+                    { int v_sr = Nd(1); memcpy((char*)(nn + v_sr), srname, 32);
+                      int asg = Nd(10); Nc(asg, v_sr); Nc(asg, e_def); Nc(ibd, asg); } /* __mcf = e_def; */
+                    Nc(ifn, ibd);
+                    Nc(bodyx, ifn);
+                }
+                { int v_sr = Nd(1); memcpy((char*)(nn + v_sr), srname, 32);
+                  int rn2 = Nd(6); Nc(rn2, v_sr); Nc(bodyx, rn2); } /* return __mcf; */
+                ctfe_b0 = -1; /* 多子句函数无 { 体, CTFE 跳过 */
+            } else {
+                bodyx = blk();
+            }
+            if (ctfe_fns_n < 2048 && ctfe_b0 >= 0) { strcpy(ctfe_fns[ctfe_fns_n].name, (char*)(nn + fdef)); ctfe_fns[ctfe_fns_n].body0 = ctfe_b0; ctfe_fns[ctfe_fns_n].body1 = tk; ctfe_fns_n++; } /* CTFE: 函数体 token 范围 (编译期 f() 求值用); 2026-08-29 P2 #222: 多子句函数 ctfe_b0=-1 不进表 (无 { 体, 防 body0=-1 越界) */
             if (cur_contract >= 0 && contracts[cur_contract].pre_stmt >= 0) { int wrapx = Nd(5); Nc(wrapx, contracts[cur_contract].pre_stmt); Nc(wrapx, bodyx); bodyx = wrapx; } /* 契约前置 (2026-08-28 可吞清单 P0-7): 入口检查包函数体首 */
             Nc(fdef, bodyx); /* 函数体 (n0) */
             if (defer_cnt[fvn] > 0) { /* 接入 2026-08-27 defer: LIFO 逆序打包 defer 语句 → n1[fdef] — return/函数尾跳 epi_label 处先执行 */
