@@ -5812,7 +5812,7 @@ static int prim(void) {
       if (cast_ty && !strcmp(cast_ty, "long")) _cast64 = 1;
       else if (cast_ty2 && !strcmp(cast_ty2, "long")) _cast64 = 1;
       else if (cast_td) { int _ct64 = tdef_lookup(cast_td); if (_ct64 >= 0 && !tdefs[_ct64].is_struct && !tdefs[_ct64].is_fnptr && !tdefs[_ct64].is_dbl && tdefs[_ct64].sz == 8) _cast64 = 1; }
-      if (ce >= 0) { if (_cuns) nuns[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nuns[ce] = 0; if (!_cast64 && (cast_ty || cast_ty2 || cast_td)) nll[ce] = 0; } }
+      if (ce >= 0) { if (_cuns) nuns[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nuns[ce] = 0; if (_cast64) nll[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nll[ce] = 0; } } /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
                 if (tt[tk] == LB) {
@@ -18958,7 +18958,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                 if (is_dp) { ir_emit(I_STORE_XMM0_RBX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 double */
                 else if (pe == 1) { ir_emit(I_STORE_RBX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 char */
                 else if (pe == 2) { ir_emit(I_STORE_RBX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 short */
-                else if (pe == 8) { ir_emit(I_STORE_RBX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 64 */
+                else if (pe == 8) { ll_ext32(n1[n]); ir_emit(I_STORE_RBX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 64 — fix 2026-08-30 csmith s182/s62: 缺 ll_ext32 → 32 位 RHS 存 64 位高 32 位=0 (g_437 int64_t 被 (*l_1806)= 截断 1713451458 应 0xD9090D5B6625D7C2) */
                 else { ir_emit(I_STORE_RBX32, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: *ptr 存 32 */
                 }
             } else {
