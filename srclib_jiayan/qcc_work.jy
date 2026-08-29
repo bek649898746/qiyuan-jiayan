@@ -18655,6 +18655,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 { cg_no_deref = 1; cg(n0[ac]); cg_no_deref = 0; } /* array/struct field: base address */
                     若 (nt[n0[ac]] == 12) { 整 pn0 = n0[n0[ac]]; 若 (pn0 >= 0 && (nt[pn0] == 23 || nt[pn0] == 26)) pn0 = n0[pn0]; 若 (pn0 >= 0 && nt[pn0] == 1) { 若 (var_esz((字*)(nn + pn0)) == 8) ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* (*X)[i]=v: case-12 no_deref 只给出 X 的值 (=&pointee 槽), T** 需再解引用一次拿 T* 基址 (fix 2026-08-18: (*store_key)[i]=c 原基址=&char*槽+i → 写入调用者栈 → config 写坏) */ cg_mem_frow = var_pelem((字*)(nn + pn0)); }  } /* fix 2026-08-18: (*out)[i]=x — case-12 取址路径不设 cg_mem_frow (cg_no_deref break), 此处显式按 pointee 设 (char** → 1; var_pelem 对参数 char** 也正确) */
                     pop_r(11);
+                    若 (getenv("QCC_DBG_ST")) fprintf(stderr, "[ST] nested store vn=%s ac_nt=%d cg_mem_frow=%d cg_mem_ptr=%d\n", vn, nt[n0[ac]], cg_mem_frow, cg_mem_ptr);
                     若 (cg_mem_ptr) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); cg_mem_ptr = 0; } /* Phase3-IR case10 */
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-05) */
                     若 (cg_mem_frow > 1) {
@@ -18676,7 +18677,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     mov_rr(11,0); /* r11d = index (r9 may be arg3) */
                     整 esz=vars[vi].arr_esz?vars[vi].arr_esz:4;
                     整 elemsz=vars[vi].p_esz?vars[vi].p_esz:esz; /* fix 2026-08-28: 2D 数组写 base 用标量元素大小 (同 case 1/14/11) */
-                    若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 */
+                    若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz==1){ } 否 { mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 大元素缩放 — fix 2026-08-29 csmith: esz=3 (int8 2D 行宽) 原不匹配 2/4/>4 不缩放 */
                     整 base=off-vars[vi].arr_sz*elemsz;
                     若 (vars[vi].alignN > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); } /* fix step30/31: 对齐数组/VLA 写基址 = 地址槽 */ 否 { ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); }
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 数组基地址 */
@@ -18707,7 +18708,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         整 esz = 4;
                         遍(整 vi=0;vi<vs_n();vi++)若(!strcmp(vars[vi].name,vn)&&vars[vi].is_static&&vars[vi].arr_esz>0){esz=vars[vi].arr_esz;断;}
                         mov_rr(11,0);
-                        若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz>4){ mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 */
+                        若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==1){ } 否 { mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 — fix 2026-08-29 csmith: esz=3 (int8 2D 行宽) 原不缩放 */
                         ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: static 数组基地址 */
                         若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -19366,7 +19367,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         mov_rr(11, 0); /* r11d = index (r9 may be arg3) */
                         若 (esz == 4) { asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
                         否 若 (esz == 2) { asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
-                        否 若 (esz > 4) { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
+                        否 若 (esz == 1) { } /* 1 字节行宽不缩放 */
+                        否 { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d — fix 2026-08-29 csmith: esz=3 (int8 2D 行宽) 原不匹配 2/4/>4 不缩放 → 局部 2D int8 数组寻址错 */
                         整 base = off - vars[vi].arr_sz * elemsz;
                         若 (vars[vi].alignN > 0) { mov_reg_mbrp64(0, off - cur_frame_sz); } /* fix step30: 对齐数组基址 = 地址槽 (运行时对齐地址, 静态 lea 无法 >16 对齐) */ 否 lea_r_mbrp(0, base - cur_frame_sz);
                         movsxd_r11(); asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0);
@@ -19422,7 +19424,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     mov_rr(11, 0); /* r11d = index */
                     若 (esz == 2) { asm_emit("    左移 r11, 1\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(1); }
                     否 若 (esz == 4) { asm_emit("    左移 r11, 2\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 0, 0, 1); b(0xC1); modrm(3, 4, 3); b(2); }
-                    否 若 (esz > 4) { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d */
+                    否 若 (esz == 1) { } /* 1 字节行宽不缩放 */
+                    否 { mov_r_imm(0, esz); mov_rr(9, 0); asm_emit("    乘 r11, r9\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(0, 1, 0, 1); b(0x0F); b(0xAF); modrm(3, 3, 1); } /* IMUL r11d, r9d — fix 2026-08-29 csmith: esz=3 (int8 2D 行宽) 原不匹配 2/4/>4 不缩放 → g[1] 偏移 1 应 3 (2D int8 数组寻址错, s137/ginit2d) */
                     lea_rax_rip(coff_static_disp(off, 1) - 1); /* rax = &static[0] (lea is 7 bytes: stc_disp assumes 6) */
                     movsxd_r11(); /* 32 位索引符号扩展 (fix 2026-08-19: 负索引零扩展 → ptr+4GB → SEGV) */
                 asm_emit("    加64 r0, r11\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); rex(1, 1, 0, 0); b(0x01); modrm(3, 3, 0); /* ADD rax, r11 */
