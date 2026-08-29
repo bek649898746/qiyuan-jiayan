@@ -18116,8 +18116,31 @@ static void cg(int n) {
             if (nt[op0] == 1 && off >= 0) {
                 int step = 1; /* pointer: advance by ELEMENT size (fix 2026-08-09: 参数用 arr_esz(元素宽,var_param已存), 局部用 p_esz; 参数 p_esz 硬编码4 → char* a++ 步进错 BUG-NEW-1) */
                 for (int vi = vs_n() - 1; vi >= 0; vi--) if (!strcmp(vars[vi].name, vn) && var_codegen_visible(vi)) { if (vars[vi].p_depth > 0) { if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; else if (vars[vi].p_esz > 0) step = vars[vi].p_esz; } else if (vars[vi].arr_sz == 0 && vars[vi].arr_esz != 0) step = vars[vi].arr_esz; break; } /* fix 2026-08-29 csmith: p_depth>0 守卫 — 仅指针变量按元素缩放; 原全局 LL 标量 p_esz=4(槽宽) 被当步长 → --g_6 减 4 (seed18 静默); 指针参数 p_depth=0 但 arr_esz=元素宽 保留原语义 */
-                if (var_isstatic(vn)) { if (var_is_ll(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); } }
+                int did_ll64 = 0; /* 局部/static LL 64 位完整流程已执行 (fix 2026-08-29 csmith: y=x-- 旧值只取低 32 位 → 高 32 丢) */
+                if (var_isstatic(vn)) { if (var_is_ll(vn)) { /* static LL: 64 位读-改-写 + 完整旧值返回 */
+                    ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush();   /* rax = 旧值 */
+                    ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();    /* 栈存旧值 */
+                    ir_emit(I_MOV_IMM, 1, step, 0); ir_flush();      /* ecx = +step */
+                    ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush();   /* rax = 旧值重读 */
+                    b(0x48); b(0x63); modrm(3, 1, 1); /* movsxd rcx, ecx */
+                    if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
+                    ir_emit(I_STORE_RIP_RAX64, off, 1, 0); ir_flush(); /* [rip+off] = 新值 */
+                    pop_r64(0); nll[n] = 1; did_ll64 = 1;            /* rax = 旧值; nll 标记 64 位 */
+                } else { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); } }
+                else if (var_is_ll(vn)) { /* 局部 LL: 64 位读-改-写, 旧值完整 64 位返回 */
+                    ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush();   /* rax = 旧值 */
+                    ir_emit(I_PUSH_R64_RAX, 0, 0, 0); ir_flush();                    /* 栈存旧值 */
+                    ir_emit(I_MOV_IMM, 1, step, 0); ir_flush();                      /* ecx = +step (原 -step 符号扩展后双负) */
+                    ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush();   /* rax = 旧值重读 */
+                    b(0x48); b(0x63); modrm(3, 1, 1); /* movsxd rcx, ecx */
+                    if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
+                    ir_emit(I_STORE_RBP64, off - cur_frame_sz, 0, 0); ir_flush(); /* [rbp+off] = 新值 */
+                    pop_r64(0);                                                     /* rax = 旧值 */
+                    nll[n] = 1; /* fix 2026-08-29 csmith: 后缀 ++/-- 返回完整 64 位旧值 — 原 nll=0 → 赋值路径按 32 位存 → y=x-- 丢高 32 位 */
+                    did_ll64 = 1;
+                }
                 else if (var_is_char(vn)) { if (var_is_csgn(vn)) { ir_emit(I_MOVSX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVZX_EAX_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } } else if (var_is_short(vn)) { if (var_is_uns(vn)) { ir_emit(I_MOVZX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_MOVSX_EAX_RBP_W, off - cur_frame_sz, 0, 0); ir_flush(); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b: short ++/--; fix 2026-08-29 csmith: signed char movsx */
+                if (!did_ll64) {
                 ir_emit(I_PUSH_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR: save old value */
                 ir_emit(I_MOV_IMM, 1, is_dec ? -step : step, 0); ir_flush(); /* Phase3-IR: ebx = ±step */
                 if (var_isstatic(vn)) {
@@ -18138,6 +18161,7 @@ static void cg(int n) {
                     if (var_is_char(vn)) { ir_emit(I_STORE_RBP_BYTE, off - cur_frame_sz, 0, 0); ir_flush(); } else if (var_is_short(vn)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0, 0); ir_flush(); } else { ir_emit(I_STORE_RBP, off - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR; fix 2026-08-25 bug#31b */
                 }
                 pop_r(0); /* restore old value → eax */
+                } /* if (!did_ll64) — 局部 LL 64 位路径已自行完成 (fix 2026-08-29 csmith) */
             } else {
                 /* postfix ++/-- on a non-simple target (struct member / array
                    element / deref, e.g. stypes[si].fn++): compute the target's
@@ -18190,6 +18214,13 @@ static void cg(int n) {
                         if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
                         mov_rip_rax64(coff_static_disp(off, 1) - 1);
                     } else { mov_eax_rip(coff_static_disp(off, 0)); alu_rr(T_PK, 0, 1); mov_rip_eax(coff_static_disp(off, 0)); }
+                }
+                else if (var_is_ll(vn)) { /* 局部 LL: 64 位读-改-写 (fix 2026-08-29 csmith: 原 32 位 mov_reg_mbrp/alu/mov_mbrp_reg → 低 32 位进位/借位边界错; ecx 重新载 +step 防双负) */
+                    mov_reg_mbrp64(0, off - cur_frame_sz);   /* rax = 旧值 */
+                    mov_r_imm(1, step);                        /* ecx = +step */
+                    b(0x48); b(0x63); modrm(3, 1, 1);          /* movsxd rcx, ecx */
+                    if (is_dec) { rex(1, 0, 0, 0); b(0x29); modrm(3, 1, 0); } else { rex(1, 0, 0, 0); b(0x01); modrm(3, 1, 0); } /* sub/add rax, rcx */
+                    mov_mbrp_reg64(off - cur_frame_sz, 0);    /* [rbp+off] = 新值 */
                 }
                 else { mov_reg_mbrp(0, off - cur_frame_sz); alu_rr(T_PK, 0, 1); mov_mbrp_reg(off - cur_frame_sz, 0); }
                 /* eax = new value */
