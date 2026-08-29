@@ -15412,7 +15412,7 @@ static void emit_vsnprintf(void) {
     fmt_va_forward = 0;
     set_label(ldone);
     /* len = r12 - r14 */
-    mov_rr64(0, 12); asm_emit("    sub64 rax, r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0);
+    mov_rr64(0, 12); asm_emit("    减64 rax, r14\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1,1,0,0); b(0x29); modrm(3, 6, 0);
     mov_mbrp_reg(scratch_base - cur_frame_sz + 224, 0); /* save len (sc+224 free after fmt_loop) */
     pop_r(15); /* size */
     pop_r(3);  /* buf */
@@ -15426,8 +15426,8 @@ static void emit_vsnprintf(void) {
     mov_rr64(1, 9);  /* rcx = count */
     mov_rr64(6, 14); /* rsi = r14 (internal buffer start; r8 clobbered by fmt_loop) */
     mov_rr64(7, 3);  /* rdi = buf */
-    asm_emit("    rep movsb\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF3); b(0xA4);
-    asm_emit("    mov byte [rdi], 0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xC6); b(0x07); b(0); /* mov byte [rdi], 0 (rdi=7, no REX needed) */
+    asm_emit("    块复制 (rep movsb)\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF3); b(0xA4);
+    asm_emit("    写字节 [rdi], 0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xC6); b(0x07); b(0); /* mov byte [rdi], 0 (rdi=7, no REX needed) */
     mov_reg_mbrp(0, scratch_base - cur_frame_sz + 224); /* eax = len (needed length) */
 }
 
@@ -15514,7 +15514,7 @@ static void emit_fileio(const char *fname) {
            caller 的 if(fp) 只判 0 → 打开失败被当成功 → 对不存在的 .git/config 启动
            解析 → git init "bad config line 1"。将 -1 归一为 NULL(0)。 */
         { int lf_ok = new_label();
-          asm_emit("    cmp rax, -1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xF8); b(0xFF);
+          asm_emit("    比较 rax, -1\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x83); b(0xF8); b(0xFF);
           jnz_rel(-1); patch_label(cp - 4, lf_ok, 1);
           mov_r_imm(0, 0); /* rax = NULL */
           set_label(lf_ok); }
@@ -15578,7 +15578,7 @@ static void emit_fileio(const char *fname) {
         /* 接入 2026-08-28 机制层: 真原子 CAS — atomic_compare_exchange(ptr=rcx, expected=rdx, new=r8)
            → mov rax, rdx (expected); lock cmpxchg [rcx], r8; rax = 旧值 (cmpxchg 语义: [rcx]==rax 则 [rcx]=r8, 否则 rax=[rcx]) */
         mov_rr64(0, 2); /* rax = rdx (expected) */
-        asm_emit("    lock cmpxchg [rcx], r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        asm_emit("    比较交换 [rcx], r8\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
         b(0xF0); b(0x4C); b(0x0F); b(0xB1); b(0x01); /* lock cmpxchg [rcx], r8 (REX.W+R=4C + 0F B1 + modrm 01=[rcx]/r8) */
     } else if (!strcmp(fname, "atomic_fetch_add")) {
         /* 接入 2026-08-28 机制层: 真原子 fetch-add — atomic_fetch_add(ptr=rcx, delta=rdx)
@@ -15586,13 +15586,13 @@ static void emit_fileio(const char *fname) {
            64 位 lock xadd 写 8 字节污染相邻 data (Arc count+data 布局 → data+1 污染));
            lock xadd [rcx], rax; rax = 旧值, [rcx] += delta */
         b(0x48); b(0x63); b(0xC2); /* movsxd rax, edx (符号扩展 32→64) */
-        asm_emit("    lock xadd [rcx], rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        asm_emit("    原子交换加 [rcx], rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
         b(0xF0); b(0x48); b(0x0F); b(0xC1); b(0x01); /* lock xadd [rcx], rax (REX.W=48 + 0F C1 + modrm 01) */
     } else if (!strcmp(fname, "atomic_exchange")) {
         /* 接入 2026-08-28 机制层: 真原子交换 — atomic_exchange(ptr=rcx, v=rdx)
            → mov rax, rdx; xchg [rcx], rax; rax = 旧值, [rcx] = v (xchg 天然原子, 无需 lock) */
         mov_rr64(0, 2); /* rax = rdx (v) */
-        asm_emit("    xchg [rcx], rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+        asm_emit("    交换 [rcx], rax\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
         b(0x48); b(0x87); b(0x01); /* xchg [rcx], rax (REX.W=48 + 87 + modrm 01) */
     } else if (!strcmp(fname, "fgetc")) {
         /* fgetc(stream=rcx): ReadFile(handle, &byte, 1, &read, NULL) → eax = byte; EOF → -1
@@ -15929,6 +15929,20 @@ static void asm_enc_string(const char *asmtext) {
     char *op = buf; while (*op == ' ' || *op == '\t') op++;
     char *rest = op; while (*rest && *rest != ' ' && *rest != '\t' && *rest != ',') rest++;
     char opc[64]; int opl = rest - op; if (opl > 31) opl = 31; memcpy(opc, op, opl); opc[opl] = 0;
+    /* 接入 2026-08-29 P2 指令词表 v1.1: 中文指令等价 — __asm("移动 rax, 0x10") == __asm("mov rax, 0x10") (用户可写中文汇编) */
+    if (!strcmp(opc, "停机")) strcpy(opc, "hlt");
+    else if (!strcmp(opc, "空操作")) strcpy(opc, "nop");
+    else if (!strcmp(opc, "返回")) strcpy(opc, "ret");
+    else if (!strcmp(opc, "开中断")) strcpy(opc, "sti");
+    else if (!strcmp(opc, "关中断")) strcpy(opc, "cli");
+    else if (!strcmp(opc, "断点")) strcpy(opc, "int3");
+    else if (!strcmp(opc, "中断返回")) strcpy(opc, "iretq");
+    else if (!strcmp(opc, "压栈")) strcpy(opc, "push");
+    else if (!strcmp(opc, "弹栈")) strcpy(opc, "pop");
+    else if (!strcmp(opc, "移动")) strcpy(opc, "mov");
+    else if (!strcmp(opc, "加法")) strcpy(opc, "add");
+    else if (!strcmp(opc, "减法")) strcpy(opc, "sub");
+    else if (!strcmp(opc, "比较")) strcpy(opc, "cmp");
     while (*rest == ' ' || *rest == '\t' || *rest == ',') rest++;
     char *arg1 = rest; while (*arg1 == ' ' || *arg1 == '\t') arg1++;
     /* 单操作数或无操作数指令 */
@@ -19481,7 +19495,7 @@ void gen_code(void) {
 
         if (is_isr) {
             /* iretq: 从中断返回 (CPU 自动弹出 RIP:CS:RFLAGS:RSP:SS) */
-            asm_emit("    iretq\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
+            asm_emit("    中断返回\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
             b(0x48); b(0xCF);
         } else {
             int _has_vla = 0; /* fix step31: VLA 动态 sub rsp 后 rsp 不在 rbp-fn_frame — 用 mov rsp,rbp 直接丢弃 VLA 栈区 */
