@@ -3230,6 +3230,7 @@ static int expr_is_unsigned(int n) {
         return expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* + - * / % & | ^: 任一 unsigned */
     }
     if (nt[n] == 14) return expr_is_unsigned(n0[n]); /* arr[i]: 结果类型=数组元素类型 */
+    if (nt[n] == 12) return expr_is_unsigned(n0[n]); /* *p: 元素类型 — fix 2026-08-30 csmith s9/s52/s61: uint64 双解引用被当有符号 → setg 替 seta → 分支翻转 (**g_2263 > (...)^1 恒真路径未执行) */
     return 0;
 }
 
@@ -13595,10 +13596,10 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 int g_is_ll = 0; /* global long long: 8-byte .data slot (fix 2026-08-05) */
                 int g_is_uns = 0; /* global unsigned (fix 2026-08-18: size_t 全局 → is_uns → seta 无符号比较) */
                 for (int ti2 = save_tk; ti2 + 1 < tk; ti2++) { if (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1; if (tt[ti2] == VK && !strcmp(tn[ti2], "unsigned")) g_is_uns = 1; }
-                if (!g_is_uns) { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz < 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参符号扩展 crc 错 (s175 g_2) */
+                if (!g_is_uns) { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz <= 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参符号扩展 crc 错 (s175 g_2) */
                 if (!g_is_ll) { int tdi2 = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi2 >= 0 && !tdefs[tdi2].is_fnptr && !tdefs[tdi2].is_struct && !tdefs[tdi2].is_dbl && tdefs[tdi2].sz == 8 && !g_is_double) g_is_ll = 1; } /* fix 2026-08-18: typedef 8B 基类型 (size_t) 全局 → 8 字节 .data */
                 { int tdi_gsh = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gsh >= 0 && !tdefs[tdi_gsh].is_struct && !tdefs[tdi_gsh].is_fnptr && !tdefs[tdi_gsh].is_dbl && tdefs[tdi_gsh].sz == 2) { g_is_short = 1; if (tdefs[tdi_gsh].is_uns) g_is_uns = 1; } } /* fix 2026-08-29 csmith: typedef short 全局 (int16_t/uint16_t) — 原只认 short 关键字 → int16_t g 标量 32 位零扩展 → 传参错 (seed102/18/64) */
-                { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz < 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参按 signed 符号扩展 → crc 错 (s94 g_26) */
+                { int tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz <= 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参按 signed 符号扩展 → crc 错 (s94 g_26) */
                 int g_is_fnptr = 0, g_fptr_dbl = 0; /* typedef'd fnptr global: 8-byte .data slot (fix 2026-08-03) */
                 { int tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); if (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } } /* fix 2026-08-07: g_tdef 覆盖 static 前缀 (static ops_t f 之前落 var_static(0)=4B) */
                 int first_var = 1;
@@ -13757,7 +13758,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     else if (g_is_fnptr) { var_static(gname, 4); vars[var_last_idx].arr_esz = 8; if (g_fptr_dbl) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte .data slot */
                     else if (g_stidx >= 0 && ptrd == 0) var_static_struct(gname, g_stidx, 1); /* struct var (fix 2026-08-17: ptrd>0 的 struct 指针必须走 var_static — 原 var_static_struct 注册成 struct 值 → gptr=&s 初始化写穿/读 NULL, git startup_info 崩) */
                     else if (g_stidx >= 0) { var_static(gname, 4); vars[var_last_idx].p_esz = (ptrd >= 2) ? 8 : stypes[g_stidx].sz; vars[vcnt - 1].st_idx = g_stidx; vars[vcnt - 1].p_depth = ptrd; if (ptrd >= 2) vars[vcnt - 1].p_inner = stypes[g_stidx].sz; } /* struct 指针: 8 字节 .data 槽 + p_esz=struct 大小 (p[i] 缩放, 仅单指针) + st_idx (fix 2026-08-17; fix 2026-08-21 #21: 双指针 struct T ** 元素是指针 → p_esz=8, p_depth/ptrd 记录) */
-                    else if (g_is_ll) { var_static(gname, 4); vars[var_last_idx].is_ll = 1; if (g_is_uns) vars[vcnt - 1].is_uns = 1; } /* fix 2026-08-18: 全局 unsigned long long → is_uns (seta 无符号比较) */ /* global long long: 8-byte .data slot (fix 2026-08-05) */
+                    else if (g_is_ll && lead_ptr == 0) { var_static(gname, 4); vars[var_last_idx].is_ll = 1; if (g_is_uns) vars[vcnt - 1].is_uns = 1; } /* fix 2026-08-18: 全局 unsigned long long → is_uns (seta 无符号比较) */ /* global long long: 8-byte .data slot (fix 2026-08-05); fix 2026-08-30 csmith s9/s147: lead_ptr==0 守卫 — uint64_t * 指针落此分支原 4 字节槽 (p_esz=4) + is_uns=0 → 指针截断 + 解引用判 signed (setg 替 seta 分支翻转) */
                     else if (g_is_double) { var_static(gname, 4); vars[var_last_idx].is_dbl = 1; } /* global double: 8-byte .data slot */
                     else var_static(gname, pesz);
                     if (ptrd >= 2 && gcnt == 0 && !g_is_fnptr) { vars[vcnt - 1].p_depth = ptrd; vars[vcnt - 1].p_esz = 8; vars[vcnt - 1].p_inner = pesz > 0 ? pesz : 4; } /* fix 2026-08-30 csmith t5: 文件级多级指针全局标量 (int32_t ***g_2383) — 原 p_depth=0 → case-12 链宽度推断 el=1 字节 → 指针值截断崩 (p7). 仅 ptrd>=2 非数组 (指针数组/单指针保持原状防自编译回归) */
