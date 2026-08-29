@@ -11901,6 +11901,35 @@ lex(exp_src);
             if (sealed_n < 64 && !sealed_find(sn)) strcpy(sealed_names[sealed_n++], sn);
             continue;
         }
+        if (tt[tk] == VR && !strcmp(tn[tk], "嵌入")) { /* 接入 2026-08-29 P2 #189 编译期文件读取 (#embed 中文版): 嵌入 "file" 于 数据, 长度; — 编译期读文件 → 全局 char*数据 + int长度 (ginit 初始化) */
+            tk++; /* 嵌入 */
+            char fname[256]; fname[0] = 0;
+            if (tt[tk] == STR) { strncpy(fname, str_tbl[tv[tk]], 255); fname[255] = 0; tk++; } /* "file" */
+            if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++;
+            char dname[64]; strcpy(dname, tn[tk]); tk++; /* 数据名 */
+            if (tt[tk] == CK) tk++;
+            char lname[64]; strcpy(lname, tn[tk]); tk++; /* 长度名 */
+            if (tt[tk] == SK) tk++;
+            FILE *ef = fopen(fname, "rb");
+            if (!ef) { fprintf(stderr, "[ERR] 嵌入文件不存在: %s (v3.0 #189 编译期文件读取)\n", fname); exit(1); }
+            if (str_cnt >= 65536) { fprintf(stderr, "[STR-OVERFLOW]\n"); abort(); }
+            if (!str_tbl[str_cnt]) str_tbl[str_cnt] = str_slot_alloc();
+            int nread = (int)fread(str_tbl[str_cnt], 1, 12287, ef); /* 槽上限 12KB (大文件后续 char[] 初始化补) */
+            fclose(ef);
+            str_tbl[str_cnt][nread] = 0;
+            int emb_idx = str_cnt; str_cnt++;
+            var_static(dname, 1); uninit_remove(dname); /* char *数据 */
+            var_static(lname, 4); uninit_remove(lname); /* int 长度 */
+            int gblk = Nd(5);
+            { int v = Nd(1); memcpy((char*)(nn + v), dname, 32);
+              int sn = Nd(0); nv[sn] = emb_idx; nt[sn] = STR;
+              int asg = Nd(10); Nc(asg, v); Nc(asg, sn); Nc(gblk, asg); } /* 数据 = 字符串槽; */
+            { int v = Nd(1); memcpy((char*)(nn + v), lname, 32);
+              int cn = Nd(0); nv[cn] = nread;
+              int asg = Nd(10); Nc(asg, v); Nc(asg, cn); Nc(gblk, asg); } /* 长度 = nread; */
+            if (ginit_n < 16384) ginit[ginit_n++] = gblk; /* main 入口执行 */
+            continue;
+        }
         /* struct definition: struct Name { fields; }; or struct { fields; } var; */
         if (tt[tk] == ST || (tt[tk] == VK && !strcmp(tn[tk], "static") && tt[tk + 1] == ST)) {
             int st_static = (tt[tk] == VK); /* fix 2026-08-15: static struct X {...} */
