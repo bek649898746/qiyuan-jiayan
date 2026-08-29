@@ -13733,7 +13733,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             vars[vcnt - 1].p_esz = g_esz; /* element byte size for outer [j] scale / 64-bit load */
                             若 (ptrd > 0) vars[vcnt - 1].p_inner = pesz; /* fix step26: 全局指针数组指向元素大小 (char *arr[] → 1, int * → 4, char** → 8) — t35j 只修了局部 var_array, 全局缺失 → GN[i][j] 嵌套外层按 fallback 4 缩放读错 (const char *GN[] = {"aa",..}; GN[0][0] 垃圾) */
                             若 (g_is_ll) vars[vcnt - 1].is_ll = 1; /* fix 2026-08-06: 全局 ll 数组标记 → 元素读写 64 位 + int RHS 符号扩展 */
-                            若 (gfirst > 0 && gcnt > gfirst && ptrd <= 0) vars[vcnt - 1].arr_esz = gcnt / gfirst * g_esz; /* 2D+: ROW byte size */
+                            若 (gfirst > 0 && gcnt > gfirst) vars[vcnt - 1].arr_esz = gcnt / gfirst * g_esz; /* 2D+: ROW byte size — fix 2026-08-30 csmith t5: 去掉 ptrd<=0 排除 (int32_t *g_84[2][8][10] 全局指针数组原无行宽 → g_84[i] 缩放 8 应 640 → 越界读垃圾指针 → s2 崩溃) */
                             若 (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = g_esz; 遍 (整 fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                             若 (g_is_double) vars[vcnt - 1].is_dbl = 1; /* global double array */
                             若 (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 数组元素 is_csgn — 不设 is_char (普通 char 数组不被 var_is_char 误判) */
