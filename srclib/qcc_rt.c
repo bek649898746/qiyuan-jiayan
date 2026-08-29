@@ -763,6 +763,47 @@ int __qcc_vec_lenof(int id) {
     return __qcc_vec_len[id];
 }
 
+/* #276 字符串构建器 (接入 2026-08-29 P2): 基于 Vec (char 元素) — 追加串/追加字符/取串/释放 (高效拼接, 尾部 NUL 维护) */
+static char *__qcc_str_build_cache[64]; /* 取串压缩缓冲缓存 (下次取串/释放时释放) */
+void __qcc_str_append(int id, const char *s) {
+    if (id < 0 || id >= 64) return;
+    int n = __qcc_vec_len[id];
+    if (n > 0 && __qcc_vec_data[id][n-1] == 0) __qcc_vec_len[id]--; /* 去尾 NUL (幂等追加) */
+    while (s && *s) { __qcc_vec_push(id, *s); s++; }
+    __qcc_vec_push(id, 0);
+}
+void __qcc_str_pushchar(int id, int ch) {
+    if (id < 0 || id >= 64) return;
+    int n = __qcc_vec_len[id];
+    if (n > 0 && __qcc_vec_data[id][n-1] == 0) __qcc_vec_len[id]--;
+    __qcc_vec_push(id, ch);
+    __qcc_vec_push(id, 0);
+}
+char *__qcc_str_build(int id) { /* 取串: 压缩 vec 的 int 元素 → 紧凑 char 数组 (vec 每元素 4 字节, 直接 cast 会有 0 填充) */
+    if (id < 0 || id >= 64) return "";
+    int n = __qcc_vec_len[id];
+    if (n > 0 && __qcc_vec_data[id][n-1] == 0) n--; /* 去尾部 NUL */
+    char *buf = (char *)malloc(n + 1);
+    if (!buf) return "";
+    for (int i = 0; i < n; i++) buf[i] = (char)__qcc_vec_data[id][i];
+    buf[n] = 0;
+    if (__qcc_str_build_cache[id]) free(__qcc_str_build_cache[id]); /* 旧 build 缓存释放 (取串结果在下次取串前有效) */
+    __qcc_str_build_cache[id] = buf;
+    return buf;
+}
+int __qcc_str_len(int id) { /* 字符串长度 = 字符数 (不含尾部 NUL) */
+    if (id < 0 || id >= 64) return 0;
+    int n = __qcc_vec_len[id];
+    if (n > 0 && __qcc_vec_data[id][n-1] == 0) n--;
+    return n;
+}
+void __qcc_str_free(int id) {
+    if (id < 0 || id >= 64) return;
+    if (__qcc_str_build_cache[id]) { free(__qcc_str_build_cache[id]); __qcc_str_build_cache[id] = 0; } /* build 缓存释放 */
+    if (__qcc_vec_data[id]) free(__qcc_vec_data[id]);
+    __qcc_vec_data[id] = 0; __qcc_vec_len[id] = 0; __qcc_vec_cap[id] = 0;
+}
+
 /* #12 内部可变性 (Cell): 运行时可变单元 — 单元 x, 初值; 放单元 x, v; 取单元 x; (全局表, 绕开借用检查 = 内部可变) */
 static int __qcc_cell[64];
 static int __qcc_cell_cnt = 0;
