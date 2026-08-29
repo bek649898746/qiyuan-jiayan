@@ -131,6 +131,7 @@ __attribute__((unused))
 静 整 cg_incdec_target = 0;
 静 整 cg_addr_of = 0; /* case 11 &取地址时置位: case 15 “指针字段作数组基”解引用应跳过 (否则 &p->buf 取地址多解引用, fix 2026-08-18) */ /* case 23/26 求 ++/-- 目标地址时置位: case 15 “指针字段作数组基”解引用应跳过 (否则 size_t 字段 sb->len++ 被误解引用, fix 2026-08-18) */ /* case 14: skip the final deref (nested-store base address) */
 静 整 cg_mem_frow = 0; /* case 15: row size of the last static-struct array member read (2D field: fnames[idx]) */
+静 整 cg_mem_sgn = 0; /* case 14: 数组元素 signed 标记 — 1=signed char, 2=signed short; 嵌套 deref 选 movsx (fix 2026-08-29 csmith) */
 静 整 cg_mem_dbl = 0;  /* case 14/15 nested: last array/member base is a double array → outer [i] load uses movsd */
 静 整 cg_mem_ptr = 0;  /* case 14 nested: inner [i] returned the ADDRESS of an 8-byte pointer slot (int *rva[4]) — outer [j] must load the pointer first (fix 2026-08-16: write_coff_obj rva[rsec][b2] store wrote to the frame slot instead of the pointee) */
 静 整 cg_mem_chain_si = -1; /* mem_addr: 嵌套链 (a->b->c) 最终字段所在结构体索引 — case-15 指针字段作数组基判定用 (fix 2026-08-18: iter->map->table[i] 嵌套链原只在简单箭头分支解引用, 嵌套链 no_deref 返回字段地址 → 索引进结构体内部, hashmap_iter_next 崩) */
@@ -1621,6 +1622,7 @@ __attribute__((unused))
         若 (!strcmp(stypes[si].fnames[i], fn)) { 整 v = 0; memcpy(&v, &stypes[si].fsgn[i], 1); 返 v != 0; }
     返 0;
 }
+静 整 st_field_csgn(常 字 *sn, 常 字 *fn) { /* fix 2026-08-29 csmith: 暂置 0 — stypes 结构加 fcsgn 数组致自举死循环, 二分中 */ 返 0; }
 静 整 st_sz(常 字 *sn) { 整 si = st_find(sn);  返 si >= 0 ? stypes[si].sz : 0; }
 静 整 st_field_size(常 字 *sn, 常 字 *fn) {
     整 si = st_find(sn); 若 (si < 0) 返 0;
@@ -6823,7 +6825,7 @@ __attribute__((unused))
             若 (tt[tk] == VR && td_is(tn[tk]) && tt[tk + 1] != AK && tt[tk + 1] != LB && tt[tk + 1] != CK && tt[tk + 1] != SK) { /* 2nd/3rd token is the typedef'd type (static LN b): 重算 struct/fnptr 索引 — 原 ltd_si 只算首 token, static/unsigned 前缀后类型名被当变量名 (fix 2026-08-07); 变量名与 typedef 同名时 (cmp_type cmp_type = ...) 下一 token 是 =/[/,/; 不得当类型吃掉 (fix 2026-08-15: ref-filter.c cmp_type undefined) */
                 若 (ltd_si < 0) ltd_si = td_st_index(tn[tk]);
                 tdi2v = tdef_lookup(tn[tk]); tdi_fnptr_v = (tdi2v >= 0 && tdefs[tdi2v].is_fnptr); tdi_fdbl_v = (tdi2v >= 0 && tdefs[tdi2v].fnptr_dbl);
-                若 (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl) { 若 (tdefs[tdi2v].sz == 1) { is_char = 1; } 否 若 (tdefs[tdi2v].sz == 2) { is_short = 1; } 否 若 (tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1; } /* fix 2026-08-25 bug#28: typedef 宽度族 2nd/3rd-token 路径 (const uint8_t v 同修); is_uns 由 5081 统一处理 */
+                若 (tdi2v >= 0 && !tdefs[tdi2v].is_fnptr && !tdefs[tdi2v].is_struct && !tdefs[tdi2v].is_dbl) { 若 (tdefs[tdi2v].sz == 1) { is_char = 1; 若 (!tdefs[tdi2v].is_uns) is_csgn = 1; } 否 若 (tdefs[tdi2v].sz == 2) { is_short = 1; } 否 若 (tdefs[tdi2v].sz == 8 && !is_double) is_ll = 1; } /* fix 2026-08-25 bug#28: typedef 宽度族 2nd/3rd-token 路径 (const uint8_t v 同修); is_uns 由 5081 统一处理; fix 2026-08-29 csmith: sz==1 补 is_csgn — int8_t(=signed char) 原 is_csgn=0 → 读取 movzx 零扩展 (0xBB→179) s94 家族 */
                 否 若 (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "size_t") || !strcmp(tn[tk], "uint64_t") || !strcmp(tn[tk], "uintptr_t") || !strcmp(tn[tk], "timestamp_t"))) { is_ll = 1; is_uns = 1; } /* fix 2026-08-20: 未知 typedef 回退按名字识别 8B unsigned (size_t 未注册时 rd 判 int → v1≠v2 movsxd 差异) */
                 否 若 (tdi2v < 0 && !is_double && (!strcmp(tn[tk], "off_t") || !strcmp(tn[tk], "time_t") || !strcmp(tn[tk], "ptrdiff_t") || !strcmp(tn[tk], "int64_t") || !strcmp(tn[tk], "intptr_t") || !strcmp(tn[tk], "curl_off_t"))) is_ll = 1;
                 若 (tdi2v >= 0 && tdefs[tdi2v].is_uns) { is_uns = 1; }
@@ -6948,6 +6950,7 @@ __attribute__((unused))
                 若 (is_static) {
                     var_static_arr(vn, 0, esz, cnt); /* esz = ELEMENT byte size (slots = cnt*esz/4) */
                     vars[vcnt - 1].p_esz = esz; /* element byte size for 2D outer scale (cg_mem_frow) */
+                    若 (is_char) { vars[vcnt - 1].is_char = 1; } 若 (is_short) { vars[vcnt - 1].is_short = 1; } 若 (is_csgn) { vars[vcnt - 1].is_csgn = 1; } /* fix 2026-08-29 csmith: 全局数组元素 signed 标记 — 原缺失 → 数组元素读全 movzx 零扩展 (int8_t/int16_t 数组 checksum 错, s94) */
                     若 (is_ll) vars[vcnt - 1].is_ll = 1; /* static long long array (fix 2026-08-06) */
                     若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array (fix 2026-08-05) */
                     若 (dims > 1 && first > 0) vars[vcnt - 1].arr_esz = (cnt / first) * esz; /* row byte size for 2D+ */
@@ -6957,6 +6960,7 @@ __attribute__((unused))
                     若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si;
                 } 否 {
                     若 (vla_dimn >= 0) { var_vla(vn, (dims > 0 ? cnt : 1) * esz, vla_dimn); } /* fix step31: VLA — 运行时大小, 地址槽间接; 多维时 arr_esz=行大小 (cnt=后续 const 维度乘积) */ 否 { var_array(vn, cnt, esz); }
+                    若 (is_char) { vars[vcnt - 1].is_char = 1; } 若 (is_short) { vars[vcnt - 1].is_short = 1; } 若 (is_csgn) { vars[vcnt - 1].is_csgn = 1; } /* fix 2026-08-29 csmith: 局部数组元素 signed 标记 — 原缺失 → 数组元素读 movzx 零扩展 */
                     若 (is_ll) vars[vcnt - 1].is_ll = 1; /* long long array: 8-byte elements (fix 2026-08-06) */
                     若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; /* double-returning fnptr array (fix 2026-08-05) */
                     若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; /* struct array elem type */
@@ -12270,7 +12274,7 @@ lex(exp_src);
                             /* fix 2026-08-29 csmith round2: 修饰符后跟 typedef 名 (`volatile int64_t f0`) — 跳修饰符后是 VR typedef 时 不设 tkw/不消费, 交 typedef 分支 (L12541) 解析; 原无条件 tkw=1 + 非 struct/enum 即 tk++ → int64_t 被吞当字段名 → f0 注册 4B → 读取只取低 32 位 (seed64/18 静默). 修饰符后是真类型关键字 (int/char/...) 才设 tkw */
                             整 tkw_tok = !(tt[tk] == VR && (td_is(tn[tk]) || st_find(tn[tk]) >= 0) && !(tk + 1 < TS && tt[tk + 1] == CL));
                             若 (tkw_tok) tkw = 1;
-                            若 (!strcmp(tn[tk], "unsigned")) { funs = 1; } 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; type_seen = 1; } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; type_seen = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } type_seen = 1; } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; type_seen = 1; } 若 (tkw_tok && !(tt[tk] == ST || tt[tk] == EN)) tk++; /* fix 2026-08-18: const 后跟 struct/enum (`const struct ref_storage_be *be`) 不能吞关键字 — 原无条件 tk++ 吃掉 struct → 字段类型索引丢失 (ty_idx=-1) → 多级成员链 (refs->be->init_db) 断 → call *refs SEGV; 让 5114 ST 分支正常解析 */
+                            若 (!strcmp(tn[tk], "unsigned")) { funs = 1; } 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) { fsz = 1; frow = 1; type_seen = 1; } 否 若 (!strcmp(tn[tk], "signed")) { } 否 若 (!strcmp(tn[tk], "double")) { fsz = 8; frow = 8; fdbl = 1; type_seen = 1; } 否 若 (!strcmp(tn[tk], "long")) { 若 (tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } type_seen = 1; } 否 若 (!strcmp(tn[tk], "short")) { fsz = 2; frow = 2; type_seen = 1; } 若 (tkw_tok && !(tt[tk] == ST || tt[tk] == EN)) tk++; /* fix 2026-08-18: const 后跟 struct/enum (`const struct ref_storage_be *be`) 不能吞关键字 — 原无条件 tk++ 吃掉 struct → 字段类型索引丢失 (ty_idx=-1) → 多级成员链 (refs->be->init_db) 断 → call *refs SEGV; 让 5114 ST 分支正常解析 */
                             若 (tt[tk] == VK && !strcmp(tn[tk], "long")) { 若 (fll == 0 && tt[tk+1] == VK && !strcmp(tn[tk+1], "long")) { fsz = 8; frow = 8; fll = 1; } tk++; } /* 第二个 long: unsigned long long 场景 — unsigned 后第一个 long 未设 8B, 第二个 long 补设 (fix 2026-08-17: 原只消费不设 → unsigned long long 字段 4B) */ }
                         整 npel = 0; /* 指针地块数 (指针字段标记, fix 2026-08-18: ctx->argv++ char** 需按 8 缩放) */
                         整 fpel = type_seen ? fsz : fpel_persist; /* fix 2026-08-17: 指针字段的指向元素大小 (char *buf → 1); 逗号继承 (char *p, *q) 用 fpel_persist */
@@ -13531,6 +13535,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 /* global variable(s): int a, b, c; (comma-separated) */
                 整 g_is_char = 0;
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && (!strcmp(tn[ti2], "char") || !strcmp(tn[ti2], "_Bool"))) g_is_char = 1;
+                整 g_is_csgn = 0; /* fix 2026-08-29 csmith: 全局 signed char / int8_t 标量+数组 — 原缺 → 读 movzx 零扩展 (0xBB→179) s94 家族静默 */
+                遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "signed")) { 遍 (整 tj2 = ti2 + 1; tj2 < tk; tj2++) 若 (tt[tj2] == VK && !strcmp(tn[tj2], "char")) { g_is_csgn = 1; } }
+                若 (!g_is_csgn) { 整 tdi_gc = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi_gc >= 0 && !tdefs[tdi_gc].is_struct && !tdefs[tdi_gc].is_fnptr && !tdefs[tdi_gc].is_dbl && tdefs[tdi_gc].sz == 1 && !tdefs[tdi_gc].is_uns) g_is_csgn = 1; } /* typedef signed char 全局 (int8_t) */
                 整 g_is_short = 0; /* fix 2026-08-19: 全局 short 数组元素 2 字节 (原 4 → FindFirstFileW pattern 步长错) */
                 遍 (整 ti2 = save_tk; ti2 < tk; ti2++) 若 (tt[ti2] == VK && !strcmp(tn[ti2], "short")) g_is_short = 1;
                 整 g_is_double = 0;
@@ -13541,6 +13548,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 遍 (整 ti2 = save_tk; ti2 + 1 < tk; ti2++) { 若 (tt[ti2] == VK && !strcmp(tn[ti2], "long") && tt[ti2 + 1] == VK && !strcmp(tn[ti2 + 1], "long")) g_is_ll = 1; 若 (tt[ti2] == VK && !strcmp(tn[ti2], "unsigned")) g_is_uns = 1; }
                 若 (!g_is_ll) { 整 tdi2 = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi2 >= 0 && !tdefs[tdi2].is_fnptr && !tdefs[tdi2].is_struct && !tdefs[tdi2].is_dbl && tdefs[tdi2].sz == 8 && !g_is_double) g_is_ll = 1; } /* fix 2026-08-18: typedef 8B 基类型 (size_t) 全局 → 8 字节 .data */
                 { 整 tdi_gsh = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi_gsh >= 0 && !tdefs[tdi_gsh].is_struct && !tdefs[tdi_gsh].is_fnptr && !tdefs[tdi_gsh].is_dbl && tdefs[tdi_gsh].sz == 2) { g_is_short = 1; 若 (tdefs[tdi_gsh].is_uns) g_is_uns = 1; } } /* fix 2026-08-29 csmith: typedef short 全局 (int16_t/uint16_t) — 原只认 short 关键字 → int16_t g 标量 32 位零扩展 → 传参错 (seed102/18/64) */
+                { 整 tdi_gu = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi_gu >= 0 && !tdefs[tdi_gu].is_struct && !tdefs[tdi_gu].is_fnptr && !tdefs[tdi_gu].is_dbl && tdefs[tdi_gu].is_uns && tdefs[tdi_gu].sz < 8) g_is_uns = 1; } /* fix 2026-08-29 csmith: typedef unsigned 全局 (uint32_t g=0xFFFFFFFF) — 原只认 unsigned 关键字 → is_uns=0 → 传参按 signed 符号扩展 → crc 错 (s94 g_26) */
                 整 g_is_fnptr = 0, g_fptr_dbl = 0; /* typedef'd fnptr global: 8-byte .data slot (fix 2026-08-03) */
                 { 整 tdi = g_tdef >= 0 ? g_tdef : tdef_lookup(tn[save_tk]); 若 (tdi >= 0 && tdefs[tdi].is_fnptr) { g_is_fnptr = 1; g_fptr_dbl = tdefs[tdi].fnptr_dbl; } } /* fix 2026-08-07: g_tdef 覆盖 static 前缀 (static ops_t f 之前落 var_static(0)=4B) */
                 整 first_var = 1;
@@ -13684,6 +13692,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             若 (gfirst > 0 && gcnt > gfirst && ptrd <= 0) vars[vcnt - 1].arr_esz = gcnt / gfirst * g_esz; /* 2D+: ROW byte size */
                             若 (gdim_n >= 1) { vars[vcnt - 1].frows[gdim_n - 1] = g_esz; 遍 (整 fi = gdim_n - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * gdims[fi + 1]; } /* 3D per-dim rows (fix 2026-08-05) */
                             若 (g_is_double) vars[vcnt - 1].is_dbl = 1; /* global double array */
+                            若 (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 数组元素 is_csgn — 不设 is_char (普通 char 数组不被 var_is_char 误判) */
+                            若 (g_is_short) vars[vcnt - 1].is_short = 1;
+                            若 (g_is_uns) vars[vcnt - 1].is_uns = 1;
                         }
                     }
                     否 若 (g_is_fnptr) { var_static(gname, 4); vars[var_last_idx].arr_esz = 8; 若 (g_fptr_dbl) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte .data slot */
@@ -13694,6 +13705,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 var_static(gname, pesz);
                     若 (g_is_short) vars[vcnt - 1].is_short = 1; /* fix 2026-08-29 csmith: 全局 short 标量标 is_short (原只数组用 → 标量 32 位读 0xC789 零扩展 → 传参 0x0000C789 非 0xFFFFC789, seed102/18/64 静默错误) */
                     若 (g_is_short && g_is_uns) vars[vcnt - 1].is_uns = 1; /* unsigned short 全局 */
+                    若 (g_is_csgn) vars[vcnt - 1].is_csgn = 1; /* fix 2026-08-29 csmith: 全局 signed char 标量 is_csgn — 不设 is_char (普通 char 数组/标量不被 var_is_char 误判 → 自举死循环) */
+                    若 (g_is_uns) vars[vcnt - 1].is_uns = 1;
                     若 (g_static) var_file_static[vcnt - 1] = 1; /* 文件级 static → scl=3 局部符号 (fix 2026-08-14) */
                     若 (tt[tk] == AK) { /* = init */
                         若 (ginit_n >= 16384) { fprintf(stderr, "[ERR] 全局初始化器超过 16384 上限 (fix 2026-08-06: 原 >128 静默丢初始值)\n"); exit(1); }
@@ -16800,6 +16813,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 若 (var_pesz(vn) > 0) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
                     否 若 (var_small_struct(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
                     否 若 (var_is_ll(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); nll[n] = 1; }
+                    否 若 (var_is_csgn(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); b(0x0F); b(0xBE); b(0xC0); } /* fix 2026-08-29 csmith: 全局 signed char 标量 movsx — 用 is_csgn 不设 is_char (普通 char 变量不被误标 → 自举死循环); s142 g_15=0xA4 → -92 */
                     否 若 (var_is_short(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); 若 (!var_is_uns(vn)) { b(0x0F); b(0xBF); b(0xC0); } } /* fix 2026-08-29 csmith: 静态 short 32 位加载 + movsx eax,ax 符号扩展 (signed short 0xC789 → 0xFFFFC789; unsigned 高位 0 天然正确) */
                     否 { ir_emit(I_LOAD_RIP32, off, 0, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); }
                 } 否 {
@@ -19063,7 +19077,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         /* else: struct/array field -> address (no deref) */
                     } 否 若 (!cg_no_deref && !cg_addr_of) { /* t35o 2026-08-24: 取地址链末字段保留地址 — &arr[i].field 在 cg_addr_of 下读到字段值 (status SEGV 链之一) */
                         若 (st_field_bitw(stypes[s2].name, fn) > 0) { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); bf_extract(stypes[s2].name, fn); } /* Phase3-IR case15: arr[i].field bit-field (deref 先回放再 extract) */
-                        否 若 (fsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field char */
+                        否 若 (fsz == 1) { 若 (st_field_csgn(stypes[s2].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
 否 若 (fsz == 2) { 若 (st_field_is_uns(stypes[s2].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* fix 2026-08-25 bug#33: arr[i].field short */
                         否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: arr[i].field dword */
                     }
@@ -19075,7 +19089,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 若 (mem_addr(n, &fsz, &si_out) == 0) {
                     /* rax = &chain; deref by the final field's byte size (fix 2026-08-18: &取址/++目标 上下文保留末字段地址, 不再按字段大小解引用 — 多级箭头链 &o->m->in->buf 原 fsz==8 无条件 mov rax,[rax] 多解引用一层 → expand_base_dir(&...->path) 传 NULL 崩) */
                     若 (fsz > 8 || fsz == 0) { /* struct/array field → address; fsz==0: flex 数组取址 (fix 2026-08-20) */ }
-                    否 若 (fsz == 1) { 若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 char */
+                    否 若 (fsz == 1) { 若 (!cg_no_deref && !cg_addr_of) { 若 (si_out >= 0 && st_field_csgn(stypes[si_out].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
 否 若 (fsz == 2) { 若 (!cg_no_deref && !cg_addr_of) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } } /* Phase3-IR case15: 嵌套链 short */
                     否 若 (fsz == 8) { /* 64-bit pointer / struct field (fix 2026-08-18: 多级箭头取址不再解引用末指针字段) */
                         若 (!cg_no_deref && !cg_addr_of) {
@@ -19117,7 +19131,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         若 (cg_no_deref || st_field_is_array_idx(si11, fn)) {
                             /* array field: address retained */
                         } 否 若 (afsz11 == 8) { ir_emit(I_DEREF64, 0, 0, 0); nll[n] = 1; } /* Phase3-IR case15: &e->f 64 (fix 2026-08-29 csmith: nll) */
-                        否 若 (afsz11 == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); } /* Phase3-IR case15: &e->f char */
+                        否 若 (afsz11 == 1) { 若 (st_field_csgn(stypes[si11].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); } /* Phase3-IR case15: &e->f char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
                         否 若 (afsz11 == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); } /* Phase3-IR case15: &e->f short */
                         否 { ir_emit(I_DEREF32, 0, 0, 0); } /* Phase3-IR case15: &e->f dword */
                         ir_flush(); /* Phase3-IR case15: flush &e->f 序列 */
@@ -19144,7 +19158,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 { 整 _afsz9 = st_field_size(stypes[si].name, fn);
                         若 (_afsz9 > 4) { 整 _afy9 = st_field_ty_idx(stypes[si].name, fn);
                             若 (_afsz9 == 8 && (_afy9 == -2 || _afy9 == -3 || (_afy9 >= 0 && stypes[_afy9].sz != 8) || (_afy9 == -1 && st_field_row(stypes[si].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); nll[n] = 1; 若 (st_field_is_ptr(si, fn)) { 整 _pel9 = st_field_pel(si, fn); cg_mem_frow = _pel9; cg_fdepth = 0; cg_frows[0] = _pel9; } } /* 64 位值: fnptr(-2)/LL(-3)/指针字段 — 镜像正常分支 10260 (fix 2026-08-22 t44: ARROWFALL 原无条件 32 位读 → typedef 结构体指针参数 (mmfile_t *mmf var_stidx=-1) 的 char* 字段高 32 位清零 → xdl_mmfile_first 返 ptr 低 32 位 → root commit 摘要 xdl_guess_lines memchr(0x7) SEGV); fix 2026-08-29 csmith: nll */
-                        } 否 若 (_afsz9 == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ARROWFALL char */
+                        } 否 若 (_afsz9 == 1) { 若 (st_field_csgn(stypes[si].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ARROWFALL char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
                         否 若 (_afsz9 == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ARROWFALL short */
                         否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (st_field_bitw(stypes[si].name, fn) > 0) bf_extract(stypes[si].name, fn); } /* Phase3-IR case15: ARROWFALL dword + bit-field */
                     }
@@ -19170,8 +19184,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         }
                     }
                     否 若 (afsz > 4) { 整 afy = st_field_ty_idx(stypes[s].name, fn); 若 (afsz == 8 && (afy == -2 || afy == -3 || (afy >= 0 && stypes[afy].sz != 8) || (afy == -1 && st_field_row(stypes[s].name, fn) == 8))) { 若 (st_field_is_dbl_si(s, fn)) asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); /* fix 2026-08-27 特性#4: 简单箭头 double 字段读取 (c->r 原只 DEREF64 rax → xmm0 未设 → 0.0) */ ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); nll[n] = 1; 若 (st_field_is_ptr(s, fn)) { 整 pel = st_field_pel(s, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; } } /* fnptr(-2)/LL(-3)/指针字段: 64-bit value (fix 2026-08-07: 原只 fnptr/LL deref, p->next 读成地址; fix 2026-08-15: char* 字段 fty=-1 未 deref; fix 2026-08-17: el==8→frow==8 — fpel 修复后 char* el=1 漏判 → the_repository->worktree 返回地址崩, commands[].cmd 传成结构体地址; fix 2026-08-19: 指针字段解引用后设 cg_mem_frow=pel — is_array_idx 排除指针字段后值读取路径需给 case-14 提供元素大小 → s->next_out[i] 按 1 缩放 (原残留 frow=8 → 8 字节步长写坏结构体); fix 2026-08-29 csmith: nll */ }
-                    否 若 (afsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field char */
-否 若 (afsz == 2) { ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field short */
+                    否 若 (afsz == 1) { 若 (st_field_csgn(stypes[s].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
+否 若 (afsz == 2) { 若 (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: ptr->field short (fix 2026-08-29 csmith: 原恒 movzx — int16 字段零扩展) */
                     否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: ptr->field dword + bit-field */
                 } 否 若 (var_isstatic(vn)) {
                     /* static struct member read */
@@ -19197,7 +19211,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         整 fty = st_field_ty_idx(stypes[s].name, fn);
                         若 (fsz == 8 && (fty == -2 || fty == -3 || (fty >= 0 && stypes[fty].sz != 8) || (fty == -1 && st_field_row(stypes[s].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); nll[n] = 1; } /* Phase3-IR case15: static 64 — fix 2026-08-29 csmith: 补 nll 标记 (原缺 → (f0>>32) 的 ll_ext32 按 32 位 → 高 32 丢失, seed64/18) */ /* fnptr(-2)/LL(-3)/指针字段 (fty≥0 且指向的 struct ≠ 8B, 或 char* 字段 fty=-1): 64-bit value (fix 2026-08-07: 指针字段原不 deref → 读到字段地址; fix 2026-08-15) */
                         /* else: by-value struct (8B) / array field → address */
-                    } 否 若 (fsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static char */
+                    } 否 若 (fsz == 1) { 若 (st_field_csgn(stypes[s].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
 否 若 (fsz == 2) { 若 (st_field_is_uns(stypes[s].name, fn)) ir_emit(I_MOVZX_RAX_WORD, 0, 0, 0); 否 ir_emit(I_MOVSX_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: static short (fix bug#33) */
                     否 { ir_emit(I_DEREF32, 0, 0, 0); ir_flush(); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* Phase3-IR case15: static dword + bit-field */
                     }
@@ -19210,7 +19224,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     ir_flush(); /* Phase3-IR case15: big-param 地址 */
                     若 (!cg_no_deref) {
                         整 bsz = st_field_size(stypes[s].name, fn);
-                        若 (bsz == 1) { ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param char */
+                        若 (bsz == 1) { 若 (st_field_csgn(stypes[s].name, fn)) ir_emit(I_MOVSX_RAX_BYTE, 0, 0, 0); 否 ir_emit(I_MOVZX_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param char (fix 2026-08-29 csmith: int8_t 字段 movsx) */
 否 若 (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word[rax] (short field fix 2026-08-06) */
                         否 若 (bsz == 8) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); } /* Phase3-IR case15: big-param 64 */
                         否 { mov_reg_mreg(0, 0); 若 (st_field_bitw(stypes[s].name, fn) > 0) bf_extract(stypes[s].name, fn); } /* bit-field extract (fix 2026-08-05) */
@@ -19284,6 +19298,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                    field name, NOT a variable — var_lookup could match an unrelated
                    same-named var (e.g. a runtime `int c`) and hijack the access. */
                 cg_mem_frow = 0; /* set by cg(n0[n]) if it reads a static-struct array member */
+                cg_mem_sgn = 0; /* 嵌套 deref 元素 signed 标记 — 内层数组分支设置 (fix 2026-08-29 csmith) */
                 cg_mem_dbl = 0; /* set by cg(n0[n]) if the base is a double array */
                 cg_mem_ptr = 0; /* set by cg(n0[n]) if it is a pointer-array element (int *rva[4]) whose slot address must be dereferenced once (fix 2026-08-16) */
                 { 整 save_idx_noderef = cg_no_deref; cg_no_deref = 0; cg(n1[n]); cg_no_deref = save_idx_noderef; } /* outer idx �?eax */
@@ -19319,9 +19334,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 cg_mem_ptr_need = 0; /* 单层场景不留残留 */
                 若 (!cg_no_deref && (cg_fdepth >= cg_fdepth_max || (_need_deref_single && cg_nested_cnt == 0))) { /* deref only at OUTERMOST index (fix 2026-08-05); t41b: 指针字段 max=2 但只有单层下标时 (slab[i]) 也必须 deref */
                     若 (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
-                    否 若 (cg_mem_frow == 1 || cg_mem_frow == 0) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax, byte[rax] */
+                    否 若 (cg_mem_frow == 1 || cg_mem_frow == 0) { 若 (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
                     否 若 (cg_mem_frow == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
-                    否 若 (cg_mem_frow == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                    否 若 (cg_mem_frow == 2) { 若 (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
                     否 若 (cg_mem_frow == 8) { mov_reg_mreg64(0, 0); } /* mov rax, [rax] */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
                 }
@@ -19332,7 +19347,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     若 (!strcmp(vars[vi].name, vname) && (vars[vi].arr_sz > 0 || vars[vi].vla_dim > 0) && !vars[vi].is_static && vars[vi].rsp_off == off && var_codegen_visible(vi)) { /* fix step31: VLA (arr_sz==0) 也是数组 */
                         整 esz = vars[vi].arr_esz ? vars[vi].arr_esz : 4;
                         整 elemsz = vars[vi].p_esz ? vars[vi].p_esz : esz; /* element byte size for the BASE (fix 2026-08-05: 2D arr_esz=row size, arr_sz*row ≠ array bytes → base 48B off when multiple arrays) */
-                        { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1) */
+                        { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : 4); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); } /* scalar element size (2D outer scale); fix 2026-08-18: 指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放 — 原 p_esz=8 按指针元素 → 越界 (自举 CG-BAD); fix 2026-08-23 t35j: p_inner 优先 (const char *arr[] 指向 char=1); fix 2026-08-29: cg_mem_sgn 元素 signed 标记 */
                         cg_fdepth = 1; 遍 (整 fk = 0; fk < 4; fk++) cg_frows[fk] = vars[vi].frows[fk]; /* per-dim rows (fix 2026-08-05) */
                         cg_fdepth_max = 1; 遍 (整 fk = 0; fk < 4; fk++) 若 (vars[vi].frows[fk] > 0) cg_fdepth_max = fk + 1; /* dim count */
                         cg_mem_dbl = (var_is_dbl(vname) || var_pdbl(vname)) ? 1 : 0; /* base is double array → outer [i] movsd */
@@ -19347,9 +19362,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         若 (!cg_no_deref) {
                             若 (var_is_dbl(vname)) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double array elem → xmm0 (NOT fnptr arrays: p_dbl means double-return, elem is a pointer) */
                             否 若 (vars[vi].p_esz > 0 && esz > vars[vi].p_esz) { /* 2D row: ADDRESS (C decay) */ }
-                            否 若 (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } /* movzx eax,byte[rax] */
+                            否 若 (esz == 1) { 若 (vars[vi].is_csgn) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int8_t 数组元素符号扩展 */
                             否 若 (esz == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* 64-bit fnptr / pointer / long long element (fix 2026-08-06: LL 数组元素需 nll，否则链式 a[0]+a[1]+a[2] 走 32 位加法) */
-                    否 若 (esz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                    否 若 (esz == 2) { 若 (vars[vi].is_short && !vars[vi].is_uns) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int16_t 数组元素符号扩展 */
                             否 { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
                         }
                         did = 1; 断;
@@ -19382,7 +19397,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         若 (!strcmp(vars[vi].name, vname) && vars[vi].is_static && vars[vi].arr_esz > 0) {
                             esz = vars[vi].arr_esz;
                             is_row = (vars[vi].p_esz > 0 && vars[vi].arr_esz > vars[vi].p_esz); /* 2D+ array: a[i] is a ROW (array), decays to ADDRESS (fix 2026-08-16: secnames[i] 源被当 8 字节值 load → memcpy 源 0) */
-                            { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放; fix 2026-08-23 t35j: p_inner 优先 */
+                            { 整 pointee = vars[vi].p_inner ? vars[vi].p_inner : (vars[vi].is_char ? 1 : (vars[vi].is_ll ? 8 : (vars[vi].is_dbl ? 8 : 4))); cg_mem_frow = (vars[vi].arr_esz == 8 && !vars[vi].is_ll && !vars[vi].is_dbl && vars[vi].st_idx < 0) ? pointee : (vars[vi].p_esz ? vars[vi].p_esz : (vars[vi].arr_esz <= 8 ? vars[vi].arr_esz : 8)); cg_mem_sgn = vars[vi].is_csgn ? 1 : (vars[vi].is_short && !vars[vi].is_uns ? 2 : 0); } /* ELEMENT byte size for outer [j] scale; fix 2026-08-18: 静态指针数组 (int *nx[8]) 外维 [j] 按指向元素缩放; fix 2026-08-23 t35j: p_inner 优先; fix 2026-08-29: cg_mem_sgn 元素 signed 标记 */
                             /* ADDRESS for: struct arrays, 2D rows (esz>8), and 2D rows where
                                arr_esz > element size (char buf[4][8]: esz=8, elem=1).
                                8-byte POINTER arrays (char *names[3]: esz=8, elem=8) load 64-bit. */
@@ -19405,9 +19420,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         否 若 (is_row) { /* 2D+ row: leave ADDRESS (C decay) — don't deref the row bytes (fix 2026-08-16) */ }
                         否 若 (is_struct_elem) { /* address mode for member access */
                             若 (esz <= 8) { 若 (esz == 8) { mov_reg_mreg64(0, 0); } 否 { mov_reg_mreg(0, 0); } } /* fix 2026-08-06: ≤8 字节 struct 元素作值 → 解引用 (原留地址 → x = arr[1] 存地址 4207368) */
-                        } 否 若 (esz == 1) { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); }
+                        } 否 若 (esz == 1) { 若 (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 静态数组元素符号扩展 (cg_mem_sgn) */
                         否 若 (esz == 8) { mov_reg_mreg64(0, 0); } /* char* / pointer element: 64-bit */
-                        否 若 (esz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } /* movzx eax, word [rax] fix 2026-08-08 */
+                        否 若 (esz == 2) { 若 (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 静态数组元素符号扩展 */
                         否 { mov_reg_mreg(0, 0); }
                     }
                     did = 1;
