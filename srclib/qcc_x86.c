@@ -13619,9 +13619,9 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     /* char* -> esz 1 (byte indexing); int* -> 4; char** -> 8 via
                        the ptr-depth in the loop below (keep the LAST depth's char flag) */
                     int tdi_gsz = (g_tdef >= 0 && !tdefs[g_tdef].is_fnptr && !tdefs[g_tdef].is_struct && tdefs[g_tdef].sz > 0) ? tdefs[g_tdef].sz : 0; /* fix 2026-08-19: typedef 标量全局数组元素大小 (wchar_t=unsigned short → 2) */
-                    int pesz = lead_ptr ? (g_is_char ? 1 : (g_is_short ? 2 : (tdi_gsz > 0 ? tdi_gsz : 4))) : 0;
+                    int pesz = lead_ptr ? (g_is_char ? 1 : (g_is_short ? 2 : (g_is_ll ? 8 : (g_is_double ? 8 : (tdi_gsz > 0 ? tdi_gsz : 4))))) : 0; /* fix 2026-08-30 csmith t5: +g_is_ll/g_is_double — long long* 全局指针 p_esz 原 4 → case 12 解引用 4 字节读 (s34 g_17 ^= *g_27 高 32 丢) */
                     int ptrd = lead_ptr;
-                    while (tt[tk] == DK) { if (g_is_char) pesz = 1; else pesz = g_is_short ? 2 : (tdi_gsz > 0 ? tdi_gsz : 4); ptrd++; tk++; }
+                    while (tt[tk] == DK) { if (g_is_char) pesz = 1; else pesz = g_is_short ? 2 : (g_is_ll ? 8 : (g_is_double ? 8 : (tdi_gsz > 0 ? tdi_gsz : 4))); ptrd++; tk++; }
                     if (ptrd > 1 && g_is_char) pesz = 8; /* char** -> 8-byte elements */
                     int gcnt = 0; /* array element count (0 = not array) */
                     int gfirst = 0; /* first dimension (row count) */
@@ -19088,10 +19088,10 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
             cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
             if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode))) || (pesz[pnode] == 8 && nt[pnode] != 1)) { cg_mem_frow = 8; ndbl[n] = 1; asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double 指针 deref → xmm0; fix 2026-08-25 step18: cast 表达式解引用 (pesz=8 且非变量; 变量走 var_pdbl; 结构体双指针变量 8B 指针保持整数 — regress_deref_cast_ptrptr) */
             }
-            if (el == 8) { mov_reg_mreg64(0, 0); break; } /* 64-bit load */
+            if (el == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; break; } /* 64-bit load — fix 2026-08-30 csmith t5: 补 nll (long long* 解引用作为二元操作数原不标 → 32 位运算, s34) */
             if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
-            if (el == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); break; } /* word load (short*) fix 2026-08-08 */
-            asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0x00); /* MOVZX eax, byte [eax] */
+            if (el == 2) { int _s2 = 0; int _u2 = 0; if (pnode >= 0 && nt[pnode] == 1) { char *_pn2 = (char*)(nn + pnode); if (var_is_short(_pn2) && !var_is_uns(_pn2)) _s2 = 1; if (var_is_uns(_pn2)) _u2 = 1; } if (_s2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } if (_u2) nuns[n] = 1; break; } /* word load (short*) fix 2026-08-08; fix 2026-08-30 csmith t5: int16_t* 解引用 movsx (原恒 movzx → s26 g_88 = *g_824 | ... 符号扩展丢失) */
+            { int _s1 = 0; int _u1 = 0; if (pnode >= 0 && nt[pnode] == 1) { char *_pn1 = (char*)(nn + pnode); if (var_is_csgn(_pn1)) _s1 = 1; if (var_is_uns(_pn1)) _u1 = 1; } if (_s1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0x00); } if (_u1) nuns[n] = 1; } /* MOVZX eax, byte [eax] — fix 2026-08-30 csmith t5: int8_t* 解引用 movsx (s26 家族) */
         } break;
         case 13: /* fall through to 15 */
         case 15: { /* struct member: var.field (nv=0) or ptr->field (nv=1) */
@@ -19449,7 +19449,7 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                             else if (esz == 1) { if (vars[vi].is_csgn) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int8_t 数组元素符号扩展 */
                             else if (esz == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* 64-bit fnptr / pointer / long long element (fix 2026-08-06: LL 数组元素需 nll，否则链式 a[0]+a[1]+a[2] 走 32 位加法) */
                     else if (esz == 2) { if (vars[vi].is_short && !vars[vi].is_uns) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int16_t 数组元素符号扩展 */
-                            else { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
+                            else { mov_reg_mreg(0, 0); if (vars[vi].is_uns) nuns[n] = 1; } /* mov eax, [rax] — fix 2026-08-30 csmith t5: 局部 uint 数组元素 nuns (传 uint64 参数零扩展, s28 家族) */
                         }
                         did = 1; break;
                     }
@@ -19505,10 +19505,10 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
                         else if (is_row) { /* 2D+ row: leave ADDRESS (C decay) — don't deref the row bytes (fix 2026-08-16) */ }
                         else if (is_struct_elem) { /* address mode for member access */
                             if (esz <= 8) { if (esz == 8) { mov_reg_mreg64(0, 0); } else { mov_reg_mreg(0, 0); } } /* fix 2026-08-06: ≤8 字节 struct 元素作值 → 解引用 (原留地址 → x = arr[1] 存地址 4207368) */
-                        } else if (esz == 1) { if (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 静态数组元素符号扩展 (cg_mem_sgn) */
-                        else if (esz == 8) { mov_reg_mreg64(0, 0); } /* char* / pointer element: 64-bit */
-                        else if (esz == 2) { if (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 静态数组元素符号扩展 */
-                        else { mov_reg_mreg(0, 0); }
+                        } else if (esz == 1) { if (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } if (cg_mem_uns) nuns[n] = 1; } /* fix 2026-08-29 csmith: int8_t 静态数组元素符号扩展 (cg_mem_sgn); fix 2026-08-30 csmith t5: +nuns 传播 (uint8 数组元素传 uint64 参数零扩展) */
+                        else if (esz == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; if (cg_mem_uns) nuns[n] = 1; } /* char* / pointer element: 64-bit — fix 2026-08-30 csmith t5: 补 nll (1D 静态数组 64 位元素原不设 → 传 uint64 参数被 ll_ext32 movsxd 截断, s25/s31/s32) */
+                        else if (esz == 2) { if (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } if (cg_mem_uns) nuns[n] = 1; } /* fix 2026-08-29 csmith: int16_t 静态数组元素符号扩展; fix 2026-08-30: +nuns */
+                        else { mov_reg_mreg(0, 0); if (cg_mem_uns) nuns[n] = 1; } /* fix 2026-08-30 csmith t5: 1D 静态数组 uint 元素 nuns (s17/s22/s28/s35 传 uint64 参数被 movsxd 符号扩展) */
                     }
                     did = 1;
                 }
