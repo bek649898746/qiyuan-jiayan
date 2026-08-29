@@ -5889,7 +5889,7 @@ __attribute__((unused))
     返 -1;
 }
 
-静 整 mul(空) { 整 n = prim(); 循环 (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = prim(); Nc(a, n); Nc(a, r); 若 ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; 若 (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } 返 n; }
+静 整 mul(空) { 整 n = prim(); 循环 (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { 整 o = tt[tk++]; 整 a = Nd(2); nv[a] = o; 整 r = prim(); Nc(a, n); Nc(a, r); 若 ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; 若 (o == SH || o == SR) { 若 (expr_is_ll(n)) nll[a] = 1; } /* fix 2026-08-29 csmith: 移位结果宽度=左操作数 — 原 expr_is_ll(r) 也传播 → `x << (int8_t)uint64` 被标 LL → 64 位移位 mod64 错 (s137 静默) */ 否 若 (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } 返 n; }
 静 整 add(空) { 整 n = mul(); 循环 (tt[tk] == PK || tt[tk] == MK) { 整 o = tt[tk++]; 整 ovf = -1; 若 (ov_n > 0 && nt[n] == 1) { /* 接入 2026-08-27 运算符重载: 左操作数是 struct 变量且注册过该运算符+类型 → 生成函数调用 (重载表空则零影响原路径) */ 整 si = var_stidx((字*)(nn + n)); 若 (si >= 0) { 字 *tyn = stypes[si].name; 遍 (整 k = 0; k < ov_n; k++) 若 (ov_op[k] == (字)o && !strcmp(ov_ty[k], tyn)) { ovf = k; 断; } } } 若 (ovf >= 0) { 整 r = mul(); 整 c = Nd(4); Nc(c, n); Nc(c, r); { 整 fn = Nd(1); memcpy((字*)(nn + fn), ov_fn[ovf], 64); Nc(c, fn); } n = c; } 否 { 整 a = Nd(2); nv[a] = o; 整 r = mul(); Nc(a, n); Nc(a, r); 若 ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } } 返 n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
 静 整 band(空) { 整 n = add(); 循环 (tt[tk] == PT) { tk++; 整 a = Nd(2); nv[a] = PT; 整 r = add(); Nc(a, n); Nc(a, r); n = a; } 返 n; }
 静 整 bxor(空) { 整 n = band(); 循环 (tt[tk] == XR) { tk++; 整 a = Nd(2); nv[a] = XR; 整 r = band(); Nc(a, n); Nc(a, r); n = a; } 返 n; }
@@ -16865,8 +16865,8 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            若 (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
-                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负) */
+            若 (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || ((o != T_SH && o != T_SR) && n1[n] >= 0 && nll[n1[n]])) {
+                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负); fix 2026-08-29 csmith: 移位 (T_SH/T_SR) 排除右操作数 nll — 结果宽度=左操作数, `x << (int8_t)uint64` 原走 64 位 (mod64) → 0x381E<<102→<<38 而非 32 位 (mod32)→<<6 (s137 静默) */
                 若 (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { 整 pel64 = node_psz(n0[n]);
                       整 psub64 = 0; /* fix 2026-08-25: (long)(p-q) cast 走 64 位路径但缺指针差除法 → p-a 返回字节差 */

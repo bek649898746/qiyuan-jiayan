@@ -5889,7 +5889,7 @@ static int prim(void) {
     return -1;
 }
 
-static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
+static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (o == SH || o == SR) { if (expr_is_ll(n)) nll[a] = 1; } /* fix 2026-08-29 csmith: 移位结果宽度=左操作数 — 原 expr_is_ll(r) 也传播 → `x << (int8_t)uint64` 被标 LL → 64 位移位 mod64 错 (s137 静默) */ else if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
 static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK) { int o = tt[tk++]; int ovf = -1; if (ov_n > 0 && nt[n] == 1) { /* 接入 2026-08-27 运算符重载: 左操作数是 struct 变量且注册过该运算符+类型 → 生成函数调用 (重载表空则零影响原路径) */ int si = var_stidx((char*)(nn + n)); if (si >= 0) { char *tyn = stypes[si].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == (char)o && !strcmp(ov_ty[k], tyn)) { ovf = k; break; } } } if (ovf >= 0) { int r = mul(); int c = Nd(4); Nc(c, n); Nc(c, r); { int fn = Nd(1); memcpy((char*)(nn + fn), ov_fn[ovf], 64); Nc(c, fn); } n = c; } else { int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } } return n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
 static int band(void) { int n = add(); while (tt[tk] == PT) { tk++; int a = Nd(2); nv[a] = PT; int r = add(); Nc(a, n); Nc(a, r); n = a; } return n; }
 static int bxor(void) { int n = band(); while (tt[tk] == XR) { tk++; int a = Nd(2); nv[a] = XR; int r = band(); Nc(a, n); Nc(a, r); n = a; } return n; }
@@ -16865,8 +16865,8 @@ static void cg(int n) {
                 }
                 /* other ops on doubles: fall through to integer (best-effort) */
             }
-            if (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || (n1[n] >= 0 && nll[n1[n]])) {
-                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负) */
+            if (nll[n] || (n0[n] >= 0 && nll[n0[n]]) || ((o != T_SH && o != T_SR) && n1[n] >= 0 && nll[n1[n]])) {
+                /* 64-bit long long arithmetic / comparison (fix 2026-08-05); fix 2026-08-25 bug#32: +nll[n] — (long long)cast 标记的节点本身也走 64 位 ((long long)(-5) 一元负); fix 2026-08-29 csmith: 移位 (T_SH/T_SR) 排除右操作数 nll — 结果宽度=左操作数, `x << (int8_t)uint64` 原走 64 位 (mod64) → 0x381E<<102→<<38 而非 32 位 (mod32)→<<6 (s137 静默) */
                 if (o == PK || o == MK || o == DK || o == DV || o == MD) { /* MD=% 64-bit remainder (fix 2026-08-05) */
                     { int pel64 = node_psz(n0[n]);
                       int psub64 = 0; /* fix 2026-08-25: (long)(p-q) cast 走 64 位路径但缺指针差除法 → p-a 返回字节差 */
