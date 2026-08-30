@@ -12141,6 +12141,34 @@ static void jiayan_macro_expand(void) {
     tt = jm_tt2; tv = jm_tv2; tn = jm_tn2; tline = jm_tline2; tuns = jm_tuns2; tll = jm_tll2; tll_hi = jm_tll_hi2;
     ti = jm_out;
 }
+/* fix 2026-08-30 探雷报告 雷1: 括号配对验证 — token 级统一扫 (lex+宏展开后, parser 前),
+   任何不平衡立即报错 (带行号), 不再静默吞残缺语法 (原 blk() EK 静默退出 + 顶层孤立 } 忽略).
+   C 括号严格嵌套, 纯栈式匹配即正确; 字符串/字符/注释已由 lex 处理为单 token, 不干扰. */
+static int paren_balance_check(void) {
+    int stk[8192]; int stk_ln[8192]; int sp = 0;
+    for (int i = 0; i < TS && tt[i] != EK; i++) {
+        int t = tt[i];
+        if (t == OK || t == LB || t == FK) {
+            if (sp >= 8192) { fprintf(stderr, "[ERR] 括号嵌套过深 行 %d (paren_balance)\n", tline[i]); return -1; }
+            stk[sp] = t; stk_ln[sp] = tline[i]; sp++;
+        } else if (t == KK || t == RB || t == UK) {
+            if (sp <= 0) { fprintf(stderr, "[ERR] 多余右括号 '%c' 行 %d (paren_balance)\n", t == KK ? ')' : (t == RB) ? ']' : '}', tline[i]); return -1; }
+            int want = (t == KK) ? OK : (t == RB) ? LB : FK;
+            if (stk[sp - 1] != want) {
+                char o = (stk[sp - 1] == OK) ? '(' : (stk[sp - 1] == LB) ? '[' : '{';
+                char c = (t == KK) ? ')' : (t == RB) ? ']' : '}';
+                fprintf(stderr, "[ERR] 括号不匹配 '%c' vs '%c' (开 行 %d, 闭 行 %d) (paren_balance)\n", o, c, stk_ln[sp - 1], tline[i]);
+                return -1;
+            }
+            sp--;
+        }
+    }
+    if (sp > 0) {
+        fprintf(stderr, "[ERR] 缺右括号: %d 个未闭合 (首个开括号 '%c' 行 %d) (paren_balance)\n", sp, (stk[0] == OK) ? '(' : (stk[0] == LB) ? '[' : '{', stk_ln[0]);
+        return -1;
+    }
+    return 0;
+}
 
 static int parse(const char *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
@@ -12186,6 +12214,7 @@ lex(exp_src);
     
     free(exp_src);
     if (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); return -1; }
+    if (paren_balance_check() < 0) return -1; /* fix 2026-08-30 探雷雷1: 括号配对验证 (lex+宏展开后, parser 前) */
     int p = Nd(3); if (p < 0) return -1;
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
     
