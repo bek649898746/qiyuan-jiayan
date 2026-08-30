@@ -151,6 +151,91 @@ def post_process(out):
             out = out[:aidx] + lex_entries.replace('比较字符串', 'strcmp').replace('复制字符串', 'strcpy') + out[aidx:]
     else:
         out = out[:aidx + len(anchor)] + lex_entries + out[aidx + len(anchor):]
+    out = layer_change(out)
+    return out
+
+
+def layer_change(out):
+    """改层 (大哥三步: 中文 token 第一等):
+    1) 词法器删「甲言关键字: 中文→英文名」strcpy 改写链 (中间商)
+    2) kw() 直接认中文关键字 (整→VK, 若→IK ... 与英文平级)
+    3) parser 的 strcmp(tn,..) 检查加中文等价 (静/常/无/长/字... 中文源 tn 不再被改写回英文)
+    C 头英文解析保留 (kw 英文条目不动)。"""
+    import re as _re
+    # ---- 中文关键字 -> 英文 (c_to_jy EN2ZH + 甲言扩展别名) ----
+    KW_MAP = {
+        'struct': '构', 'union': '联', 'enum': '枚',
+        'return': '返', 'if': '若', 'else': '否',
+        'while': '循环', 'do': '做', 'for': '遍',
+        'break': '断', 'continue': '续', 'switch': '择',
+        'case': '例', 'default': '缺', 'goto': '跳',
+        'int': '整', 'double': '双', 'float': '单',
+        'char': '字', 'void': '空', 'short': '短',
+        'long': '长', 'const': '常', 'static': '静',
+        'unsigned': '无', 'sizeof': '大小',
+        'volatile': '易失', 'defer': '延迟', 'select': '择收',
+    }
+    # 双字/别名: 英文 -> [中文...] (改写链里有的, 改层后 kw 直接认)
+    KW_ALIAS = {
+        'return': ['返回'], 'else': ['否则'], 'continue': ['继续'],
+        'char': ['字节'], 'long': ['长整'],
+    }
+    # kw() 返回的中文 token 常量 (批1 映射名)
+    KW_TOK = {
+        'struct': '结构词', 'union': '结构词', 'enum': '枚词',
+        'return': '后甲', 'if': '顺轮', 'else': '虚伍',
+        'while': '下得一', 'do': '副丁', 'for': '净吉',
+        'break': '标利', 'continue': '下退一', 'switch': '开关',
+        'case': '案例', 'default': '缺省', 'goto': '大于',
+        'int': '型词', 'double': '型词', 'float': '型词',
+        'char': '型词', 'void': '型词', 'short': '型词',
+        'long': '型词', 'const': '型词', 'static': '型词',
+        'unsigned': '型词', 'volatile': '型词',
+        'sizeof': '度序',
+    }
+    # ---- 3) parser strcmp(tn,..) 检查加中文等价 (先做, 避免误伤改写链删除后的文本) ----
+    # 带 ! 的: !比较字符串(X,"long") → (!比较字符串(X,"long") || !比较字符串(X,"长"))
+    #   (语义: long 或 长 命中 — 每分支各带 !, 否则 !(A||B) 恒假)
+    # 不带 ! 的: 比较字符串(X,"long") → (比较字符串(X,"long") || 比较字符串(X,"长"))
+    for en, zhn in KW_MAP.items():
+        alts = [zhn] + KW_ALIAS.get(en, [])
+        # 先处理带 ! 的 (更长模式优先)
+        pat_n = _re.compile(r'!比较字符串\(词名表\[([^\]]+)\],\s*"' + _re.escape(en) + r'"\)')
+        def _sub_n(m, en=en, alts=alts):
+            body = '!比较字符串(词名表[%s], "%s")' % (m.group(1), en)
+            for a in alts:
+                body += ' || !比较字符串(词名表[%s], "%s")' % (m.group(1), a)
+            return '(' + body + ')'
+        out, n = pat_n.subn(_sub_n, out)
+        # 再处理不带 ! 的 (剩余; 负向断言排除第一正则刚生成的带 ! 调用, 防嵌套膨胀)
+        pat = _re.compile(r'(?<!\!)比较字符串\(词名表\[([^\]]+)\],\s*"' + _re.escape(en) + r'"\)')
+        def _sub(m, en=en, alts=alts):
+            body = '比较字符串(词名表[%s], "%s")' % (m.group(1), en)
+            for a in alts:
+                body += ' || 比较字符串(词名表[%s], "%s")' % (m.group(1), a)
+            return '(' + body + ')'
+        out, n = pat.subn(_sub, out)
+    # ---- 2) kw() 加中文条目 (插在「此处只认英文」注释后) ----
+    kw_anchor = '/* 甲言中文关键字已在 lexer 改写成英文 (tn), 此处只认英文 */'
+    kw_lines = '\n    /* 改层 (2026-08-31): 中文关键字第一等 — 直接认中文, 不经过英文改写 */\n'
+    for en in sorted(KW_MAP):
+        tok = KW_TOK.get(en)
+        if not tok:
+            continue
+        zhn = KW_MAP[en]
+        alts = [zhn] + KW_ALIAS.get(en, [])
+        conds = ['!比较字符串(串值, "%s")' % a for a in alts]
+        kw_lines += '    若 (%s) 返 %s; /* %s */\n' % (' || '.join(conds), tok, en)
+    kidx = out.find(kw_anchor)
+    if kidx >= 0:
+        out = out[:kidx + len(kw_anchor)] + kw_lines + out[kidx + len(kw_anchor):]
+    # ---- 1) 删词法器关键字改写链 (从「甲言关键字」注释到 易失 行) ----
+    rm_start = out.find('/* 甲言关键字: 中文 → 英文名')
+    if rm_start >= 0:
+        rm_end = out.find('"易失")) 复制字符串(词名表[词序], "volatile");', rm_start)
+        if rm_end >= 0:
+            rm_end += len('"易失")) 复制字符串(词名表[词序], "volatile");')
+            out = out[:rm_start] + out[rm_end:]
     return out
 
 
