@@ -18155,7 +18155,12 @@ static void cg(int n) {
                     }
                     mov_rr64(0, 1); /* rax = rcx (return pointer) */
                 } else {
-                    cg(n0[n]); /* fallback (chain/array targets): best-effort 32-bit */
+                    /* array-element / member-chain sret return: copy the struct at &target to [rcx] (fix 2026-08-31 csmith s13: return g_1015[0][7][1] struct element 原 32-bit best-effort) */
+                    mov_reg_mbrp64(1, sret_ptr_off - cur_frame_sz); /* rcx = saved sret ptr (inner calls clobbered it) */
+                    mov_rr64(3, 1); /* rbx = rcx = &sret dst */
+                    cg_no_deref = 1; cg(n0[n]); cg_no_deref = 0; /* rax = &return target (case-14/15 no_deref 地址) */
+                    cg_struct_copy(stypes[cur_ret_si].sz);
+                    mov_rr64(0, 3); /* rax = rbx = sret ptr (return pointer) */
                 }
                 } /* fix 2026-08-16 根因J: 裸 return; 无操作数守卫 */
             } else if (fn_dbl_get_ret(cur_fn_name)) {
@@ -18728,7 +18733,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                 ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR case10: ptr->field 存 double */
                         } else {
 
-                                cg(n1[n]); if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196) */
+                                cg(n1[n]); if (fsz == 8) ll_ext32(n1[n]); push_r(0); /* save rhs on stack; ll 字段 int RHS 符号扩展 (fix 2026-08-07: 箭头字段 p->v = -100 存 64 位零扩展 → 4294967196; fix 2026-08-31 csmith s13: ==-3 sentinel 改 fsz==8) */
 if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, 0); ir_flush(); } } /* Phase3-IR case10: rax = ptr */
                                 else {mov_r_imm(0,0);} /* ptr=0 if not found */
                                 if(foff!=0){ ir_emit(I_ADD_EAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: 偏移 */
@@ -18772,7 +18777,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                                 pop_xmm0();
                                 ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); /* Phase3-IR case10: static 存 double */
                               } else {
-                                cg(n1[n]); push_r(0); /* save rhs */
+                                cg(n1[n]); if (fsz == 8) ll_ext32(n1[n]); push_r(0); /* save rhs - fix 2026-08-31 csmith s13: static int64 field int RHS sign-extend (g_75.f0=-7 0xFFFFFFF9 -> 0xFFFFFFFFFFFFFFF9) */
                                 ir_emit(I_LEA_RIP_OFF, off, 1, foff); ir_flush(); /* Phase3-IR case10: static 字段写地址 */
                                 pop_r(3); /* ebx = rhs */
                                 if (bf_store(stypes[si].name, fname)) { /* bit-field RMW store (fix 2026-08-05) */ }
@@ -18785,7 +18790,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                             }
                         } else if (var_big_param(vname)) {
                             /* big-struct param field write: load copy ptr, +foff, store */
-                            cg(n1[n]); push_r(0);
+                            cg(n1[n]); if (fsz == 8) ll_ext32(n1[n]); push_r(0); /* fix 2026-08-31 csmith s13: big_param int64 field sign-extend */
                             if (var_isstatic(vname)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); } else { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); ir_flush(); } /* Phase3-IR case10: big_param 字段写 copy ptr */
                             if (foff != 0) { ir_emit(I_ADD_RAX_IMM8, foff, 0, 0); ir_flush(); } /* Phase3-IR case10: big_param 字段偏移 */
                             pop_r(3);
@@ -18825,7 +18830,7 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                             } else {
                                 cg(n1[n]);
                                 if (st_field_bitw(stypes[si].name, fname) > 0) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); bf_store(stypes[si].name, fname); } /* Phase3-IR case10: 局部 bit-field */
-                                else if (fsz == 8) { if (st_field_ty_idx(stypes[si].name, fname) == -3) ll_ext32(n1[n]); ir_emit(I_STORE_RBP64, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 ll 写 */
+                                else if (fsz == 8) { ll_ext32(n1[n]); ir_emit(I_STORE_RBP64, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 ll 写 - fix 2026-08-31 csmith s13: ==-3 sentinel misses union int64 field (U6.f0 ty_idx not -3) -> lu.f0=-7 stored 32-bit */
                                 else if (fsz == 1) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 char 写 */
                 else if (fsz == 2) { push_r(0); ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vname, off) + foff - cur_frame_sz, 0); ir_flush(); pop_r(3); ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 short 写 */
                                 else { ir_emit(I_STORE_RBP, var_sbase(vname, off) + foff - cur_frame_sz, 0, 0); ir_flush(); } /* Phase3-IR case10: 局部 dword 写 */
@@ -19108,6 +19113,27 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                     pop_r(3); /* rbx = &dst, rax = &src */
                     cg_struct_copy(stypes[p_sti].sz);
                 } else {
+                if (n1[n] >= 0 && nt[n1[n]] == 4) { /* *ptr = call(): struct-returning -> sret temp + copy; else fall to scalar */
+                    char *scfn3 = NULL;
+                    for (int sci3 = 19; sci3 >= 0; sci3--) { int scc3 = child_i(n1[n], sci3); if (scc3 >= 0 && nt[scc3] == 1) { scfn3 = (char*)(nn + scc3); break; } }
+                    int ssi3 = scfn3 ? fn_ret_name_get(scfn3) : -1;
+                    if (scfn3 && ssi3 >= 0 && stypes[ssi3].sz > 8 && !fn_ret_name_get_ptr(scfn3)) {
+                        cg(pnode); /* rax = &ptr */
+                        int ssz3 = ((stypes[ssi3].sz + 7) / 8) * 8 + 8; /* sret temp + &ptr slot */
+                        ssz3 = (ssz3 + 15) & ~15; /* 16-align (Gate-1 rsp mod16) */
+                        sub_rsp_imm(ssz3);
+                        mov_mrsp_reg64(ssz3 - 8, 0); /* [rsp+ssz-8] = &ptr */
+                        int toff3 = -cur_frame_sz - ssz3;
+                        cg_sret_off = toff3; cg_sret_static = 0;
+                        cg(n1[n]); /* sret call writes temp */
+                        cg_sret_off = 0; cg_sret_static = 0;
+                        lea_r_mbrp(0, toff3); /* rax = &temp (src) */
+                        mov_reg_mrsp64(3, ssz3 - 8); /* rbx = &ptr (dst) */
+                        cg_struct_copy(stypes[ssi3].sz);
+                        add_rsp_imm(ssz3);
+                        break; /* fix 2026-08-31 csmith s13: (*g_1016)=func_14() 原走标量只拷 4 字节 */
+                    }
+                }
                 int is_dp = (pbase >= 0 && nt[pbase] == 1 && var_pdbl((char*)(nn + pbase)));
                 cg(pnode); /* ptr → eax (ORIGINAL node: *p++ must run the postfix inc) */
                 push_r(0); /* save ptr on stack */
