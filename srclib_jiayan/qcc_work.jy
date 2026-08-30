@@ -12141,6 +12141,34 @@ __attribute__((unused))
     tt = jm_tt2; tv = jm_tv2; tn = jm_tn2; tline = jm_tline2; tuns = jm_tuns2; tll = jm_tll2; tll_hi = jm_tll_hi2;
     ti = jm_out;
 }
+/* fix 2026-08-30 探雷报告 雷1: 括号配对验证 — token 级统一扫 (lex+宏展开后, parser 前),
+   任何不平衡立即报错 (带行号), 不再静默吞残缺语法 (原 blk() EK 静默退出 + 顶层孤立 } 忽略).
+   C 括号严格嵌套, 纯栈式匹配即正确; 字符串/字符/注释已由 lex 处理为单 token, 不干扰. */
+静 整 paren_balance_check(空) {
+    整 stk[8192]; 整 stk_ln[8192]; 整 sp = 0;
+    遍 (整 i = 0; i < TS && tt[i] != EK; i++) {
+        整 t = tt[i];
+        若 (t == OK || t == LB || t == FK) {
+            若 (sp >= 8192) { fprintf(stderr, "[ERR] 括号嵌套过深 行 %d (paren_balance)\n", tline[i]); 返 -1; }
+            stk[sp] = t; stk_ln[sp] = tline[i]; sp++;
+        } 否 若 (t == KK || t == RB || t == UK) {
+            若 (sp <= 0) { fprintf(stderr, "[ERR] 多余右括号 '%c' 行 %d (paren_balance)\n", t == KK ? ')' : (t == RB) ? ']' : '}', tline[i]); 返 -1; }
+            整 want = (t == KK) ? OK : (t == RB) ? LB : FK;
+            若 (stk[sp - 1] != want) {
+                字 o = (stk[sp - 1] == OK) ? '(' : (stk[sp - 1] == LB) ? '[' : '{';
+                字 c = (t == KK) ? ')' : (t == RB) ? ']' : '}';
+                fprintf(stderr, "[ERR] 括号不匹配 '%c' vs '%c' (开 行 %d, 闭 行 %d) (paren_balance)\n", o, c, stk_ln[sp - 1], tline[i]);
+                返 -1;
+            }
+            sp--;
+        }
+    }
+    若 (sp > 0) {
+        fprintf(stderr, "[ERR] 缺右括号: %d 个未闭合 (首个开括号 '%c' 行 %d) (paren_balance)\n", sp, (stk[0] == OK) ? '(' : (stk[0] == LB) ? '[' : '{', stk_ln[0]);
+        返 -1;
+    }
+    返 0;
+}
 
 静 整 parse(常 字 *s) {
     tk = 0; nc = 1; vcnt = 0; rsp_used = 32; /* reserve shadow space */
@@ -12186,6 +12214,7 @@ lex(exp_src);
     
     free(exp_src);
     若 (ti >= TS) { fprintf(stderr, "[ERR] token overflow\n"); 返 -1; }
+    若 (paren_balance_check() < 0) 返 -1; /* fix 2026-08-30 探雷雷1: 括号配对验证 (lex+宏展开后, parser 前) */
     整 p = Nd(3); 若 (p < 0) 返 -1;
     nc_root_p = p; /* fix 2026-08-18: 记录根节点 → Nc 子节点硬上限豁免 (根子槽仅 256, 函数>256 由 fdef_list 保留) */
     
