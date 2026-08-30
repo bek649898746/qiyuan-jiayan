@@ -3154,6 +3154,38 @@ static int fn_dbl_get_ret(const char *name) {
     return 0;
 }
 
+/* fix 2026-08-30 探雷雷3: 内置/IAT 函数豁免表 — 未声明但 qcc 直接支持的内置调用
+   (case-4 特殊处理 + IAT + msvcrt 标准库), C99 废除隐式声明后的白名单. 用户若
+   定义同名函数 (defined=1) 优先用用户的, 此表仅在既无定义又无原型时兜底放行. */
+static const char *qcc_builtin_fns[] = {
+    "printf","fprintf","sprintf","snprintf","vsnprintf","vfprintf","vprintf",
+    "scanf","sscanf","fscanf","putstr","puts","putchar","getchar","gets",
+    "memcpy","memset","memmove","memchr","memcmp",
+    "strcpy","strncpy","strcmp","strncmp","strlen","strcat","strncat","strchr",
+    "strrchr","strstr","strtok","strcspn","strspn","strdup","strndup","strerror",
+    "strtol","strtoul","strtod","atoi","atol","atof","labs","llabs",
+    "malloc","calloc","free","realloc","abort","qsort","bsearch","abs","rand","srand",
+    "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fgets","fputc",
+    "fputs","fflush","feof","ferror","fgetpos","fsetpos","remove","rename","tmpfile",
+    "isdigit","isxdigit","isalnum","isalpha","isspace","islower","isupper","tolower","toupper",
+    "clock","time","system","getenv",
+    "fabs","floor","ceil","sqrt","pow","log","exp","sin","cos","tan","atan","atan2",
+    "fmod","frexp","ldexp","modf","exit","_exit","getc","putc","ungetc",
+    "GetStdHandle","GetCommandLineA","GetModuleFileNameA","GetProcAddress","LoadLibraryA",
+    "VirtualAlloc","CreateThread","WaitForSingleObject","CloseHandle","ExitProcess",
+    "SetFilePointer","ReadFile","WriteFile","CreateFiber","SwitchToFiber","ConvertThreadToFiber",
+    "RtlEnterCriticalSection","RtlLeaveCriticalSection","get_proc_address","load_library",
+    "thread_create","thread_join","atomic_fetch_add","atomic_exchange","atomic_compare_exchange",
+    "atomic_load","atomic_store","inb","inl","outb","outl","__asm","__asm_byte",
+    "_write","_close","_unlink","_getpos","_setpos","_scanf_rt","_vsnprintf",
+    "_bump_set","_bump_top","_va_alloc","_start","_exit_proc","__qcc_va_start",
+    "isalpha_zh","strncmp_zh","strcmp_zh","strlen_zh","strcpy_zh","strchr_zh","strstr_zh",
+};
+static int is_qcc_builtin(const char *n) {
+    for (int i = 0; i < (int)(sizeof(qcc_builtin_fns) / sizeof(qcc_builtin_fns[0])); i++)
+        if (!strcmp(qcc_builtin_fns[i], n)) return 1;
+    return 0;
+}
 static int func_find(const char *name) {
     for (int i = 0; i < func_n; i++)
         if (!strcmp(func_tbl[i].name, name)) return i;
@@ -3161,6 +3193,7 @@ static int func_find(const char *name) {
     strcpy(func_tbl[func_n].name, name);
     func_tbl[func_n].label = new_label();
     func_tbl[func_n].defined = 0;
+    func_tbl[func_n].declared = 0; /* fix 2026-08-30 探雷雷3: 新条目默认未声明 — 原型/declare 登记处置 1 (原 declared 残留跨编译污染) */
     func_tbl[func_n].ret_si = -1; /* non-struct return by default */
     return func_n++;
 }
@@ -13873,7 +13906,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         /* __attribute__((...)) �?skip balanced parens */
         if (tt[tk] == VR && !strcmp(tn[tk], "声明")) { /* 接入 2026-08-28 declare 声明先行: 顶层 声明 名字(参数) 返回 类型; — 注册签名 (与 stmt 分支同逻辑, 顶层不经过 stmt) */
             tk++;
-            if (tk < TS && decl_cnt < 256) { strcpy(decl_names[decl_cnt++], tn[tk]); }
+            if (tk < TS && decl_cnt < 256) { strcpy(decl_names[decl_cnt++], tn[tk]); int _df = func_find(tn[tk]); if (_df >= 0) func_tbl[_df].declared = 1; } /* fix 2026-08-30 探雷雷3: declare 声明 = 已声明, 调用不再报未声明 */
             tk++;
             int ddd = 0;
             while (tk < TS && tt[tk] != EK && tt[tk] != SK) {
@@ -14081,7 +14114,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     }
                 }
             }
-            if (tt[tk] == SK) { fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
+            if (tt[tk] == SK) { func_tbl[tfi].declared = 1; /* fix 2026-08-30 探雷雷3: C 风格函数原型 (int foo(int);) = 已声明 — 未定义但声明过的调用合法, 与完全未声明区分 */ fn_dbl_set_ret((char*)(nn + fdef), fn_ret_dbl); fn_ll_set_ret((char*)(nn + fdef), fn_ret_ll); parse_base = 0; tk++; continue; } /* fix 2026-08-12: 函数原型后必须重置 parse_base — 否则下一个文件级声明在 parse_base>0 下 var_static 注册 → var_static_kw=1 (误标函数局部 static) → 全局变量从 main 不可见 → printf 参数加载缺失 (b_global) */
             /* 接入 2026-08-28 可吞清单 P0-7: 契约子句 前置(...) 后置(...) — 前置=入口检查(解析期脱糖), 后置=出口检查(代码生成期 epilogue 注入); 后置内 返回 = 返回值占位 (重命名成隐藏局部 __qcc_ret) */
             cur_contract = -1;
             while (tt[tk] == VR && (!strcmp(tn[tk], "前置") || !strcmp(tn[tk], "后置"))) {
@@ -17152,6 +17185,14 @@ static void cg(int n) {
             if (nt[fn] != 1) fnptr = 1;
             else if (var_lookup(fname) >= 0 && (fi < 0 || !func_tbl[fi].defined)) fnptr = 1; /* fp(a,b): callee is a (fnptr) VARIABLE, not a function */
             else fnptr = 0;
+            /* fix 2026-08-30 探雷雷3: 未声明函数检查 — C99 废除隐式声明. 名字调用既无定义
+               (defined)、无原型 (declared)、非函数指针变量 (fnptr)、非内置 → [ERR]
+               (原静默 stub 返回 0, AI 拿到假结果) */
+            if (nt[fn] == 1 && fi >= 0 && !func_tbl[fi].defined && !func_tbl[fi].declared
+                && !fnptr && !is_qcc_builtin(fname)) {
+                sprintf(g_errbuf, "未声明函数 '%s' — 调用前需定义或声明原型 (v3.0, C99 隐式声明已废除)", fname);
+                emit_error("A1001", g_errbuf);
+            }
             if (fnptr && nt[fn] == 1 && var_pdbl(fname)) ndbl[n] = 1; /* double-returning fnptr call: node yields xmm0 */
             if (fnptr && nt[fn] != 1 && nt[fn] != 12) { /* expression callee (tbl[i], (*fp) handled above): check the BASE array's p_dbl */
                 int bn = arr_base_node(fn);
