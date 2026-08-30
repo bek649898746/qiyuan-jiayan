@@ -7049,12 +7049,12 @@ __attribute__((unused))
                 若 (is_double) { var_static(vn, 4); vars[var_last_idx].is_dbl = 1; } /* static double: 8-byte .data slot */
                 否 若 (ltd_si >= 0 && !is_ptr) { var_static_struct(vn, ltd_si, 1); } /* static typedef'd struct var (fix 2026-08-07: was var_static → int, 字段全错位) */
                 否 若 (tdi_fnptr_v) { var_static(vn, 4); vars[var_last_idx].arr_esz = 8; 若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* static typedef'd fnptr var: 8-byte .data slot (fix 2026-08-07) */
-                否 { var_static(vn, is_ll ? 4 : (is_ptr ? (is_char ? 1 : (is_void ? 1 : 4)) : 0)); 若 (is_char) vars[vcnt - 1].is_char = 1; 若 (is_short) vars[vcnt - 1].is_short = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; 若 (is_ll) vars[vcnt - 1].is_ll = 1; 若 (is_ptr) { vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = ltd_si >= 0 ? stypes[ltd_si].sz : (is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); } } } /* fix 2026-08-18: static size_t/LL 标量 → 8 字节 .data 槽 + is_ll (原 var_static(0) 1 槽 → 截断); 静态指针记录 p_depth/p_inner (fix 2026-08-18); t35o: void* p_inner=1 */
+                否 { var_static(vn, is_ll ? 4 : (is_ptr ? (is_char ? 1 : (is_void ? 1 : 4)) : 0)); 若 (is_char) vars[vcnt - 1].is_char = 1; 若 (is_short) vars[vcnt - 1].is_short = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; 若 (is_ll) vars[vcnt - 1].is_ll = 1; 若 (is_ptr) { vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = ltd_si >= 0 ? stypes[ltd_si].sz : (is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); } 若 (is_csgn) vars[vcnt - 1].is_csgn = 1; } } /* fix 2026-08-18: static size_t/LL 标量 → 8 字节 .data 槽 + is_ll (原 var_static(0) 1 槽 → 截断); 静态指针记录 p_depth/p_inner (fix 2026-08-18); t35o: void* p_inner=1 */
             否 若 (is_ptr) {
                 
                 若 (is_double) { var_offset_ptr(vn, 8); vars[vcnt - 1].p_dbl = 1; vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = 8; } /* double*: 8-byte element + p_dbl (p_depth/p_inner fix 2026-08-18) */
                 否 { var_offset_ptr(vn, is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); 若 (ptr_depth >= 2) vars[vcnt - 1].arr_esz = 8; vars[vcnt - 1].p_depth = ptr_depth; vars[vcnt - 1].p_inner = ltd_si >= 0 ? stypes[ltd_si].sz : (is_char ? 1 : (is_short ? 2 : (is_void ? 1 : (is_ll ? 8 : 4)))); } /* fix 2026-08-08: short* 2-byte element (step + named deref width); fix 2026-08-18: T** 及以上局部 元素=指针 8B — char **addr 原 p_esz=1 → *addr 字节加载/addr[i] 步长1 → 解引用垃圾地址崩 (同 fnptr 用 arr_esz 覆盖宽度); p_depth/p_inner 记录指针层级与基类型 (fix 2026-08-18); t35o: void* 元素=1 字节 */
-                若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; } /* typedef struct pointer (fix 2026-08-03) */
+                { 若 (is_short) vars[vcnt - 1].is_short = 1; 若 (is_uns) vars[vcnt - 1].is_uns = 1; 若 (is_csgn) vars[vcnt - 1].is_csgn = 1; } /* fix 2026-08-30 csmith: local ptr pointee sign propagate (int8_t / int16_t deref movsx, s26/s197 silent) */ 若 (ltd_si >= 0) vars[vcnt - 1].st_idx = ltd_si; } /* typedef struct pointer (fix 2026-08-03) */
             否 若 (ltd_si >= 0) {  var_struct(vn, ltd_si); } /* typedef struct var (fix 2026-08-03: was var_offset → int, field offsets 0) */
             否 若 (tdi_fnptr_v) { var_offset_ptr(vn, 4); vars[vcnt - 1].arr_esz = 8; 若 (tdi_fdbl_v) vars[vcnt - 1].p_dbl = 1; } /* typedef'd fnptr var: 8-byte slot (fix 2026-08-05) */
             否 若 (is_ll) {  var_ll(vn); 若 (is_uns) vars[vcnt - 1].is_uns = 1; } /* long long / unsigned long long: 8-byte int (fix 2026-08-06: ULL 同时标 is_uns) */
@@ -19117,7 +19117,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
             cg(n0[n]); /* ptr → eax */
             整 pnode = n0[n];
             若 (pnode >= 0 && (nt[pnode] == 23 || nt[pnode] == 26)) pnode = n0[pnode]; /* *p++ / *++p: resolve through inc/dec to the pointer operand (fix 2026-08-16; fix 2026-08-16 根因I: pnode>=0 守卫 — parse 失败时 deref 缺操作数 n0=-1, 原直接读 nt[-1] 越界崩 shell.c) */
-            整 el = 0;
+            整 el = 0; 字 *_sgn_name = NULL; /* fix 2026-08-30 csmith: nested deref sign root (***p movsx/movzx) */
             若 (pnode >= 0) {
             若 (nt[pnode] == 1) { el = var_esz((字*)(nn + pnode)); cg_mem_frow = var_pelem((字*)(nn + pnode)); } /* named var: element size; fix 2026-08-18: (*ptr)[i] 读取 — 解引用结果的元素大小 (char** out → (*out) 是 char*, [i] 元素 1; var_pelem 对参数 char** 也正确 — 原 var_pesz 参数=8 缩放错) */
             否 若 (nt[pnode] == 14) { 字 *av = (字*)(nn + n0[pnode]); el = var_esz(av); } /* *arr[i] */
@@ -19169,13 +19169,19 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 若 (el <= 0) el = 1;
             }
             若 (pesz[pnode] > 0) el = pesz[pnode]; /* fix 2026-08-08 width bug: (T*) direct cast deref reads by target element width; t35k: 非指针 cast 哨兵 -1 排除 */
+            /* fix 2026-08-30 csmith: sign source thru nested deref chain — ***p movsx/movzx from innermost root ptr pointee (was nt[pnode]==1 only, nested chain always movzx, s26/s197 silent) */
+            若 (pnode >= 0) {
+                整 _sq = pnode;
+                循环 (_sq >= 0 && nt[_sq] == 12) { _sq = n0[_sq]; 若 (_sq >= 0 && (nt[_sq] == 23 || nt[_sq] == 26)) _sq = n0[_sq]; }
+                若 (_sq >= 0 && nt[_sq] == 1) _sgn_name = (字*)(nn + _sq);
+            }
             cg_mem_frow = el; /* fix 2026-08-20: 统一记录解引用元素宽度 (case-14 generic 下标基址用 — 原仅 pnode==1 分支设 var_pelem; (*argv)[1] 走 else 分支 → cg_mem_frow 陈旧 0 → 缩放 4 + 4字节加载 → NULL → strchr 崩) */
             若 (ndbl[n] || (nt[pnode] == 1 && var_pdbl((字*)(nn + pnode))) || (pesz[pnode] == 8 && nt[pnode] != 1)) { cg_mem_frow = 8; ndbl[n] = 1; asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); 断; } /* double 指针 deref → xmm0; fix 2026-08-25 step18: cast 表达式解引用 (pesz=8 且非变量; 变量走 var_pdbl; 结构体双指针变量 8B 指针保持整数 — regress_deref_cast_ptrptr) */
             }
             若 (el == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; 断; } /* 64-bit load — fix 2026-08-30 csmith t5: 补 nll (long long* 解引用作为二元操作数原不标 → 32 位运算, s34) */
             若 (el == 4) { mov_reg_mreg(0, 0); 断; }   /* dword load */
-            若 (el == 2) { 整 _s2 = 0; 整 _u2 = 0; 若 (pnode >= 0 && nt[pnode] == 1) { 字 *_pn2 = (字*)(nn + pnode); 若 (var_is_short(_pn2) && !var_is_uns(_pn2)) _s2 = 1; 若 (var_is_uns(_pn2)) _u2 = 1; } 若 (_s2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } 若 (_u2) nuns[n] = 1; 断; } /* word load (short*) fix 2026-08-08; fix 2026-08-30 csmith t5: int16_t* 解引用 movsx (原恒 movzx → s26 g_88 = *g_824 | ... 符号扩展丢失) */
-            { 整 _s1 = 0; 整 _u1 = 0; 若 (pnode >= 0 && nt[pnode] == 1) { 字 *_pn1 = (字*)(nn + pnode); 若 (var_is_csgn(_pn1)) _s1 = 1; 若 (var_is_uns(_pn1)) _u1 = 1; } 若 (_s1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); b(0x00); } 若 (_u1) nuns[n] = 1; } /* MOVZX eax, byte [eax] — fix 2026-08-30 csmith t5: int8_t* 解引用 movsx (s26 家族) */
+            若 (el == 2) { 整 _s2 = 0; 整 _u2 = 0; 字 *_pn2 = _sgn_name ? _sgn_name : (pnode >= 0 && nt[pnode] == 1 ? (字*)(nn + pnode) : NULL); 若 (_pn2) { 若 (var_is_short(_pn2) && !var_is_uns(_pn2)) _s2 = 1; 若 (var_is_uns(_pn2)) _u2 = 1; } 若 (_s2) { asm_emit("    符号扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } 否 { asm_emit("    零扩展字 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } 若 (_u2) nuns[n] = 1; 断; } /* word load (short*) fix 2026-08-08; fix 2026-08-30 csmith t5: int16_t* deref movsx; fix 2026-08-30: sign via nested chain root */
+            { 整 _s1 = 0; 整 _u1 = 0; 字 *_pn1 = _sgn_name ? _sgn_name : (pnode >= 0 && nt[pnode] == 1 ? (字*)(nn + pnode) : NULL); 若 (_pn1) { 若 (var_is_csgn(_pn1)) _s1 = 1; 若 (var_is_uns(_pn1)) _u1 = 1; } 若 (_s1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); b(0x00); } 若 (_u1) nuns[n] = 1; } /* MOVZX eax, byte [eax] — fix 2026-08-30 csmith t5: int8_t* deref movsx; fix 2026-08-30: sign via nested chain root */
         } 断;
         例 13: /* fall through to 15 */
         例 15: { /* struct member: var.field (nv=0) or ptr->field (nv=1) */
@@ -19270,7 +19276,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
                             cg_frows[0] = pel;
                             cg_frows[1] = st_field_ffin(cg_mem_chain_si, fn); /* fix 2026-08-22 t41b: 双指针字段第二维缩放 */
-                            若 (st_field_fdeep(cg_mem_chain_si, fn) >= 2) cg_fdepth_max = 2;
+                            cg_fdepth_max = (st_field_fdeep(cg_mem_chain_si, fn) >= 2) ? 2 : 1; /* fix 2026-08-30 csmith: 同简单字段 — 单指针字段须 deref */
                             若 (st_field_fdeep(cg_mem_chain_si, fn) >= 2) cg_mem_ptr_need = 1; /* 双指针字段单层取值需解引用 (fix 2026-08-22 t41b); 单指针 char* match 直接索引 — 原无条件设 → items[i].match[j] 多解引用 → git add 崩 */
                         }
                     }
@@ -19318,7 +19324,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     否 若 (o < 0) { cg(n0[n]); } /* 表达式 base: (T*)0 / 函数调用结果 — 求值得指针 (fix 2026-08-06: 原 load_param_val 对非参数加载垃圾, offsetof 惯用法 ((T*)0)->m 错) */
                     若(fo!=0){ ir_emit(I_ADD_RAX_IMM8, fo, 0, 0); ir_flush(); } /* Phase3-IR case15: ARROWFALL rax += offset */
                     若 (cg_no_deref || st_field_is_array_idx(si, fn)) { st_field_2d_setup(si, fn); /* array field (incl. flex array) decays to its ADDRESS even in value context (fix 2026-08-16: FLEX_ALLOC_MEM ret->orig dereferenced as int) */
-                        若 (!st_field_is_array_idx(si, fn) && !cg_incdec_target && !cg_addr_of && st_field_size(stypes[si].name, fn) == 8 && st_field_is_ptr(si, fn)) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* fix 2026-08-19: is_arrow && s<0 (指针参数 var_stidx=-1) 分支指针字段作数组基 — 镜像 9572: s->next_out[i] 原保留字段地址+按 frow(8) 缩放 → zlib 拷贝写坏结构体 */ 整 pel = st_field_pel(si, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; cg_frows[1] = st_field_ffin(si, fn); 若 (st_field_fdeep(si, fn) >= 2) cg_fdepth_max = 2; 若 (st_field_fdeep(si, fn) >= 2) cg_mem_ptr_need = 1; } }
+                        若 (!st_field_is_array_idx(si, fn) && !cg_incdec_target && !cg_addr_of && st_field_size(stypes[si].name, fn) == 8 && st_field_is_ptr(si, fn)) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); /* fix 2026-08-19: is_arrow && s<0 (指针参数 var_stidx=-1) 分支指针字段作数组基 — 镜像 9572: s->next_out[i] 原保留字段地址+按 frow(8) 缩放 → zlib 拷贝写坏结构体 */ 整 pel = st_field_pel(si, fn); cg_mem_frow = pel; cg_fdepth = 0; cg_frows[0] = pel; cg_frows[1] = st_field_ffin(si, fn); cg_fdepth_max = (st_field_fdeep(si, fn) >= 2) ? 2 : 1; 若 (st_field_fdeep(si, fn) >= 2) cg_mem_ptr_need = 1; } }
                     否 { 整 _afsz9 = st_field_size(stypes[si].name, fn);
                         若 (_afsz9 > 4) { 整 _afy9 = st_field_ty_idx(stypes[si].name, fn);
                             若 (_afsz9 == 8 && (_afy9 == -2 || _afy9 == -3 || (_afy9 >= 0 && stypes[_afy9].sz != 8) || (_afy9 == -1 && st_field_row(stypes[si].name, fn) == 8))) { ir_emit(I_DEREF64, 0, 0, 0); ir_flush(); nll[n] = 1; 若 (st_field_is_ptr(si, fn)) { 整 _pel9 = st_field_pel(si, fn); cg_mem_frow = _pel9; cg_fdepth = 0; cg_frows[0] = _pel9; } } /* 64 位值: fnptr(-2)/LL(-3)/指针字段 — 镜像正常分支 10260 (fix 2026-08-22 t44: ARROWFALL 原无条件 32 位读 → typedef 结构体指针参数 (mmfile_t *mmf var_stidx=-1) 的 char* 字段高 32 位清零 → xdl_mmfile_first 返 ptr 低 32 位 → root commit 摘要 xdl_guess_lines memchr(0x7) SEGV); fix 2026-08-29 csmith: nll */
@@ -19343,7 +19349,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
                             cg_frows[0] = pel;
                             cg_frows[1] = st_field_ffin(s, fn); /* fix 2026-08-22 t41b: 双指针字段第二维缩放 */
-                            若 (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2;
+                            cg_fdepth_max = (st_field_fdeep(s, fn) >= 2) ? 2 : 1; /* fix 2026-08-30 csmith: 单指针字段也须 deref (m->table[i] — fdeep 回退 1 时双指针漏设 → case-14 不 deref 返回地址) */
                             若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; /* 仅双指针字段 (fix 2026-08-22 t41b) */
                         }
                     }
@@ -19365,7 +19371,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */
                             cg_frows[0] = pel3;
                             cg_frows[1] = st_field_ffin(s, fn);
-                            若 (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2;
+                            cg_fdepth_max = (st_field_fdeep(s, fn) >= 2) ? 2 : 1; /* fix 2026-08-30 csmith: 同局部 — 单指针字段须 deref */
                             若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1;
                         } }
                     } 否 {
@@ -19401,7 +19407,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                             cg_fdepth = 0;
                             cg_frows[0] = pel4;
                             cg_frows[1] = st_field_ffin(s, fn);
-                            若 (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2;
+                            cg_fdepth_max = (st_field_fdeep(s, fn) >= 2) ? 2 : 1; /* fix 2026-08-30 csmith: 同局部 — 单指针字段须 deref */
                             若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1;
                         }
                     }
@@ -19409,7 +19415,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     若 (cg_no_deref) {
                         st_field_2d_setup(s, fn); /* fix 2026-08-07 */
                         ir_emit(I_LEA_RBP_GPR, 0, var_sbase(vn, o) + fo - cur_frame_sz, 0); ir_flush(); /* Phase3-IR case15: field as ARRAY base → address */
-                        { 整 afsz3 = st_field_size(stypes[s].name, fn); 若 (!cg_incdec_target && !cg_addr_of && afsz3 == 8 && st_field_is_ptr(s, fn)) { mov_reg_mreg64(0, 0); /* fix 2026-08-18: 非箭头 var.field 指针字段作数组基 (store.seen[i] / store.parsed[i] / store.key[i]): 原 cg_no_deref 只返回字段地址 → seen[0] 读到指针值本身 → config 写循环 j 垃圾; 对齐箭头分支 — 解引用取指针值 + 按指向元素缩放; fix 2026-08-19: 条件统一 st_field_is_ptr (原 el==8 对 char* 恒假) */ 整 pel3 = st_field_pel(s, fn); cg_mem_frow = pel3; cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */ cg_frows[0] = pel3; cg_frows[1] = st_field_ffin(s, fn); 若 (st_field_fdeep(s, fn) >= 2) cg_fdepth_max = 2; 若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; } }
+                        { 整 afsz3 = st_field_size(stypes[s].name, fn); 若 (!cg_incdec_target && !cg_addr_of && afsz3 == 8 && st_field_is_ptr(s, fn)) { mov_reg_mreg64(0, 0); /* fix 2026-08-18: 非箭头 var.field 指针字段作数组基 (store.seen[i] / store.parsed[i] / store.key[i]): 原 cg_no_deref 只返回字段地址 → seen[0] 读到指针值本身 → config 写循环 j 垃圾; 对齐箭头分支 — 解引用取指针值 + 按指向元素缩放; fix 2026-08-19: 条件统一 st_field_is_ptr (原 el==8 对 char* 恒假) */ 整 pel3 = st_field_pel(s, fn); cg_mem_frow = pel3; cg_fdepth = 0; /* fix 2026-08-19: 防陈旧 cg_fdepth 污染数组缩放 */ cg_frows[0] = pel3; cg_frows[1] = st_field_ffin(s, fn); cg_fdepth_max = (st_field_fdeep(s, fn) >= 2) ? 2 : 1; 若 (st_field_fdeep(s, fn) >= 2) cg_mem_ptr_need = 1; } }
                     } 否 若 (st_field_is_dbl(stypes[s].name, fn)) {
                         ir_emit(I_LOAD_XMM0_RBP, var_sbase(vn, o) + fo - cur_frame_sz, 0, 0); ir_flush(); /* Phase3-IR case15: double field → xmm0 */
                     } 否 {
@@ -19498,7 +19504,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 整 _need_deref_single = cg_mem_ptr_need; /* fix 2026-08-22 t41b: 单层指针字段取值 (slab[i] max=2 但只 1 层下标) 需 deref — 数组字段 (st[si].fnames[i] 参数) 不 deref (数组衰减取址) */
                 cg_mem_ptr_need = 0; /* 单层场景不留残留 */
                 若 (!cg_no_deref && (cg_fdepth >= cg_fdepth_max || (_need_deref_single && cg_nested_cnt == 0))) { /* deref only at OUTERMOST index (fix 2026-08-05); t41b: 指针字段 max=2 但只有单层下标时 (slab[i]) 也必须 deref */
-                    整 _el_w = (cg_fdepth_max > 0 && cg_fdepth_max <= 4 && cg_frows[cg_fdepth_max - 1] > 0) ? cg_frows[cg_fdepth_max - 1] : cg_mem_frow; /* fix 2026-08-29 csmith: 3D 嵌套 deref 用元素宽度 — cg_mem_frow=中间行宽 (int16 3D cg_mem_frow=4 应 2) → 32 位读错 */
+                    整 _el_w = (cg_fdepth > 0 && cg_fdepth <= 4 && cg_frows[cg_fdepth - 1] > 0) ? cg_frows[cg_fdepth - 1] : cg_mem_frow; /* fix 2026-08-29 csmith: 3D 嵌套 deref 用元素宽度 — cg_mem_frow=中间行宽 (int16 3D cg_mem_frow=4 应 2) → 32 位读错; fix 2026-08-30 csmith: 单层指针字段下标用当前维度 frows[fd-1] (原用 frows[fdm-1] → 双指针字段 ffin=16 → _el_w=16 无分支不 deref, s16/struct_ptrptr 返回地址) */
                     若 (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
                     否 若 (_el_w == 1 || _el_w == 0) { 若 (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } 否 { asm_emit("    零扩展 eax, [rax]\n", (字*)(长 长)0, (字*)(长 长)0, (字*)(长 长)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
                     否 若 (_el_w == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
