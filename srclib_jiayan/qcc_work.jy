@@ -5767,7 +5767,7 @@ __attribute__((unused))
                3526 的 OK+DK 检查漏了它 → tk 停在 (*)(long) 的 ( → 后面 ) 未消费 → 表达式错乱 →
                st_fidx 查空字段名 → 数组[-1] 越界崩 (kwset.c obstack_init 0xC0000005).
                消费完 * 后若遇 ( * ) ( args ) 同样跳过函数指针尾. */
-            若 (tt[tk] == OK && tt[tk + 1] == DK) {
+            若 (tt[tk] == OK && tt[tk + 1] == DK && tt[tk + 2] == KK) { /* fix 2026-08-30 H1==H2 kernel_v50: 仅 (* 后直接 ) 才是 fnptr 尾 — 排除 (*(expr) 括号表达式操作数被误吞: (int (*)(int))(*(int*)0x...) 的操作数 (*(int*)0x...) 以 ( * 开头被当 fnptr 尾吞掉 → fp2 声明初始化丢失 → ginit 错乱 (v1 生成 test/je/jmp 死循环, verify_h1h2_full kernel_v50 14 字节差) */
                 整 fp_d = 1; tk++;
                 循环 (tk < TS) {
                     若 (tt[tk] == OK) fp_d++;
