@@ -17296,6 +17296,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         lea_r_mbrp(10, var_sbase((字*)(nn + c), aoff) - cur_frame_sz); /* r10 = &local struct data */
                     }
                     slot_h[slot_n] = total_h + nblk * 8; /* the ADDRESS slot sits above the copy blocks */
+                    若 (getenv("QCC_DBG_ARG")) fprintf(stderr, "[ARG] bigsz=%d slot_h[%d]=%d total_h=%d fname=%s\n", bigsz, slot_n, slot_h[slot_n], total_h, fname);
                     遍 (整 k2 = nblk - 1; k2 >= 0; k2--) {
                         asm_emit("    取64 r0, [r10+%d]\n", (字*)(长 长)(k2 * 8), (字*)(长 长)0, (字*)(长 长)0); /* mov rax, [r10+k2*8] (fix 2026-08-03: bare emission had no -S text → H2 pushed uninit rax) */
                         b(0x49); b(0x8B); b(0x42); b(k2 * 8); /* mov rax, [r10 + k2*8] */
@@ -18132,14 +18133,15 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 若 (nt[n0[n]] == 1 && ro >= 0 && rsz <= 128) {
                     mov_reg_mbrp64(1, sret_ptr_off - cur_frame_sz); /* rcx = saved sret pointer (inner calls clobbered it) */
                     整 base = var_sbase(rvn, ro);
+                    整 sret_is_static = var_isstatic(rvn); /* fix 2026-08-31 csmith s13: return 静态 struct 变量 (如 g_1350) 原 [rbp+base+off] 读框垃圾 → sret 目标全 0 */
                     整 off = 0;
                     循环 (rsz >= 8) {
-                        mov_reg_mbrp64(0, base + off - cur_frame_sz); /* rax = [rbp+base+off] */
+                        若 (sret_is_static) mov_rax_rip64(coff_static_disp(ro, 1) - 1 + off); 否 mov_reg_mbrp64(0, base + off - cur_frame_sz); /* rax = field (静态 RIP: 基+字节偏移 / 局部 rbp) - fix 2026-08-31: 静态基=ro, 字段偏移按字节加 */
                         asm_emit("存指64 [r1+%d], r0\n", (字*)(长 长)(off), (字*)(长 长)0, (字*)(长 长)0); rex(1, 0, 0, 0); b(0x89); modrm(1, 0, 1); b(off); /* mov [rcx+off], rax (sret copy text fix 2026-08-03) */
                         off += 8; rsz -= 8;
                     }
                     若 (rsz >= 4) {
-                        mov_reg_mbrp(0, base + off - cur_frame_sz);
+                        若 (sret_is_static) mov_eax_rip(coff_static_disp(ro, 1) - 1 + off); 否 mov_reg_mbrp(0, base + off - cur_frame_sz);
                         asm_emit("存指32 [r1+%d], r0\n", (字*)(长 长)(off), (字*)(长 长)0, (字*)(长 长)0); b(0x89); modrm(1, 0, 1); b(off); /* mov [rcx+off], eax */
                         off += 4; rsz -= 4;
                     }
@@ -18913,8 +18915,28 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                 /* double array, or double* POINTER VAR (p_dbl). NOT fnptr arrays: p_dbl there
                    means double-return, elements are pointers (64-bit stores). */
                 整 arr_dbl = var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0);
-                若 (arr_dbl) { cg_f(n1[n]); push_xmm0(); } /* double array element write */
-                否 { cg(n1[n]); ir_flush(); 若 (var_is_ll(vn)) ll_ext32(n1[n]); push_r(0); } /* Phase3-IR case10: RHS 编译后清残留 IR */
+                整 _sret_el = 0; 整 _sret_el_sz = 0; 整 _sret_el_ssz = 0;
+                若 (nt[n1[n]] == 4) { /* arr[...] = struct_call(): sret temp + copy (fix 2026-08-31 csmith s13 g_1352) */
+                    字 *_scfn5 = NULL;
+                    遍 (整 _sci5 = 19; _sci5 >= 0; _sci5--) { 整 _scc5 = child_i(n1[n], _sci5); 若 (_scc5 >= 0 && nt[_scc5] == 1) { _scfn5 = (字*)(nn + _scc5); 断; } }
+                    整 _ssi5 = _scfn5 ? fn_ret_name_get(_scfn5) : -1;
+                    若 (_scfn5 && _ssi5 >= 0 && stypes[_ssi5].sz > 8 && !fn_ret_name_get_ptr(_scfn5)) {
+                        _sret_el = 1; _sret_el_sz = stypes[_ssi5].sz;
+                        _sret_el_ssz = ((_sret_el_sz + 7) / 8) * 8 + 8;
+                        _sret_el_ssz = (_sret_el_ssz + 15) & ~15; /* 16-align (Gate-1) */
+                        sub_rsp_imm(_sret_el_ssz);
+                        整 _toff5 = -cur_frame_sz - _sret_el_ssz;
+                        cg_sret_off = _toff5; cg_sret_static = 0;
+                        cg(n1[n]); /* sret call writes temp */
+                        cg_sret_off = 0; cg_sret_static = 0;
+                        lea_r_mbrp(0, _toff5); /* rax = &temp */
+                        push_r(0); /* push &temp as the "rhs" */
+                    }
+                }
+                若 (!_sret_el) {
+                    若 (arr_dbl) { cg_f(n1[n]); push_xmm0(); } /* double array element write */
+                    否 { cg(n1[n]); ir_flush(); 若 (var_is_ll(vn)) ll_ext32(n1[n]); push_r(0); } /* Phase3-IR case10: RHS 编译后清残留 IR */
+                }
                 cg(n1[ac]); ir_flush(); /* Phase3-IR case10: index 编译后清残留 IR */
                 /* NOTE: pop_r(3) is DELAYED into each store branch — the base-address
                    expression (cg(n0[ac]), e.g. `vars[vcnt-1]`) may itself use r3 for a
@@ -18947,7 +18969,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     }
                         ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 索引符号扩展 */
                         ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 地址+=索引 */
-                        若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        若 (_sret_el) {
+                        mov_rr64(11, 3); mov_rr64(3, 0); mov_rr64(0, 11); /* swap: rax=&temp(src) rbx=&element(dst) — 64 位指针 (mov_rr 32 位截断 → 拷贝垃圾) */
+                        cg_struct_copy(_sret_el_sz);
+                        add_rsp_imm(_sret_el_ssz);
+                    } 否 若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(_store_scale == 1 || _store_scale == 0){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(_store_scale == 8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(_store_scale == 2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18965,7 +18991,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     整 base=off-vars[vi].arr_sz*elemsz;
                     若 (vars[vi].alignN > 0) { ir_emit(I_LOAD_RBP64, 0, off - cur_frame_sz, 0); } /* fix step30/31: 对齐数组/VLA 写基址 = 地址槽 */ 否 { ir_emit(I_LEA_RBP_GPR, 0, base - cur_frame_sz, 0); }
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: 数组基地址 */
-                    若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    若 (_sret_el) {
+                        mov_rr64(11, 3); mov_rr64(3, 0); mov_rr64(0, 11); /* swap: rax=&temp(src) rbx=&element(dst) — 64 位指针 (mov_rr 32 位截断 → 拷贝垃圾) */
+                        cg_struct_copy(_sret_el_sz);
+                        add_rsp_imm(_sret_el_ssz);
+                    } 否 若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18980,7 +19010,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         load_ptr_slot(off, vn); /* rax = ptr (static → RIP, else frame) */
                         ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                         ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
-                        若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        若 (_sret_el) {
+                        mov_rr64(11, 3); mov_rr64(3, 0); mov_rr64(0, 11); /* swap: rax=&temp(src) rbx=&element(dst) — 64 位指针 (mov_rr 32 位截断 → 拷贝垃圾) */
+                        cg_struct_copy(_sret_el_sz);
+                        add_rsp_imm(_sret_el_ssz);
+                    } 否 若 (var_is_dbl(vn) || var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -18994,7 +19028,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                         mov_rr(11,0);
                         若(esz==2){ ir_emit(I_SHL_R11_IMM, 1, 0, 0); ir_flush(); } 否 若(esz==4){ ir_emit(I_SHL_R11_IMM, 2, 0, 0); ir_flush(); } 否 若(esz==1){ } 否 { mov_r_imm(0,esz); mov_rr(9,0); ir_emit(I_IMUL_R11_R9, 0, 0, 0); ir_flush(); } /* Phase3-IR case10: static 数组索引缩放 — fix 2026-08-29 csmith: esz=3 (int8 2D 行宽) 原不缩放 */
                         ir_emit(I_LEA_RIP, off, 1, 0); ir_flush(); ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10: static 数组基地址 */
-                        若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                        若 (_sret_el) {
+                        mov_rr64(11, 3); mov_rr64(3, 0); mov_rr64(0, 11); /* swap: rax=&temp(src) rbx=&element(dst) — 64 位指针 (mov_rr 32 位截断 → 拷贝垃圾) */
+                        cg_struct_copy(_sret_el_sz);
+                        add_rsp_imm(_sret_el_ssz);
+                    } 否 若 (var_is_dbl(vn) || (var_pdbl(vn) && var_arrsz(vn) == 0)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                         否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
@@ -19018,7 +19056,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
                     若 (!arr_dbl) pop_r(3); /* ebx = rhs — restored AFTER the base-address expr (fix 2026-08-09: cg may clobber r3) */
                     ir_emit(I_MOVSXD_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
                     ir_emit(I_ADD_RAX_R11, 0, 0, 0); ir_flush(); /* Phase3-IR case10 */
-                    若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
+                    若 (_sret_el) {
+                        mov_rr64(11, 3); mov_rr64(3, 0); mov_rr64(0, 11); /* swap: rax=&temp(src) rbx=&element(dst) — 64 位指针 (mov_rr 32 位截断 → 拷贝垃圾) */
+                        cg_struct_copy(_sret_el_sz);
+                        add_rsp_imm(_sret_el_ssz);
+                    } 否 若 (var_pdbl(vn)) { pop_xmm0(); ir_emit(I_STORE_XMM0_RAX, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==1){ ir_emit(I_STORE_RAX_BYTE, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==8){ ir_emit(I_STORE_RAX64, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
                     否 若(esz==2){ ir_emit(I_STORE_RAX_WORD, 0, 0, 0); ir_flush(); } /* Phase3-IR case10 */
