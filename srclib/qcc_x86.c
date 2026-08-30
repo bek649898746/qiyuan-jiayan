@@ -2178,6 +2178,7 @@ static int err_fn_cnt = 0; static char err_fn_names[256][64]; static int qcc_err
 static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
 static char cast_sgn64[ASZ]; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x / (long)x) 标记 — 值转换保留源 nuns (零扩展 b_cast), 类型 signed (除法/比较 signed); 不用 nll_hi (污染 LL 字面量语义 → 未初始化读取崩溃) */
+static char cast_mark[ASZ]; /* fix 2026-08-30 探雷雷2: 显式 cast 标记 — (T*)x 是 no-op cast 直接返回操作数 (不建节点), 标记操作数节点供 type_mismatch_check 豁免 (int *p=(const char*)0xdeadbeef 合法, int *p=12345 非法) */
 static int pesz[ASZ]; /* per-node flag: (T*) pointer-cast element byte size (1/2/4/8) - fix 2026-08-08 width bug: cast no-op drops type info, *((T*)x) width fell to 1 byte; keep target element size for case-12/10 */
 static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
 
@@ -2562,7 +2563,8 @@ static int closure_find(const char *n) { for (int i = 0; i < closure_cnt; i++) i
 static int fn_err_has(const char *n) { for (int i = 0; i < err_fn_cnt; i++) if (!strcmp(err_fn_names[i], n)) return 1; return 0; } /* 2026-08-28 type-root-2 */
 static void fn_err_mark(const char *n) { if (err_fn_cnt < 256) { strcpy(err_fn_names[err_fn_cnt], n); err_fn_cnt++; } } /* 2026-08-28 type-root-2 */
 static int expr_is_double(int n); static int var_lookup(const char *n); /* fwd (2026-08-28 type-root-4 #74) */
-static void implicit_cast_check(int rhs, const char *lhs_var) { if (rhs < 0 || !lhs_var) return; if (!user_fn_active) return; /* qcc_rt exempt (#74) */ if (lhs_var[0] == '_') return; if (!expr_is_double(rhs)) return; int vi = var_lookup(lhs_var); if (vi >= 0 && !vars[vi].is_dbl && !vars[vi].p_dbl) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 '%s' — 用 转 int(...) 显式转换 (类型根治④, v3.0 #74)", lhs_var); emit_error("A9002", g_errbuf); } } /* 2026-08-28 type-root-4 #74: no-implicit-cast double->int narrowing */
+static void type_mismatch_check(int rhs, const char *lhs_var, int vi); /* fwd: 定义在 nt 声明后 (探雷雷2) */
+static void implicit_cast_check(int rhs, const char *lhs_var) { if (rhs < 0 || !lhs_var) return; if (!user_fn_active) return; /* qcc_rt exempt (#74) */ if (lhs_var[0] == '_') return; int vi = var_lookup(lhs_var); type_mismatch_check(rhs, lhs_var, vi); if (!expr_is_double(rhs)) return; if (vi >= 0 && !vars[vi].is_dbl && !vars[vi].p_dbl) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 '%s' — 用 转 int(...) 显式转换 (类型根治④, v3.0 #74)", lhs_var); emit_error("A9002", g_errbuf); } } /* 2026-08-28 type-root-4 #74: no-implicit-cast double->int narrowing */
 static void err_union_check(int node) { if (node >= 0 && nerr[node]) { sprintf(g_errbuf, "错误 union: 错误函数的结果必须检查 — 用 尝试 f(); 传播(有错即返回), 或显ʽ判断后ʹ用 (类型根治②, v3.0 #72)"); emit_error("A9001", g_errbuf); } } /* 2026-08-28 type-root-2 */
 static int var_offset(const char *n) {
     int _pa = var_align(); /* fix 2026-08-25 step25: _Alignas(N) 变量级 — 标量用 8 字节槽使地址 8/16 对齐 */
@@ -3243,6 +3245,30 @@ static int *tll; /* per-token long-long-suffix flag (1000000000LL) — fix 2026-
 static int *tll_hi; /* per-token high 32 bits of a long-long literal (fix 2026-08-05) */
 
 static int *nt, *nv, *n0, *n1, *n2, *n3, *n4, *n5, *n6, *n7, *n8, *n9, *n10, *n11, *n12, *n13, *n14, *n15, *n16, *n17, *n18, *n19, *n20, *n21, *n22, *n23, *n24, *n25, *n26, *n27, *n28, *n29, *n30, *n31, *n32, *n33, *n34, *n35, *n36, *n37, *n38, *n39, *n40, *n41, *n42, *n43, *n44, *n45, *n46, *n47, *n48, *n49, *n50, *n51, *n52, *n53, *n54, *n55, *n56, *n57, *n58, *n59, *n60, *n61, *n62, *n63, *n64, *n65, *n66, *n67, *n68, *n69, *n70, *n71, *n72, *n73, *n74, *n75, *n76, *n77, *n78, *n79, *n80, *n81, *n82, *n83, *n84, *n85, *n86, *n87, *n88, *n89, *n90, *n91, *n92, *n93, *n94, *n95, *n96, *n97, *n98, *n99, *n100, *n101, *n102, *n103, *n104, *n105, *n106, *n107, *n108, *n109, *n110, *n111, *n112, *n113, *n114, *n115, *n116, *n117, *n118, *n119, *n120, *n121, *n122, *n123, *n124, *n125, *n126, *n127, *n128, *n129, *n130, *n131, *n132, *n133, *n134, *n135, *n136, *n137, *n138, *n139, *n140, *n141, *n142, *n143, *n144, *n145, *n146, *n147, *n148, *n149, *n150, *n151, *n152, *n153, *n154, *n155, *n156, *n157, *n158, *n159, *n160, *n161, *n162, *n163, *n164, *n165, *n166, *n167, *n168, *n169, *n170, *n171, *n172, *n173, *n174, *n175, *n176, *n177, *n178, *n179, *n180, *n181, *n182, *n183, *n184, *n185, *n186, *n187, *n188, *n189, *n190, *n191, *n192, *n193, *n194, *n195, *n196, *n197, *n198, *n199, *n200, *n201, *n202, *n203, *n204, *n205, *n206, *n207, *n208, *n209, *n210, *n211, *n212, *n213, *n214, *n215, *n216, *n217, *n218, *n219, *n220, *n221, *n222, *n223, *n224, *n225, *n226, *n227, *n228, *n229, *n230, *n231, *n232, *n233, *n234, *n235, *n236, *n237, *n238, *n239, *n240, *n241, *n242, *n243, *n244, *n245, *n246, *n247, *n248, *n249, *n250, *n251, *n252, *n253, *n254, *n255, nc;
+
+/* fix 2026-08-30 探雷雷2: 明显类型错配检查 — 字符串/整数/指针/char 赋值 (声明初始化+赋值共用).
+   只查字面量级错配 (报告三用例: 整 x="字符串" / int *p=12345 / 字 c="字符串"), 表达式/显式 cast
+   天然豁免 (nt 非 STR/0/1), qcc_rt 豁免 (user_fn_active 在调用方). C 惯例: 0/NULL 赋指针合法,
+   char[] 收字符串合法. */
+static void type_mismatch_check(int rhs, const char *lhs_var, int vi) {
+    if (rhs < 0 || vi < 0 || vi >= vcnt || rhs >= nc || rhs >= ASZ || !lhs_var) return;
+    int is_ptr_tgt = (vars[vi].p_depth > 0) || (vars[vi].arr_esz == 8 && vars[vi].arr_sz == 0);
+    if (nt[rhs] == STR && !is_ptr_tgt && vars[vi].arr_sz == 0) {
+        sprintf(g_errbuf, "类型错配: 字符串字面量赋给 '%s' — 字符串只能赋给 char*/char[] (探雷雷2)", lhs_var);
+        emit_error("A2001", g_errbuf);
+    }
+    if (nt[rhs] == 0 && is_ptr_tgt && nv[rhs] != 0 && !cast_mark[rhs]) {
+        sprintf(g_errbuf, "类型错配: 整数 %d 赋给指针 '%s' — 指针只能用地址或 NULL(0) (探雷雷2)", nv[rhs], lhs_var);
+        emit_error("A2001", g_errbuf);
+    }
+    if (nt[rhs] == 1 && !is_ptr_tgt && !vars[vi].is_dbl && !vars[vi].is_ll) {
+        int rvi = var_lookup((char*)(nn + rhs));
+        if (rvi >= 0 && (vars[rvi].p_depth > 0 || (vars[rvi].arr_esz == 8 && vars[rvi].arr_sz == 0))) {
+            sprintf(g_errbuf, "类型错配: 指针赋给整数变量 '%s' — 指针不能隐式转整数 (探雷雷2)", lhs_var);
+            emit_error("A2001", g_errbuf);
+        }
+    }
+}
 
 /* walk an array-access/member chain (case-14/15 nodes) down to the base NAME node.
    For m[i][j] the outer node's n0 is an inner case-14 node, NOT a name node —
@@ -5833,6 +5859,7 @@ static int prim(void) {
                 return compound_literal(0, -1, 0, 0, 0);
             }
             int ce = prim(); /* cast operand is a UNARY expr — prim() not expr(): (long long)1<<32 must shift the 64-bit cast, not parse as (long long)(1<<32) (fix 2026-08-05) */
+            if (ce >= 0) cast_mark[ce] = 1; /* fix 2026-08-30 探雷雷2: 显式 cast 标记 — type_mismatch_check 豁免 (int *p=(T*)0xdeadbeef 合法, 裸 int *p=12345 非法) */
             /* (int) on a double expr: real truncation via node 19 (cg: cvttsd2si).
                expr_is_double covers double-returning CALLS whose ndbl is set only at
                codegen (root-cause 2026-08-03: ndbl[ce] alone missed them → no-op cast). */
@@ -7155,7 +7182,7 @@ static int blk(void) {
                     vars[vcnt - 1].pdisp = ginit_n - 1; /* mark: handled by ginit */
                 }
             } else {
-                { int _r3 = expr(); if (!is_double && _r3 >= 0 && expr_is_double(_r3)) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 (声明) — 用 转 int(...) 显式转换 (v3.0 #74)"); emit_error("A9002", g_errbuf); } Nc(d, _r3); } /* #74 scalar */
+                { int _r3 = expr(); if (!is_double && _r3 >= 0 && expr_is_double(_r3)) { sprintf(g_errbuf, "无隐式转换: double 值赋给整型变量 (声明) — 用 转 int(...) 显式转换 (v3.0 #74)"); emit_error("A9002", g_errbuf); } if (user_fn_active && vcnt > 0) { type_mismatch_check(_r3, (char*)(nn + d), vcnt - 1); } /* fix 2026-08-30 探雷雷2: 标量/指针声明初始化类型错配检查 — 仅用户代码 (qcc_rt 豁免), vcnt-1 = 刚注册的当前变量 (var_lookup 可能命中 rt 残留) */ Nc(d, _r3); } /* #74 scalar */
             }
         } Nc(b, d); b_cnt++;
             if (brace_init_blk >= 0) { Nc(b, brace_init_blk); b_cnt++; } /* 延迟挂 struct brace init 块 (fix 2026-08-15: merge.c autogen 逗号声明) */
@@ -21173,7 +21200,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     ir_n = 0; crel_n = 0; csym_n = 0; /* fix 2026-08-28 可重入: IR 指令缓冲/coff 重定位残留 — ir_flush 只在表达式末尾清, 若上次编译末尾有未 flush IR → 下次首个 flush 发射残留指令 (首个函数代码多指令) */
     refs_n = 0; /* 引用表每编译重置 */
     contract_cnt = 0; cur_contract = -1; cstr_n = 0; /* fix 2026-08-28 可重入 (nll 同类): 契约表/契约结构表跨编译残留 — serve 多次请求同进程 → 上次注册的 前置 契约在本次误触发常量审判 → 假 A6002 → 编译失败 (e2e ⑤ 用户程序无库却带 整数除法 契约) */
-    memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle) */
+    memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); memset(cast_mark, 0, sizeof(cast_mark)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle); 2026-08-30 cast_mark 同清 */
 }
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
