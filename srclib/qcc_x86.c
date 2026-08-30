@@ -17048,7 +17048,7 @@ static void cg(int n) {
         } break;
         case 2: { /* binary op */
             int o = nv[n];
-            if (o == CK) { cg(n0[n]); cg(n1[n]); break; } /* comma: evaluate left (side effects), result = right */
+            if (o == CK) { cg(n0[n]); cg(n1[n]); if (nll[n]) { ir_flush(); ll_ext32(n1[n]); } break; } /* comma: evaluate left (side effects), result = right; nll 时 32 位值 movsxd (fix 2026-08-31 csmith s62: (uint64_t)(a,b) 零扩展 → g_1143 0x5569 应 0x5568) */
             if ((n0[n] >= 0 && expr_is_double(n0[n])) || (n1[n] >= 0 && expr_is_double(n1[n]))) { /* fix 2026-08-25 bug#27: 用 expr_is_double (覆盖 double 变量) 替代裸 ndbl */
                 /* floating-point arithmetic / comparison (result in xmm0) */
                 if (o == PK || o == MK || o == DK || o == DV) {
@@ -18109,9 +18109,11 @@ static void cg(int n) {
             int saved_blk_end = cg_blk_end;
             int saved_blk_start = cg_blk_start;
             if (nv[n] > 0) { cg_blk_end = nv[n] - 1; cg_blk_start = blk_vs[n]; } /* compound-statement block: nv[] = blk end var bound set by blk() (fix 2026-08-16); blk_vs[] = blk start bound (fix 2026-08-19: 嵌套块变量只在其块内可见) */
-            for (int i = 0; i < 512; i++) { int c = child_i(n, i); if (c > 0) cg(c); } /* fix 2026-08-18: 256→512 扩展子槽 — 大型函数体 > 256 语句不再截断 */
+            int lastc5 = -1; /* fix 2026-08-31 csmith s62: 逗号列表 (block) 末表达式 = block 值 */
+            for (int i = 0; i < 512; i++) { int c = child_i(n, i); if (c > 0) { cg(c); lastc5 = c; } } /* fix 2026-08-18: 256→512 扩展子槽 — 大型函数体 > 256 语句不再截断 */
             for (int ch = nchain[n]; ch > 0; ch = nchain[ch]) /* fix 2026-08-18: 溢出链块 (512+ 语句, git 大函数体) */
-                for (int i = 0; i < 512; i++) { int c = child_i(ch, i); if (c > 0) cg(c); }
+                for (int i = 0; i < 512; i++) { int c = child_i(ch, i); if (c > 0) { cg(c); lastc5 = c; } }
+            if (lastc5 >= 0 && nll[n]) { ir_flush(); ll_ext32(lastc5); } /* fix 2026-08-31 csmith s62: (uint64_t)(逗号列表) 值在 64 位上下文 — 32 位值 movsxd 符号扩展 (原零扩展 → shift=0 → g_1143 0x5569 应 0x5568) */
             cg_blk_end = saved_blk_end;
             cg_blk_start = saved_blk_start;
         } break;
@@ -18362,8 +18364,8 @@ static void cg(int n) {
                 cg_f(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
                 cg_f(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
             } else {
-                cg(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
-                cg(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
+                cg(n1[n]); ir_flush(); if (nll[n]) ll_ext32(n1[n]); ir_emit(I_JMP_LBL, ld, 0, 0); ir_emit(I_LABEL, lf, 0, 0); ir_flush();
+                cg(n2[n]); ir_flush(); if (nll[n]) ll_ext32(n2[n]); ir_emit(I_LABEL, ld, 0, 0); ir_flush();
             }
         } break;
         case 23: { /* postfix ++/-- : return old value, then mutate (simple var) */
