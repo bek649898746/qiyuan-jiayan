@@ -214,6 +214,8 @@ def main():
     do_check = '--check' in sys.argv
 
     raw = SRC.read_bytes()
+    if raw.startswith(b'\xef\xbb\xbf'):
+        raw = raw[3:]  # fix 2026-08-31: 源带 UTF-8 BOM 时先剥 (utf-8 decode 会把 \ufeff 留进文本 → 输出双 BOM → 甲言 lexer 解析中断 未找到 main)
     try:
         src_text = raw.decode('utf-8')
     except UnicodeDecodeError as e:
