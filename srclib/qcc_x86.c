@@ -5675,6 +5675,7 @@ static int prim(void) {
                 int idx_node = expr(); /* n1 = index */
                 Nc(m, idx_node);
                 if (tt[tk] == RB) tk++; /* skip ] */
+                { /* fix 2026-08-30 探雷雷5: 常量下标越界编译期拦截 — 已知大小数组 (arr_sz>0 非指针) + 字面量下标上越界 → A2001 (原真越界写; 负下标/指针算术/变量下标不查 = C 语义) */ if (nt[n] == 1 && idx_node >= 0 && nt[idx_node] == 0) { const char *_an = (char*)(nn + n); int _asz = var_arrsz(_an); if (_asz > 0 && var_pdepth(_an) == 0 && nv[idx_node] >= _asz) { sprintf(g_errbuf, "编译期越界: 数组 '%s'[%d] 越界 (大小 %d) (探雷雷5)", _an, nv[idx_node], _asz); emit_error("A2001", g_errbuf); } } }
                 if (!move_dst_parsing && nt[n] == 1 && idx_node >= 0 && nt[idx_node] == 0) { /* 2026-08-28 P1 #34 切片分裂: 静态下标路径 a[i] — 元素级借用检查 (动态下标记录为边界) */
                     char _apth[160]; sprintf(_apth, "%s[%d]", (char*)(nn + n), nv[idx_node]);
                     int _abm = borrow_mode_of(_apth);
@@ -6006,7 +6007,7 @@ static int prim(void) {
     return -1;
 }
 
-static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (o == SH || o == SR) { if (expr_is_ll(n)) nll[a] = 1; } /* fix 2026-08-29 csmith: 移位结果宽度=左操作数 — 原 expr_is_ll(r) 也传播 → `x << (int8_t)uint64` 被标 LL → 64 位移位 mod64 错 (s137 静默) */ else if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
+static int mul(void) { int n = prim(); while (tt[tk] == DK || tt[tk] == DV || tt[tk] == MD || tt[tk] == SH || tt[tk] == SR) { int o = tt[tk++]; int a = Nd(2); nv[a] = o; int r = prim(); Nc(a, n); Nc(a, r); if ((o == DK || o == DV) && r >= 0 && nt[r] == 0 && nv[r] == 0) { sprintf(g_errbuf, "编译期除零: 常量除数为 0 (探雷雷5)"); emit_error("A2001", g_errbuf); } /* fix 2026-08-30 探雷雷5: 常量除零编译期拦截 (原运行期 0xC0000094) */ if ((o == DK || o == DV) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; if (o == SH || o == SR) { if (expr_is_ll(n)) nll[a] = 1; } /* fix 2026-08-29 csmith: 移位结果宽度=左操作数 — 原 expr_is_ll(r) 也传播 → `x << (int8_t)uint64` 被标 LL → 64 位移位 mod64 错 (s137 静默) */ else if (expr_is_ll(n) || (r >= 0 && expr_is_ll(r))) nll[a] = 1; /* fix 2026-08-22 #31: 64-bit result nll at parse time */ n = a; } return n; }
 static int add(void) { int n = mul(); while (tt[tk] == PK || tt[tk] == MK) { int o = tt[tk++]; int ovf = -1; if (ov_n > 0 && nt[n] == 1) { /* 接入 2026-08-27 运算符重载: 左操作数是 struct 变量且注册过该运算符+类型 → 生成函数调用 (重载表空则零影响原路径) */ int si = var_stidx((char*)(nn + n)); if (si >= 0) { char *tyn = stypes[si].name; for (int k = 0; k < ov_n; k++) if (ov_op[k] == (char)o && !strcmp(ov_ty[k], tyn)) { ovf = k; break; } } } if (ovf >= 0) { int r = mul(); int c = Nd(4); Nc(c, n); Nc(c, r); { int fn = Nd(1); memcpy((char*)(nn + fn), ov_fn[ovf], 64); Nc(c, fn); } n = c; } else { int a = Nd(2); nv[a] = o; int r = mul(); Nc(a, n); Nc(a, r); if ((o == PK || o == MK) && ((n >= 0 && ndbl[n]) || (r >= 0 && ndbl[r]))) ndbl[a] = 1; n = a; } } return n; } /* t35m 2026-08-24: 按位 & ^ | 从加减层拆出 — C 优先级 (| 最低, ^ 中, & 最高; htonl(x) = (x&0xff)<<24 | (x>>24)&0xff 原 & 与 | 同级左结合 → 整体 &0xff → pack idx 魔数检查失败 → pack 对象读取失败) */
 static int band(void) { int n = add(); while (tt[tk] == PT) { tk++; int a = Nd(2); nv[a] = PT; int r = add(); Nc(a, n); Nc(a, r); n = a; } return n; }
 static int bxor(void) { int n = band(); while (tt[tk] == XR) { tk++; int a = Nd(2); nv[a] = XR; int r = band(); Nc(a, n); Nc(a, r); n = a; } return n; }
@@ -19577,6 +19578,15 @@ else if (bsz == 2) { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long
             char *vname = (char*)(nn + n0[n]);
             int off = var_lookup(vname);
             int peszl = var_pesz(vname);
+            /* fix 2026-08-30 探雷雷5: 常量下标越界编译期拦截 — 已知大小数组 (arr_sz>0 非指针)
+               + 字面量下标上越界 → A2001 (原真越界写; 负下标/指针算术/变量下标不查 = C 语义) */
+            if (nt[n0[n]] == 1 && n1[n] >= 0 && nt[n1[n]] == 0) {
+                int _asz14 = var_arrsz(vname);
+                if (_asz14 > 0 && var_pdepth(vname) == 0 && nv[n1[n]] >= _asz14) {
+                    sprintf(g_errbuf, "编译期越界: 数组 '%s'[%d] 越界 (大小 %d) (探雷雷5)", vname, nv[n1[n]], _asz14);
+                    emit_error("A2001", g_errbuf);
+                }
+            }
             if (nt[n0[n]] == 15 || nt[n0[n]] == 14) {
                 /* NESTED base (member/array chain) takes priority: vname is the member's
                    field name, NOT a variable — var_lookup could match an unrelated
