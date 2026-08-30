@@ -17112,7 +17112,8 @@ static void cg(int n) {
             int sret_si = fn_ret_name_get(fname);
             if (sret_si < 0 && !fn_ret_name_has(fname) && fi >= 0 && fi < 8192) sret_si = fn_ret_si_map[fi]; /* fix 2026-08-18: 名表优先 — func_tbl 索引在 pass 2 重排, fn_ret_si_map[fi] 会取到别的函数的返回类型; 仅当名表确无此函数时才回退索引表 (int 返回函数名表有记录 ret_si=-1, 不得回退到错位索引) */
             int sret_ptr = fn_ret_name_get_ptr(fname);
-            int is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off != 0 && !sret_ptr);
+            int sret_discard = (sret_si >= 0 && stypes[sret_si].sz > 8 && cg_sret_off == 0 && !sret_ptr); /* fix 2026-08-30 csmith s16: discarded sret call (bare f(); no target) still uses sret ABI with a stack temp */
+            int is_sret = (sret_si >= 0 && stypes[sret_si].sz > 8 && (cg_sret_off != 0 || sret_discard) && !sret_ptr);
             int sret_extra = nargs > 3 ? nargs - 3 : 0;
             /* function pointer variable or expression callee (indirect call). NOTE: no
                `||` short-circuit dependency — the self-host compiler evaluates BOTH
@@ -17212,6 +17213,17 @@ static void cg(int n) {
                 }
                 slot_n++;
             }
+            /* fix 2026-08-30 csmith s16: discarded sret call (no assignment target) --
+               allocate a temp hidden-pointer area on the stack; callee writes there,
+               reclaimed by the call's add_rsp. offset includes total_h so it points at
+               the temp bottom (sarg path missing total_h is a separate latent bug). */
+            if (sret_discard) {
+                int ds_tmp_sz = ((stypes[sret_si].sz + 7) / 8) * 8;
+                sub_rsp_imm(ds_tmp_sz);
+                total_h += ds_tmp_sz;
+                cg_sret_off = -cur_frame_sz - total_h;
+                cg_sret_static = 0;
+            }
             /* fix 2026-08-07 Gate-1: Win64 ABI 调用点 rsp≡0(mod16)。基帧已 ≡0，
                压入 total_h/8 个槽后奇偶 = (total_h/8 + extra) & 1，奇数补 8 对齐。
                sret/user 的参数槽读取发生在 shadow sub 之后 → argbase 须随 pad 下移。 */
@@ -17281,8 +17293,9 @@ static void cg(int n) {
             }
 
             if (is_sret) {
-                graph_record_call(func_tbl[fi].name); /* -graph 旁路: 调用关系记录 */
+                graph_record_call(func_tbl[fi].name); /* -graph bypass: call record */
                     ir_emit(I_CALL_LBL, func_tbl[fi].label, argbase + total_h, 0); ir_flush(); /* Phase3-IR */
+                    if (sret_discard) { cg_sret_off = 0; cg_sret_static = 0; } /* fix 2026-08-30 csmith s16: discard temp reclaimed by add_rsp; zero stale offset so next discard call reallocates */
             } else if (fnptr) { /* fnptr 优先于 is_user (fix 2026-08-15: write_block undefined) */
                 /* function pointer indirect call: params already in rcx/rdx/r8/r9 */
                 int fp_extra = nargs > 4 ? nargs - 4 : 0;
