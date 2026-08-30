@@ -2178,6 +2178,7 @@ static int err_fn_cnt = 0; static char err_fn_names[256][64]; static int qcc_err
 static int nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 static int nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
 static char cast_sgn64[ASZ]; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x / (long)x) 标记 — 值转换保留源 nuns (零扩展 b_cast), 类型 signed (除法/比较 signed); 不用 nll_hi (污染 LL 字面量语义 → 未初始化读取崩溃) */
+static char cast_uns64[ASZ]; /* fix 2026-08-31 csmith s11: unsigned 64 cast ((uint64_t)x / (unsigned long long)x) 标记 — 目标 unsigned (比较/除法无符号) 但不设源 nuns (源有符号须符号扩展: (uint64_t)(int32)0x9D9DC934 → 0xFFFFFFFF9D9DC934) */
 static char cast_mark[ASZ]; /* fix 2026-08-30 探雷雷2: 显式 cast 标记 — (T*)x 是 no-op cast 直接返回操作数 (不建节点), 标记操作数节点供 type_mismatch_check 豁免 (int *p=(const char*)0xdeadbeef 合法, int *p=12345 非法) */
 static int pesz[ASZ]; /* per-node flag: (T*) pointer-cast element byte size (1/2/4/8) - fix 2026-08-08 width bug: cast no-op drops type info, *((T*)x) width fell to 1 byte; keep target element size for case-12/10 */
 static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
@@ -3285,6 +3286,7 @@ static int arr_base_node(int n) {
 static int expr_is_unsigned(int n) {
     if (n < 0) return 0;
     if (cast_sgn64[n]) return 0; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x) 类型 signed — 值转换保留源 nuns 但类型判定按 cast 后 (除法 120/-1 应 -120) */
+    if (cast_uns64[n]) return 1; /* fix 2026-08-31 csmith s11: unsigned 64 cast ((uint64_t)x) 结果 unsigned (比较/除法无符号) */
     if (nuns[n]) return 1; /* fix 2026-08-30 csmith s61: cast/typedef 设的 nuns 标记优先 (uint32_t)X 原只字面量 nt==0 看 nuns → 比较仍按有符号 setl 分支翻转) */
     if (nt[n] == 1) return var_is_uns((char*)(nn + n)); /* unsigned var */
     if (nt[n] == 0) return nuns[n];                       /* 0xFFFFFFFFu literal */
@@ -3295,6 +3297,7 @@ static int expr_is_unsigned(int n) {
         if (o == T_SR || o == T_SH) return expr_is_unsigned(n0[n]); /* 移位: 结果类型=左操作数 */
         return expr_is_unsigned(n0[n]) || expr_is_unsigned(n1[n]); /* + - * / % & | ^: 任一 unsigned */
     }
+    if (nt[n] == 23 || nt[n] == 26) return expr_is_unsigned(n0[n]); /* ++/-- 前缀后缀: 结果类型=操作数类型 — fix 2026-08-31 csmith s11: (--(*l_20)) uint32 前自减被当 signed → int32<uint32 比较按有符号 setl → g_577|= 条件分支翻转 → 除零崩 */
     if (nt[n] == 14) return expr_is_unsigned(n0[n]); /* arr[i]: 结果类型=数组元素类型 */
     if (nt[n] == 12) return expr_is_unsigned(n0[n]); /* *p: 元素类型 — fix 2026-08-30 csmith s9/s52/s61: uint64 双解引用被当有符号 → setg 替 seta → 分支翻转 (**g_2263 > (...)^1 恒真路径未执行) */
     return 0;
@@ -5896,7 +5899,7 @@ static int prim(void) {
       if (cast_ty && !strcmp(cast_ty, "long")) _cast64 = 1;
       else if (cast_ty2 && !strcmp(cast_ty2, "long")) _cast64 = 1;
       else if (cast_td) { int _ct64 = tdef_lookup(cast_td); if (_ct64 >= 0 && !tdefs[_ct64].is_struct && !tdefs[_ct64].is_fnptr && !tdefs[_ct64].is_dbl && tdefs[_ct64].sz == 8) _cast64 = 1; }
-      if (ce >= 0) { if (_cuns) nuns[ce] = 1; if (_cast64) nll[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nll[ce] = 0; if (_cast64 && !_cuns) cast_sgn64[ce] = 1; } } /* fix 2026-08-30 csmith: cast 值转换保留源 nuns（(long long)uint32 零扩展 b_cast）, signed 64 cast 用 cast_sgn64 标记（除法 signed s168）; _cast64 设 nll */ /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
+      if (ce >= 0) { if (_cuns && !_cast64) nuns[ce] = 1; if (_cast64 && _cuns) cast_uns64[ce] = 1; /* fix 2026-08-31 csmith s11: uint64 目标 cast 不设源 nuns — 源有符号须符号扩展 ((uint64_t)(int32 0x9D9DC934) → 0xFFFFFFFF9D9DC934, 原 nuns=1 → 零扩展 → g_577 |= (l_2472[2]>>19) 0x13B7 应 0xFFFFF3B7 → 除零崩) */ if (_cast64) nll[ce] = 1; else if (cast_ty || cast_ty2 || cast_td) nll[ce] = 0; if (_cast64 && !_cuns) cast_sgn64[ce] = 1; } } /* fix 2026-08-30 csmith: cast 值转换保留源 nuns（(long long)uint32 零扩展 b_cast）, signed 64 cast 用 cast_sgn64 标记（除法 signed s168）; _cast64 设 nll */ /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             while (1) {
                 if (tt[tk] == LB) {
@@ -19320,7 +19323,7 @@ else if (var_is_short(vname)) { ir_emit(I_STORE_RBP_WORD, off - cur_frame_sz, 0,
             if (ndbl[n] || (nt[pnode] == 1 && var_pdbl((char*)(nn + pnode))) || (pesz[pnode] == 8 && nt[pnode] != 1)) { cg_mem_frow = 8; ndbl[n] = 1; asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); break; } /* double 指针 deref → xmm0; fix 2026-08-25 step18: cast 表达式解引用 (pesz=8 且非变量; 变量走 var_pdbl; 结构体双指针变量 8B 指针保持整数 — regress_deref_cast_ptrptr) */
             }
             if (el == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; break; } /* 64-bit load — fix 2026-08-30 csmith t5: 补 nll (long long* 解引用作为二元操作数原不标 → 32 位运算, s34) */
-            if (el == 4) { mov_reg_mreg(0, 0); break; }   /* dword load */
+            if (el == 4) { mov_reg_mreg(0, 0); if (nll[n]) { char *_pn4 = _sgn_name ? _sgn_name : (pnode >= 0 && nt[pnode] == 1 ? (char*)(nn + pnode) : NULL); if (!(_pn4 && var_is_uns(_pn4))) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } break; }   /* dword load — fix 2026-08-31 csmith s11: (int64_t)*int32_ptr 须 movsxd (原 32 位值零扩展, 高 32 丢) */
             if (el == 2) { int _s2 = 0; int _u2 = 0; char *_pn2 = _sgn_name ? _sgn_name : (pnode >= 0 && nt[pnode] == 1 ? (char*)(nn + pnode) : NULL); if (_pn2) { if (var_is_short(_pn2) && !var_is_uns(_pn2)) _s2 = 1; if (var_is_uns(_pn2)) _u2 = 1; } if (_s2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } if (_u2) nuns[n] = 1; break; } /* word load (short*) fix 2026-08-08; fix 2026-08-30 csmith t5: int16_t* deref movsx; fix 2026-08-30: sign via nested chain root */
             { int _s1 = 0; int _u1 = 0; char *_pn1 = _sgn_name ? _sgn_name : (pnode >= 0 && nt[pnode] == 1 ? (char*)(nn + pnode) : NULL); if (_pn1) { if (var_is_csgn(_pn1)) _s1 = 1; if (var_is_uns(_pn1)) _u1 = 1; } if (_s1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); b(0x00); } if (_u1) nuns[n] = 1; } /* MOVZX eax, byte [eax] — fix 2026-08-30 csmith t5: int8_t* deref movsx; fix 2026-08-30: sign via nested chain root */
         } break;
@@ -19658,7 +19661,7 @@ else if (bsz == 2) { if (st_field_is_uns(stypes[s].name, fn)) { asm_emit("    �
                     int _el_w = (cg_fdepth > 0 && cg_fdepth <= 4 && cg_frows[cg_fdepth - 1] > 0) ? cg_frows[cg_fdepth - 1] : cg_mem_frow; /* fix 2026-08-29 csmith: 3D 嵌套 deref 用元素宽度 — cg_mem_frow=中间行宽 (int16 3D cg_mem_frow=4 应 2) → 32 位读错; fix 2026-08-30 csmith: 单层指针字段下标用当前维度 frows[fd-1] (原用 frows[fdm-1] → 双指针字段 ffin=16 → _el_w=16 无分支不 deref, s16/struct_ptrptr 返回地址) */
                     if (cg_mem_dbl) { asm_emit("    浮取 xmm0, [r0]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0xF2); b(0x0F); b(0x10); modrm(0,0,0); } /* double elem → xmm0 (movsd [rax]) */
                     else if (_el_w == 1 || _el_w == 0) { if (cg_mem_sgn == 1) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int8_t 数组元素符号扩展 (cg_mem_sgn 由数组分支设置) */
-                    else if (_el_w == 4) { mov_reg_mreg(0, 0); } /* mov eax, [rax] */
+                    else if (_el_w == 4) { mov_reg_mreg(0, 0); if (nll[n] && !cg_mem_uns) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* mov eax, [rax] — fix 2026-08-31 csmith s11: nll 时 int 元素 movsxd (嵌套 deref 同族) */
                     else if (_el_w == 2) { if (cg_mem_sgn == 2) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: int16_t 数组元素符号扩展 */
                     else if (_el_w == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* mov rax, [rax] — fix 2026-08-29 csmith: 补 nll (嵌套 deref int64 元素原未标 → g_223[3][1] uint64 参数丢高 32, s137; 本会话未提交修复, 勿丢) */
                     /* else: frow>8 → row is an array → ADDRESS, no deref */
@@ -19690,7 +19693,7 @@ else if (bsz == 2) { if (st_field_is_uns(stypes[s].name, fn)) { asm_emit("    �
                             else if (esz == 1) { if (vars[vi].is_csgn) { asm_emit("    符号扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBE); modrm(0, 0, 0); } else { asm_emit("    零扩展 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB6); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int8_t 数组元素符号扩展 */
                             else if (esz == 8) { mov_reg_mreg64(0, 0); nll[n] = 1; } /* 64-bit fnptr / pointer / long long element (fix 2026-08-06: LL 数组元素需 nll，否则链式 a[0]+a[1]+a[2] 走 32 位加法) */
                     else if (esz == 2) { if (vars[vi].is_short && !vars[vi].is_uns) { asm_emit("    符号扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xBF); modrm(0, 0, 0); } else { asm_emit("    零扩展字 eax, [rax]\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x0F); b(0xB7); modrm(0, 0, 0); } } /* fix 2026-08-29 csmith: 局部 int16_t 数组元素符号扩展 */
-                            else { mov_reg_mreg(0, 0); if (vars[vi].is_uns) nuns[n] = 1; } /* mov eax, [rax] — fix 2026-08-30 csmith t5: 局部 uint 数组元素 nuns (传 uint64 参数零扩展, s28 家族) */
+                            else { mov_reg_mreg(0, 0); if (vars[vi].is_uns) nuns[n] = 1; if (nll[n] && !nuns[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* mov eax, [rax] — fix 2026-08-30 csmith t5: 局部 uint 数组元素 nuns (传 uint64 参数零扩展, s28 家族); fix 2026-08-31 csmith s11: nll 时 int 元素 movsxd ((uint64_t)l_2472[2] 高 32 丢 → g_577 0x13B7 应 0xFFFFF3B7 → 除零崩) */
                         }
                         did = 1; break;
                     }
@@ -21238,7 +21241,7 @@ static void reset_compile_state(void) { /* 接入 2026-08-28 AI原生 #6: 重置
     ir_n = 0; crel_n = 0; csym_n = 0; /* fix 2026-08-28 可重入: IR 指令缓冲/coff 重定位残留 — ir_flush 只在表达式末尾清, 若上次编译末尾有未 flush IR → 下次首个 flush 发射残留指令 (首个函数代码多指令) */
     refs_n = 0; /* 引用表每编译重置 */
     contract_cnt = 0; cur_contract = -1; cstr_n = 0; /* fix 2026-08-28 可重入 (nll 同类): 契约表/契约结构表跨编译残留 — serve 多次请求同进程 → 上次注册的 前置 契约在本次误触发常量审判 → 假 A6002 → 编译失败 (e2e ⑤ 用户程序无库却带 整数除法 契约) */
-    memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); memset(cast_mark, 0, sizeof(cast_mark)); /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle); 2026-08-30 cast_mark 同清 */
+    memset(ndbl, 0, sizeof(ndbl)); memset(nll, 0, sizeof(nll)); memset(nll_hi, 0, sizeof(nll_hi)); memset(nuns, 0, sizeof(nuns)); memset(cast_mark, 0, sizeof(cast_mark)); memset(cast_sgn64, 0, sizeof(cast_sgn64)); memset(cast_uns64, 0, sizeof(cast_uns64)); /* fix 2026-08-31 csmith s11: cast 类型标记跨编译残留防护 (同 nll/nuns 可重入) */ /* fix 2026-08-28 可重入根因: 逐节点类型标志静态数组 (ndbl/nll/nll_hi/nuns) 跨编译残留 — nc 每编译重置但数组内容不清 → run2 节点索引复用 run1 的 LL/双/无符号标志 → int 表达式被当 LL (push_r64 替代 push_r) → 进程内第 2 次编译产物 ≠ 第 1 次 (历史同款: 注释 L17181 nll 残留 → movabs → v1≠v2 2-cycle); 2026-08-30 cast_mark 同清 */
 }
 int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可嵌入: QCC_EMBEDDED 模式被外部驱动调用, 见 qcc_embed_driver.c; 非 static 暴露为库 API */
     reset_compile_state(); /* 可重入: 每次编译重置静态表 (数组在下方重新分配) */
