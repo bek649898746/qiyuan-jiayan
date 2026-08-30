@@ -148,6 +148,7 @@ static int cur_fn_sret = 0;  /* parse/codegen: current function returns a >8B st
 static int cur_va_home = -1; /* variadic fn: rbp-relative address of the first vararg slot; -1 = non-variadic */
 static int cur_ret_si = -1;  /* codegen: current function's return struct type index (-1 = not struct) */
 static int cg_sret_off = 0;  /* case-4: rbp-relative sret target (lea rcx) for a struct-returning call; 0 = none */
+static int cg_sret_static = 0; /* fix 2026-08-30 csmith: static struct sret 目标 — case-4 rcx=&target 用 RIP (static 在 .data, rbp 相对得垃圾 → s16 checksum 错) */
 static int sret_ptr_off = 0; /* sret fn prologue: frame slot that saves the hidden return pointer (rcx) */
 /* ASM text emission. SELF-HOST FIX 2026-08-03: was varargs (va_list/vfprintf) which the
    qcc subset cannot compile → self-hosted -S emitted an EMPTY .asm. Now fixed 3-arg with
@@ -17193,7 +17194,7 @@ static void cg(int n) {
                         sub_rsp_imm(sarg_blk * 8);      /* 腾出 struct 副本区 */
                         total_h += sarg_blk * 8;
                         int sarg_off = -cur_frame_sz - sarg_blk * 8; /* rbp 相对临时地址 */
-                        cg_sret_off = sarg_off;
+                        cg_sret_off = sarg_off; cg_sret_static = 0; /* fix 2026-08-30: 临时非 static 重置 */
                         cg(c);                           /* case-4 sret 调用: rcx=&tmp, callee 写入 */
                         cg_sret_off = 0;
                         lea_r_mbrp(0, sarg_off);         /* rax = &tmp */
@@ -17226,7 +17227,8 @@ static void cg(int n) {
             }
             /* load registers + stack args from the pushed slots (offset = total_h - slot_h[k] - 8 from rsp) */
             if (is_sret) { /* rcx = &target; arg0..2 -> rdx/r8/r9 (int) or xmm0/xmm1/xmm2 (double); arg3+ -> [rsp+32+8k] — IR */
-                ir_emit(I_LEA_RBP_GPR, 1, cg_sret_off, 0); ir_flush(); /* rcx = &target */
+                if (cg_sret_static) { lea_rax_rip(coff_static_disp(cg_sret_off, 1) - 1); mov_rr64(1, 0); } else { ir_emit(I_LEA_RBP_GPR, 1, cg_sret_off, 0); } /* fix 2026-08-30 csmith: static sret 目标 RIP (s16) */
+                ir_flush(); /* rcx = &target */
                 for (int k = 0; k < nargs && k < 3; k++) {
                     int gpr;
                     if (k == 0) gpr = 2; else if (k == 1) gpr = 8; else gpr = 9;
@@ -18103,11 +18105,12 @@ static void cg(int n) {
                    >8B struct (EngineStat* e = find_stat(...)) must NOT take the sret
                    path: the callee returns the pointer in rax, and the sret path skips
                    the store → e never gets the call result (fix 2026-08-03). */
-                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n0[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0;
+                int sret_tgt = 0; int sret_st = 0;
+                if (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && nt[n0[n]] == 4) { if (var_isstatic(vname)) { sret_tgt = off; sret_st = 1; } else { sret_tgt = var_sbase(vname, off) - cur_frame_sz; } } /* fix 2026-08-30 csmith: static sret 目标用 off 槽号 (coff_static_disp 转 .data 地址; var_sbase off-sz 是 rbp 帧布局, static 减了错), s16 */
                 if (sret_tgt) { /* big-struct init: sret call writes straight into the target */
-                    cg_sret_off = sret_tgt;
+                    cg_sret_off = sret_tgt; cg_sret_static = sret_st;
                     cg(n0[n]); /* case-4 emits the sret call (lea rcx=&target) */
-                    cg_sret_off = 0;
+                    cg_sret_off = 0; cg_sret_static = 0;
                 } else {
                 if (var_is_dbl(vname)) {
                     if (n0[n] >= 0 && nt[n0[n]] == 4) ndbl[n0[n]] = 1; /* double target: force call result to stay in xmm0 (fix 2026-08-16: n0[n]=-1 守卫) */
@@ -18982,11 +18985,12 @@ if(off>=0 || (coff_mode && var_isstatic(vname))){ if (var_isstatic(vname)) { ir_
                 int off = var_lookup(vname);
                 int sti = var_stidx(vname);
                 
-                int sret_tgt = (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && n1[n] >= 0 && nt[n1[n]] == 4) ? var_sbase(vname, off) - cur_frame_sz : 0; /* fix 2026-08-10: exclude ptr vars (mirror struct-ptr global crash root) */
+                int sret_tgt = 0; int sret_st = 0;
+                if (sti >= 0 && stypes[sti].sz > 8 && var_pesz(vname) == 0 && n1[n] >= 0 && nt[n1[n]] == 4) { if (var_isstatic(vname)) { sret_tgt = off; sret_st = 1; } else { sret_tgt = var_sbase(vname, off) - cur_frame_sz; } } /* fix 2026-08-10: exclude ptr vars; fix 2026-08-30 csmith: static sret 用 off 槽号 (s16) */
                 if (sret_tgt) { /* big-struct assign: sret call writes straight into the target */
-                    cg_sret_off = sret_tgt;
+                    cg_sret_off = sret_tgt; cg_sret_static = sret_st;
                     cg(n1[n]);
-                    cg_sret_off = 0;
+                    cg_sret_off = 0; cg_sret_static = 0;
                 } else if (var_is_dbl(vname)) {
                     if (var_isstatic(vname)) { cg_f(n1[n]); ir_emit(I_STORE_XMM0_RIP, off, 2, 0); ir_flush(); } /* Phase3-IR case10: static double 写 */
                     else { cg_f(n1[n]); movsd_mbrp_xmm0(off - cur_frame_sz); }
