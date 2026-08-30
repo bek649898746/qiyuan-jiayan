@@ -6312,10 +6312,9 @@ __attribute__((unused))
                             否 var_offset_ptr(vn, 8);
                             vars[vcnt - 1].st_idx = si; vars[vcnt - 1].arr_esz = 8;
                         } 否 {
-                            
                             若 (is_static) var_static(vn, 4);
-                            否 var_offset_ptr(vn, stypes[si].sz); /* fix 2026-08-20: struct 单指针 p_esz=sizeof(struct) 原固定 4 + arr_esz=8 → var_esz=8 → 指针算术 i*8 → preprocess_options memcpy 参数错位 → git log 崩 */
-                            vars[vcnt - 1].st_idx = si; vars[vcnt - 1].p_depth = 1; vars[vcnt - 1].p_inner = stypes[si].sz;
+                            否 var_offset_ptr(vn, si >= 0 ? stypes[si].sz : 4); /* fix 2026-08-20: struct 单指针 p_esz=sizeof(struct) 原固定 4 + arr_esz=8 → var_esz=8 → 指针算术 i*8 → preprocess_options memcpy 参数错位 → git log 崩; fix 2026-08-30 H1==H2: si=-1 (非 struct 指针, const char *arr[]) 时 stypes[-1] 越界 → pesz 垃圾 → 指针布局错崩 (regress_arraysize_dim/pptr_postinc 5 文件) */
+                            vars[vcnt - 1].st_idx = si; vars[vcnt - 1].p_depth = 1; vars[vcnt - 1].p_inner = si >= 0 ? stypes[si].sz : 4;
                         }
                     } 否 若 (si >= 0) {
                         若 (is_static) var_static_struct(vn, si, 1);
@@ -6394,10 +6393,10 @@ __attribute__((unused))
                             } 否 若 (ip2) {
                                 若 (is_static) var_static(vn2, 4);
                                 否 若 (ip2d >= 2) var_offset_ptr(vn2, 8); /* fix 2026-08-21: struct X ** 逗号变量 p_esz=8 (原按 sizeof(struct)=4 → prune_directory src/dst 指针算术 4 → add 丢文件) */
-                                否 var_offset_ptr(vn2, stypes[si].sz); /* fix 2026-08-20: struct 单指针 p_esz=sizeof(struct) */
+                                否 var_offset_ptr(vn2, si >= 0 ? stypes[si].sz : 4); /* fix 2026-08-20: struct 单指针 p_esz=sizeof(struct); fix 2026-08-30 H1==H2: si=-1 (非 struct 指针) stypes[-1] 越界 */
                                 vars[vcnt - 1].st_idx = si;
                                 若 (ip2d >= 2) vars[vcnt - 1].arr_esz = 8;
-                                否 { vars[vcnt - 1].p_depth = 1; vars[vcnt - 1].p_inner = stypes[si].sz; }
+                                否 { vars[vcnt - 1].p_depth = 1; vars[vcnt - 1].p_inner = si >= 0 ? stypes[si].sz : 4; }
                             } 否 若 (si >= 0) {
                                 若 (is_static) var_static_struct(vn2, si, 1);
                                 否 var_struct(vn2, si);
