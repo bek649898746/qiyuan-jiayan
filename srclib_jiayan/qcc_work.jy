@@ -2176,6 +2176,7 @@ __attribute__((unused))
 静 整 err_fn_cnt = 0; 静 字 err_fn_names[256][64]; 静 整 qcc_err_pending = 0; 静 整 qcc_err_pending_tok = -1; 静 整 qcc_cur_fn_err = 0; 静 整 qcc_skip_err_check = 0; /* 2026-08-28 type-root-2: try-branch expr() exempt from asgn A9001 */ /* 2026-08-28 type-root-2: error-union table + pending */
 静 整 nll[ASZ]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 静 整 nll_hi[ASZ]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
+静 字 cast_sgn64[ASZ]; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x / (long)x) 标记 — 值转换保留源 nuns (零扩展 b_cast), 类型 signed (除法/比较 signed); 不用 nll_hi (污染 LL 字面量语义 → 未初始化读取崩溃) */
 静 整 pesz[ASZ]; /* per-node flag: (T*) pointer-cast element byte size (1/2/4/8) - fix 2026-08-08 width bug: cast no-op drops type info, *((T*)x) width fell to 1 byte; keep target element size for case-12/10 */
 静 整 nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
 
@@ -3220,6 +3221,7 @@ __attribute__((unused))
 /* does this expression subtree yield an unsigned value? (fix 2026-08-05) */
 静 整 expr_is_unsigned(整 n) {
     若 (n < 0) 返 0;
+    若 (cast_sgn64[n]) 返 0; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x) 类型 signed — 值转换保留源 nuns 但类型判定按 cast 后 (除法 120/-1 应 -120) */
     若 (nuns[n]) 返 1; /* fix 2026-08-30 csmith s61: cast/typedef 设的 nuns 标记优先 (uint32_t)X 原只字面量 nt==0 看 nuns → 比较仍按有符号 setl 分支翻转) */
     若 (nt[n] == 1) 返 var_is_uns((字*)(nn + n)); /* unsigned var */
     若 (nt[n] == 0) 返 nuns[n];                       /* 0xFFFFFFFFu literal */
@@ -5812,7 +5814,7 @@ __attribute__((unused))
       若 (cast_ty && !strcmp(cast_ty, "long")) _cast64 = 1;
       否 若 (cast_ty2 && !strcmp(cast_ty2, "long")) _cast64 = 1;
       否 若 (cast_td) { 整 _ct64 = tdef_lookup(cast_td); 若 (_ct64 >= 0 && !tdefs[_ct64].is_struct && !tdefs[_ct64].is_fnptr && !tdefs[_ct64].is_dbl && tdefs[_ct64].sz == 8) _cast64 = 1; }
-      若 (ce >= 0) { 若 (_cuns) nuns[ce] = 1; 否 若 (cast_ty || cast_ty2 || cast_td) nuns[ce] = 0; 若 (_cast64) nll[ce] = 1; 否 若 (cast_ty || cast_ty2 || cast_td) nll[ce] = 0; } } /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
+      若 (ce >= 0) { 若 (_cuns) nuns[ce] = 1; 若 (_cast64) nll[ce] = 1; 否 若 (cast_ty || cast_ty2 || cast_td) nll[ce] = 0; 若 (_cast64 && !_cuns) cast_sgn64[ce] = 1; } } /* fix 2026-08-30 csmith: cast 值转换保留源 nuns（(long long)uint32 零扩展 b_cast）, signed 64 cast 用 cast_sgn64 标记（除法 signed s168）; _cast64 设 nll */ /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             循环 (1) {
                 若 (tt[tk] == LB) {
