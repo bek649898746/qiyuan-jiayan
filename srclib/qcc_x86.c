@@ -6301,7 +6301,7 @@ static int blk(void) {
                             else var_static_arr(vn, 0, 4, scnt);
                         } else {
                             var_array(vn, scnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
-                            if (si >= 0 && !is_ptr) { vars[vcnt - 1].p_esz = stypes[si].sz; if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 */
+                            if (si >= 0 && !is_ptr) { if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; if (sdims > 1) vars[vcnt - 1].p_esz = stypes[si].sz; } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 — 1D 不设 p_esz (对齐 typedef 数组: var_pesz==0 才走 L18743 struct 元素赋值, struct_param q[0]=call 崩) */
                             if (is_ptr && sdims > 1 && sadim[0] > 0) { vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * 8; vars[vcnt - 1].p_esz = 8; } /* fix 2026-08-30 csmith t5: struct 指针 2D+ 数组行宽 (s2 l_1272[10][4][6] / l_2406[4][10] 原无行宽 → [i] 缩放 8 而非行宽 → 越界写崩) */
                             if (sdims >= 1) { int _e_sz = is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4); vars[vcnt - 1].frows[sdims - 1] = _e_sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; }
                         }
