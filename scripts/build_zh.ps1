@@ -9,10 +9,14 @@
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
 $ErrorActionPreference = 'Stop'
-$expected = 'bdb29947'  # 2026-08-31 完全中文化 批1(251)+批2(3452): 中文自举链不动点
-                         # (内含 hex 字面量后缀撕碎修复: 0x7FFFFFFFULL 的 ULL 被改名 → 词法器
-                         #  hex/octal>INT_MAX 判定坏 → 字面量 0 误标无符号 → fnptr 比较置高 → qsort 反转
-                         #  修复 sinicize.py skip_num 十六进制分支处理后缀; 收敛从 3-循环 → 不动点)
+$expected = '85379af4'  # 2026-08-31 完全中文化 批1+批2+批3a(40库符号)+批3b(流符号桥)+批3c(取环境/x):
+                         # 中文自举链不动点
+                         # (批3 库桥: 词法器「甲言库函数」表已有的中文名直接改调用点 (比较字符串→strcmp 等),
+                         #  词法器 lex 时自动改写回 DLL 符号 → 自举破环自动解, 语义不变;
+                         #  流符号 stderr/stdout/stdin + 取环境/判十六进制/格式化限长/取指数 走 #define 桥 +
+                         #  词法器反向条目; x 回映射;
+                         #  内含 hex 字面量后缀撕碎修复 (0x7FFFFFFFULL 的 ULL 被改名 → 词法器判据坏
+                         #  → 字面量误标无符号 → fnptr 比较置高 → qsort 反转 → 自举 3-循环))
 
 Write-Host "== [1/2] 生成 qcc_zh.jy =="
 python scripts/sinicize.py

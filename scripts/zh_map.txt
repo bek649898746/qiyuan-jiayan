@@ -3715,3 +3715,58 @@ ztot 半三
 zty 中优
 zuns 顺从
 zz 长柒
+
+# 2026-08-31 完全中文化 批3a: 库符号中文化 (词法器 甲言库函数 表已验证的中文名,
+# 词法器 lex 时自动改写回 DLL 符号, 自举破环自动解)
+abort 终止程序
+atoi 转整数
+calloc 清零分配
+exit 退出
+fclose 关文件
+ferror 判文件错误
+fflush 刷新缓冲
+fgetc 读字符
+fgets 读行
+fopen 打开文件
+fprintf 输出到文件
+fputc 写字符
+fputs 写行
+fread 读取
+free 释放内存
+fseek 定位文件
+ftell 取文件位置
+fwrite 写入
+isalnum 判字母数字
+isalpha 判字母
+isdigit 判数字
+malloc 内存分配
+memcmp 内存比较
+memcpy 复制内存
+memmove 移动内存
+memset 内存设置
+printf 格式化打印
+realloc 重分配
+rewind 倒带
+sprintf 格式化到串
+strcat 拼接
+strcmp 比较字符串
+strcpy 复制字符串
+strlen 取字长
+strncat 拼前n
+strncmp 比前n
+strncpy 拷贝前n
+strrchr 反向查
+strstr 查找子串
+strtol 字符串转长整
+
+# 2026-08-31 批3b: 平台流符号 (词法器桥 + #define 桥, 语义不变)
+stderr 错误流
+stdout 输出流
+stdin 输入流
+
+# 2026-08-31 批3c: 库函数 #define 桥 + x 回映射
+getenv 取环境
+isxdigit 判十六进制
+snprintf 格式化限长
+exp 取指数
+x 亥
