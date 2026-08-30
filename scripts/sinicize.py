@@ -115,6 +115,45 @@ def transform(text, mapping):
     return ''.join(out)
 
 
+def post_process(out):
+    """批3b/3c 后处理: 平台符号桥。
+    #define 中文名 英文符号 → 预处理层展开回 DLL 符号 (种子/自举同路径)。
+    词法器反向条目 → zh 编译器编译用户程序时把中文名改回英文 (自举源走 #define, 不冲突)。"""
+    # 桥表: 中文名 -> DLL 符号 (英文符号作为平台地址数据, 仅出现在这里)
+    BRIDGE = [
+        ('错误流', 'stderr'),
+        ('输出流', 'stdout'),
+        ('输入流', 'stdin'),
+        ('取环境', 'getenv'),
+        ('判十六进制', 'isxdigit'),
+        ('格式化限长', 'snprintf'),
+        ('取指数', 'exp'),
+    ]
+    # 1) 顶层 #define 桥 (插在首个块注释之后)
+    bridge = ('\n/* 平台符号桥 (批3b/3c): 中文名 = DLL 符号 — 机器码层面的地址数据, 预处理层展开\n'
+              '   (词法器反向条目供用户程序使用) */\n')
+    for zhn, en in BRIDGE:
+        bridge += '#define %s %s\n' % (zhn, en)
+    first = out.find('*/')
+    if first >= 0:
+        out = out[:first + 2] + bridge + out[first + 2:]
+    # 2) 词法器反向条目 (插在库函数表 isalnum 行后)
+    lex_entries = '\n'
+    for zhn, en in BRIDGE:
+        lex_entries += ('            否 若 (!比较字符串(词名表[词序], "%s")) 复制字符串(词名表[词序], "%s");\n' % (zhn, en))
+    anchor = '否 若 (!比较字符串(词名表[词序], "判字母数字")) 复制字符串(词名表[词序], "isalnum");'
+    aidx = out.find(anchor)
+    if aidx < 0:
+        # 回退: 用英文原形找 (库函数表在批3a 前)
+        anchor2 = 'if (!strcmp(tn[ti], "isalnum")) strcpy(tn[ti], "isalnum");'
+        aidx = out.find(anchor2)
+        if aidx >= 0:
+            out = out[:aidx] + lex_entries.replace('比较字符串', 'strcmp').replace('复制字符串', 'strcpy') + out[aidx:]
+    else:
+        out = out[:aidx + len(anchor)] + lex_entries + out[aidx + len(anchor):]
+    return out
+
+
 def main():
     map_path = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / 'scripts' / 'zh_map.txt')
     mapping = load_map(map_path)
@@ -122,8 +161,9 @@ def main():
     dst = ROOT / 'srclib_jiayan' / 'qcc_zh.jy'
     text = src.read_bytes().decode('utf-8')
     out = transform(text, mapping)
+    out = post_process(out)
     dst.write_bytes(out.encode('utf-8'))
-    print(f'applied {len(mapping)} mappings -> {dst} ({len(out)} chars)')
+    print(f'applied {len(mapping)} mappings + 批3b 平台流桥 -> {dst} ({len(out)} chars)')
 
 
 if __name__ == '__main__':
