@@ -736,7 +736,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     continue;
                 }
                 fn_exp_stack[fn_exp_n++] = fmi; /* 压栈 */
-                char (*args)[4096] = (char (*)[4096])fn_arena_alloc(16 * 4096); int an = 0; /* fix 2026-08-14: 256→1024, Git 超长 help_patch_text 宏实参 ~280 字符被 255 截断 → 字符串未闭合死链; fix 2026-08-26 cpython: 1024→4096 — PyDoc_STR(sys_doc) 实参 1354 字符; 2026-08-26: 栈→堆竞技场 (块链表) */
+                char *args = (char *)fn_arena_alloc(16 * 4096); int an = 0; /* fix 2026-08-14: 256→1024, Git 超长 help_patch_text 宏实参 ~280 字符被 255 截断 → 字符串未闭合死链; fix 2026-08-26 cpython: 1024→4096 — PyDoc_STR(sys_doc) 实参 1354 字符; 2026-08-26: 栈→堆竞技场 (块链表); fix 2026-08-30 H1==H2: char* 平铺替代 char (*)[4096] — qcc codegen 局部数组指针初始化 store 丢失+步长错 8 → 宏展开崩 (verify_h1h2_full 5 文件) */
                 char *fn_arena_mark = (char *)args; /* fix 2026-08-26: mark=args 起始 (块链表块永不移动, 裸指针有效) — 释放到 args 连 exp_args 一起回收 */
                 i++;
                 int depth = 1, aj = 0, ain_str = 0;
@@ -744,29 +744,29 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                     if (seg[i] == '"' && !ain_str) ain_str = 1;
                     else if (seg[i] == '"' && ain_str && !quote_escaped(seg, i)) ain_str = 0; /* fix 2026-08-14: \\" 两反斜杠后 " 应结束 */
                     if (seg[i] == '\'' && !ain_str) { /* 字符字面量 '"' 在宏实参内 — 跳过, 防 " 翻转 ain_str (fix 2026-08-14) */
-                        if (aj < 4095) args[an][aj++] = seg[i++]; /* opening ' */
-                        while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) { if (aj < 4095) args[an][aj++] = seg[i]; i++; }
-                        if (seg[i]) { if (aj < 4095) args[an][aj++] = seg[i]; i++; }
+                        if (aj < 4095) args[an * 4096 + aj++] = seg[i++]; /* opening ' */
+                        while (seg[i] && (seg[i] != '\'' || quote_escaped(seg, i))) { if (aj < 4095) args[an * 4096 + aj++] = seg[i]; i++; }
+                        if (seg[i]) { if (aj < 4095) args[an * 4096 + aj++] = seg[i]; i++; }
                         continue;
                     }
                     if (!ain_str) {
                         if (seg[i] == '(') depth++;
                         else if (seg[i] == ')') { depth--; if (depth == 0) break; }
                         if (seg[i] == ',' && depth == 1) { /* fix 2026-08-07: 串内逗号不拆参 */
-                            args[an][aj] = 0;
+                            args[an * 4096 + aj] = 0;
                             if (an < 15) { an++; aj = 0; }
-                            else { if (aj < 4095) args[an][aj++] = ','; if (aj < 4095) args[an][aj++] = ' '; } /* 超限: 并入末槽 (变参) */
+                            else { if (aj < 4095) args[an * 4096 + aj++] = ','; if (aj < 4095) args[an * 4096 + aj++] = ' '; } /* 超限: 并入末槽 (变参) */
                             i++; while (seg[i] == ' ' || seg[i] == '\t') i++; continue; /* fix 2026-08-14: 跳逗号后前导空格 — DECLARE_PROC_ADDR(..., strftime) 的 strftime 前带空格 → ## 拼接 proc_addr_ strftime 有空隙 */
                         }
                     }
-                    if (aj < 4095) args[an][aj++] = seg[i];
+                    if (aj < 4095) args[an * 4096 + aj++] = seg[i];
                     i++;
                 }
-                args[an][aj] = 0; an++;
+                args[an * 4096 + aj] = 0; an++;
                 if (seg[i] == ')') i++;
                 /* fix 2026-08-13: C 宏替换 — 普通实参完全展开 (蓝色油漆不含实参: ADD(MUL(2,3),TWICE(4)) 的 TWICE→ADD 应展开),
                    #/## 参数不展开 (用原样 args)。参数展开用独立栈 (外层宏不入栈)。 */
-                char (*exp_args)[4096] = (char (*)[4096])fn_arena_alloc(16 * 4096); /* fix 2026-08-26 cpython: 1024→4096 — sys_doc 实参 1354 字符, 1024 截断 → 尾引号丢失幽灵字符串; 2026-08-26: 堆竞技场 (块链表) */
+                char *exp_args = (char *)fn_arena_alloc(16 * 4096); /* fix 2026-08-26 cpython: 1024→4096 — sys_doc 实参 1354 字符, 1024 截断 → 尾引号丢失幽灵字符串; 2026-08-26: 堆竞技场 (块链表); fix 2026-08-30 H1==H2: char* 平铺 (同 args) */
                 for (int ai = 0; ai < an && ai < 16; ai++) { /* fix 2026-08-13: ai<16 防 an 越界写栈 (v4 obj_macro_expand 崩溃根因候选) */
                     int save_exp_n = fn_exp_n;
                     int save_exp_stack[64]; for (int _s = 0; _s < 64; _s++) save_exp_stack[_s] = fn_exp_stack[_s]; /* fix 2026-08-14: 实参展开独立栈只重置 fn_exp_n, 展开实参时覆盖 fn_exp_stack[0..] → 恢复后外层栈被污染 → 非递归宏 (__ac_fsize) 被误判 in_stack → 泄漏成 undefined */
@@ -779,9 +779,9 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         到堆, eoutp 收口安全 (fix 2026-08-26 cpython). */
                     char *eoutp = eout;
                     int eo = 0, ecap = sizeof(eout);
-                    fn_macro_expand_to(args[ai], &eoutp, &eo, &ecap, -1);
+                    fn_macro_expand_to(args + ai * 4096, &eoutp, &eo, &ecap, -1);
                     eoutp[eo] = 0; /* fix 2026-08-26 cpython: 用 eoutp 而非 eout — 展开超栈缓冲时 fn_macro_expand_to realloc 到堆, 原 eout[eo]=0 写栈越界且 memcpy 源错 (latent bug, sys_doc ~4000 字符已近 4KB 阈值) */
-                    { int cl = eo < 4095 ? eo : 4095; memcpy(exp_args[ai], eoutp, cl); exp_args[ai][cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告); fix 2026-08-26 cpython: 1023→4095 — sys_doc 实参 1354 字符不再截断 */
+                    { int cl = eo < 4095 ? eo : 4095; memcpy(exp_args + ai * 4096, eoutp, cl); exp_args[ai * 4096 + cl] = 0; } /* fix 2026-08-17: 显式长度复制 (栈缓冲 4096, 防 gcc -Werror 截断警告); fix 2026-08-26 cpython: 1023→4095 — sys_doc 实参 1354 字符不再截断 */
                     fn_exp_n = save_exp_n;
                     for (int _s = 0; _s < 64; _s++) fn_exp_stack[_s] = save_exp_stack[_s];
                 }
@@ -808,7 +808,7 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                             int va_end = !strcmp(pn2, "__VA_ARGS__") ? an : matched + 1; /* fix 2026-08-14: 只有 #__VA_ARGS__ 才逗号连接余参, 普通 #param 只字符串化一个参数 (原 #dll 把所有参数连接 → "secur32.dll, BOOL, ..." 错) */
                             for (int ai = matched; ai < va_end && ti2 < 16380; ai++) {
                                 if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 16381) tmp[ti2++] = ' '; }
-                                const char *src = args[ai];
+                                const char *src = args + ai * 4096;
                                 int sk = 0, sp = 0;
                                 while (src[sk] && (src[sk] == ' ' || src[sk] == '\t')) sk++; /* 去首空白 */
                                 int sl = 0; while (src[sk + sl]) sl++; while (sl > 0 && (src[sk + sl - 1] == ' ' || src[sk + sl - 1] == '\t')) sl--; /* 去尾空白 */
@@ -835,10 +835,10 @@ static void fn_macro_expand_to(const char *seg, char **outp, int *o, int *cap, i
                         if (matched >= 0 && !strcmp(pn2, "__VA_ARGS__")) { /* 变参: 余参逗号连接 (可空, fix 2026-08-07) */
                             for (int ai = matched; ai < an && ti2 < 16380; ai++) {
                                 if (ai > matched) { tmp[ti2++] = ','; if (ti2 < 16381) tmp[ti2++] = ' '; }
-                                for (int k = 0; exp_args[ai][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[ai][k];
+                                for (int k = 0; exp_args[ai * 4096 + k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[ai * 4096 + k];
                             }
                         } else if (matched >= 0 && matched < an) {
-                            for (int k = 0; exp_args[matched][k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[matched][k];
+                            for (int k = 0; exp_args[matched * 4096 + k] && ti2 < 16380; k++) tmp[ti2++] = exp_args[matched * 4096 + k];
                         } else {
                             for (int k = 0; k < pi2 && ti2 < 16382; k++) tmp[ti2++] = pn2[k];
                         }
