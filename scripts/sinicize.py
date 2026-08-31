@@ -462,16 +462,96 @@ def layer_change(out):
     return out
 
 
+def comment_sinicize(text, cmap, zmap):
+    """注释中文化 (差距清单 A 项, 2026-08-31): 把 // 和 /* */ 注释内的英文标识符
+    按注释词表+主词表翻译成中文。状态机: 代码/字符串/注释; 只在注释态替换 token,
+    不碰字符串 (asm 文本/错误消息), 不碰单字母/内部符号(__)/数字。
+    在 post_process 之后执行 — 注入锚点已完成, 注释改动不影响编译产物 → 不动点不变."""
+    def is_ident_start(c):
+        return ('A' <= c <= 'Z') or ('a' <= c <= 'z') or c == '_'
+    def is_ident_char(c):
+        return is_ident_start(c) or ('0' <= c <= '9')
+    def map_token(tok):
+        if len(tok) <= 1:
+            return tok
+        if tok.startswith('__') or tok.startswith('_va'):
+            return tok  # 内部宏/符号保留
+        if tok in cmap:
+            return cmap[tok]
+        if tok in zmap:
+            return zmap[tok]
+        low = tok.lower()
+        if low in cmap:
+            return cmap[low]
+        if low in zmap:
+            return zmap[low]
+        return tok
+    out = []
+    i = 0
+    n = len(text)
+    state = 'code'
+    while i < n:
+        c = text[i]
+        if state == 'code':
+            if c == '/' and i + 1 < n and text[i + 1] == '/':
+                state = 'line'; out.append('//'); i += 2
+            elif c == '/' and i + 1 < n and text[i + 1] == '*':
+                state = 'block'; out.append('/*'); i += 2
+            elif c == '"':
+                state = 'str'; out.append(c); i += 1
+            elif c == "'":
+                state = 'chr'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+        elif state == 'line':
+            if c == '\n':
+                state = 'code'; out.append(c); i += 1
+            elif is_ident_start(c):
+                j = i
+                while j < n and is_ident_char(text[j]):
+                    j += 1
+                out.append(map_token(text[i:j])); i = j
+            else:
+                out.append(c); i += 1
+        elif state == 'block':
+            if c == '*' and i + 1 < n and text[i + 1] == '/':
+                state = 'code'; out.append('*/'); i += 2
+            elif is_ident_start(c):
+                j = i
+                while j < n and is_ident_char(text[j]):
+                    j += 1
+                out.append(map_token(text[i:j])); i = j
+            else:
+                out.append(c); i += 1
+        elif state == 'str':
+            if c == '\\':
+                out.append(text[i:i + 2]); i += 2
+            elif c == '"':
+                state = 'code'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+        elif state == 'chr':
+            if c == '\\':
+                out.append(text[i:i + 2]); i += 2
+            elif c == "'":
+                state = 'code'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+    return ''.join(out)
+
+
 def main():
     map_path = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / 'scripts' / 'zh_map.txt')
     mapping = load_map(map_path)
+    cmap = load_map(str(ROOT / 'scripts' / 'zh_comment_map.txt'))  # 注释词表 (差距清单 B 项)
     src = ROOT / 'srclib_jiayan' / 'qcc_work.jy'
     dst = ROOT / 'srclib_jiayan' / 'qcc_zh.jy'
     text = src.read_bytes().decode('utf-8')
     out = transform(text, mapping)
     out = post_process(out)
+    out = comment_sinicize(out, cmap, mapping)  # 注释中文化 (差距清单 A 项; post_process 之后, 不动点不变)
     dst.write_bytes(out.encode('utf-8'))
-    print(f'applied {len(mapping)} mappings + 批3b 平台流桥 -> {dst} ({len(out)} chars)')
+    print(f'applied {len(mapping)} mappings + 批3b 平台流桥 + 注释中文化 {len(cmap)} -> {dst} ({len(out)} chars)')
 
 
 if __name__ == '__main__':
