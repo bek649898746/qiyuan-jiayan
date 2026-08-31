@@ -12274,6 +12274,115 @@ static void jm_emit_orig(int a, int b) {
     }
 }
 
+static void tok_delete(int pos) { /* #279: 删除一个 token, 后续前移; 末尾清 EK 防残留 */
+    for (int i = pos; i < ti - 1; i++) {
+        tt[i] = tt[i + 1]; tv[i] = tv[i + 1];
+        memmove(tn[i], tn[i + 1], 64);
+        tline[i] = tline[i + 1]; tuns[i] = tuns[i + 1]; tll[i] = tll[i + 1]; tll_hi[i] = tll_hi[i + 1];
+    }
+    if (ti - 1 >= 0) { tt[ti - 1] = EK; tn[ti - 1][0] = 0; }
+    ti--;
+}
+
+static void ns_expand(void) { /* #279 名称空间/模块完整 (2026-09-01): 名称空间 名 { ... } 词元级展开
+    — 块内顶层符号加前缀 名_, 名::符号 合并为 名_符号, 名称空间 名 { 和 } 删除 */
+    int i = 0;
+    while (i < ti) {
+        if (tt[i] == VR && !strcmp(tn[i], "名称空间")) {
+            if (i + 2 < ti && tt[i + 1] == VR && tt[i + 2] == FK) {
+                char prefix[80]; sprintf(prefix, "%s_", tn[i + 1]);
+                int start = i + 2; int end = start; int depth = 0;
+                while (end < ti) { if (tt[end] == FK) depth++; else if (tt[end] == UK) { depth--; if (depth == 0) { end++; break; } } end++; }
+                if (end > start + 1 && end <= ti) {
+                    int scan = start + 1;
+                    while (scan < end - 1) {
+                        /* 名::符号 合并 */
+                        if (tt[scan] == VR && scan + 3 < end - 1 && tt[scan + 1] == CL && tt[scan + 2] == CL && tt[scan + 3] == VR) {
+                            char n1[64], n2[64]; strcpy(n1, tn[scan]); strcpy(n2, tn[scan + 3]);
+                            sprintf(tn[scan], "%s_%s", n1, n2);
+                            tok_delete(scan + 1); tok_delete(scan + 1); tok_delete(scan + 1);
+                            end -= 3;
+                            scan += 1; continue;
+                        }
+                        /* 声明: VK [VK]* 名字 */
+                        if (tt[scan] == VK) {
+                            int np = scan + 1;
+                            while (np < end - 1 && tt[np] == VK) np++;
+                            if (np < end - 1 && tt[np] == VR) {
+                                int aft = np + 1;
+                                if (aft < end - 1 && (tt[aft] == OK || tt[aft] == AK || tt[aft] == SK || tt[aft] == CK || tt[aft] == LB || tt[aft] == FK)) {
+                                    char old[64]; strcpy(old, tn[np]);
+                                    if (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                                    if (tt[aft] == OK) { /* 函数: 参数内结构体/枚举标签加前缀, 跳参数列表+函数体 */
+                                        int ps = aft; int pd = 0;
+                                        while (ps < end - 1) {
+                                            if (tt[ps] == OK) pd++;
+                                            else if (tt[ps] == KK) { pd--; if (pd == 0) { ps++; break; } }
+                                            else if (pd == 1 && (tt[ps] == ST || tt[ps] == EN) && ps + 1 < end - 1 && tt[ps + 1] == VR) {
+                                                char old2[64]; strcpy(old2, tn[ps + 1]);
+                                                if (strncmp(old2, prefix, strlen(prefix)) != 0) sprintf(tn[ps + 1], "%s%s", prefix, old2);
+                                                ps++;
+                                            }
+                                            ps++;
+                                        }
+                                        if (ps < end - 1 && tt[ps] == FK) {
+                                            int bd = 0; int bs = ps;
+                                            while (bs < end - 1) { if (tt[bs] == FK) bd++; else if (tt[bs] == UK) { bd--; if (bd == 0) { bs++; break; } } bs++; }
+                                            scan = bs; continue;
+                                        }
+                                    }
+                                }
+                            }
+                            scan = np; continue;
+                        }
+                        /* 结构/联合/枚举 标签 */
+                        if (tt[scan] == ST || tt[scan] == EN) {
+                            int np = scan + 1;
+                            if (np < end - 1 && tt[np] == VR) {
+                                int aft = np + 1;
+                                if (aft < end - 1 && (tt[aft] == FK || tt[aft] == SK || tt[aft] == CK || tt[aft] == VR)) {
+                                    char old[64]; strcpy(old, tn[np]);
+                                    if (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                                    if (tt[aft] == FK && tt[scan] == ST) { /* 结构体定义体: 字段不改, 跳过 */
+                                        int bd = 0; int bs = aft;
+                                        while (bs < end - 1) { if (tt[bs] == FK) bd++; else if (tt[bs] == UK) { bd--; if (bd == 0) { bs++; break; } } bs++; }
+                                        scan = bs; continue;
+                                    }
+                                }
+                            }
+                            scan = np + 1; continue;
+                        }
+                        /* typedef 类型名 */
+                        if (tt[scan] == VR && !strcmp(tn[scan], "typedef")) {
+                            int np = scan + 1;
+                            while (np < end - 1 && (tt[np] == VK || (tt[np] == VR && tdef_lookup(tn[np]) >= 0))) np++;
+                            if (np < end - 1 && tt[np] == VR) {
+                                char old[64]; strcpy(old, tn[np]);
+                                if (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                            }
+                            scan = np; continue;
+                        }
+                        scan++;
+                    }
+                }
+                /* 删除 名称空间 名 { 三个 token */
+                tok_delete(i); tok_delete(i); tok_delete(i);
+                /* 删除 } (原 end-1, 删 3 后 = end-4) */
+                if (end - 4 >= 0 && end - 4 < ti && tt[end - 4] == UK) tok_delete(end - 4);
+                i = end - 4; continue;
+            }
+        }
+        /* 全局 名::符号 合并 (块外引用) */
+        if (tt[i] == VR && i + 3 < ti && tt[i + 1] == CL && tt[i + 2] == CL && tt[i + 3] == VR) {
+            char n1[64], n2[64]; strcpy(n1, tn[i]); strcpy(n2, tn[i + 3]);
+            sprintf(tn[i], "%s_%s", n1, n2);
+            tok_delete(i + 1); tok_delete(i + 1); tok_delete(i + 1);
+            continue;
+        }
+        i++;
+    }
+}
+
 static void jiayan_macro_expand(void) {
     int i = 0;
     jm_n = 0;
@@ -12382,6 +12491,7 @@ static int parse(const char *s) {
      
 lex(exp_src);
     if (g_rt_len > 0) { rt_exp_lines = 1; for (int _re = 0; _re < g_rt_len && _re < (int)strlen(exp_src); _re++) if (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
+    ns_expand(); /* #279 名称空间 (2026-09-01) */
     jiayan_macro_expand(); /* 宏系统 (2026-08-28 type-root-12 #167): lex 后 parse 前 token 级展开 — 宏 名(参数) = expr; 或 宏 名(参数) { 语句 } */
 
     { char _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
