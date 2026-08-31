@@ -2159,7 +2159,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 /* ?????? ??????: ???????????????????? */
 #define ASZ 1048576 /* 524288→1048576 (fix 2026-08-26 redis/lua: #if 反斜杠续行 + 表达式注释剥离后条件编译更正确 → sqlite3.c 多行 #if 含入更多代码 → AST 顶满 524288) */
 static int blk_vs[ASZ]; /* fix 2026-08-19: 块节点 (nt==5) 的 var 起点 = blk() 入口 vcnt — codegen case-5 设置 cg_blk_start 用 (嵌套块作用域判定) */
-#define MAX_LABELS 131072
+#define MAX_LABELS 262144 /* 131072→262144 (fix 2026-08-31 中文链: layer_change 变量形式词名注入加了 cast 解析中文等价 — qcc_zh.jy 编译时短路 || 标签增多, 原上限恰好被顶满 LABEL-OVERFLOW; 扩容 2 倍给中英双链留余量) */
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
 static int defer_stmts[4096][64]; /* 接入 2026-08-27 defer: 每函数 defer 语句节点 (按函数序号 fvn, LIFO — epi_label 处逆序执行) */
@@ -4269,6 +4269,11 @@ static void lex(const char *s) {
             else if (!strcmp(tn[ti], "常")) strcpy(tn[ti], "const");
             else if (!strcmp(tn[ti], "静")) strcpy(tn[ti], "static");
             else if (!strcmp(tn[ti], "无")) strcpy(tn[ti], "unsigned");
+            else if (!strcmp(tn[ti], "无整")) strcpy(tn[ti], "unsigned"); /* fix 2026-08-31 中文语法缺口: 无整(连写) 原当标识符 → unsigned 类型失效 (csmith s52 中文版 (s>0x28L) 误判有符号); 与 长整→long long 一致补连写映射 */
+            else if (!strcmp(tn[ti], "无短")) strcpy(tn[ti], "unsigned short"); /* 无短 = unsigned short */
+            else if (!strcmp(tn[ti], "无长")) strcpy(tn[ti], "unsigned long"); /* 无长 = unsigned long */
+            else if (!strcmp(tn[ti], "无长整")) strcpy(tn[ti], "unsigned long long"); /* 无长整 = unsigned long long (u64) */
+            else if (!strcmp(tn[ti], "无字节")) strcpy(tn[ti], "unsigned char"); /* 无字节 = unsigned char */
             else if (!strcmp(tn[ti], "易失")) strcpy(tn[ti], "volatile"); /* 接入 2026-08-27: 甲言 volatile 中文化 — 易失 int x → volatile int x (第五批 #21 volatile 部分) */
             else if (!strcmp(tn[ti], "宇和")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 铸基者 郑宇和 · 种子 828 */
             else if (!strcmp(tn[ti], "启元")) { tt[ti] = NK; tv[ti] = 828; tuns[ti] = 0; tll[ti] = 0; tll_hi[ti] = 0; { tline[ti] = cur_line; cur_token_line = cur_line; ti++; } continue; } /* 自举者 郑启元 · 种子 828 */
