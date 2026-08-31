@@ -152,6 +152,77 @@ def post_process(out):
     else:
         out = out[:aidx + len(anchor)] + lex_entries + out[aidx + len(anchor):]
     out = layer_change(out)
+    out = pp_directives(out)
+    return out
+
+
+def pp_directives(out):
+    """预处理指令词中文化 (双认: 英文指令保留 C 头兼容, 中文指令词第一等)。
+    逐处把 !比前n(ARGS,"en",L) && (边界) 扩展为 (英文分支 || 中文分支)。
+    边界偏移同步改 (中文指令词字节数不同)。"""
+    import re as _re
+    DIR = {
+        'define': ('定义词', 9),
+        'include': ('包含', 6),
+        'ifdef': ('若有定义', 12),
+        'ifndef': ('若无定义', 12),
+        'endif': ('结束若', 9),
+    }
+    pat = _re.compile(r'!比前n\(([^,]+),\s*"(' + '|'.join(DIR) + r')",\s*(\d+)\)(\s*&&\s*\([^;]*?\))')
+    def _sub(m):
+        args, en, ln, bound = m.group(1), m.group(2), m.group(3), m.group(4)
+        zhn, zlen = DIR[en]
+        bound_zh = _re.sub(r'(\+ ?|\[)' + ln + r'\]', lambda m: m.group(1) + str(zlen) + ']', bound)
+        en_branch = '!比前n(%s, "%s", %s)%s' % (args, en, ln, bound)
+        zh_branch = '!比前n(%s, "%s", %s)%s' % (args, zhn, zlen, bound_zh)
+        return '((' + en_branch + ') || (' + zh_branch + '))'
+    n = len(pat.findall(out))
+    out = pat.sub(_sub, out)
+    # 读名字偏移修复: ifdef/ifndef 后续读名字用英文长度硬编码 (X + (是否条件编译 ? 5 : 6)),
+    # 中文指令词 (若有定义/若无定义 12 字节) 会指到词中间 → 改为「跳指令词」, 中英通用。
+    pat_r1 = _re.compile(r'整 ([^ =]+) = ([^ =]+) \+ \(是否条件编译 \? 5 : 6\);')
+    def _fix_arr(m):
+        var, base = m.group(1), m.group(2)
+        return ('整 %s = %s; 循环 (判字母数字((无 字)串值[%s]) || 串值[%s] == \'_\' || ((无 字)串值[%s] >= 0x80)) %s++;'
+                % (var, base, var, var, var, var))
+    out, n1 = pat_r1.subn(_fix_arr, out)
+    pat_r2 = _re.compile(r'常 字 \*([^ =]+) = ([^ =]+) \+ \(是否条件编译 \? 5 : 6\);')
+    def _fix_ptr(m):
+        var, base = m.group(1), m.group(2)
+        return ('常 字 *%s = %s; 循环 (判字母数字(*%s) || *%s == \'_\' || ((无 字)*%s >= 0x80)) %s++;'
+                % (var, base, var, var, var, var))
+    out, n2 = pat_r2.subn(_fix_ptr, out)
+    # 毛简 (pp_def_parse) 跳 define 长度: 寻 += 6; -> 寻 += (寻[0] == 'd' ? 6 : 9);
+    old_mj = '寻 += 6; /* skip #  define'
+    if old_mj in out:
+        out = out.replace(old_mj, "寻 += (寻[0] == 'd' ? 6 : 9); /* skip #  define", 1)
+    # 其余 define 读名字偏移 (+6 -> 6/9 条件化, 限定 pp 阶段变量名防误伤)
+    # 副组 (段 数组): 循环 (段[...] 跟随
+    pat_d = _re.compile(r'整 (寻三|指|寻) = (元|寻二|计|指|指深度) \+ 6; 循环 \(段\[')
+    def _mk_d(m):
+        return "整 %s = %s + (段[%s] == 'd' ? 6 : 9); 循环 (段[" % (m.group(1), m.group(2), m.group(2))
+    out, nn = pat_d.subn(_mk_d, out)
+    # 串值 数组版本
+    pat_a = _re.compile(r'整 (寻三|指|寻) = (元|寻二|计|指|指深度) \+ 6;')
+    def _mk_arr(m):
+        return "整 %s = %s + (串值[%s] == 'd' ? 6 : 9);" % (m.group(1), m.group(2), m.group(2))
+    out, nn = pat_a.subn(_mk_arr, out)
+    pat_p = _re.compile(r'常 字 \*(寻) = (指|指深度) \+ 6;')
+    def _mk_ptr(m):
+        return "常 字 *%s = %s + (*%s == 'd' ? 6 : 9);" % (m.group(1), m.group(2), m.group(1))
+    out, nn = pat_p.subn(_mk_ptr, out)
+    pat_c = _re.compile(r'计 = 元 \+ 6;')
+    out, nn = pat_c.subn("计 = 元 + (串值[元] == 'd' ? 6 : 9);", out)
+    # 函数宏读名字循环补 0x80 (中文宏名)
+    old_fn = "循环 (判字母数字((无 字)串值[指]) || 串值[指] == '_') { 若 (名序 < 63) 名存[名序++] = 串值[指]; 指++; }"
+    if old_fn in out:
+        out = out.replace(old_fn, "循环 (判字母数字((无 字)串值[指]) || 串值[指] == '_' || ((无 字)串值[指] >= 0x80)) { 若 (名序 < 63) 名存[名序++] = 串值[指]; 指++; }", 1)
+    # 「预处理行不展开」守卫加中文 (定义词/若有定义 等首字 0x80)
+    for arr in ['串值', '段']:
+        old_pp = ("若 (%s[寻二] == 'd' || %s[寻二] == 'u' || %s[寻二] == 'i' || %s[寻二] == 'e' || "
+                  "%s[寻二] == 'l' || %s[寻二] == 'p' || %s[寻二] == 'n')" % tuple([arr] * 7))
+        if old_pp in out:
+            out = out.replace(old_pp, old_pp[:-1] + ' || ((无 字)%s[寻二] >= 0x80))' % arr, 1)
     return out
 
 
