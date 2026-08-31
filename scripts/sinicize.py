@@ -223,6 +223,11 @@ def pp_directives(out):
                   "%s[寻二] == 'l' || %s[寻二] == 'p' || %s[寻二] == 'n')" % tuple([arr] * 7))
         if old_pp in out:
             out = out.replace(old_pp, old_pp[:-1] + ' || ((无 字)%s[寻二] >= 0x80))' % arr, 1)
+    # 「计数」语句形态检查: 计数 c, arr, n, cond — 计数 后必须是变量才进计数语句,
+    # 否则 `计数 = 5` (计数 作普通变量) 被误当计数语句 → 解析错乱 (既有 bug)
+    old_cnt = '若 (词型表[词位] == 词变量 && !比较字符串(词名表[词位], "计数")) {'
+    if old_cnt in out:
+        out = out.replace(old_cnt, '若 (词型表[词位] == 词变量 && !比较字符串(词名表[词位], "计数") && 词型表[词位 + 1] == 词变量) {', 1)
     return out
 
 

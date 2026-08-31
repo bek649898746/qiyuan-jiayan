@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
-"""同内容不同文件名对照: 源码文件名是否影响编译结果."""
-import subprocess, os, hashlib, sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-os.chdir(r'C:\Users\Administrator\Desktop\qiyuan-jiayan')
+import io, subprocess, sys
+sys.stdout.reconfigure(encoding='utf-8')
+ROOT = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
+V2 = ROOT + r'\qcc_zh_v1.exe'
 
-src_body = 'int printf(const char*, ...);\nint g = 10;\nint main() { printf("%d\\n", g); return 0; }\n'
-for fn in ['_min.c', '_bis.c', '_aaa.c', 't1.c']:
-    p = os.path.join('scratch_test', fn)
-    open(p, 'w', encoding='utf-8').write(src_body)
-    out = os.path.abspath('scratch_test/_cmp_exe.exe')
-    r = subprocess.run(['qcc_x86.exe', p, '-o', out], capture_output=True)
-    if r.returncode != 0:
-        print(f'{p:22s} compile rc={r.returncode}')
-        continue
-    d = open(out, 'rb').read()
-    run = subprocess.run(['cmd', '/c', out], capture_output=True, text=True, timeout=15)
-    print(f'{p:22s} sha={hashlib.sha256(d).hexdigest()[:12]} size={len(d)} rc={run.returncode} out={run.stdout.strip()!r}')
+def test(name, src):
+    p = ROOT + r'\scratch_test\fc_' + name + '.jy'
+    io.open(p, 'w', encoding='utf-8').write(src)
+    r = subprocess.run([V2, p, '-o', p + '.exe'], capture_output=True, text=True)
+    print('%s: rc=%d %s' % (name, r.returncode, (r.stdout + r.stderr)[:130]))
+    if r.returncode == 0:
+        r2 = subprocess.run([p + '.exe'], capture_output=True, text=True)
+        print('  run: %s rc=%d' % (r2.stdout.strip()[:60], r2.returncode))
+
+# 英文函数宏
+test('en_fn', '#define SQUARE(x) ((x)*(x))\nint main() { printf("%d\\n", SQUARE(7)); return 0; }\n')
+# 英文函数宏 + 中文关键字
+test('en_fn_zh', '#define SQUARE(x) ((x)*(x))\n整 main() { 格式化打印("%d\\n", SQUARE(7)); 返 0; }\n')
+# 中文函数宏名 + 英文宏
+test('zh_fnname', '#定义词 SQUARE(x) ((x)*(x))\n整 main() { 格式化打印("%d\\n", SQUARE(7)); 返 0; }\n')
