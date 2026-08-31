@@ -7697,7 +7697,6 @@ __attribute__((unused))
             字 idxv[64]; 整 has_idx = 0;
             若 (tt[tk + 1] == CK) { strcpy(idxv, tn[tk]); tk++; tk++; has_idx = 1; } /* 接入 2026-08-27 for-range 索引: 遍 i, x 于 arr — i 索引, x 值 */
             字 rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代值变量 */
-            fprintf(stderr, "[DBG-FR] rvn=%s tk=%d tt=%d tn=%.20s\n", rvn, tk, tt[tk], tn[tk]);
             tk++; /* 于 */
             { 整 save_tk = tk; 整 start_e = expr(); /* 区间检测: 遍 x 于 a 到 b — 迭代表达式 */
               若 (tt[tk] == VR && !strcmp(tn[tk], "到")) { /* 接入 2026-08-27 for-range 区间: { x=a; while(x<b){body;x++;} } */
@@ -7719,6 +7718,29 @@ __attribute__((unused))
               tk = save_tk; /* 非区间: 重置 token, 走数组/切片/字符串路径 */
             }
             整 arrn = expr(); /* 数组/切片/字符串表达式 */
+            若 (arrn >= 0 && nt[arrn] == 1) { /* #273 迭代器协议: 动态数组 Vec 迭代 — 遍 x 于 v; (检测 __vec_<名>_id) */
+                字 itname[64]; strcpy(itname, (字*)(nn + arrn));
+                字 itid[80]; sprintf(itid, "__vec_%s_id", itname);
+                若 (var_lookup(itid) >= 0) {
+                    字 vin[32]; sprintf(vin, "_vi_%d_", rng_seq++);
+                    var_offset(vin);
+                    若 (var_lookup(rvn) < 0) { var_offset(rvn); uninit_remove(rvn); }
+                    整 blk_v = Nd(5);
+                    { 整 d_v = Nd(7); memcpy((字*)(nn + d_v), vin, 32); 整 z_v = Nd(0); nv[z_v] = 0; Nc(d_v, z_v); Nc(blk_v, d_v); } /* __vi = 0; */
+                    整 wh_v = Nd(9);
+                    { 整 v0_v = Nd(1); memcpy((字*)(nn + v0_v), vin, 32);
+                      整 call_v = Nd(4); { 整 v1_v = Nd(1); memcpy((字*)(nn + v1_v), itid, 32); Nc(call_v, v1_v); } { 整 fn_v = Nd(1); memcpy((字*)(nn + fn_v), "__qcc_vec_lenof", 15); Nc(call_v, fn_v); } /* __qcc_vec_lenof(v) */
+                      整 cmp_v = Nd(2); nv[cmp_v] = T_LK; Nc(cmp_v, v0_v); Nc(cmp_v, call_v); Nc(wh_v, cmp_v); } /* __vi < len */
+                    整 bd_v = Nd(5);
+                    { 整 call_v2 = Nd(4); { 整 v1_v2 = Nd(1); memcpy((字*)(nn + v1_v2), itid, 32); Nc(call_v2, v1_v2); } { 整 v2_v2 = Nd(1); memcpy((字*)(nn + v2_v2), vin, 32); Nc(call_v2, v2_v2); } { 整 fn_v2 = Nd(1); memcpy((字*)(nn + fn_v2), "__qcc_vec_get", 14); Nc(call_v2, fn_v2); } /* __qcc_vec_get(v, __vi) */
+                      整 as_v = Nd(10); { 整 v3_v = Nd(1); memcpy((字*)(nn + v3_v), rvn, 32); Nc(as_v, v3_v); } Nc(as_v, call_v2); Nc(bd_v, as_v); } /* x = get(v, __vi); */
+                    { 整 body_v = stmt(); 若 (body_v >= 0) Nc(bd_v, body_v); } /* 用户循环体 */
+                    { 整 step_v = Nd(23); nv[step_v] = 0; { 整 v4_v = Nd(1); memcpy((字*)(nn + v4_v), vin, 32); Nc(step_v, v4_v); } Nc(bd_v, step_v); } /* __vi++; */
+                    Nc(wh_v, bd_v);
+                    Nc(blk_v, wh_v);
+                    返 blk_v;
+                }
+            }
             { /* 接入 2026-08-29 P2 #263 切片运算符: 遍 x 于 a 从 lo 到 hi — 数组区间迭代 (a[lo..hi) 切片; 避开 .. 词法冲突用 从/到 关键字) */
                 整 sl_lo = -1, sl_hi = -1; 字 sl_arr[64]; sl_arr[0] = 0;
                 若 (tt[tk] == VR && !strcmp(tn[tk], "从") && arrn >= 0 && nt[arrn] == 1) {
@@ -12104,7 +12126,7 @@ __attribute__((unused))
 }
 
 /* ========== 宏系统 (2026-08-28 type-root-12 #167: AST 级安全宏 — lex 后 parse 前 token 级展开) ========== */
-静 构 { 字 name[64]; 字 params[16][64]; 整 pn; 整 body0; 整 body1; } jm_macros[512];
+静 构 { 字 name[64]; 整 ppos[16]; 整 pn; 整 body0; 整 body1; } jm_macros[512]; /* #168 2026-09-01: 参数存 token 坐标 (qcc char 数组乘式索引缺陷: params[16][64] 拷贝读空) */
 静 整 jm_n = 0;
 静 整 jm_decl0[512]; 静 整 jm_decl1[512]; /* 宏声明 token 区间 (展开时跳过) */
 静 整 jm_find(常 字 *n) { 遍 (整 i = 0; i < jm_n; i++) 若 (!strcmp(jm_macros[i].name, n)) 返 i; 返 -1; }
@@ -12115,14 +12137,59 @@ __attribute__((unused))
 /* 嵌套宏展开帧栈: 每帧记录 宏索引 + 原始实参 token 切片 (调用者上下文惰性展开, 替换时括号包裹) */
 静 整 jm_stk_mi[24]; 静 整 jm_stk_an[24]; 静 整 jm_stk_raw[24][16][2];
 
-静 空 jm_overflow(空) { fprintf(stderr, "[ERR] A9008 宏展开超限: token 数超上限\n"); exit(1); }
+static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
+/* 接入 2026-09-01 #168 卫生宏: 函数宏体内局部变量声明在每次展开时 gensym 改名 (_hyg<序>_<原名>),
+   与调用点同名变量隔离 (无变量捕获). 卫栈按展开深度嵌套; 实参展开在调用者上下文, 用调用者帧. */
+静 字 hyg_orig[32][32][64]; 静 字 hyg_new[32][32][80]; 静 整 hyg_cnt[32]; 静 整 hyg_depth = 0; 静 整 hyg_seq = 0;
+静 字 hyg_buf[32][64];
 
-静 空 jm_emit_token(整 i) {
+静 整 hyg_find(常 字 *name, 字 *out) {
+    遍 (整 l = hyg_depth - 1; l >= 0; l--) {
+        遍 (整 k = 0; k < hyg_cnt[l]; k++)
+            若 (!strcmp(hyg_orig[l][k], name)) { strcpy(out, hyg_new[l][k]); 返 1; }
+    }
+    返 0;
+}
+
+静 整 hyg_scan(整 a, 整 b, 整 mi) {
+    /* 扫描宏体 token [a,b) 识别局部变量声明: <类型词|typedef名> <变量名> 且 后跟 =/;/,[ 且 非宏参数 */
+    整 n = 0; 整 i = a;
+    循环 (i < b) {
+        整 is_type = (tt[i] == VK) || (tt[i] == VR && (tdef_lookup(tn[i]) >= 0 || !strcmp(tn[i], "typedef")));
+        若 (is_type) {
+            整 s = i + 1;
+            循环 (s < b && (tt[s] == VK || (tt[s] == VR && tdef_lookup(tn[s]) >= 0))) s++;
+            整 np = -1;
+            若 (s < b && tt[s] == VR) {
+                np = s;
+                若 (tdef_lookup(tn[s]) >= 0 && s + 1 < b && tt[s + 1] == VR) np = s + 1; /* typedef 类型名后才是变量 */
+            }
+            若 (np >= 0) {
+                整 aft = np + 1;
+                若 (aft < b && (tt[aft] == AK || tt[aft] == SK || tt[aft] == CK || tt[aft] == LB)) {
+                    整 is_p = 0;
+                    遍 (整 k = 0; k < jm_macros[mi].pn && k < 16; k++) 若 (!strcmp(tn[jm_macros[mi].ppos[k]], tn[np])) { is_p = 1; 断; }
+                    若 (!is_p && n < 32) { strcpy(hyg_buf[n], tn[np]); n++; }
+                }
+            }
+            i = (np >= 0) ? (np + 1) : (s > i ? s : i + 1);
+            续;
+        }
+        i++;
+    }
+    返 n;
+}
+
+静 空 jm_emit_hyg(整 i) { /* #168: 输出 token, 命中卫栈则输出 gensym 新名 */
+    字 out[80]; 字 *wn = tn[i];
+    若 (tt[i] == VR && hyg_depth > 0 && hyg_find(tn[i], out)) wn = out;
     若 (jm_out >= TS) jm_overflow();
-    jm_tt2[jm_out] = tt[i]; jm_tv2[jm_out] = tv[i]; strcpy(jm_tn2[jm_out], tn[i]);
+    jm_tt2[jm_out] = tt[i]; jm_tv2[jm_out] = tv[i]; strcpy(jm_tn2[jm_out], wn);
     jm_tline2[jm_out] = tline[i]; jm_tuns2[jm_out] = tuns[i]; jm_tll2[jm_out] = tll[i]; jm_tll_hi2[jm_out] = tll_hi[i];
     jm_out++;
 }
+
+静 空 jm_overflow(空) { fprintf(stderr, "[ERR] A9008 宏展开超限: token 数超上限\n"); exit(1); }
 
 静 空 jm_emit_paren(整 type) { /* 合成 ( ) token 用于实参括号包裹 */
     若 (jm_out >= TS) jm_overflow();
@@ -12135,7 +12202,7 @@ __attribute__((unused))
     遍 (整 f = jm_depth - 1; f >= 0; f--) {
         整 mi = jm_stk_mi[f];
         遍 (整 q = 0; q < jm_macros[mi].pn; q++)
-            若 (!strcmp(jm_macros[mi].params[q], tn[i])) { *frame_out = f; *param_out = q; 返 1; }
+            若 (!strcmp(tn[jm_macros[mi].ppos[q]], tn[i])) { *frame_out = f; *param_out = q; 返 1; }
     }
     返 0;
 }
@@ -12145,12 +12212,14 @@ __attribute__((unused))
 
 静 空 jm_emit_arg(整 fr, 整 q) { /* 帧 fr 的第 q 个实参, 在调用者上下文 (帧 0..fr-1) 展开 — 保存/恢复被隐藏帧槽位 (嵌套调用会复用槽位) */
     整 saved = jm_depth;
+    整 saved_hyg = hyg_depth; hyg_depth = fr; /* #168 卫生宏: 实参在调用者上下文展开, 用调用者帧 (0..fr-1) 的卫栈, 屏蔽本宏帧 */
     整 s_mi = jm_stk_mi[fr]; 整 s_an = jm_stk_an[fr]; 整 s_raw[16][2];
     遍 (整 k = 0; k < 16; k++) { s_raw[k][0] = jm_stk_raw[fr][k][0]; s_raw[k][1] = jm_stk_raw[fr][k][1]; }
     jm_depth = fr;
     jm_emit_paren(OK);
     jm_emit_orig(jm_stk_raw[fr][q][0], jm_stk_raw[fr][q][1]);
     jm_emit_paren(KK);
+    hyg_depth = saved_hyg;
     jm_depth = saved;
     jm_stk_mi[fr] = s_mi; jm_stk_an[fr] = s_an;
     遍 (整 k = 0; k < 16; k++) { jm_stk_raw[fr][k][0] = s_raw[k][0]; jm_stk_raw[fr][k][1] = s_raw[k][1]; }
@@ -12183,11 +12252,24 @@ __attribute__((unused))
             jm_stk_mi[fr] = mi; jm_stk_an[fr] = an;
             遍 (整 k = 0; k < an; k++) { jm_stk_raw[fr][k][0] = raw[k][0]; jm_stk_raw[fr][k][1] = raw[k][1]; }
             jm_depth++;
-            jm_emit_orig(jm_macros[mi].body0, jm_macros[mi].body1); /* 整个体连续展开 — 内部游标自动越过嵌套调用 (逐 token 调用会把嵌套调用内部 token 重复处理) */
+            { 整 hyg_base = hyg_depth;
+              若 (hyg_depth < 32) {
+                  整 hn = hyg_scan(jm_macros[mi].body0, jm_macros[mi].body1, mi);
+                  若 (hn > 0) {
+                      遍 (整 k = 0; k < hn; k++) {
+                          strcpy(hyg_orig[hyg_depth][k], hyg_buf[k]);
+                          sprintf(hyg_new[hyg_depth][k], "_hyg%d_%s", hyg_seq++, hyg_buf[k]);
+                      }
+                  }
+                  hyg_cnt[hyg_depth] = hn; hyg_depth++; /* 每帧压一层 (无局部变量也压空层), 保证 hyg_depth==帧号 对应 */
+              }
+              jm_emit_orig(jm_macros[mi].body0, jm_macros[mi].body1); /* 整个体连续展开 — 内部游标自动越过嵌套调用 (逐 token 调用会把嵌套调用内部 token 重复处理) */
+              hyg_depth = hyg_base;
+            }
             jm_depth--;
             i = ce + 1;
         } 否 {
-            jm_emit_token(i); i++;
+            jm_emit_hyg(i); i++;
         }
     }
 }
@@ -12203,7 +12285,7 @@ __attribute__((unused))
                 整 mn = jm_n;
                 strcpy(jm_macros[mn].name, tn[i + 1]);
                 jm_macros[mn].pn = 0;
-                { 整 qd = 0; 遍 (整 q = i + 2; q < pend_i; q++) { 若 (tt[q] == OK) qd++; 否 若 (tt[q] == KK) qd--; 否 若 (tt[q] == VR && qd == 1 && jm_macros[mn].pn < 16) strcpy(jm_macros[mn].params[jm_macros[mn].pn++], tn[q]); } }
+                { 整 qd = 0; 遍 (整 q = i + 2; q < pend_i; q++) { 若 (tt[q] == OK) qd++; 否 若 (tt[q] == KK) qd--; 否 若 (tt[q] == VR && qd == 1 && jm_macros[mn].pn < 16) { jm_macros[mn].ppos[jm_macros[mn].pn] = q; jm_macros[mn].pn = jm_macros[mn].pn + 1; } } }
                 整 b0 = -1; 整 b1 = -1; 整 decl_end = pend_i + 1;
                 若 (pend_i + 1 < ti && tt[pend_i + 1] == AK) { /* = expr ; */
                     b0 = pend_i + 2; 整 d = 0; 整 j = pend_i + 2;

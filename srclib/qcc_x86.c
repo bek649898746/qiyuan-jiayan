@@ -7697,7 +7697,6 @@ static int stmt(void) {
             char idxv[64]; int has_idx = 0;
             if (tt[tk + 1] == CK) { strcpy(idxv, tn[tk]); tk++; tk++; has_idx = 1; } /* 接入 2026-08-27 for-range 索引: 遍 i, x 于 arr — i 索引, x 值 */
             char rvn[64]; strcpy(rvn, tn[tk]); tk++; /* 迭代值变量 */
-            fprintf(stderr, "[DBG-FR] rvn=%s tk=%d tt=%d tn=%.20s\n", rvn, tk, tt[tk], tn[tk]);
             tk++; /* 于 */
             { int save_tk = tk; int start_e = expr(); /* 区间检测: 遍 x 于 a 到 b — 迭代表达式 */
               if (tt[tk] == VR && !strcmp(tn[tk], "到")) { /* 接入 2026-08-27 for-range 区间: { x=a; while(x<b){body;x++;} } */
@@ -7719,6 +7718,29 @@ static int stmt(void) {
               tk = save_tk; /* 非区间: 重置 token, 走数组/切片/字符串路径 */
             }
             int arrn = expr(); /* 数组/切片/字符串表达式 */
+            if (arrn >= 0 && nt[arrn] == 1) { /* #273 迭代器协议: 动态数组 Vec 迭代 — 遍 x 于 v; (检测 __vec_<名>_id) */
+                char itname[64]; strcpy(itname, (char*)(nn + arrn));
+                char itid[80]; sprintf(itid, "__vec_%s_id", itname);
+                if (var_lookup(itid) >= 0) {
+                    char vin[32]; sprintf(vin, "_vi_%d_", rng_seq++);
+                    var_offset(vin);
+                    if (var_lookup(rvn) < 0) { var_offset(rvn); uninit_remove(rvn); }
+                    int blk_v = Nd(5);
+                    { int d_v = Nd(7); memcpy((char*)(nn + d_v), vin, 32); int z_v = Nd(0); nv[z_v] = 0; Nc(d_v, z_v); Nc(blk_v, d_v); } /* __vi = 0; */
+                    int wh_v = Nd(9);
+                    { int v0_v = Nd(1); memcpy((char*)(nn + v0_v), vin, 32);
+                      int call_v = Nd(4); { int v1_v = Nd(1); memcpy((char*)(nn + v1_v), itid, 32); Nc(call_v, v1_v); } { int fn_v = Nd(1); memcpy((char*)(nn + fn_v), "__qcc_vec_lenof", 15); Nc(call_v, fn_v); } /* __qcc_vec_lenof(v) */
+                      int cmp_v = Nd(2); nv[cmp_v] = T_LK; Nc(cmp_v, v0_v); Nc(cmp_v, call_v); Nc(wh_v, cmp_v); } /* __vi < len */
+                    int bd_v = Nd(5);
+                    { int call_v2 = Nd(4); { int v1_v2 = Nd(1); memcpy((char*)(nn + v1_v2), itid, 32); Nc(call_v2, v1_v2); } { int v2_v2 = Nd(1); memcpy((char*)(nn + v2_v2), vin, 32); Nc(call_v2, v2_v2); } { int fn_v2 = Nd(1); memcpy((char*)(nn + fn_v2), "__qcc_vec_get", 14); Nc(call_v2, fn_v2); } /* __qcc_vec_get(v, __vi) */
+                      int as_v = Nd(10); { int v3_v = Nd(1); memcpy((char*)(nn + v3_v), rvn, 32); Nc(as_v, v3_v); } Nc(as_v, call_v2); Nc(bd_v, as_v); } /* x = get(v, __vi); */
+                    { int body_v = stmt(); if (body_v >= 0) Nc(bd_v, body_v); } /* 用户循环体 */
+                    { int step_v = Nd(23); nv[step_v] = 0; { int v4_v = Nd(1); memcpy((char*)(nn + v4_v), vin, 32); Nc(step_v, v4_v); } Nc(bd_v, step_v); } /* __vi++; */
+                    Nc(wh_v, bd_v);
+                    Nc(blk_v, wh_v);
+                    return blk_v;
+                }
+            }
             { /* 接入 2026-08-29 P2 #263 切片运算符: 遍 x 于 a 从 lo 到 hi — 数组区间迭代 (a[lo..hi) 切片; 避开 .. 词法冲突用 从/到 关键字) */
                 int sl_lo = -1, sl_hi = -1; char sl_arr[64]; sl_arr[0] = 0;
                 if (tt[tk] == VR && !strcmp(tn[tk], "从") && arrn >= 0 && nt[arrn] == 1) {
@@ -12104,7 +12126,7 @@ static int skip_global_init(int tk) {
 }
 
 /* ========== 宏系统 (2026-08-28 type-root-12 #167: AST 级安全宏 — lex 后 parse 前 token 级展开) ========== */
-static struct { char name[64]; char params[16][64]; int pn; int body0; int body1; } jm_macros[512];
+static struct { char name[64]; int ppos[16]; int pn; int body0; int body1; } jm_macros[512]; /* #168 2026-09-01: 参数存 token 坐标 (qcc char 数组乘式索引缺陷: params[16][64] 拷贝读空) */
 static int jm_n = 0;
 static int jm_decl0[512]; static int jm_decl1[512]; /* 宏声明 token 区间 (展开时跳过) */
 static int jm_find(const char *n) { for (int i = 0; i < jm_n; i++) if (!strcmp(jm_macros[i].name, n)) return i; return -1; }
@@ -12115,14 +12137,59 @@ static int jm_out; static int jm_depth;
 /* 嵌套宏展开帧栈: 每帧记录 宏索引 + 原始实参 token 切片 (调用者上下文惰性展开, 替换时括号包裹) */
 static int jm_stk_mi[24]; static int jm_stk_an[24]; static int jm_stk_raw[24][16][2];
 
-static void jm_overflow(void) { fprintf(stderr, "[ERR] A9008 宏展开超限: token 数超上限\n"); exit(1); }
+static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
+/* 接入 2026-09-01 #168 卫生宏: 函数宏体内局部变量声明在每次展开时 gensym 改名 (_hyg<序>_<原名>),
+   与调用点同名变量隔离 (无变量捕获). 卫栈按展开深度嵌套; 实参展开在调用者上下文, 用调用者帧. */
+static char hyg_orig[32][32][64]; static char hyg_new[32][32][80]; static int hyg_cnt[32]; static int hyg_depth = 0; static int hyg_seq = 0;
+static char hyg_buf[32][64];
 
-static void jm_emit_token(int i) {
+static int hyg_find(const char *name, char *out) {
+    for (int l = hyg_depth - 1; l >= 0; l--) {
+        for (int k = 0; k < hyg_cnt[l]; k++)
+            if (!strcmp(hyg_orig[l][k], name)) { strcpy(out, hyg_new[l][k]); return 1; }
+    }
+    return 0;
+}
+
+static int hyg_scan(int a, int b, int mi) {
+    /* 扫描宏体 token [a,b) 识别局部变量声明: <类型词|typedef名> <变量名> 且 后跟 =/;/,[ 且 非宏参数 */
+    int n = 0; int i = a;
+    while (i < b) {
+        int is_type = (tt[i] == VK) || (tt[i] == VR && (tdef_lookup(tn[i]) >= 0 || !strcmp(tn[i], "typedef")));
+        if (is_type) {
+            int s = i + 1;
+            while (s < b && (tt[s] == VK || (tt[s] == VR && tdef_lookup(tn[s]) >= 0))) s++;
+            int np = -1;
+            if (s < b && tt[s] == VR) {
+                np = s;
+                if (tdef_lookup(tn[s]) >= 0 && s + 1 < b && tt[s + 1] == VR) np = s + 1; /* typedef 类型名后才是变量 */
+            }
+            if (np >= 0) {
+                int aft = np + 1;
+                if (aft < b && (tt[aft] == AK || tt[aft] == SK || tt[aft] == CK || tt[aft] == LB)) {
+                    int is_p = 0;
+                    for (int k = 0; k < jm_macros[mi].pn && k < 16; k++) if (!strcmp(tn[jm_macros[mi].ppos[k]], tn[np])) { is_p = 1; break; }
+                    if (!is_p && n < 32) { strcpy(hyg_buf[n], tn[np]); n++; }
+                }
+            }
+            i = (np >= 0) ? (np + 1) : (s > i ? s : i + 1);
+            continue;
+        }
+        i++;
+    }
+    return n;
+}
+
+static void jm_emit_hyg(int i) { /* #168: 输出 token, 命中卫栈则输出 gensym 新名 */
+    char out[80]; char *wn = tn[i];
+    if (tt[i] == VR && hyg_depth > 0 && hyg_find(tn[i], out)) wn = out;
     if (jm_out >= TS) jm_overflow();
-    jm_tt2[jm_out] = tt[i]; jm_tv2[jm_out] = tv[i]; strcpy(jm_tn2[jm_out], tn[i]);
+    jm_tt2[jm_out] = tt[i]; jm_tv2[jm_out] = tv[i]; strcpy(jm_tn2[jm_out], wn);
     jm_tline2[jm_out] = tline[i]; jm_tuns2[jm_out] = tuns[i]; jm_tll2[jm_out] = tll[i]; jm_tll_hi2[jm_out] = tll_hi[i];
     jm_out++;
 }
+
+static void jm_overflow(void) { fprintf(stderr, "[ERR] A9008 宏展开超限: token 数超上限\n"); exit(1); }
 
 static void jm_emit_paren(int type) { /* 合成 ( ) token 用于实参括号包裹 */
     if (jm_out >= TS) jm_overflow();
@@ -12135,7 +12202,7 @@ static int jm_param_of(int i, int *frame_out, int *param_out) { /* 最内层活�
     for (int f = jm_depth - 1; f >= 0; f--) {
         int mi = jm_stk_mi[f];
         for (int q = 0; q < jm_macros[mi].pn; q++)
-            if (!strcmp(jm_macros[mi].params[q], tn[i])) { *frame_out = f; *param_out = q; return 1; }
+            if (!strcmp(tn[jm_macros[mi].ppos[q]], tn[i])) { *frame_out = f; *param_out = q; return 1; }
     }
     return 0;
 }
@@ -12145,12 +12212,14 @@ static void jm_emit_orig(int a, int b);
 
 static void jm_emit_arg(int fr, int q) { /* 帧 fr 的第 q 个实参, 在调用者上下文 (帧 0..fr-1) 展开 — 保存/恢复被隐藏帧槽位 (嵌套调用会复用槽位) */
     int saved = jm_depth;
+    int saved_hyg = hyg_depth; hyg_depth = fr; /* #168 卫生宏: 实参在调用者上下文展开, 用调用者帧 (0..fr-1) 的卫栈, 屏蔽本宏帧 */
     int s_mi = jm_stk_mi[fr]; int s_an = jm_stk_an[fr]; int s_raw[16][2];
     for (int k = 0; k < 16; k++) { s_raw[k][0] = jm_stk_raw[fr][k][0]; s_raw[k][1] = jm_stk_raw[fr][k][1]; }
     jm_depth = fr;
     jm_emit_paren(OK);
     jm_emit_orig(jm_stk_raw[fr][q][0], jm_stk_raw[fr][q][1]);
     jm_emit_paren(KK);
+    hyg_depth = saved_hyg;
     jm_depth = saved;
     jm_stk_mi[fr] = s_mi; jm_stk_an[fr] = s_an;
     for (int k = 0; k < 16; k++) { jm_stk_raw[fr][k][0] = s_raw[k][0]; jm_stk_raw[fr][k][1] = s_raw[k][1]; }
@@ -12183,11 +12252,24 @@ static void jm_emit_orig(int a, int b) {
             jm_stk_mi[fr] = mi; jm_stk_an[fr] = an;
             for (int k = 0; k < an; k++) { jm_stk_raw[fr][k][0] = raw[k][0]; jm_stk_raw[fr][k][1] = raw[k][1]; }
             jm_depth++;
-            jm_emit_orig(jm_macros[mi].body0, jm_macros[mi].body1); /* 整个体连续展开 — 内部游标自动越过嵌套调用 (逐 token 调用会把嵌套调用内部 token 重复处理) */
+            { int hyg_base = hyg_depth;
+              if (hyg_depth < 32) {
+                  int hn = hyg_scan(jm_macros[mi].body0, jm_macros[mi].body1, mi);
+                  if (hn > 0) {
+                      for (int k = 0; k < hn; k++) {
+                          strcpy(hyg_orig[hyg_depth][k], hyg_buf[k]);
+                          sprintf(hyg_new[hyg_depth][k], "_hyg%d_%s", hyg_seq++, hyg_buf[k]);
+                      }
+                  }
+                  hyg_cnt[hyg_depth] = hn; hyg_depth++; /* 每帧压一层 (无局部变量也压空层), 保证 hyg_depth==帧号 对应 */
+              }
+              jm_emit_orig(jm_macros[mi].body0, jm_macros[mi].body1); /* 整个体连续展开 — 内部游标自动越过嵌套调用 (逐 token 调用会把嵌套调用内部 token 重复处理) */
+              hyg_depth = hyg_base;
+            }
             jm_depth--;
             i = ce + 1;
         } else {
-            jm_emit_token(i); i++;
+            jm_emit_hyg(i); i++;
         }
     }
 }
@@ -12203,7 +12285,7 @@ static void jiayan_macro_expand(void) {
                 int mn = jm_n;
                 strcpy(jm_macros[mn].name, tn[i + 1]);
                 jm_macros[mn].pn = 0;
-                { int qd = 0; for (int q = i + 2; q < pend_i; q++) { if (tt[q] == OK) qd++; else if (tt[q] == KK) qd--; else if (tt[q] == VR && qd == 1 && jm_macros[mn].pn < 16) strcpy(jm_macros[mn].params[jm_macros[mn].pn++], tn[q]); } }
+                { int qd = 0; for (int q = i + 2; q < pend_i; q++) { if (tt[q] == OK) qd++; else if (tt[q] == KK) qd--; else if (tt[q] == VR && qd == 1 && jm_macros[mn].pn < 16) { jm_macros[mn].ppos[jm_macros[mn].pn] = q; jm_macros[mn].pn = jm_macros[mn].pn + 1; } } }
                 int b0 = -1; int b1 = -1; int decl_end = pend_i + 1;
                 if (pend_i + 1 < ti && tt[pend_i + 1] == AK) { /* = expr ; */
                     b0 = pend_i + 2; int d = 0; int j = pend_i + 2;
