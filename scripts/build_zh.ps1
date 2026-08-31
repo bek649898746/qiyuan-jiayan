@@ -8,8 +8,9 @@
 #
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
+param([switch]$Regenerate)
 $ErrorActionPreference = 'Stop'
-$expected = 'cf06acbf'  # 2026-08-31 深度中文化后新不动点 (string_sinicize: 错误消息正文中文化 OOM→内存不足/AST→抽象语法树; 保留 [ERR] 前缀/纯英文判断词/asm/符号模板; 原 46ef0edb 是注释中文化版)  # 2026-08-31 补 signed 中文词 (有符号) 后新不动点 (signed char 中文可写: 有符号 字; kw/strcmp/cast 全链认)  # 2026-08-31 中文链 cast 类型解析中文等价注入修复  # 2026-08-31 中文链 cast 类型解析中文等价注入修复 (layer_change 变量形式词名 strcmp: 转型型/转型型二/中粗) + MAX_LABELS 262144 扩容后新不动点; 原 4a19764d 缺 cast 中文等价 → (无 长 长) cast 8B 标记丢失 → 64 位移位/比较全崩 (t1 c64=0 复现)  # 2026-08-31 无整中文语法缺口修复后新不动点 (sinicize KW_ALIAS unsigned→无整; 原 19277eb6 缺无整连写)  # 2026-08-31 镜像同步修复后新不动点 (qcc_zh.jy 重生成含 ll_ext32/p_esz/movsxd 修复; 原 c198c445 是修复前镜像)  # 2026-08-31 站A+B+C + typedef double + cast32 修复 (csmith s61):
+$expected = '98f40219'  # 2026-08-31 中文化去吞 #163 finally (无论如何 = 函数退出无条件执行, defer 别名; 中文主源模式首个特性)  # 2026-08-31 深度中文化后新不动点 (string_sinicize: 错误消息正文中文化 OOM→内存不足/AST→抽象语法树; 保留 [ERR] 前缀/纯英文判断词/asm/符号模板; 原 46ef0edb 是注释中文化版)  # 2026-08-31 深度中文化后新不动点 (string_sinicize: 错误消息正文中文化 OOM→内存不足/AST→抽象语法树; 保留 [ERR] 前缀/纯英文判断词/asm/符号模板; 原 46ef0edb 是注释中文化版)  # 2026-08-31 补 signed 中文词 (有符号) 后新不动点 (signed char 中文可写: 有符号 字; kw/strcmp/cast 全链认)  # 2026-08-31 中文链 cast 类型解析中文等价注入修复  # 2026-08-31 中文链 cast 类型解析中文等价注入修复 (layer_change 变量形式词名 strcmp: 转型型/转型型二/中粗) + MAX_LABELS 262144 扩容后新不动点; 原 4a19764d 缺 cast 中文等价 → (无 长 长) cast 8B 标记丢失 → 64 位移位/比较全崩 (t1 c64=0 复现)  # 2026-08-31 无整中文语法缺口修复后新不动点 (sinicize KW_ALIAS unsigned→无整; 原 19277eb6 缺无整连写)  # 2026-08-31 镜像同步修复后新不动点 (qcc_zh.jy 重生成含 ll_ext32/p_esz/movsxd 修复; 原 c198c445 是修复前镜像)  # 2026-08-31 站A+B+C + typedef double + cast32 修复 (csmith s61):
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
@@ -28,8 +29,15 @@ $expected = 'cf06acbf'  # 2026-08-31 深度中文化后新不动点 (string_sini
                          # 验证: 中文指令词程序 (对象宏/函数宏/若有定义/包含/结束若) OK; 功能全绿
 
 Write-Host "== [1/2] 生成 qcc_zh.jy =="
-python scripts/sinicize.py
-if ($LASTEXITCODE -ne 0) { throw "sinicize 失败" }
+if ($Regenerate) {
+    python scripts/sinicize.py
+    if ($LASTEXITCODE -ne 0) { throw "sinicize 失败" }
+} else {
+    # fix 2026-08-31 中文主源模式: qcc_zh.jy 是主源, 特性直接写中文端, sinicize 不再覆盖
+    # (英文源修复需同步时, 手动跑 sinicize.py 重建后重做中文特性; 或显式 -Regenerate)
+    Write-Host "  [主源] 使用现有 srclib_jiayan/qcc_zh.jy (跳过 sinicize; 如需重建加 -Regenerate)"
+    if (-not (Test-Path srclib_jiayan\qcc_zh.jy)) { throw "qcc_zh.jy 不存在, 请先 -Regenerate 生成" }
+}
 
 Write-Host "== [2/2] 中文自举链 v1..v7 =="
 Remove-Item qcc_zh_v1.exe -ErrorAction SilentlyContinue
