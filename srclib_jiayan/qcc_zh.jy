@@ -2188,7 +2188,8 @@ __attribute__((原粗))
 静 整 节长标[节容量]; /* per-node flag: expression is a 64-bit long long (fix 2026-08-05) */
 静 整 节长高[节容量]; /* per-node high 32 bits of a long-long literal (fix 2026-08-05) */
 静 字 首甲二[节容量]; /* fix 2026-08-30 csmith s168: signed 64 cast ((int64_t)x / (long)x) 标记 — 值转换保留源 nuns (零扩展 b_cast), 类型 signed (除法/比较 signed); 不用 nll_hi (污染 LL 字面量语义 → 未初始化读取崩溃) */
-静 字 号汇一[节容量]; /* fix 2026-08-31 csmith s11: unsigned 64 cast ((uint64_t)x / (unsigned long long)x) 标记 — 目标 unsigned (比较/除法无符号) 但不设源 nuns (源有符号须符号扩展: (uint64_t)(int32)0x9D9DC934 → 0xFFFFFFFF9D9DC934) */
+静 字 号汇一[节容量]; /* fix 2026-08-31 csmith s11: unsigned 64 cast ((uint64_t)x / (unsigned long long)x) 标记 - 目标 unsigned (比较/除法无符号) 但不设源 nuns */
+静 字 cast32[节容量]; /* fix 2026-08-31 csmith s61: 32 位类型 cast ((uint32_t)/(int32_t)/(uint8_t) 等) 标记 - 阻断 expr_is_ll 递归到子表达式 64 位字面量 (-6L) - & 传播 nll -> uint32<int64 比较误判无符号 */
 静 字 暂合[节容量]; /* fix 2026-08-30 探雷雷2: 显式 cast 标记 — (T*)x 是 no-op cast 直接返回操作数 (不建节点), 标记操作数节点供 type_mismatch_check 豁免 (int *p=(const char*)0xdeadbeef 合法, int *p=12345 非法) */
 静 整 指元素[节容量]; /* per-node flag: (T*) pointer-cast element byte size (1/2/4/8) - fix 2026-08-08 width bug: cast no-op drops type info, *((T*)x) width fell to 1 byte; keep target element size for case-12/10 */
 静 整 节无符号[节容量]; /* per-node flag: expression is unsigned (u suffix literal / unsigned var) — >> must be logical SHR (fix 2026-08-05) */
@@ -3321,6 +3322,7 @@ __attribute__((原粗))
    now=2009 "in the future"). */
 静 整 表达式是否长(整 数) {
     若 (数 < 0) 返 0;
+    若 (cast32[数]) 返 0; /* fix 2026-08-31 csmith s61: 32 位类型 cast 结果非 64 位 - 阻断递归到子表达式 64 位字面量 */
     若 (节长标[数]) 返 1; /* cast (long long)x / literal / pre-marked */
     若 (节型表[数] == 1) { 字 *副寅 = (字*)(节名表 + 数); 遍 (整 计 = 变量总数() - 1; 计 >= 解析基; 计--) 若 (!比较字符串(变量表[计].名, 副寅) && 变量表[计].数组尺寸 == 0 && 变量码生成可见(计)) 返 变量表[计].是否长标; 返 0; } /* long long var — fix 2026-08-30 csmith s61: var_is_ll 返回 rsp_off (局部负偏移) → expr_is_ll 返回负判假 → 局部 int64 比较误走 32 位路径 */
     若 (节型表[数] == 0) 返 词长表[数]; /* 1000000000LL literal */
@@ -5913,7 +5915,7 @@ __attribute__((原粗))
       若 (转型型 && !比较字符串(转型型, "long")) 副贰 = 1;
       否 若 (转型型二 && !比较字符串(转型型二, "long")) 副贰 = 1;
       否 若 (素双) { 整 新四 = 型定查(素双); 若 (新四 >= 0 && !型定表[新四].是否构标 && !型定表[新四].是否函数指 && !型定表[新四].是否浮标 && 型定表[新四].尺寸 == 8) 副贰 = 1; }
-      若 (常式 >= 0) { 若 (高壬 && !副贰) 节无符号[常式] = 1; 若 (副贰 && 高壬) 号汇一[常式] = 1; /* fix 2026-08-31 csmith s11: uint64 目标 cast 不设源 nuns — 源有符号须符号扩展 ((uint64_t)(int32 0x9D9DC934) → 0xFFFFFFFF9D9DC934, 原 nuns=1 → 零扩展 → g_577 |= (l_2472[2]>>19) 0x13B7 应 0xFFFFF3B7 → 除零崩) */ 若 (副贰) 节长标[常式] = 1; 否 若 (转型型 || 转型型二 || 素双) 节长标[常式] = 0; 若 (副贰 && !高壬) 首甲二[常式] = 1; } } /* fix 2026-08-30 csmith: cast 值转换保留源 nuns（(long long)uint32 零扩展 b_cast）, signed 64 cast 用 cast_sgn64 标记（除法 signed s168）; _cast64 设 nll */ /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
+      若 (常式 >= 0) { 若 (高壬 && !副贰) 节无符号[常式] = 1; 若 (副贰 && 高壬) 号汇一[常式] = 1; /* fix 2026-08-31 csmith s11: uint64 目标 cast 不设源 nuns — 源有符号须符号扩展 ((uint64_t)(int32 0x9D9DC934) → 0xFFFFFFFF9D9DC934, 原 nuns=1 → 零扩展 → g_577 |= (l_2472[2]>>19) 0x13B7 应 0xFFFFF3B7 → 除零崩) */ 若 (副贰) 节长标[常式] = 1; 否 若 (转型型 || 转型型二 || 素双) { 节长标[常式] = 0; cast32[常式] = 1; } /* fix 2026-08-31 csmith s61: 32 位类型 cast 设 cast32 阻断 expr_is_ll 递归 ((uint32_t)(-6L>>29) 内 -6L 64 位字面量 - 原 & 传播 nll -> uint32<int64 比较误判无符号; cast64 后清 cast32 */ 若 (副贰) cast32[常式] = 0; 若 (副贰 && !高壬) 首甲二[常式] = 1; } } /* fix 2026-08-30 csmith: cast 值转换保留源 nuns（(long long)uint32 零扩展 b_cast）, signed 64 cast 用 cast_sgn64 标记（除法 signed s168）; _cast64 设 nll */ /* fix 2026-08-30 csmith s182: _cast64 (int64_t/uint64_t typedef 8B) 设 nll — 原只 (long) 关键字设 → (int64_t)l_1822 cast 后 64 位运算按 32 位 → RHS nll=0 → *int64_t 存高 32 位错 */
             /* 后缀链: (cast)->field / (cast)[i] / (cast)(args) (fix 2026-08-06: 原直接 return, ((T*)0)->i 的 ->i 悬空 → offsetof 惯用法 &((T*)0)->m = 0) */
             循环 (1) {
                 若 (词型表[词位] == 左方) {
@@ -12274,6 +12276,8 @@ __attribute__((原粗))
     函数定义数 = 0; /* fix 2026-08-06: 每次 parse 重置顶层函数列表 */
     内存设置(节浮标, 0, 大小(节浮标)); /* per-node double flags must not leak across compiles */
     内存设置(节无符号, 0, 大小(节无符号)); /* per-node unsigned flags (fix 2026-08-05) */
+    内存设置(节长标, 0, 大小(节长标)); /* fix 2026-08-31 csmith s61: nll 数组从未清零 - 跨编译残留 */
+    内存设置(cast32, 0, 大小(cast32)); /* fix 2026-08-31 csmith s61: cast32 表清零 */
     单粗 = 0; /* reset per-function var-range table */
     计凶 = 0; /* 过程宏注册表每编译重置 (嵌入模式多文件编译防残留) */
     内存设置(词型表, 0, 词容量 * 4);
