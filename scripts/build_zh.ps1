@@ -9,7 +9,7 @@
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
 $ErrorActionPreference = 'Stop'
-$expected = '19277eb6'  # 2026-08-31 镜像同步修复后新不动点 (qcc_zh.jy 重生成含 ll_ext32/p_esz/movsxd 修复; 原 c198c445 是修复前镜像)  # 2026-08-31 站A+B+C + typedef double + cast32 修复 (csmith s61):
+$expected = '46ef0edb'  # 2026-08-31 补 signed 中文词 (有符号) 后新不动点 (signed char 中文可写: 有符号 字; kw/strcmp/cast 全链认)  # 2026-08-31 中文链 cast 类型解析中文等价注入修复  # 2026-08-31 中文链 cast 类型解析中文等价注入修复 (layer_change 变量形式词名 strcmp: 转型型/转型型二/中粗) + MAX_LABELS 262144 扩容后新不动点; 原 4a19764d 缺 cast 中文等价 → (无 长 长) cast 8B 标记丢失 → 64 位移位/比较全崩 (t1 c64=0 复现)  # 2026-08-31 无整中文语法缺口修复后新不动点 (sinicize KW_ALIAS unsigned→无整; 原 19277eb6 缺无整连写)  # 2026-08-31 镜像同步修复后新不动点 (qcc_zh.jy 重生成含 ll_ext32/p_esz/movsxd 修复; 原 c198c445 是修复前镜像)  # 2026-08-31 站A+B+C + typedef double + cast32 修复 (csmith s61):
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):

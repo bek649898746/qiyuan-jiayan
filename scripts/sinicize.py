@@ -5,6 +5,7 @@ Only renames identifiers in CODE positions (skips strings and comments).
 Mapping file format: one "english chinese" pair per line, # for comments.
 """
 import sys
+import os
 from pathlib import Path
 import re as _re
 
@@ -367,13 +368,15 @@ def layer_change(out):
         'int': '整', 'double': '双', 'float': '单',
         'char': '字', 'void': '空', 'short': '短',
         'long': '长', 'const': '常', 'static': '静',
+        'signed': '有符号',  # fix 2026-08-31: signed 无中文词 → 有符号 字 = signed char (kw/strcmp/cast 全链认)
         'unsigned': '无', 'sizeof': '大小',
         'volatile': '易失', 'defer': '延迟', 'select': '择收',
     }
     # 双字/别名: 英文 -> [中文...] (改写链里有的, 改层后 kw 直接认)
     KW_ALIAS = {
         'return': ['返回'], 'else': ['否则'], 'continue': ['继续'],
-        'char': ['字节'], 'long': ['长整'],
+        'char': ['字节'], 'long': ['长整'], 'signed': ['有符号'],  # fix 2026-08-31: signed 无中文词 → 中文程序写不了 有符号 字(signed char); kw+cast 双认
+        'unsigned': ['无整'],  # fix 2026-08-31 中文语法缺口: 无整(unsigned int 连写) 原 kw 不认 → 中文程序 (s>0x28L) unsigned 失效 (s52 中文版 cmp 误判有符号); 与 长整→long long 同族
     }
     # kw() 返回的中文 token 常量 (批1 映射名)
     KW_TOK = {
@@ -385,6 +388,7 @@ def layer_change(out):
         'int': '型词', 'double': '型词', 'float': '型词',
         'char': '型词', 'void': '型词', 'short': '型词',
         'long': '型词', 'const': '型词', 'static': '型词',
+        'signed': '型词',  # fix 2026-08-31: 有符号 → 型词 (kw 中文条目)
         'unsigned': '型词', 'volatile': '型词',
         'sizeof': '度序',
     }
@@ -410,6 +414,30 @@ def layer_change(out):
                 body += ' || 比较字符串(词名表[%s], "%s")' % (m.group(1), a)
             return '(' + body + ')'
         out, n = pat.subn(_sub, out)
+    # ---- 4) 变量形式词名 strcmp 注入 (fix 2026-08-31 中文链 cast 类型解析失效) ----
+    # cast 解析 (转型型/转型型二) 与宏原型检测 (中粗) 把词名存入局部变量后再与英文 strcmp —
+    # 步骤 3 正则只覆盖 词名表[...] → 中文类型名 (无/长/字/短/整/双) 匹配不到 →
+    #   (无 长 长)x cast 8B 标记丢失 (cast_ull), 类型尺寸/无符号标记全错 → 64 位移位/比较全崩
+    # 只注入类型词 (return/if 等控制词不会出现在类型位置, 省噪音)
+    type_ens = ['struct','union','enum','int','double','float','char','void','short','long','const','static','unsigned','sizeof','volatile']
+    for var in ('转型型', '转型型二', '中粗'):
+        for en in type_ens:
+            zhn = KW_MAP[en]
+            alts = [zhn] + KW_ALIAS.get(en, [])
+            pat_n = _re.compile(r'!比较字符串\(%s, "%s"\)' % (_re.escape(var), _re.escape(en)))
+            def _sub_vn(m, var=var, en=en, alts=alts):
+                body = '!比较字符串(%s, "%s")' % (var, en)
+                for a in alts:
+                    body += ' || !比较字符串(%s, "%s")' % (var, a)
+                return '(' + body + ')'
+            out, n = pat_n.subn(_sub_vn, out)
+            pat_v = _re.compile(r'(?<!\!)比较字符串\(%s, "%s"\)' % (_re.escape(var), _re.escape(en)))
+            def _sub_v(m, var=var, en=en, alts=alts):
+                body = '比较字符串(%s, "%s")' % (var, en)
+                for a in alts:
+                    body += ' || 比较字符串(%s, "%s")' % (var, a)
+                return '(' + body + ')'
+            out, n = pat_v.subn(_sub_v, out)
     # ---- 2) kw() 加中文条目 (插在「此处只认英文」注释后) ----
     kw_anchor = '/* 甲言中文关键字已在 lexer 改写成英文 (tn), 此处只认英文 */'
     kw_lines = '\n    /* 改层 (2026-08-31): 中文关键字第一等 — 直接认中文, 不经过英文改写 */\n'
