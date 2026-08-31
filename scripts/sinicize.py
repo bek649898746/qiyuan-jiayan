@@ -540,6 +540,129 @@ def comment_sinicize(text, cmap, zmap):
     return ''.join(out)
 
 
+def string_sinicize(text, cmap, zmap):
+    """字符串中文化 (深度中文化 2026-08-31): 错误消息/描述性字符串里的英文词按词表翻译。
+    保留规则:
+    - [ERR]/[NS] 方括号前缀 (测试依赖 [ERR] 前缀)
+    - asm 文本 (以空白开头, 指令词已中文 + 寄存器保留, 跳过)
+    - 符号模板 (含 __ 或 _%s, 跳过 — atomic_%s/__pool_%s_id 生成符号名)
+    - 格式符 (%d/%s 非标识符自然保留) + 转义序列 (\\n 等)
+    - 技术符号 (寄存器/库/类型/宏名)
+    注意: 改变编译产物 → 中文链自举需重收敛 (深度中文化代价, 英文链不受影响)."""
+    def is_ident_start(c):
+        return ('A' <= c <= 'Z') or ('a' <= c <= 'z') or c == '_'
+    def is_ident_char(c):
+        return is_ident_start(c) or ('0' <= c <= '9')
+    def map_token(tok):
+        if len(tok) <= 1 or tok.startswith('__') or tok.startswith('_va'):
+            return tok
+        if tok in cmap:
+            return cmap[tok]
+        if tok in zmap:
+            return zmap[tok]
+        low = tok.lower()
+        if low in cmap:
+            return cmap[low]
+        if low in zmap:
+            return zmap[low]
+        return tok
+    def is_skip_str(s):
+        # 保留规则 (fix 2026-08-31 深度中文化死循环教训):
+        # 功能敏感字符串必须原样保留 — 关键字/指令判断 (ifdef/define/long/if...),
+        # 格式模板, asm 文本, 符号模板。只映射: 含 [ERR] 的错误消息 + 已含中文的字符串。
+        if len(s) <= 3:
+            return True  # 文件模式(rb/wb/ab)/短标记 — fopen 的 "rb" 被 zh_map rb→打开 误映射 → fopen 失败
+        if s and s[0] in ' \t':
+            return True  # asm_emit 文本 (已中文指令词 + 寄存器)
+        if '__' in s or '_%s' in s or '_%d' in s:
+            return True  # 符号生成模板 (atomic_%s/__pool_%s_id)
+        if '[NS]' in s:
+            return True  # QCC_DBG 调试消息 (开发者向, 保留)
+        if s.startswith('typedef '):
+            return True  # stdint.h 桩 (用户 C 代码需要英文类型)
+        if s.startswith('diagnostics'):
+            return True  # JSON 诊断键名 (AI 程序化消费)
+        if s.startswith('atomic_') or s.startswith('async_'):
+            return True  # 关键字脱糖符号模板
+        # 纯英文且非错误消息 → 保留 (关键字/预处理指令判断/格式模板 — 映射会破坏解析路径 → 死循环)
+        if '[ERR]' not in s and not _re.search(r'[\u4e00-\u9fff]', s):
+            return True
+        return False
+    out = []
+    i = 0
+    n = len(text)
+    state = 'code'
+    while i < n:
+        c = text[i]
+        if state == 'code':
+            if c == '/' and i + 1 < n and text[i + 1] == '/':
+                state = 'line'; out.append('//'); i += 2
+            elif c == '/' and i + 1 < n and text[i + 1] == '*':
+                state = 'block'; out.append('/*'); i += 2
+            elif c == '"':
+                state = 'str'; out.append(c); i += 1
+            elif c == "'":
+                state = 'chr'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+        elif state == 'line':
+            if c == '\n':
+                state = 'code'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+        elif state == 'block':
+            if c == '*' and i + 1 < n and text[i + 1] == '/':
+                state = 'code'; out.append('*/'); i += 2
+            else:
+                out.append(c); i += 1
+        elif state == 'chr':
+            if c == '\\':
+                out.append(text[i:i + 2]); i += 2
+            elif c == "'":
+                state = 'code'; out.append(c); i += 1
+            else:
+                out.append(c); i += 1
+        elif state == 'str':
+            if c == '\\':
+                out.append(text[i:i + 2]); i += 2
+            elif c == '"':
+                state = 'code'; out.append(c); i += 1
+            else:
+                # 收集整个字符串内容判断是否跳过
+                j = i
+                seg = []
+                while j < n and text[j] != '"':
+                    if text[j] == '\\':
+                        seg.append(text[j:j + 2]); j += 2
+                    else:
+                        seg.append(text[j]); j += 1
+                content = ''.join(seg)
+                if is_skip_str(content):
+                    out.append(content)
+                else:
+                    # 逐 token 映射; [ERR]/[NS] 方括号内容保留
+                    k = 0
+                    m = len(content)
+                    while k < m:
+                        ch = content[k]
+                        if ch == '[':
+                            e = content.find(']', k)
+                            if e < 0:
+                                out.append(content[k:]); break
+                            out.append(content[k:e + 1]); k = e + 1
+                        elif is_ident_start(ch):
+                            e = k
+                            while e < m and is_ident_char(content[e]):
+                                e += 1
+                            out.append(map_token(content[k:e])); k = e
+                        else:
+                            out.append(ch); k += 1
+                out.append('"')  # 闭合引号
+                state = 'code'   # fix 2026-08-31: 必须切回 code 态, 否则后续代码被当字符串内容
+                i = j + 1
+    return ''.join(out)
+
+
 def main():
     map_path = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / 'scripts' / 'zh_map.txt')
     mapping = load_map(map_path)
@@ -550,8 +673,9 @@ def main():
     out = transform(text, mapping)
     out = post_process(out)
     out = comment_sinicize(out, cmap, mapping)  # 注释中文化 (差距清单 A 项; post_process 之后, 不动点不变)
+    out = string_sinicize(out, cmap, mapping)   # 字符串中文化 (深度中文化; 改产物 → 中文链重收敛)
     dst.write_bytes(out.encode('utf-8'))
-    print(f'applied {len(mapping)} mappings + 批3b 平台流桥 + 注释中文化 {len(cmap)} -> {dst} ({len(out)} chars)')
+    print(f'applied {len(mapping)} mappings + 批3b 平台流桥 + 注释中文化 {len(cmap)} + 字符串中文化 -> {dst} ({len(out)} chars)')
 
 
 if __name__ == '__main__':
