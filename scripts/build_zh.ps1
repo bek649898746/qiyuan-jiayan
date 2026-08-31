@@ -9,7 +9,8 @@
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
 $ErrorActionPreference = 'Stop'
-$expected = 'dfc77a21'  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
+$expected = '64d1667e'  # 2026-08-31 站A+B+C + typedef double 修复 + 数组字节精化:
+                         # 变量 a[n] 数组 declare 节点 Nd(1)→Nd(7) — 与 C 路径逐字节相同  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
                          # implicit_cast_check rsp_off 越界修复 + typedef double 类型标记传导
                          # (en 链同步 BC0E5B22, 均为种子修复)  # 2026-08-31 中文前端语法独立 站A+站B+站C (函数/变量/常量 + 控制词无括号 + 类型别名):
                          # 站C: 类型 名 = 基础类型; (整/双/长/短/字/无 字/长 长 — 型定加+左系 注册)
