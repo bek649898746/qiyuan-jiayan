@@ -1779,7 +1779,23 @@ static void hexfp_parse(const char *s, int *pi, int *out_hi, int *out_lo) {
 #define T_MD 43  /* % */
 #define T_SH 44  /* << */
 #define T_SR 45  /* >> */
-static void b(unsigned char v) { if (cp >= CODE_BUF_CAP) { fprintf(stderr, "qcc_x86: code buffer overflow (fix 2026-08-09 审计)\n"); exit(1); } code[cp++] = v; }
+/* #289 调试信息 (2026-09-01): -g 时独立缓冲收集 行号表 (码位,行号) + 函数表 (名/起/止/行).
+   隔离原则: 仅读 cp/tline, 不写共享状态 → -g vs 无-g 产物 .text 逐字节一致 (验收门①) */
+static int dbg_on = 0;
+static int dbg_line_n = 0; static int dbg_last_line = 0;
+static int dbg_lines[262144][2]; /* [cp, line] */
+static struct { char name[128]; int start; int end; int line; } dbg_fns[8192];
+static char dbg_buf[131072]; static volatile int dbg_bufpos = 0; /* 易失: 强制内存读写 */
+static int dbg_ab_off, dbg_ab_sz; static int dbg_in_off, dbg_in_sz; static int dbg_ln_off, dbg_ln_sz;
+static void dbg_gen(void); /* fwd: 定义在 write_pe 前 */
+static void b(unsigned char v) {
+    extern int tk; /* fwd: 全局定义在 token 表区 (gcc 要求使用前声明) */
+    if (dbg_on && dbg_line_n < 262144 && tline[tk] > 0 && tline[tk] != dbg_last_line) {
+        dbg_lines[dbg_line_n][0] = cp; dbg_lines[dbg_line_n][1] = tline[tk]; dbg_line_n++;
+        dbg_last_line = tline[tk];
+    }
+    if (cp >= CODE_BUF_CAP) { fprintf(stderr, "qcc_x86: code buffer overflow (fix 2026-08-09 审计)\n"); exit(1); } code[cp++] = v;
+}
 static void b4(int v) { b(v & 0xff); b((v >> 8) & 0xff); b((v >> 16) & 0xff); b((v >> 24) & 0xff); }
 
 /* ModR/M: mod=0(reg,[reg+disp])/1(reg,[reg+disp8])/2(reg,[reg+disp32])/3(reg,reg) */
@@ -20144,7 +20160,147 @@ static int data_extent(void) {
     return e > heap_top ? e : heap_top;
 }
 
+/* #289 DWARF 编码 (2026-09-01): 独立缓冲, 只读 dbg_lines/dbg_fns/cp, 不碰共享状态 */
+static void dw8(int *pos, unsigned char v) { if (*pos < 131072) dbg_buf[(*pos)++] = v; }
+static void dw4(int *pos, int v) { dw8(pos, v & 0xff); dw8(pos, (v >> 8) & 0xff); dw8(pos, (v >> 16) & 0xff); dw8(pos, (v >> 24) & 0xff); }
+static void dw_uleb(int *pos, int v) { while (1) { unsigned char c = (unsigned char)(v & 0x7f); v >>= 7; if (v) c |= 0x80; dw8(pos, c); if (!v) break; } }
+static void dw_str(int *pos, const char *s) { if (s) while (*s) dw8(pos, *s++); dw8(pos, 0); }
+
+static void dbg_gen(void) {
+    int pos = 0; /* 局部缓冲位 (qcc 全局计数器跨函数未刷内存) */
+    /* 源码名 (取 g_src_name 最后段) */
+    char short_name[256]; short_name[0] = 0;
+    if (g_src_name[0]) { int last_slash = -1; for (int i = 0; g_src_name[i]; i++) if (g_src_name[i] == '/' || g_src_name[i] == '\\') last_slash = i; strcpy(short_name, g_src_name + last_slash + 1); }
+    if (!short_name[0]) strcpy(short_name, "?");
+    /* 运行时代码基址 = ImageBase(0x400000) + BaseOfCode(0x1000) */
+    long long code_base = (long long)(IMAGE_BASE + 0x1000);
+
+    /* ===== .debug_abbrev ===== */
+    dbg_ab_off = pos;
+    dw8(&pos, 1); dw_uleb(&pos, 0x11); dw_uleb(&pos, 1); /* compile_unit, children */
+    dw_uleb(&pos, 0x03); dw_uleb(&pos, 0x08); /* name, string */
+    dw_uleb(&pos, 0x1b); dw_uleb(&pos, 0x08); /* comp_dir, string */
+    dw_uleb(&pos, 0x25); dw_uleb(&pos, 0x08); /* producer, string */
+    dw_uleb(&pos, 0x13); dw_uleb(&pos, 0x05); /* language, data2 (form 0x05) */
+    dw_uleb(&pos, 0x11); dw_uleb(&pos, 0x01); /* low_pc, addr */
+    dw_uleb(&pos, 0x10); dw_uleb(&pos, 0x06); /* stmt_list, data4 (form 0x06) */
+    dw_uleb(&pos, 0); dw_uleb(&pos, 0);
+    dw8(&pos, 2); dw_uleb(&pos, 0x2e); dw_uleb(&pos, 0); /* subprogram, no children */
+    dw_uleb(&pos, 0x03); dw_uleb(&pos, 0x08); /* name */
+    dw_uleb(&pos, 0x11); dw_uleb(&pos, 0x01); /* low_pc */
+    dw_uleb(&pos, 0x12); dw_uleb(&pos, 0x07); /* high_pc, data8 (form 0x07) */
+    dw_uleb(&pos, 0x3b); dw_uleb(&pos, 0x0f); /* decl_line, udata (form 0x0f) */
+    dw_uleb(&pos, 0); dw_uleb(&pos, 0);
+    dw_uleb(&pos, 0); dw_uleb(&pos, 0);
+    dbg_ab_sz = pos - dbg_ab_off;
+
+    /* ===== .debug_info ===== */
+    dbg_in_off = pos;
+    int info_body_off = pos + 4;
+    dw4(&pos, 0); /* unit_length 占位 */
+    dw8(&pos, 4); dw8(&pos, 0); /* version 4 (half, 2 字节) */
+    dw4(&pos, 0); /* abbrev_offset */
+    dw8(&pos, 8); /* addr_size */
+    dw_uleb(&pos, 1); /* abbrev 1: compile_unit */
+    dw_str(&pos, short_name);
+    dw_str(&pos, ".");
+    dw_str(&pos, "qcc_x86 v5.0");
+    dw8(&pos, 1); dw8(&pos, 0); /* language: C89 (data2, 2 字节) */
+    long long low_pc = code_base;
+    dw8(&pos, (unsigned char)(low_pc & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 8) & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 16) & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 24) & 0xff));
+    dw8(&pos, (unsigned char)((low_pc >> 32) & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 40) & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 48) & 0xff)); dw8(&pos, (unsigned char)((low_pc >> 56) & 0xff));
+    dw4(&pos, 0); /* stmt_list = 0 */
+    /* 函数 subprograms (覆盖式函数表: 遍历 fdef_list, fi 索引 dbg_fns) */
+    for (int i = 0; i < fdef_n; i++) {
+        int c = fdef_list[i];
+        if (c <= 0) continue;
+        char *fn = (char *)(nn + c);
+        int fi2 = func_find(fn);
+        if (fi2 < 0 || fi2 >= 8192) continue;
+        if (dbg_fns[fi2].end <= dbg_fns[fi2].start) continue;
+        dw_uleb(&pos, 2); /* abbrev 2: subprogram */
+        dw_str(&pos, dbg_fns[fi2].name);
+        long long fn_low = code_base + (long long)dbg_fns[fi2].start;
+        dw8(&pos, (unsigned char)(fn_low & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 8) & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 16) & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 24) & 0xff));
+        dw8(&pos, (unsigned char)((fn_low >> 32) & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 40) & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 48) & 0xff)); dw8(&pos, (unsigned char)((fn_low >> 56) & 0xff));
+        long long fn_high = (long long)(dbg_fns[fi2].end - dbg_fns[fi2].start);
+        dw8(&pos, (unsigned char)(fn_high & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 8) & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 16) & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 24) & 0xff));
+        dw8(&pos, (unsigned char)((fn_high >> 32) & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 40) & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 48) & 0xff)); dw8(&pos, (unsigned char)((fn_high >> 56) & 0xff));
+        dw_uleb(&pos, dbg_fns[fi2].line);
+    }
+    dw_uleb(&pos, 0); /* CU children 结束标记 */
+    /* 回填 unit_length */
+    int info_size = pos - info_body_off;
+    dbg_in_sz = info_size + 4;
+    dw4(&pos, 0);
+    { int info_end = pos;
+      pos = info_body_off - 4;
+      dw4(&pos, info_size);
+      pos = info_end; }
+
+    /* ===== .debug_line ===== */
+    dbg_ln_off = pos;
+    int line_body_off = pos + 4;
+    dw4(&pos, 0); /* unit_length 占位 */
+    dw8(&pos, 4); dw8(&pos, 0); /* version 4 (half, 2 字节 — header 含 max_ops_per_inst) */
+    int line_hdr_off = pos;
+    dw4(&pos, 0); /* header_length 占位 */
+    dw8(&pos, 1); /* min_inst_length */
+    dw8(&pos, 1); /* max_ops_per_inst */
+    dw8(&pos, 1); /* default_is_stmt */
+    dw8(&pos, 0xfb); /* line_base = -5 */
+    dw8(&pos, 14); /* line_range */
+    dw8(&pos, 13); /* opcode_base */
+    { static unsigned char std_lens[12] = {0,1,1,1,1,0,0,0,1,0,0,1};
+      for (int i = 0; i < 12; i++) dw8(&pos, std_lens[i]); }
+    dw8(&pos, 0); /* include dirs 结束 */
+    dw_str(&pos, short_name); dw_uleb(&pos, 0); dw_uleb(&pos, 0); dw_uleb(&pos, 0); /* file_names */
+    dw8(&pos, 0); /* file_names 结束 */
+    /* 回填 header_length */
+    { int hdr_sz = pos - line_hdr_off - 4;
+      int hdr_end = pos;
+      pos = line_hdr_off;
+      dw4(&pos, hdr_sz);
+      pos = hdr_end; }
+    /* 行号程序: 先函数起点→声明行 (gdb info line 依赖), 再 dbg_lines */
+    int prev_cp = 0; int prev_line = 1;
+    for (int i = 0; i < fdef_n; i++) {
+        int c = fdef_list[i];
+        if (c <= 0) continue;
+        char *fn = (char *)(nn + c);
+        int fi2 = func_find(fn);
+        if (fi2 < 0 || fi2 >= 8192) continue;
+        if (dbg_fns[fi2].end <= dbg_fns[fi2].start) continue;
+        { int lc = (int)(code_base + (long long)dbg_fns[fi2].start); int ln = dbg_fns[fi2].line; /* 绝对 VA */
+          if (lc < prev_cp || ln <= 0) continue;
+          dw8(&pos, 2); dw_uleb(&pos, lc - prev_cp); /* advance_pc */
+          dw8(&pos, 3); dw_uleb(&pos, ln - prev_line); /* advance_line */
+          dw8(&pos, 1); /* copy */
+          prev_cp = lc; prev_line = ln; }
+    }
+    for (int i = 0; i < dbg_line_n; i++) {
+        int lc = (int)(code_base + (long long)dbg_lines[i][0]); int ln = dbg_lines[i][1]; /* 绝对 VA */
+        if (lc < prev_cp || ln <= 0) continue;
+        dw8(&pos, 2); dw_uleb(&pos, lc - prev_cp);
+        dw8(&pos, 3); dw_uleb(&pos, ln - prev_line);
+        dw8(&pos, 1);
+        prev_cp = lc; prev_line = ln;
+    }
+    { int end_cp = (int)(code_base + (long long)cp); /* end_sequence 在代码末尾 */
+      if (end_cp > prev_cp) { dw8(&pos, 2); dw_uleb(&pos, end_cp - prev_cp); } }
+    dw8(&pos, 0); dw8(&pos, 1); dw8(&pos, 1); /* DW_LNE_end_sequence */
+    /* 回填 unit_length */
+    int line_size = pos - line_body_off;
+    dbg_ln_sz = line_size + 4;
+    { int line_end = pos;
+      pos = line_body_off - 4;
+      dw4(&pos, line_size);
+      pos = line_end; }
+    dbg_bufpos = pos; /* 一次性写回全局 */
+}
+
 static void write_pe(FILE *f, int entry_rva) {
+    if (dbg_on) { dbg_gen(); } /* #289 DWARF: 生成调试缓冲 */
     int text_rva = 0x1000, text_size = ((cp + 4095) & ~4095);
     if (text_size < 512) text_size = 512;
     /* Fix 2026-08-03: the Windows loader rejects a PE whose .text end does not
@@ -20153,11 +20309,14 @@ static void write_pe(FILE *f, int entry_rva) {
        Make .text always end exactly where .data begins. */
     int need = data_rva_base - text_rva;
     if (text_size < need) text_size = need;
-    int text_foff = FILE_ALIGNMENT;
+    int text_foff = dbg_on ? 0x400 : FILE_ALIGNMENT; /* #289: 5 节头超 0x200 */
     int data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     int data_vsize = (data_extent() + 0x100000 + 4095) & ~4095; /* fix 2026-08-12: 随 extent 动态 — 自举 stk_top≈97MB 超旧固定 96MB; +1MB 余量, 覆盖栈底之下 */
     if (data_vsize < 0x6000000) data_vsize = 0x6000000; /* 保持旧 96MB 地板 (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
+    int dw_raw[3]; /* #289: debug 节 raw 指针 */
     int image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
+    { int dw_align = dbg_on ? ((dbg_bufpos + 0xfff) & ~0xfff) : 0;
+      if (dw_align > 0) image_size += dw_align + 0x3000; } /* #289: 映像尺寸含 .debug 节 */
 
     /* DOS Header (64 bytes) */
     fputc('M', f); fputc('Z', f); pad(f, 58);
@@ -20168,12 +20327,12 @@ static void write_pe(FILE *f, int entry_rva) {
 
     /* COFF Header (20 bytes) */
     w2(f, 0x8664);  /* Machine: x86-64 */
-    w2(f, 2);       /* NumberOfSections �?.text + .data */
+    w2(f, dbg_on ? 5 : 2);       /* NumberOfSections (#289: -g +3 debug 节) */
     w4(f, 0);       /* TimeDateStamp */
-    w4(f, 0);       /* PointerToSymbolTable */
-    w4(f, 0);       /* NumberOfSymbols */
+    w4(f, 0);       /* PointerToSymbolTable (#289: 调试时末尾回填) */
+    w4(f, dbg_on ? 4 : 0);       /* NumberOfSymbols (#289: 3 节符号 + 1 文件符号) */
     w2(f, 0xF0);    /* SizeOfOptionalHeader = 240 (PE32+ with 16 data dirs) */
-    w2(f, 0x22E);   /* Characteristics: EXE + large address aware */
+    w2(f, dbg_on ? 0x2E : 0x22E);   /* Characteristics: -g 去 DEBUG_STRIPPED(0x200) */
 
     /* Optional Header PE32+ (112 bytes + 16*8 data dirs = 240) */
     w2(f, 0x020B);  /* Magic: PE32+ */
@@ -20191,7 +20350,7 @@ static void write_pe(FILE *f, int entry_rva) {
     w2(f, 6); w2(f, 0); /* SubsystemVersion */
     w4(f, 0);       /* Win32VersionValue */
     w4(f, image_size); /* SizeOfImage */
-    w4(f, FILE_ALIGNMENT);   /* SizeOfHeaders */
+    w4(f, dbg_on ? 0x400 : FILE_ALIGNMENT);   /* SizeOfHeaders */
     w4(f, 0);       /* CheckSum */
     w2(f, 3);       /* Subsystem: CONSOLE */
     w2(f, 0x8100);  /* DllCharacteristics: NX + TERMINAL_SERVER_AWARE (no DYNAMIC_BASE) */
@@ -20229,6 +20388,26 @@ static void write_pe(FILE *f, int entry_rva) {
     w4(f, data_foff);   /* PointerToRawData */
     w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
     w4(f, 0xC0000040);  /* initialized data + read + write */
+
+    if (dbg_on) { /* #289 DWARF: 3 个调试节 (数据段虚拟区后, 文件末尾) */
+        { const char *dw_names[3] = { "/4", "/18", "/30" }; /* 长节名 */
+          int dw_va = (data_rva + data_vsize + 0xfff) & ~0xfff;  /* VA 0x1000 对齐 */
+          int dw_rawp = (data_foff + DATA_RAW_SZ + 0x1ff) & ~0x1ff; /* raw 0x200 对齐 */
+          int dw_sz[3]; dw_sz[0] = dbg_ab_sz; dw_sz[1] = dbg_in_sz; dw_sz[2] = dbg_ln_sz;
+          for (int dw_i = 0; dw_i < 3; dw_i++) {
+              if (dw_sz[dw_i] <= 0) dw_sz[dw_i] = 1;
+              dw_raw[dw_i] = dw_rawp;
+              fwrite(dw_names[dw_i], 1, strlen(dw_names[dw_i]), f); pad(f, 8 - strlen(dw_names[dw_i]));
+              w4(f, dw_sz[dw_i]);                          /* VirtualSize */
+              w4(f, dw_va);                                /* VA 0x1000 对齐 */
+              w4(f, (dw_sz[dw_i] + 0x1ff) & ~0x1ff);       /* SizeOfRawData 0x200 对齐 */
+              w4(f, dw_rawp);                              /* PointerToRawData 0x200 对齐 */
+              w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
+              w4(f, 0x42000040); /* DISCARDABLE + READONLY + INITIALIZED_DATA */
+              dw_va += (dw_sz[dw_i] + 0xfff) & ~0xfff;
+              dw_rawp += (dw_sz[dw_i] + 0x1ff) & ~0x1ff;
+          } }
+    }
 
     /* Pad to text file offset */
     int pos = (int)ftell(f);
@@ -20298,6 +20477,42 @@ static void write_pe(FILE *f, int entry_rva) {
     pos = (int)ftell(f);
     int data_end = data_foff + DATA_RAW_SZ; /* BSS分离: 只写导入表+heap counter (fix 2026-08-25) */
     pad_zero(f, data_end - pos); /* fix 2026-08-12: 原逐字节 fputc, 自宿主 52MB 填充 85s → 分块 fwrite */
+    if (dbg_on && dbg_bufpos > 0) { /* #289: 写调试数据到文件末尾 */
+        { int dw_s = dbg_ab_off; int dw_e = dw_s + dbg_ab_sz;
+          fseek(f, dw_raw[0], SEEK_SET);
+          while (dw_s < dw_e) { fputc(dbg_buf[dw_s], f); dw_s++; } }
+        { int dw_s = dbg_in_off; int dw_e = dw_s + dbg_in_sz;
+          fseek(f, dw_raw[1], SEEK_SET);
+          while (dw_s < dw_e) { fputc(dbg_buf[dw_s], f); dw_s++; } }
+        { int dw_s = dbg_ln_off; int dw_e = dw_s + dbg_ln_sz;
+          fseek(f, dw_raw[2], SEEK_SET);
+          while (dw_s < dw_e) { fputc(dbg_buf[dw_s], f); dw_s++; } }
+        /* 文件末尾填充 */
+        { int dw_t = dw_raw[2] + ((dbg_ln_sz + 0x1ff) & ~0x1ff);
+          int dw_p = (int)ftell(f);
+          while (dw_p < dw_t) { fputc(0, f); dw_p++; } }
+    }
+    if (dbg_on) { /* #289 长节名: COFF 符号表 + 字符串表 */
+        { int sym_off = (int)ftell(f);
+          { const char *sym_names[3] = { ".debug_abbrev", ".debug_info", ".debug_line" };
+            for (int dw_i = 0; dw_i < 3; dw_i++) {
+                { int nl = 0; while (sym_names[dw_i][nl] && nl < 8) nl++;
+                  fwrite(sym_names[dw_i], 1, nl, f);
+                  if (nl < 8) pad(f, 8 - nl); }
+                w4(f, 0);
+                w2(f, dw_i + 3);
+                w2(f, 0);
+                fputc(3, f); fputc(0, f);
+            } }
+          pad(f, 8); w4(f, 0); w2(f, 0); w2(f, 0); fputc(103, f); fputc(0, f);
+          w4(f, 4 + 14 + 12 + 12);
+          fwrite(".debug_abbrev", 1, 13, f); fputc(0, f);
+          fwrite(".debug_info", 1, 11, f); fputc(0, f);
+          fwrite(".debug_line", 1, 11, f); fputc(0, f);
+          fseek(f, 0x4C, SEEK_SET); w4(f, sym_off);
+          fseek(f, 0x50, SEEK_SET); w2(f, 4);
+        }
+    }
 }
 
 /* ?????? ??????????? */
@@ -20409,6 +20624,7 @@ static void emit_crt_stub(void) {
 /* two-pass generation support: root_global/g_lc_save/g_rsp_save/entry_rva_global at file scope */
 void gen_code(void) {
     /* reset codegen state for two-pass (pass 1 estimates .data base, pass 2 real) */
+    if (dbg_on) { dbg_line_n = 0; dbg_last_line = 0; } /* #289: 每 pass 重置行表, 最后一次 pass 数据保留 */
     cp = 0; patch_n = 0; strpn = 0; fnpn = 0; dbl_patch_n = 0; sdp = 0; gfn = 0;
     coff_ginit_done = 0;
     cg_addr_of = 0; cg_mem_dbl = 0; cg_mem_ptr = 0; cg_mem_chain_si = -1; cg_nested_cnt = 0; cg_fdepth = 0; cg_fdepth_max = 0; cg_incdec_target = 0; cg_no_deref = 0; cg_blk_start = 0; cg_ginit_ctx = 0; /* fix 2026-08-28 可重入: cg_* codegen 状态标志跨编译残留 → 进程内第 2 次编译首个函数代码不同 (--repeat 只验 2..N 自洽, 漏首 vs 次) */
@@ -20453,6 +20669,13 @@ void gen_code(void) {
         strcpy(cur_fn_name, fname); /* for case-6 double-return routing */
         { char _cl[96]; sprintf(_cl, "{\"cp\":\"codegen\",\"func\":\"%s\",\"idx\":%d}", fname, i); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): 每函数代码生成快照 */
         set_label(func_tbl[fi].label);
+        if (dbg_on && fi >= 0 && fi < 8192) { /* #289: 记录函数起点 (覆盖式: fi 跨 pass 稳定) */
+            { int dstart = label_pos[func_tbl[fi].label];
+              strcpy(dbg_fns[fi].name, fname);
+              dbg_fns[fi].start = dstart;
+              dbg_fns[fi].end = 0;
+              dbg_fns[fi].line = fn_lines[i]; }
+        }
         asm_emit("\n; === %s ===\n%s:\n", fname, fname, (char*)(long long)0);
         func_tbl[fi].defined = 1;
         cur_ret_si = fn_ret_name_get(fname);
@@ -20571,6 +20794,7 @@ void gen_code(void) {
 
         /* epilogue label: return jumps here — 提前到 gfn++ 前 (defer cg 需当前函数 vs_end, 原 gfn++ 后 vs_end 指向下一函数 → defer 变量"不能取地址" fix 2026-08-27 defer 接入) */
         set_label(epi_label);
+        if (dbg_on && fi >= 0 && fi < 8192) dbg_fns[fi].end = cp; /* #289: 函数终点 (epilogue, high_pc, 覆盖式) */
         if (n1[c] >= 0) { /* defer: 延迟语句 LIFO 逆序执行 — return 跳这里先清理再 epilogue; rax 保存/恢复 — defer 内调用会 clobber return 值 (fix 2026-08-27 defer 接入) */
             sub_rsp_imm(16); /* 对齐 + 临时槽 */
             asm_emit("    存指64 [rsp], r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); rex(1, 0, 0, 0); b(0x89); modrm(0, 0, 4); b(0x24); /* mov [rsp], rax */
@@ -21838,6 +22062,7 @@ int main(int argc, char **argv) {
         }
         if (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); return 0; }
         if (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; continue; }
+    if (strcmp(argv[argi], "-g") == 0) { dbg_on = 1; argi++; continue; } /* #289 DWARF (2026-09-01): 生成调试信息 */
         if (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; continue; }
         if (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; continue; } /* fix 2026-08-08: 裸二进制 (内核) */
         if (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
