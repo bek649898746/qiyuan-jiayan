@@ -12274,6 +12274,115 @@ static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
     }
 }
 
+静 空 tok_delete(整 pos) { /* #279: 删除一个 token, 后续前移; 末尾清 EK 防残留 */
+    遍 (整 i = pos; i < ti - 1; i++) {
+        tt[i] = tt[i + 1]; tv[i] = tv[i + 1];
+        memmove(tn[i], tn[i + 1], 64);
+        tline[i] = tline[i + 1]; tuns[i] = tuns[i + 1]; tll[i] = tll[i + 1]; tll_hi[i] = tll_hi[i + 1];
+    }
+    若 (ti - 1 >= 0) { tt[ti - 1] = EK; tn[ti - 1][0] = 0; }
+    ti--;
+}
+
+静 空 ns_expand(空) { /* #279 名称空间/模块完整 (2026-09-01): 名称空间 名 { ... } 词元级展开
+    — 块内顶层符号加前缀 名_, 名::符号 合并为 名_符号, 名称空间 名 { 和 } 删除 */
+    整 i = 0;
+    循环 (i < ti) {
+        若 (tt[i] == VR && !strcmp(tn[i], "名称空间")) {
+            若 (i + 2 < ti && tt[i + 1] == VR && tt[i + 2] == FK) {
+                字 prefix[80]; sprintf(prefix, "%s_", tn[i + 1]);
+                整 start = i + 2; 整 end = start; 整 depth = 0;
+                循环 (end < ti) { 若 (tt[end] == FK) depth++; 否 若 (tt[end] == UK) { depth--; 若 (depth == 0) { end++; 断; } } end++; }
+                若 (end > start + 1 && end <= ti) {
+                    整 scan = start + 1;
+                    循环 (scan < end - 1) {
+                        /* 名::符号 合并 */
+                        若 (tt[scan] == VR && scan + 3 < end - 1 && tt[scan + 1] == CL && tt[scan + 2] == CL && tt[scan + 3] == VR) {
+                            字 n1[64], n2[64]; strcpy(n1, tn[scan]); strcpy(n2, tn[scan + 3]);
+                            sprintf(tn[scan], "%s_%s", n1, n2);
+                            tok_delete(scan + 1); tok_delete(scan + 1); tok_delete(scan + 1);
+                            end -= 3;
+                            scan += 1; 续;
+                        }
+                        /* 声明: VK [VK]* 名字 */
+                        若 (tt[scan] == VK) {
+                            整 np = scan + 1;
+                            循环 (np < end - 1 && tt[np] == VK) np++;
+                            若 (np < end - 1 && tt[np] == VR) {
+                                整 aft = np + 1;
+                                若 (aft < end - 1 && (tt[aft] == OK || tt[aft] == AK || tt[aft] == SK || tt[aft] == CK || tt[aft] == LB || tt[aft] == FK)) {
+                                    字 old[64]; strcpy(old, tn[np]);
+                                    若 (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                                    若 (tt[aft] == OK) { /* 函数: 参数内结构体/枚举标签加前缀, 跳参数列表+函数体 */
+                                        整 ps = aft; 整 pd = 0;
+                                        循环 (ps < end - 1) {
+                                            若 (tt[ps] == OK) pd++;
+                                            否 若 (tt[ps] == KK) { pd--; 若 (pd == 0) { ps++; 断; } }
+                                            否 若 (pd == 1 && (tt[ps] == ST || tt[ps] == EN) && ps + 1 < end - 1 && tt[ps + 1] == VR) {
+                                                字 old2[64]; strcpy(old2, tn[ps + 1]);
+                                                若 (strncmp(old2, prefix, strlen(prefix)) != 0) sprintf(tn[ps + 1], "%s%s", prefix, old2);
+                                                ps++;
+                                            }
+                                            ps++;
+                                        }
+                                        若 (ps < end - 1 && tt[ps] == FK) {
+                                            整 bd = 0; 整 bs = ps;
+                                            循环 (bs < end - 1) { 若 (tt[bs] == FK) bd++; 否 若 (tt[bs] == UK) { bd--; 若 (bd == 0) { bs++; 断; } } bs++; }
+                                            scan = bs; 续;
+                                        }
+                                    }
+                                }
+                            }
+                            scan = np; 续;
+                        }
+                        /* 结构/联合/枚举 标签 */
+                        若 (tt[scan] == ST || tt[scan] == EN) {
+                            整 np = scan + 1;
+                            若 (np < end - 1 && tt[np] == VR) {
+                                整 aft = np + 1;
+                                若 (aft < end - 1 && (tt[aft] == FK || tt[aft] == SK || tt[aft] == CK || tt[aft] == VR)) {
+                                    字 old[64]; strcpy(old, tn[np]);
+                                    若 (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                                    若 (tt[aft] == FK && tt[scan] == ST) { /* 结构体定义体: 字段不改, 跳过 */
+                                        整 bd = 0; 整 bs = aft;
+                                        循环 (bs < end - 1) { 若 (tt[bs] == FK) bd++; 否 若 (tt[bs] == UK) { bd--; 若 (bd == 0) { bs++; 断; } } bs++; }
+                                        scan = bs; 续;
+                                    }
+                                }
+                            }
+                            scan = np + 1; 续;
+                        }
+                        /* typedef 类型名 */
+                        若 (tt[scan] == VR && !strcmp(tn[scan], "typedef")) {
+                            整 np = scan + 1;
+                            循环 (np < end - 1 && (tt[np] == VK || (tt[np] == VR && tdef_lookup(tn[np]) >= 0))) np++;
+                            若 (np < end - 1 && tt[np] == VR) {
+                                字 old[64]; strcpy(old, tn[np]);
+                                若 (strncmp(old, prefix, strlen(prefix)) != 0) sprintf(tn[np], "%s%s", prefix, old);
+                            }
+                            scan = np; 续;
+                        }
+                        scan++;
+                    }
+                }
+                /* 删除 名称空间 名 { 三个 token */
+                tok_delete(i); tok_delete(i); tok_delete(i);
+                /* 删除 } (原 end-1, 删 3 后 = end-4) */
+                若 (end - 4 >= 0 && end - 4 < ti && tt[end - 4] == UK) tok_delete(end - 4);
+                i = end - 4; 续;
+            }
+        }
+        /* 全局 名::符号 合并 (块外引用) */
+        若 (tt[i] == VR && i + 3 < ti && tt[i + 1] == CL && tt[i + 2] == CL && tt[i + 3] == VR) {
+            字 n1[64], n2[64]; strcpy(n1, tn[i]); strcpy(n2, tn[i + 3]);
+            sprintf(tn[i], "%s_%s", n1, n2);
+            tok_delete(i + 1); tok_delete(i + 1); tok_delete(i + 1);
+            续;
+        }
+        i++;
+    }
+}
+
 静 空 jiayan_macro_expand(空) {
     整 i = 0;
     jm_n = 0;
@@ -12382,6 +12491,7 @@ static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
      
 lex(exp_src);
     若 (g_rt_len > 0) { rt_exp_lines = 1; 遍 (整 _re = 0; _re < g_rt_len && _re < (整)strlen(exp_src); _re++) 若 (exp_src[_re] == '\n') rt_exp_lines++; } /* 2026-08-28 loc.line: exp_src 中 rt 部分实际行数 (展开后, 比 rt_line_skip 准) */
+    ns_expand(); /* #279 名称空间 (2026-09-01) */
     jiayan_macro_expand(); /* 宏系统 (2026-08-28 type-root-12 #167): lex 后 parse 前 token 级展开 — 宏 名(参数) = expr; 或 宏 名(参数) { 语句 } */
 
     { 字 _cl[96]; sprintf(_cl, "{\"cp\":\"lex\",\"tokens\":%d}", ti); cp_line(_cl); } /* 编译检查点 (2026-08-28 AI原生 #6): lex 完成快照 */
