@@ -6380,7 +6380,7 @@ static int blk(void) {
                             if (sdims == 1 && sadim[0] == 0) { sadim[0] = n; } /* 未定长第一维推断 */
                         }
                         if (is_static) { /* fix 2026-08-18: 原无条件 var_array → 栈帧局部, .data 槽 0 + 函数返回后失效 */
-                            if (is_ptr) var_static_arr(vn, 0, 8, scnt); /* static struct Tag *arr[N]: 8B 指针元素 */
+                            if (is_ptr) var_static_arr(vn, 8, 8, scnt); /* static struct Tag *arr[N]: 8B 指针元素 — pesz=8 供 case-10 struct 拷贝守卫排除 (fix 2026-08-31 s21: 原 pesz=0 → struct S0 *arr 与 8B struct 值数组同注册 → {(void*)0} 元素赋值走 cg_struct_copy 从地址 0 拷) */
                             else if (si >= 0) { var_static_struct(vn, si, scnt); /* static struct Tag arr[N] */
                                 if (sdims >= 1) { vars[vcnt - 1].frows[sdims - 1] = stypes[si].sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; } /* 2D+ 行宽 (fix 2026-08-29) */
                                 if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz;
@@ -6390,6 +6390,7 @@ static int blk(void) {
                             var_array(vn, scnt, is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4));
                             if (si >= 0 && !is_ptr) { if (sdims > 1 && sadim[0] > 0) vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * stypes[si].sz; if (sdims > 1) vars[vcnt - 1].p_esz = stypes[si].sz; } /* fix 2026-08-29 csmith: 局部 2D+ struct 值数组行宽注册 — 1D 不设 p_esz (对齐 typedef 数组: var_pesz==0 才走 L18743 struct 元素赋值, struct_param q[0]=call 崩) */
                             if (is_ptr && sdims > 1 && sadim[0] > 0) { vars[vcnt - 1].arr_esz = (scnt / sadim[0]) * 8; vars[vcnt - 1].p_esz = 8; } /* fix 2026-08-30 csmith t5: struct 指针 2D+ 数组行宽 (s2 l_1272[10][4][6] / l_2406[4][10] 原无行宽 → [i] 缩放 8 而非行宽 → 越界写崩) */
+                            if (is_ptr) vars[vcnt - 1].p_esz = 8; /* fix 2026-08-31 csmith s21: 1D 指针数组 p_esz 也标 8 (struct S0 *arr[1] 原 p_esz=0 与 8 字节 struct 值数组注册相同 → case-10 L18915 守卫 var_pesz==0 误判 → 元素赋值 {(void*)0} 走 cg_struct_copy 从地址 0 拷贝 → NULL 解引用崩) */
                             if (sdims >= 1) { int _e_sz = is_ptr ? 8 : (si >= 0 ? stypes[si].sz : 4); vars[vcnt - 1].frows[sdims - 1] = _e_sz; for (int fi = sdims - 2; fi >= 0; fi--) vars[vcnt - 1].frows[fi] = vars[vcnt - 1].frows[fi + 1] * sadim[fi + 1]; }
                         }
                         vars[vcnt - 1].st_idx = si; /* fix 2026-08-20: T** 数组 st_idx 保留 si — mem_addr 链需要 pointee 结构体类型 */
@@ -6470,7 +6471,7 @@ static int blk(void) {
                                     if (tt[tk] == RB) tk++;
                                 }
                                 if (is_static) {
-                                    if (ip2) var_static_arr(vn2, 0, 8, cnt2);
+                                    if (ip2) var_static_arr(vn2, 8, 8, cnt2); /* fix 2026-08-31 s21: 逗号指针数组 p_esz=8 (同 var_static_arr 指针数组) */
                                     else if (si >= 0) var_static_struct(vn2, si, cnt2);
                                     else var_static_arr(vn2, 0, 4, cnt2);
                                 } else {
@@ -16514,7 +16515,7 @@ static void cg_struct_copy(int csz) {
 /* int RHS → 64 位目标: 有符号 32 位值符号扩展 movsxd rax,eax
    (fix 2026-08-06: long long v=-7 存 64 位槽时零扩展 → 4294967289; 正数/unsigned/已 LL 不动) */
 static void ll_ext32(int rhs) {
-    if (rhs >= 0 && !nll[rhs] && !nuns[rhs]) {
+    if (rhs >= 0 && !nll[rhs] && !nuns[rhs] && !expr_is_unsigned(rhs)) {
         if (nt[rhs] == 1 && (var_pesz((char*)(nn+rhs)) > 0 || var_arrsz((char*)(nn+rhs)) > 0)) return; /* 指针/数组值不扩展 */
         asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0);
         b(0x48); b(0x63); modrm(3, 0, 0);
@@ -17028,8 +17029,8 @@ static void cg(int n) {
                     else if (var_pesz(vn) > 0) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
                     else if (var_small_struct(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); }
                     else if (var_is_ll(vn)) { ir_emit(I_LOAD_RIP64, off, 1, 0); ir_flush(); nll[n] = 1; }
-                    else if (var_is_csgn(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); b(0x0F); b(0xBE); b(0xC0); } /* fix 2026-08-29 csmith: 全局 signed char 标量 movsx — 用 is_csgn 不设 is_char (普通 char 变量不被误标 → 自举死循环); s142 g_15=0xA4 → -92 */
-                    else if (var_is_short(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); if (!var_is_uns(vn)) { b(0x0F); b(0xBF); b(0xC0); } } /* fix 2026-08-29 csmith: 静态 short 32 位加载 + movsx eax,ax 符号扩展 (signed short 0xC789 → 0xFFFFC789; unsigned 高位 0 天然正确) */
+                    else if (var_is_csgn(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); b(0x0F); b(0xBE); b(0xC0); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-29 csmith: 全局 signed char 标量 movsx — 用 is_csgn 不设 is_char (普通 char 变量不被误标 → 自举死循环); s142 g_15=0xA4 → -92; fix 2026-08-31 csmith s65: nll 时 movsxd 64 位 ((uint64_t)g_schar 原 0xFFFFFFB9 应 0xFFFFFFFFFFFFFFB9) */
+                    else if (var_is_short(vn)) { ir_emit(I_LOAD_RIP32, off, 0, 0); ir_flush(); if (!var_is_uns(vn)) { b(0x0F); b(0xBF); b(0xC0); } if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-29 csmith: 静态 short 32 位加载 + movsx eax,ax 符号扩展 (signed short 0xC789 → 0xFFFFC789; unsigned 高位 0 天然正确); fix 2026-08-31 csmith s65: nll 时 movsxd 64 位 (同局部 short t42) */
                     else { ir_emit(I_LOAD_RIP32, off, 0, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); }
                 } else {
                     /* check if array �?LEA. MUST resolve to the SAME var var_lookup found:
@@ -17047,7 +17048,7 @@ static void cg(int n) {
                     else if (var_is_ll(vn)) { mov_reg_mbrp64(0, off - cur_frame_sz); nll[n] = 1; } /* long long: full 64-bit (fix 2026-08-05) */
                     else if (var_is_dbl(vn)) { movsd_xmm0_mbrp(off - cur_frame_sz); } /* double value → xmm0 */
                     else if (var_small_struct(vn)) { mov_reg_mbrp64(0, var_sbase(vn, off) - cur_frame_sz); } /* struct value: full 8 bytes (≤8B struct) */
-                    else if (var_is_char(vn)) { if (var_is_csgn(vn)) movsx_eax_mbrp(off - cur_frame_sz); else movzx_eax_mbrp(off - cur_frame_sz); } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错); fix 2026-08-29 csmith: signed char 符号扩展 movsx */
+                    else if (var_is_char(vn)) { if (var_is_csgn(vn)) movsx_eax_mbrp(off - cur_frame_sz); else movzx_eax_mbrp(off - cur_frame_sz); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-25 bug#28b: 局部 char 1 字节零扩展读 (原 32 位 → 负值/高位非零错); fix 2026-08-29 csmith: signed char 符号扩展 movsx; fix 2026-08-31 csmith s65: nll 时 movsxd 64 位 — (uint64_t)int8 原只扩到 32 位 0xFFFFFFB9 应 0xFFFFFFFFFFFFFFB9 (同 short t42) */
                     else if (var_is_short(vn)) { if (var_is_uns(vn)) movzx_eax_mbrp_w(off - cur_frame_sz); else movsx_eax_mbrp_w(off - cur_frame_sz); if (nll[n]) { asm_emit("    符号扩展 r0, r0\n", (char*)(long long)0, (char*)(long long)0, (char*)(long long)0); b(0x48); b(0x63); modrm(3, 0, 0); } } /* fix 2026-08-25 bug#31b: 局部 short 16 位读; nll 时 movsxd 64 位扩展 (t42 (unsigned long long)short) */
                     else { ir_emit(I_LOAD_RBP, 0, off - cur_frame_sz, (nll[n] && !nuns[n]) ? 1 : 0); ir_flush(); } /* Phase3-IR: 局部 int 读 */
                 }
