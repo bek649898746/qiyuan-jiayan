@@ -1275,7 +1275,11 @@ static int dag_mode = 0; static char dag_src[65]; static char dag_tok[65]; stati
 static int recorder_mode = 0; static char recorder_path[512]; static int rec_prev_cp = 0; static int rec_pass = 0; static void rec_line(const char *line); static void recorder_frame(const char *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 static int serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
 static int is_compat_stat_c = 0; /* compat/stat.c 兼容开关 — 2026-08-28 挪文件作用域 (cache_try_hit 键签名要用, 原 main 局部) */
-static int refs_mode = 0; static void refs_record(const char *n, int line); static void refs_emit(void); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
+static int refs_mode = 0; static int annot_mode = 0;
+/* #173 注解/属性 (2026-09-01): 注解 名 = 值; 顶层元数据标注 — 注解表 (名→值), 编译期可查 */
+static struct { char name[64]; char value[256]; } annot_tbl[256];
+static int annot_n = 0;
+static void refs_record(const char *n, int line); static void refs_emit(void); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
 static struct { char fn[64]; int pre_stmt; int pre_root; int post_root; int post_str; int has_post; } contracts[256]; static int contract_cnt; static int cur_contract; static int contract_find(const char *fn); static long long contract_const_eval(int n, const char **argnames, const long long *argvals, int argc, int *known); /* 接入 2026-08-28 可吞清单 P0-7/P1: 契约表 + 编译期常量前置审判 (声明在此, prim/调用点用; 函数定义在契约表区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
 static int cache_mode = 0; static int cache_verify = 0; static char cache_key[65] = ""; /* --cache / --cache-verify: sidecar 式增量缓存 — 键=SHA256(版本+选项签名+宏表+源码), 命中跳过编译; <outf>.qcckey 记录键, 输出文件即缓存 */
@@ -12581,7 +12585,19 @@ lex(exp_src);
             if (ginit_n < 16384) ginit[ginit_n++] = blk; /* main 入口执行注册 */
             continue;
         }
-        if (tt[tk] == VR && (!strcmp(tn[tk], "接口") || !strcmp(tn[tk], "实现"))) { /* 接入 2026-08-29 P2 #207 修复: 接口/实现 顶层声明 — parse 顶层循环原无分支 → else break 吞后续 (main 丢失崩溃); stmt() 级已支持 (blk 内), 顶层显式转发 */
+        if (tt[tk] == VR && !strcmp(tn[tk], "注解")) { /* #173 注解/属性 (2026-09-01): 注解 名 = 值; — 元数据标注, 注册注解表 (顶层) */
+        tk++; /* 注解 */
+        char an[64] = "";
+        if (tt[tk] == VR) { strcpy(an, tn[tk]); tk++; }
+        if (tt[tk] == AK) tk++; /* = */
+        char av[256] = "";
+        if (tt[tk] == STR) { if (tv[tk] >= 0 && str_tbl[tv[tk]]) strcpy(av, str_tbl[tv[tk]]); tk++; }
+        else { int anum = 0; if (const_expr_eval(&anum)) sprintf(av, "%d", anum); }
+        if (tt[tk] == SK) tk++; /* ; */
+        if (an[0] && annot_n < 256) { strcpy(annot_tbl[annot_n].name, an); strcpy(annot_tbl[annot_n].value, av); annot_n++; }
+        continue;
+    }
+    if (tt[tk] == VR && (!strcmp(tn[tk], "接口") || !strcmp(tn[tk], "实现"))) { /* 接入 2026-08-29 P2 #207 修复: 接口/实现 顶层声明 — parse 顶层循环原无分支 → else break 吞后续 (main 丢失崩溃); stmt() 级已支持 (blk 内), 顶层显式转发 */
             int s = stmt(); /* 接口 名 { 方法 }; / 实现 名 于 类型 { 方法 = fn }; (注册接口/impl 表) */
             if (s >= 0) Nc(p, s);
             continue;
@@ -21811,6 +21827,7 @@ int qcc_compile_once(const char *src, const char *outf, int asm_mode) { /* 可�
     if (root < 0) { fprintf(stderr, "qcc_x86: parse failed\n"); return 1; }
     if (interface_mode) { interface_emit(); return 0; } /* 接口文件 (可吞清单 P1): 只解析导出, 不产码 (gen_code 会重置 func_n 等表) */
     if (refs_mode) { refs_emit(); return 0; } /* 引用收集 (可吞清单 P1): 只解析导出引用表, 不产码 */
+    if (annot_mode) { for (int i = 0; i < annot_n; i++) fprintf(stderr, "annotation: %s = %s\n", annot_tbl[i].name, annot_tbl[i].value); return 0; } /* #173: 注解表导出 */
     root_global = root;
 
 
@@ -22105,7 +22122,8 @@ int main(int argc, char **argv) {
         if (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; continue; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
         if (strcmp(argv[argi], "--recorder") == 0 && argc > argi + 1) { recorder_mode = 1; strncpy(recorder_path, argv[argi + 1], 511); recorder_path[511] = 0; argi += 2; continue; } /* 编译黑匣子 (可吞清单 P1, Agint flight-recorder 参考, 甲言化: 黑匣子) — 每函数代码增量哈希帧, 分歧逐帧定位 */
         if (strcmp(argv[argi], "--serve") == 0) { serve_mode = 1; argi++; continue; } /* 编译服务器 qccd (甲言化, 可吞清单 P1): 长驻 stdin/stdout JSON-lines — AI 迭代循环毫秒级 */
-        if (strcmp(argv[argi], "--refs") == 0) { refs_mode = 1; argi++; continue; } /* 引用收集 (可吞清单 P1): 谁引用了 X — 解析期记录 (名, 行) 表, JSON 导出 */
+        if (strcmp(argv[argi], "--refs") == 0) { refs_mode = 1; argi++; continue; }
+    if (strcmp(argv[argi], "--annotations") == 0) { annot_mode = 1; argi++; continue; } /* #173 注解导出 */ /* 引用收集 (可吞清单 P1): 谁引用了 X — 解析期记录 (名, 行) 表, JSON 导出 */
 if (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; continue; } /* -graph 旁路导出 (P0 工具侧) */
         if (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             char *hb = read_file(argv[argi + 1]);
