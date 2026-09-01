@@ -21547,6 +21547,22 @@ static int ir3_dialect[DIALECT_CAP]; /* 方言 id: 0=高级 1=中级 2=低级 */
 /* 9. 结构化控制流 (v1.2 §3.5③, MLIR scf) — 循环/条件保持结构化到后期 lower */
 #define SCF_CAP 100000
 static int scf_op[SCF_CAP]; /* 0=普通 1=循环 2=条件 3=分支 */
+
+/* 10. per-pass IR 快照 (v1.3 §3.6④) — 哈希审判从端到端 → 逐 pass */
+#define PASS_SNAP_CAP 64  /* 预埋初始值: 激活前实测校准 */
+static char pass_snap_hash[PASS_SNAP_CAP][65];  /* 每个 pass 后的 IR 哈希 (64 hex) */
+
+/* 11. IR 不变量断言表 (v1.3 §3.6⑤) — IR 层借用检查器 */
+#define INVARIANT_CAP 64
+typedef struct { int (*check)(void); const char *name; } IR_INVARIANT;
+static IR_INVARIANT ir_invariants[INVARIANT_CAP]; static int invariant_n;
+
+/* 12. IR 语义导航 (v1.3 §3.6⑥) — AI 的结构位地图 */
+#define NAV_CAP 64
+typedef struct { const char *name; int def_line; int use_cnt; } IR_NAV;
+static IR_NAV ir_nav[NAV_CAP]; static int nav_n;
+
+
 #endif /* IR_PREBED_ACTIVE */
 
 /* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====
