@@ -1,0 +1,79 @@
+#包含 <stdio.h>
+
+/* #55 异常完整 (真异常栈): 试 { 体 } 捕获 { 体 } 块级 try/catch
+   抛出 在 试 块内 → throw_ex + 跳转捕获标签 (同函数异常栈, 跳过中间语句)
+   试体末尾 ex_pending 检查 → 跨函数传播 (嵌套函数 抛出 返回后调用点捕获)
+   捕获 体后 ex_pending = 0 (异常已处理)
+   ex_pending/throw_ex 用户定义 (C 模拟约定, 与现有 抛出/若错/捕获 兼容) */
+
+static int ex_pending = 0;
+static void throw_ex(int type, int code, const char *msg) { (void)type; (void)code; (void)msg; ex_pending = 1; }
+
+int 除零(int b) { if (b == 0) { 抛出 7; return 0; } return 100 / b; }
+
+int main(void) {
+    /* ① 同函数抛出 → 直接跳转捕获 (跳过中间语句) */
+    {
+        int r = 0;
+        试 {
+            r = 1;
+            抛出 3;      /* 跳转捕获标签 */
+            r = 999;     /* 跳过 */
+        } 捕获 {
+            r = -3;
+        }
+        if (r != -3) return 1;
+    }
+    /* ② 跨函数传播: 嵌套函数 抛出 → 调用点检查捕获 */
+    {
+        int r = 0;
+        试 {
+            r = 除零(0);   /* 内部 抛出 7 → ex_pending=1, 返回 0 */
+        } 捕获 {
+            r = -7;
+        }
+        if (r != -7) return 2;
+    }
+    /* ③ 无异常 → 捕获跳过 */
+    {
+        int r = 0;
+        试 {
+            r = 除零(2);   /* 50 */
+        } 捕获 {
+            r = -99;
+        }
+        if (r != 50) return 3;
+    }
+    /* ④ 嵌套试块: 内层捕获后外层继续 (捕获后 ex_pending 清除) */
+    {
+        int r = 0;
+        试 {
+            r = 1;
+            试 {
+                r = 2;
+                抛出 5;    /* 内层捕获 */
+                r = 999;
+            } 捕获 {
+                r = 20;
+            }
+            r = 30;        /* 内层已处理 → 外层继续 */
+        } 捕获 {
+            r = -99;       /* 外层不触发 */
+        }
+        if (r != 30) return 4;
+    }
+    /* ⑤ 捕获 后异常已清除 → 后续正常 */
+    {
+        int r = 0;
+        试 {
+            抛出 9;
+            r = 999;
+        } 捕获 {
+            r = 9;
+        }
+        if (ex_pending != 0) return 5;
+        if (r != 9) return 6;
+    }
+    printf("#55 异常完整 真异常栈 PASS\n");
+    return 0;
+}
