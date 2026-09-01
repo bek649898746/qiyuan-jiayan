@@ -655,6 +655,28 @@ void __arena_reset(int *a) {
     if (i >= 0 && i < 16) __arena_size[i] = 0;
 }
 
+void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运行时资源泄漏 (arena 池未释放) — 泄漏报告; → __qcc_leak_report() */
+    int 泄漏 = 0;
+    for (int i = 0; i < 16; i++) {
+        if (__arena_pool[i]) {
+            fprintf(stderr, "[LEAK] arena 池 %d 未释放 (占用 %d 字节)\n", i, __arena_cap[i]);
+            泄漏++;
+        }
+    }
+    if (!泄漏) fprintf(stderr, "[LEAK] 无泄漏\n");
+}
+
+void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运行时资源泄漏 (arena 池未释放) — 泄漏报告; → __qcc_leak_report() */
+    int 泄漏 = 0;
+    for (int i = 0; i < 16; i++) {
+        if (__arena_pool[i]) {
+            fprintf(stderr, "[LEAK] arena 池 %d 未释放 (占用 %d 字节)\n", i, __arena_cap[i]);
+            泄漏++;
+        }
+    }
+    if (!泄漏) fprintf(stderr, "[LEAK] 无泄漏\n");
+}
+
 void __arena_free(int *a) {
     int i = *a;
     if (i >= 0 && i < 16) {
