@@ -21562,7 +21562,20 @@ static IR_INVARIANT ir_invariants[INVARIANT_CAP]; static int invariant_n;
 typedef struct { const char *name; int def_line; int use_cnt; } IR_NAV;
 static IR_NAV ir_nav[NAV_CAP]; static int nav_n;
 
+/* 13. IR 等价性查询 (v1.4 §3.7⑦) — 改对了没判断器 */
+#define EQUIV_CAP 64
+typedef struct { int a_id; int b_id; int equiv; int diff_cnt; } IR_EQUIV;
+static IR_EQUIV ir_equiv[EQUIV_CAP]; static int equiv_n;
 
+/* 14. 错误信息 IR 增强 (v1.4 §3.7⑧) — debug 回路压缩 */
+#define ERR_IR_CAP 64
+typedef struct { int err_code; int blk; int insn; const char *hint; } IR_ERR;
+static IR_ERR ir_err[ERR_IR_CAP]; static int err_n;
+
+/* 15. 中文 IR 双语导出 (v1.4 §3.7⑨) — 心智切换归零 */
+#define BILINGUAL_CAP 256
+typedef struct { const char *zh; const char *en; } IR_DICT;
+static IR_DICT ir_dict[BILINGUAL_CAP]; static int dict_n;
 #endif /* IR_PREBED_ACTIVE */
 
 /* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====

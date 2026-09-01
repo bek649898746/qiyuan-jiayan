@@ -21567,7 +21567,20 @@ typedef 构 { 整 (*check)(空); 常 字 *name; } IR_INVARIANT;
 typedef 构 { 常 字 *name; 整 def_line; 整 use_cnt; } IR_NAV;
 静 IR_NAV ir_nav[NAV_CAP]; 静 整 nav_n;
 
+/* 13. IR 等价性查询 (v1.4 §3.7⑦) — 改对了没判断器 */
+#define EQUIV_CAP 64
+typedef 构 { 整 a_id; 整 b_id; 整 equiv; 整 diff_cnt; } IR_EQUIV;
+静 IR_EQUIV ir_equiv[EQUIV_CAP]; 静 整 equiv_n;
 
+/* 14. 错误信息 IR 增强 (v1.4 §3.7⑧) — debug 回路压缩 */
+#define ERR_IR_CAP 64
+typedef 构 { 整 err_code; 整 blk; 整 insn; 常 字 *hint; } IR_ERR;
+静 IR_ERR ir_err[ERR_IR_CAP]; 静 整 err_n;
+
+/* 15. 中文 IR 双语导出 (v1.4 §3.7⑨) — 心智切换归零 */
+#define BILINGUAL_CAP 256
+typedef 构 { 常 字 *zh; 常 字 *en; } IR_DICT;
+静 IR_DICT ir_dict[BILINGUAL_CAP]; 静 整 dict_n;
 #endif /* IR_PREBED_ACTIVE */
 
 /* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====
