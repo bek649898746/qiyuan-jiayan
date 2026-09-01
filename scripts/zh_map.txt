@@ -3773,3 +3773,34 @@ x 亥
 
 
 # 2026-08-31 批4: 预处理指令词中文化 (pp 双认)
+
+# 2026-09-01 IR 前沿预埋 (定稿 §3.5/3.6/3.7, 宏门内零占用) — v1.2/v1.3/v1.4 批
+ECLASS_CAP 等类
+eclass 等目
+enode 等点
+DIALECT_CAP 方言
+ir3_dialect 方层
+SCF_CAP 构控
+scf_op 控式
+PASS_SNAP_CAP 照容
+pass_snap_hash 照散
+INVARIANT_CAP 变容
+IR_INVARIANT 不变构
+ir_invariants 不变表
+invariant_n 不变数
+NAV_CAP 导容
+IR_NAV 导构
+ir_nav 导表
+nav_n 导数
+EQUIV_CAP 等容
+IR_EQUIV 等构
+ir_equiv 等表
+equiv_n 等价数
+ERR_IR_CAP 错容
+IR_ERR 错构
+ir_err 错表
+err_n 错数
+BILINGUAL_CAP 双语
+IR_DICT 双构
+ir_dict 双表
+dict_n 双录
