@@ -21511,7 +21511,7 @@ static IR3 ir3[IR3_CAP]; static int ir3_n;
 
 /* 2. 块表/CFG (v1.4 §3, LLVM CFG 定律 §7) — 只存 succ 反向算 pred (LLVM 定律 2) */
 /* 决策史: 循环优化/控制流分析需 CFG; 只存 succ 省一半 (LLVM 定律 2) */
-typedef struct { int start; int end; int npred; int nsucc; int preds[8]; int succs[8]; } BLK;
+typedef struct { int start; int end; int npred; int nsucc; int preds[8]; int succs[8]; int loopback; } BLK;
 #define BLK_CAP 100000  /* 预埋初始值: 激活前按 Git 全量函数数 × 最坏基本块数实测校准 (2026-08-25 启元审计) */
 static BLK blks[BLK_CAP]; static int blk_n;
 
@@ -21538,7 +21538,7 @@ typedef struct { int id; int *result; int result_n; int invalidated; } IR_ANALYS
 static IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; static int analysis_n;
 static int analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定容量, 无 malloc) */
 
-/* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
+/* 6. loopback 回边标记 (逆向定律库 §11) — 大哥 2026-09-01 拍板: 已加进 BLK (循环回边标记, 优化器找循环) */
 /* 决策史: 循环回边标记 — 大哥拍板后加进 BLK, 方便 AI 找循环 */
 
 /* 7. EGraph 等价类映射 (v1.2 §3.5①, egg/egglog POPL2021) — 哈希等价审判的正式化 */
