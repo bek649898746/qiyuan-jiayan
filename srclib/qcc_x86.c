@@ -21534,6 +21534,19 @@ static IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; static int analysis_n;
 static int analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定容量, 无 malloc) */
 
 /* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
+
+/* 7. EGraph 等价类映射 (v1.2 §3.5①, egg/egglog POPL2021) — 哈希等价审判的正式化 */
+#define ECLASS_CAP 100000  /* 预埋初始值: 激活前实测校准 */
+static int eclass[ECLASS_CAP]; /* 值→等价类 id (union-find 风格) */
+static int enode[ECLASS_CAP];  /* 等价类→节点列表头 */
+
+/* 8. 方言分层 (v1.2 §3.5②, MLIR dialect) — 甲言三层 = 三层方言; 激活时 IR3 加 dialect 字段按层 lower */
+#define DIALECT_CAP 16
+static int ir3_dialect[DIALECT_CAP]; /* 方言 id: 0=高级 1=中级 2=低级 */
+
+/* 9. 结构化控制流 (v1.2 §3.5③, MLIR scf) — 循环/条件保持结构化到后期 lower */
+#define SCF_CAP 100000
+static int scf_op[SCF_CAP]; /* 0=普通 1=循环 2=条件 3=分支 */
 #endif /* IR_PREBED_ACTIVE */
 
 /* ==== -graph 旁路导出 (P0 工具侧闭环: graph_query.py 查询, 2026-08-25) ====
