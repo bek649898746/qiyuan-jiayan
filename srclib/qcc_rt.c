@@ -655,15 +655,46 @@ void __arena_reset(int *a) {
     if (i >= 0 && i < 16) __arena_size[i] = 0;
 }
 
-void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运行时资源泄漏 (arena 池未释放) — 泄漏报告; → __qcc_leak_report() */
-    int 泄漏 = 0;
-    for (int i = 0; i < 16; i++) {
-        if (__arena_pool[i]) {
-            fprintf(stderr, "[LEAK] arena 池 %d 未释放 (占用 %d 字节)\n", i, __arena_cap[i]);
-            泄漏++;
+/* 接入 2026-09-01 #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create — 动态加载 kernel32
+   (CreateFileA 打开 + CreateFileMappingA 建映射 + MapViewOfFile 视图, 读写); 取消映射(指针) → __qcc_map_close */
+static void *__mm_hf[16];
+static void *__mm_hm[16];
+static void *__mm_base[16];
+static int __mm_cnt = 0;
+
+void *__qcc_map_create(const char *path, int sz) {
+    void *k32 = load_library("kernel32.dll");
+    if (!k32) return 0;
+    void *(*CreateFileA)(const char *, int, int, void *, int, int, void *) = get_proc_address(k32, "CreateFileA");
+    void *(*CreateFileMappingA)(void *, void *, int, int, int, void *) = get_proc_address(k32, "CreateFileMappingA");
+    void *(*MapViewOfFile)(void *, int, int, int, int) = get_proc_address(k32, "MapViewOfFile");
+    if (!CreateFileA || !CreateFileMappingA || !MapViewOfFile) return 0;
+    void *hf = CreateFileA(path, 0xC0000000, 7, 0, 4, 0x80, 0); /* 读写 + OPEN_ALWAYS (保留数据) */
+    if (hf == (void *)-1 || !hf) return 0;
+    void *hm = CreateFileMappingA(hf, 0, 4, 0, sz, 0); /* PAGE_READWRITE */
+    void *p = MapViewOfFile(hm, 0xF001F, 0, 0, sz); /* FILE_MAP_ALL_ACCESS */
+    if (p && __mm_cnt < 16) { /* 句柄登记 (close 完整关闭, 根治句柄泄漏) */
+        __mm_base[__mm_cnt] = p; __mm_hf[__mm_cnt] = hf; __mm_hm[__mm_cnt] = hm; __mm_cnt++;
+    }
+    return p;
+}
+
+void __qcc_map_close(void *p) {
+    if (!p) return;
+    void *k32 = load_library("kernel32.dll");
+    void (*UnmapViewOfFile)(void *) = get_proc_address(k32, "UnmapViewOfFile");
+    void (*CloseHandle)(void *) = get_proc_address(k32, "CloseHandle");
+    for (int i = 0; i < __mm_cnt; i++) {
+        if (__mm_base[i] == p) {
+            if (UnmapViewOfFile) UnmapViewOfFile(p);
+            if (CloseHandle) { CloseHandle(__mm_hm[i]); CloseHandle(__mm_hf[i]); }
+            __mm_base[i] = __mm_base[__mm_cnt - 1];
+            __mm_hf[i] = __mm_hf[__mm_cnt - 1];
+            __mm_hm[i] = __mm_hm[__mm_cnt - 1];
+            __mm_cnt--;
+            break;
         }
     }
-    if (!泄漏) fprintf(stderr, "[LEAK] 无泄漏\n");
 }
 
 void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运行时资源泄漏 (arena 池未释放) — 泄漏报告; → __qcc_leak_report() */
@@ -673,6 +704,7 @@ void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运�
             fprintf(stderr, "[LEAK] arena 池 %d 未释放 (占用 %d 字节)\n", i, __arena_cap[i]);
             泄漏++;
         }
+
     }
     if (!泄漏) fprintf(stderr, "[LEAK] 无泄漏\n");
 }
