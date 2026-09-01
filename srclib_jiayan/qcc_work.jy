@@ -5762,12 +5762,18 @@ __attribute__((unused))
                 tk++;
                 若 (tt[tk] == VR) {
                     字 fname[64]; strcpy(fname, tn[tk]); tk++;
+                    /* #218 Maybe/Result 链 (2026-09-01): 左操作数非指针 (结构体值, 天然非空) → 直接 a.b 普通字段访问 — 遍历 vars (var_lookup 返回 rsp_off 非表索引) */
+                    整 lptr = 1;
+                    若 (nt[n] == 1) { 整 vidx = -1; 遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, (字*)(nn + n)) && var_codegen_visible(i) && vars[i].rsp_off >= 0) { vidx = i; 断; } 若 (vidx >= 0 && vars[vidx].p_depth == 0) lptr = 0; }
+                    若 (!lptr) { 整 m2 = Nd(15); Nc(m2, n); nv[m2] = 0; memcpy((字*)(nn + m2), fname, 64); n = m2; }
+                    否 {
                     整 cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { 整 z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
                     整 mem = Nd(15); 若 (nt[n] == 1) { 整 v2 = Nd(1); memcpy((字*)(nn + v2), (字*)(nn + n), 32); Nc(mem, v2); } 否 Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
                     nv[mem] = 1; memcpy((字*)(nn + mem), fname, 64); /* a->b */
                     整 z2 = Nd(0); nv[z2] = 0;
                     整 tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
+                    }
                 } 否 断;
             } 否 若 (tt[tk] == PP || tt[tk] == MM) {
                 /* postfix ++ / -- : return old value, then mutate (simple vars) */
@@ -5983,12 +5989,18 @@ __attribute__((unused))
                 tk++;
                 若 (tt[tk] == VR) {
                     字 fname[64]; strcpy(fname, tn[tk]); tk++;
+                    /* #218 Maybe/Result 链 (2026-09-01): 左操作数非指针 (结构体值, 天然非空) → 直接 a.b 普通字段访问 — 遍历 vars (var_lookup 返回 rsp_off 非表索引) */
+                    整 lptr = 1;
+                    若 (nt[n] == 1) { 整 vidx = -1; 遍 (整 i = vs_n() - 1; i >= parse_base; i--) 若 (!strcmp(vars[i].name, (字*)(nn + n)) && var_codegen_visible(i) && vars[i].rsp_off >= 0) { vidx = i; 断; } 若 (vidx >= 0 && vars[vidx].p_depth == 0) lptr = 0; }
+                    若 (!lptr) { 整 m2 = Nd(15); Nc(m2, n); nv[m2] = 0; memcpy((字*)(nn + m2), fname, 64); n = m2; }
+                    否 {
                     整 cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { 整 z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
                     整 mem = Nd(15); 若 (nt[n] == 1) { 整 v2 = Nd(1); memcpy((字*)(nn + v2), (字*)(nn + n), 32); Nc(mem, v2); } 否 Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
                     nv[mem] = 1; memcpy((字*)(nn + mem), fname, 64); /* a->b */
                     整 z2 = Nd(0); nv[z2] = 0;
                     整 tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
+                    }
                 } 否 断;
             } 否 若 (tt[tk] == OK) { 整 callee = n; tk++; 整 c = Nd(4);
                 整 nargs[256]; 整 argpos[256]; 整 an = 0; 整 cl_ci = (nt[callee] == 1) ? closure_find((字*)(nn + callee)) : -1; 若 (cl_ci >= 0) { 遍 (整 _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { 整 cv; 若 (closure_mode[cl_ci] == 2) { cv = Nd(11); 整 cvv = Nd(1); memcpy((字*)(nn + cvv), closure_caps[cl_ci][_cp], 32); Nc(cv, cvv); } 否 { cv = Nd(1); memcpy((字*)(nn + cv), closure_caps[cl_ci][_cp], 32); } nargs[an] = cv; argpos[an] = -1; an++; } memcpy((字*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 2026-08-28 P1 #32: by-mut (mode 2) 捕获传地址 Nd(11) */ /* 真具名参数: 收集后重排 (同主调用) */

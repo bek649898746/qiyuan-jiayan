@@ -5766,12 +5766,18 @@ static int prim(void) {
                 tk++;
                 if (tt[tk] == VR) {
                     char fname[64]; strcpy(fname, tn[tk]); tk++;
+                    /* #218 Maybe/Result 链 (2026-09-01): 左操作数非指针 (结构体值, 天然非空) → 直接 a.b 普通字段访问 — 遍历 vars (var_lookup 返回 rsp_off 非表索引) */
+                    int lptr = 1;
+                    if (nt[n] == 1) { int vidx = -1; for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, (char*)(nn + n)) && var_codegen_visible(i) && vars[i].rsp_off >= 0) { vidx = i; break; } if (vidx >= 0 && vars[vidx].p_depth == 0) lptr = 0; }
+                    if (!lptr) { int m2 = Nd(15); Nc(m2, n); nv[m2] = 0; memcpy((char*)(nn + m2), fname, 64); n = m2; }
+                    else {
                     int cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { int z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
                     int mem = Nd(15); if (nt[n] == 1) { int v2 = Nd(1); memcpy((char*)(nn + v2), (char*)(nn + n), 32); Nc(mem, v2); } else Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
                     nv[mem] = 1; memcpy((char*)(nn + mem), fname, 64); /* a->b */
                     int z2 = Nd(0); nv[z2] = 0;
                     int tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
+                    }
                 } else break;
             } else if (tt[tk] == PP || tt[tk] == MM) {
                 /* postfix ++ / -- : return old value, then mutate (simple vars) */
@@ -5987,12 +5993,18 @@ static int prim(void) {
                 tk++;
                 if (tt[tk] == VR) {
                     char fname[64]; strcpy(fname, tn[tk]); tk++;
+                    /* #218 Maybe/Result 链 (2026-09-01): 左操作数非指针 (结构体值, 天然非空) → 直接 a.b 普通字段访问 — 遍历 vars (var_lookup 返回 rsp_off 非表索引) */
+                    int lptr = 1;
+                    if (nt[n] == 1) { int vidx = -1; for (int i = vs_n() - 1; i >= parse_base; i--) if (!strcmp(vars[i].name, (char*)(nn + n)) && var_codegen_visible(i) && vars[i].rsp_off >= 0) { vidx = i; break; } if (vidx >= 0 && vars[vidx].p_depth == 0) lptr = 0; }
+                    if (!lptr) { int m2 = Nd(15); Nc(m2, n); nv[m2] = 0; memcpy((char*)(nn + m2), fname, 64); n = m2; }
+                    else {
                     int cmp = Nd(2); nv[cmp] = T_XK; Nc(cmp, n); { int z = Nd(0); nv[z] = 0; Nc(cmp, z); } /* a != 0 */
                     int mem = Nd(15); if (nt[n] == 1) { int v2 = Nd(1); memcpy((char*)(nn + v2), (char*)(nn + n), 32); Nc(mem, v2); } else Nc(mem, n); /* 真分支 base 用新节点 (防多父共享) */
                     nv[mem] = 1; memcpy((char*)(nn + mem), fname, 64); /* a->b */
                     int z2 = Nd(0); nv[z2] = 0;
                     int tern = Nd(22); Nc(tern, cmp); Nc(tern, mem); Nc(tern, z2); /* (a!=0) ? a->b : 0 */
                     n = tern;
+                    }
                 } else break;
             } else if (tt[tk] == OK) { int callee = n; tk++; int c = Nd(4);
                 int nargs[256]; int argpos[256]; int an = 0; int cl_ci = (nt[callee] == 1) ? closure_find((char*)(nn + callee)) : -1; if (cl_ci >= 0) { for (int _cp = 0; _cp < closure_ccnt[cl_ci] && an < 250; _cp++) { int cv; if (closure_mode[cl_ci] == 2) { cv = Nd(11); int cvv = Nd(1); memcpy((char*)(nn + cvv), closure_caps[cl_ci][_cp], 32); Nc(cv, cvv); } else { cv = Nd(1); memcpy((char*)(nn + cv), closure_caps[cl_ci][_cp], 32); } nargs[an] = cv; argpos[an] = -1; an++; } memcpy((char*)(nn + callee), closure_fn[cl_ci], 64); } /* type-root-9 #211 closure */ /* 2026-08-28 P1 #32: by-mut (mode 2) 捕获传地址 Nd(11) */ /* 真具名参数: 收集后重排 (同主调用) */
