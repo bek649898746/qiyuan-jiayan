@@ -8960,6 +8960,24 @@ static int stmt(void) {
         { int fn = Nd(1); memcpy((char*)(nn + fn), "actor_recv", 11); Nc(call, fn); } /* callee 最后 */
         return call;
     }
+    if (tt[tk] == VR && !strcmp(tn[tk], "延时")) { /* #66 定时器/超时 (2026-09-01): 协作式延时 — 延时 N; → timer_delay(N); 用户定义 timer_delay */
+        tk++; /* 延时 */
+        int e_m = expr(); /* 延时参数 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        Nc(call, e_m);
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "timer_delay", 12); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "超时")) { /* #66 定时器: 截止时间 — 超时 N; → timer_deadline(N); 用户定义 timer_deadline */
+        tk++; /* 超时 */
+        int e_m = expr(); /* 截止参数 */
+        if (tt[tk] == SK) tk++; /* ; */
+        int call = Nd(4);
+        Nc(call, e_m);
+        { int fn = Nd(1); memcpy((char*)(nn + fn), "timer_deadline", 15); Nc(call, fn); } /* callee 最后 */
+        return call;
+    }
     if (tt[tk] == VR && !strcmp(tn[tk], "线程")) { /* 接入 2026-08-27 线程创建 (库级语法糖, 同通道模式): 线程 t 跑 work, arg; → thread_create(&t, work, arg); — 用户定义 thread_create/thread_join (确定性单线程模拟) */
         tk++; /* 线程 */
         char tvar[64]; strcpy(tvar, tn[tk]); tk++; /* 线程变量 */
