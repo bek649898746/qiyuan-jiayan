@@ -1424,7 +1424,11 @@ static char *pp_include_expand(const char *src, int depth) {
 static int rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
-static struct { char name[64]; char fnames[1024][64]; int foffs[1024]; int fsizes[1024]; int frows[1024]; int ftypes[1024]; int fbits[1024]; int fbitof[1024]; char fdbls[1024]; char fsgn[1024]; int fels[1024]; int fpels[1024]; char fptrs[1024]; int ffins[1024]; char fdeep[1024]; char fcsgn[1024]; int fn; int sz; int algn; } stypes[4096]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放; fcsgn (fix 2026-08-29 csmith): signed char 字段标记 (int8_t 字段读 movsx, s3/s137 静默) */
+static struct { char name[64]; char fnames[1024][64]; int foffs[1024]; int fsizes[1024]; int frows[1024]; int ftypes[1024]; int fbits[1024]; int fbitof[1024]; char fdbls[1024]; char fsgn[1024]; int fels[1024]; int fpels[1024]; char fptrs[1024]; int ffins[1024]; char fdeep[1024]; char fcsgn[1024]; int fn; int sz; int algn; } stypes[4096];
+/* #231 repr 控制 (2026-09-01): 打包 构 名 { } — 结构体紧凑布局 (字段无对齐填充, 尺寸不轮 up) */
+static int packed_flag[4096]; /* 结构体打包标志 (0/1) */
+static int packed_pending = 0; /* 顶层 打包 前缀暂存 (st_add 消费) */
+ /* fels: 数组字段元素大小 (fix 2026-08-07) */ static int st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放; fcsgn (fix 2026-08-29 csmith): signed char 字段标记 (int8_t 字段读 movsx, s3/s137 静默) */
 
 static int st_find(const char *n) {
     for (int i = 0; i < st_n; i++) if (!strcmp(stypes[i].name, n)) { if (getenv("QCC_DBG_NS")) if (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_find '%s' -> %d sz=%d algn=%d fn=%d\n", n, i, stypes[i].sz, stypes[i].algn, stypes[i].fn); return i; }
@@ -1446,6 +1450,7 @@ static int st_add(const char *n) {
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     st_cur_struct_align = 1; /* fix 2026-08-20: 新 struct 开始时重置 struct 对齐暂存 — 原跨 struct 泄漏 (eg_a algn=8 残留 → eg_b 字段被 8 对齐 → di_b 数组字段偏移 8 错 (应 4)) */
     int ns = st_n++;
+    packed_flag[ns] = packed_pending; packed_pending = 0; /* #231: 消费顶层打包前缀 */
     if (getenv("QCC_DBG_NS")) if (1) fprintf(stderr, "[NS] st_add name='%s' ns=%d\n", n, ns); /* tmp diag ALL */
     if (strstr(n, "pathspec")) fprintf(stderr, "[NSA!] st_add name='%s' ns=%d\n", n, ns); /* tmp diag */
     st_pend_backfill(ns); /* 新结构体定义 (或首次引用即创建) → 回填引用它的 pending 指针字段 (fix 2026-08-18) */
@@ -1473,6 +1478,7 @@ static void st_field_sz_r(int si, const char *fn, int fsz, int frow) {
         if (alignas_pending > align) align = alignas_pending;
         alignas_pending = 0;
     }
+    if (packed_flag[si]) align = 1; /* #231: 打包结构体字段紧凑 (无对齐填充); max_align 保持 1 → 尺寸不轮 up */
     if (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -12556,6 +12562,7 @@ lex(exp_src);
     
     while (tk < TS && tt[tk] != EK) {
         { int _t0 = tk; (void)_t0; }
+        if (tt[tk] == VR && !strcmp(tn[tk], "打包")) { packed_pending = 1; tk++; } /* #231 repr 打包: 打包 构 名 { } — 紧凑布局 */
         alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct; step25: ag_struct 同步清 */
         if (tt[tk] == AG) { int agv = tv[tk]; tk++; if (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } else alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
         

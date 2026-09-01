@@ -1421,6 +1421,9 @@ __attribute__((unused))
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
+/* #231 repr 控制 (2026-09-01): 打包 构 名 { } — 结构体紧凑布局 (字段无对齐填充, 尺寸不轮 up) */
+静 整 packed_flag[4096]; /* 结构体打包标志 (0/1) */
+静 整 packed_pending = 0; /* 顶层 打包 前缀暂存 (st_add 消费) */
 静 构 { 字 name[64]; 字 fnames[1024][64]; 整 foffs[1024]; 整 fsizes[1024]; 整 frows[1024]; 整 ftypes[1024]; 整 fbits[1024]; 整 fbitof[1024]; 字 fdbls[1024]; 字 fsgn[1024]; 整 fels[1024]; 整 fpels[1024]; 字 fptrs[1024]; 整 ffins[1024]; 字 fdeep[1024]; 字 fcsgn[1024]; 整 fn; 整 sz; 整 algn; } stypes[4096]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ 静 整 st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放; fcsgn (fix 2026-08-29 csmith): signed char 字段标记 (int8_t 字段读 movsx, s3/s137 静默) */
 
 静 整 st_find(常 字 *n) {
@@ -1443,6 +1446,7 @@ __attribute__((unused))
     bit_slot = -1; bit_pos = 0; /* reset bit-field packing for the new struct */
     st_cur_struct_align = 1; /* fix 2026-08-20: 新 struct 开始时重置 struct 对齐暂存 — 原跨 struct 泄漏 (eg_a algn=8 残留 → eg_b 字段被 8 对齐 → di_b 数组字段偏移 8 错 (应 4)) */
     整 ns = st_n++;
+    packed_flag[ns] = packed_pending; packed_pending = 0; /* #231: 消费顶层打包前缀 */
     若 (getenv("QCC_DBG_NS")) 若 (1) fprintf(stderr, "[NS] st_add name='%s' ns=%d\n", n, ns); /* tmp diag ALL */
     若 (strstr(n, "pathspec")) fprintf(stderr, "[NSA!] st_add name='%s' ns=%d\n", n, ns); /* tmp diag */
     st_pend_backfill(ns); /* 新结构体定义 (或首次引用即创建) → 回填引用它的 pending 指针字段 (fix 2026-08-18) */
@@ -1470,6 +1474,7 @@ __attribute__((unused))
         若 (alignas_pending > align) align = alignas_pending;
         alignas_pending = 0;
     }
+    若 (packed_flag[si]) align = 1; /* #231: 打包结构体字段紧凑 (无对齐填充); max_align 保持 1 → 尺寸不轮 up */
     若 (stypes[si].sz % align) stypes[si].sz += align - (stypes[si].sz % align); /* pad 字段偏移到对齐 */
     strcpy(stypes[si].fnames[idx], fn);
     stypes[si].foffs[idx] = stypes[si].sz;
@@ -12190,6 +12195,7 @@ static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
 /* #173 注解/属性 (2026-09-01): 注解 名 = 值; 顶层元数据标注 — 注解表 (名→值), 编译期可查 */
 静 构 { 字 name[64]; 字 value[256]; } annot_tbl[256];
 静 整 annot_n = 0;
+
 静 整 annot_get(常 字 *n, 字 *v) { 遍 (整 i = 0; i < annot_n; i++) 若 (!strcmp(annot_tbl[i].name, n)) { strcpy(v, annot_tbl[i].value); 返 1; } 返 0; } 静 字 hyg_new[32][32][80]; 静 整 hyg_cnt[32]; 静 整 hyg_depth = 0; 静 整 hyg_seq = 0;
 静 字 hyg_buf[32][64];
 
@@ -12556,6 +12562,7 @@ lex(exp_src);
     
     循环 (tk < TS && tt[tk] != EK) {
         { 整 _t0 = tk; (空)_t0; }
+        若 (tt[tk] == VR && !strcmp(tn[tk], "打包")) { packed_pending = 1; tk++; } /* #231 repr 打包: 打包 构 名 { } — 紧凑布局 */
         alignas_pending = 0; ag_struct = 0; /* fix 2026-08-25 step21: 每顶层语句清残留 — 变量前 _Alignas 不消费也不毒害后续 struct; step25: ag_struct 同步清 */
         若 (tt[tk] == AG) { 整 agv = tv[tk]; tk++; 若 (tt[tk] == ST) { ag_struct = agv; alignas_pending = 0; } 否 alignas_pending = agv; } /* fix 2026-08-25 step21: 顶层 _Alignas(N) — struct 前修饰 struct 变量 (step25), 否则给变量 (下一轮清理) */
         
