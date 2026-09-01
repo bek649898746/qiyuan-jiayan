@@ -614,6 +614,55 @@ long long __gen_yield_v(long long v) { /* 生成器产出: 存值槽 → 挂起�
    释放(r) → count--, 0 时 free
    取(r) → 返回 data 指针 */
 struct Rc { void *p; };
+/* 接入 2026-09-01 #82 Arena 分配器 内置运行时: 区域 建/分配/重置/释放 — 大块池 (malloc) + 偏移分配, 重置回零复用, 释放整池
+   语法: 区域 建(a, cap) → __arena_create(&a, cap) — 创建池
+         区域 分配(a, n) → __arena_alloc(&a, n)   — 偏移分配 (懒建池默认 64KB), 满返回 0
+         区域 重置(a)    → __arena_reset(&a)       — 偏移回零 (池保留)
+         区域 释放(a)    → __arena_free(&a)        — 整池释放 */
+static void *__arena_pool[16];
+static int __arena_size[16];
+static int __arena_cap[16];
+static int __arena_cnt = 0;
+
+void __arena_create(int *a, int cap) {
+    int i = __arena_cnt; __arena_cnt = __arena_cnt + 1;
+    *a = i;
+    __arena_pool[i] = malloc(cap > 0 ? cap : 65536);
+    __arena_size[i] = 0;
+    __arena_cap[i] = cap > 0 ? cap : 65536;
+}
+
+void *__arena_alloc(int *a, int sz) {
+    int i = *a;
+    if (i < 0 || i >= 16 || !__arena_pool[i]) { /* 懒建池: 未建 (索引无效或池空) → 分配索引 + 建池 (默认 64KB) */
+        if (__arena_cnt >= 16) return 0;
+        i = __arena_cnt; __arena_cnt = __arena_cnt + 1;
+        *a = i;
+        __arena_pool[i] = malloc(65536);
+        __arena_cap[i] = 65536;
+        __arena_size[i] = 0;
+    }
+    if (__arena_size[i] + sz <= __arena_cap[i]) {
+        void *p = (char *)__arena_pool[i] + __arena_size[i];
+        __arena_size[i] = __arena_size[i] + sz;
+        return p;
+    }
+    return 0; /* 满 */
+}
+
+void __arena_reset(int *a) {
+    int i = *a;
+    if (i >= 0 && i < 16) __arena_size[i] = 0;
+}
+
+void __arena_free(int *a) {
+    int i = *a;
+    if (i >= 0 && i < 16) {
+        if (__arena_pool[i]) free(__arena_pool[i]);
+        __arena_pool[i] = 0; __arena_size[i] = 0; __arena_cap[i] = 0;
+    }
+}
+
 struct Rc 共享(void *init, int sz) {
     struct Rc r;
     int *hdr = (int *)malloc(sz + 4);
