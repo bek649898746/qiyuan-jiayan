@@ -21502,6 +21502,7 @@ static void write_coff_obj(FILE *f) {
    激活: Phase 7 打开宏 + 引用 → 必须过预埋尺 (v1.4 §7.2) + 差异测试双闸 */
 #ifdef IR_PREBED_ACTIVE
 /* 1. IR3 三地址码 (v1.4 §2.1, LLVM 值模型定律 §6) — 类型宽度第一优先 */
+/* 决策史: 优化器需统一中间表示 = 前端出口 H1==H2 载体 (定稿 §1.3); ty 宽度第一 (逆向定律库 §12) */
 typedef struct { int op; int ty; int d; int s1; int s2; int s3; } IR3;
 /* ty 编码: 低 8 位类型 (i8=1 i16=2 i32=3 i64=4 u8=5 u16=6 u32=7 u64=8 f32=9 f64=10 ptr=11),
    高 8 位值级属性位 (LAW_LINEAR/SUM/LATTICE) */
@@ -21509,11 +21510,13 @@ typedef struct { int op; int ty; int d; int s1; int s2; int s3; } IR3;
 static IR3 ir3[IR3_CAP]; static int ir3_n;
 
 /* 2. 块表/CFG (v1.4 §3, LLVM CFG 定律 §7) — 只存 succ 反向算 pred (LLVM 定律 2) */
+/* 决策史: 循环优化/控制流分析需 CFG; 只存 succ 省一半 (LLVM 定律 2) */
 typedef struct { int start; int end; int npred; int nsucc; int preds[8]; int succs[8]; } BLK;
 #define BLK_CAP 100000  /* 预埋初始值: 激活前按 Git 全量函数数 × 最坏基本块数实测校准 (2026-08-25 启元审计) */
 static BLK blks[BLK_CAP]; static int blk_n;
 
 /* 3. 值级 side-tables (v1.4 §10.1, 逆向定律库 §1-3/§5) */
+/* 决策史: 吞所有权/借用产生生命周期数据, 吞 ADT/Option 产生判别式, 吞泛型/impl Trait 产生类型变量 (定稿 §5.3③) */
 #define VT_CAP 1000000  /* 预埋初始值: 激活前按编译 Git 全量最坏规模实测校准 (2026-08-25 启元审计) */
 static int vt_lifetime[VT_CAP];      /* 所有权状态机: 0=普通 1=move后 2=不可变借用 3=可变借用 (int 一次给够, 对齐逆向定律库 §1) */
 static int vt_lifetime_id[VT_CAP];   /* lifetime 域编号: 0=函数级 1..N=显式 'a 域 */
@@ -21522,57 +21525,69 @@ static int vt_tyvar[VT_CAP];         /* 类型变量编号: 0=非泛型 >0=第 N
 static int vt_trunc[VT_CAP];         /* 截断标记: 0=无 1=赋值截断 2=cast 截断 3=扩展 */
 
 /* 4. 类型级 side-tables (逆向定律库 §4, 不内联 stypes — §11.1 冻结) */
+/* 决策史: 吞区间类型产生范围数据; 与 stypes 对齐, 扩容时同步 */
 #define STYPES_CAP 4096  /* 与 stypes[4096] 对齐; stypes 扩容时同步 (2026-08-25 启元审计) */
 static int stypes_lo[STYPES_CAP];    /* 范围下界 (-1=无界) */
 static int stypes_hi[STYPES_CAP];    /* 范围上界 (-1=无界) */
 static int stypes_super[STYPES_CAP]; /* 父类型 id (-1=无) */
 
 /* 5. 分析结果缓存 (逆向定律库 §8, LLVM NewPM 定律 2) — 任意变换后全失效 (实战定) */
+/* 决策史: pass 框架雏形; 吞元编程(宏/CTFE)时产生分析数据 (定稿 §5.3③) */
 typedef struct { int id; int *result; int result_n; int invalidated; } IR_ANALYSIS;
 #define ANALYSIS_CAP 64 /* 预埋初始值: 激活前按 Git 全量 pass/分析类型数实测校准 (2026-08-25 启元审计) */
 static IR_ANALYSIS ir_analysis[ANALYSIS_CAP]; static int analysis_n;
 static int analysis_store[ANALYSIS_CAP][64]; /* result 指向 store 行 (固定容量, 无 malloc) */
 
 /* 6. loopback 回边标记 (逆向定律库 §11) — 待大哥拍板, 拍板后加进 BLK: int loopback; */
+/* 决策史: 循环回边标记 — 大哥拍板后加进 BLK, 方便 AI 找循环 */
 
 /* 7. EGraph 等价类映射 (v1.2 §3.5①, egg/egglog POPL2021) — 哈希等价审判的正式化 */
+/* 决策史: 哈希等价审判正式化 (egg/egglog); 中文重写规则驱动, 第三地基激活 */
 #define ECLASS_CAP 100000  /* 预埋初始值: 激活前实测校准 */
 static int eclass[ECLASS_CAP]; /* 值→等价类 id (union-find 风格) */
 static int enode[ECLASS_CAP];  /* 等价类→节点列表头 */
 
 /* 8. 方言分层 (v1.2 §3.5②, MLIR dialect) — 甲言三层 = 三层方言; 激活时 IR3 加 dialect 字段按层 lower */
+/* 决策史: 甲言三层架构 = 三层方言; 按层 lower 与三地基咬合 */
 #define DIALECT_CAP 16
 static int ir3_dialect[DIALECT_CAP]; /* 方言 id: 0=高级 1=中级 2=低级 */
 
 /* 9. 结构化控制流 (v1.2 §3.5③, MLIR scf) — 循环/条件保持结构化到后期 lower */
+/* 决策史: 循环优化(LICM/展开)的结构地基; 循环后期 lower 不提前压平 */
 #define SCF_CAP 100000
 static int scf_op[SCF_CAP]; /* 0=普通 1=循环 2=条件 3=分支 */
 
 /* 10. per-pass IR 快照 (v1.3 §3.6④) — 哈希审判从端到端 → 逐 pass */
+/* 决策史: AI 写优化器 10 分钟试错 → 30 秒定位 (哈希审判逐 pass 化) */
 #define PASS_SNAP_CAP 64  /* 预埋初始值: 激活前实测校准 */
 static char pass_snap_hash[PASS_SNAP_CAP][65];  /* 每个 pass 后的 IR 哈希 (64 hex) */
 
 /* 11. IR 不变量断言表 (v1.3 §3.6⑤) — IR 层借用检查器 */
+/* 决策史: 结构位不变量写成可检查断言 — AI 改 IR 立即反馈 (IR 层借用检查器) */
 #define INVARIANT_CAP 64
 typedef struct { int (*check)(void); const char *name; } IR_INVARIANT;
 static IR_INVARIANT ir_invariants[INVARIANT_CAP]; static int invariant_n;
 
 /* 12. IR 语义导航 (v1.3 §3.6⑥) — AI 的结构位地图 */
+/* 决策史: 结构位地图 + 决策记忆可查询 (定稿 §3.6⑥ + §5.4.5③) */
 #define NAV_CAP 64
-typedef struct { const char *name; int def_line; int use_cnt; } IR_NAV;
+typedef struct { const char *name; int def_line; int use_cnt; const char *reason; } IR_NAV;
 static IR_NAV ir_nav[NAV_CAP]; static int nav_n;
 
 /* 13. IR 等价性查询 (v1.4 §3.7⑦) — 改对了没判断器 */
+/* 决策史: LLM 改 pass 立即验证语义等价 (改对了没判断器) */
 #define EQUIV_CAP 64
 typedef struct { int a_id; int b_id; int equiv; int diff_cnt; } IR_EQUIV;
 static IR_EQUIV ir_equiv[EQUIV_CAP]; static int equiv_n;
 
 /* 14. 错误信息 IR 增强 (v1.4 §3.7⑧) — debug 回路压缩 */
+/* 决策史: 错误带 IR 上下文 + 修复建议 — LLM debug 回路 5 次→1-2 次 */
 #define ERR_IR_CAP 64
 typedef struct { int err_code; int blk; int insn; const char *hint; } IR_ERR;
 static IR_ERR ir_err[ERR_IR_CAP]; static int err_n;
 
 /* 15. 中文 IR 双语导出 (v1.4 §3.7⑨) — 心智切换归零 */
+/* 决策史: 中文 IR ↔ 英文 IR 一键切换 = token 效率设计指标 (定稿 §5.4.2) */
 #define BILINGUAL_CAP 256
 typedef struct { const char *zh; const char *en; } IR_DICT;
 static IR_DICT ir_dict[BILINGUAL_CAP]; static int dict_n;
