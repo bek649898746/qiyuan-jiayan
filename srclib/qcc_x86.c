@@ -21500,6 +21500,11 @@ static void write_coff_obj(FILE *f) {
    语义依据: 《甲言_逆向定律库_IR工程预埋全景.md》§12 优先级 (类型宽度第一)
    纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4)
    激活: Phase 7 打开宏 + 引用 → 必须过预埋尺 (v1.4 §7.2) + 差异测试双闸 */
+/* 阶段C-0 IR 激活: 预埋结构位真实落位, 尚无发射器引用 → GCC -Wunused-variable 豁免 (仅种子层, qcc 自举前端不查 unused) */
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+#define IR_PREBED_ACTIVE 1  /* 阶段C-0 IR 激活 (2026-09-01 大哥: 开炮): 结构位真实落位 (BSS 分离加载, 产物文件大小不变); 关闭删此行 */
 #ifdef IR_PREBED_ACTIVE
 /* 1. IR3 三地址码 (v1.4 §2.1, LLVM 值模型定律 §6) — 类型宽度第一优先 */
 /* 决策史: 优化器需统一中间表示 = 前端出口 H1==H2 载体 (定稿 §1.3); ty 宽度第一 (逆向定律库 §12) */
