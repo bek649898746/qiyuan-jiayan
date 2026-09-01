@@ -1,4 +1,4 @@
-/* qcc_rt.c — self-host runtime for qcc_x86. (fix 2026-08-06 M6: gcc 可编译)
+﻿/* qcc_rt.c — self-host runtime for qcc_x86. (fix 2026-08-06 M6: gcc 可编译)
    Compiled by qcc_x86 as ordinary user functions. These shadow the broken or
    missing inline builtins (realloc/free/exit/abort/fseek/ftell/rewind/strcpy/
    strncmp/isdigit/isalpha/isalnum). Kernel primitives come from qcc builtins:
@@ -578,6 +578,34 @@ int coro_step(int *c) { /* 步进协程: 完成返回 0; 否则切到纤维跑�
 void __coro_yield(void) { /* 协程让出: 挂起当前纤维, 切回主流程 (主纤维) */
     SwitchToFiber(__coro_main_fiber);
 }
+
+/* 接入 2026-09-01 #56 生成器完整: 语言级 yield (基于 stackful fiber)
+   语法: 生成(g, fn, ctx) → __gen_init(&g, fn, ctx) — 创建生成器实例 (未启动)
+         下一个(g, x)     → __gen_next(&g, &x)      — 步进: 1 有值 (*x = 产出 值), 0 完成
+         产出 表达式;      → __gen_yield_v(表达式)   — 挂起并把值传回主流程
+   fiber 基础设施 (CreateFiber/SwitchToFiber) 由 qcc 内建发射 kernel32 IAT 调用 */
+static long long __gen_val[64]; /* 生成器 产出值槽 (按实例索引) */
+static int __gen_act = -1;      /* 最近步进的生成器索引 (产出 定位) */
+
+int __gen_init(int *g, void *fn, void *ctx) { return coro_init(g, fn, ctx); }
+
+int __gen_next(int *g, long long *v) { /* 步进生成器: 完成返回 0; 否则切 fiber 跑一段, *v = 产出 值, 返回 1 */
+    int i = *g;
+    if (__coro_done[i]) return 0;
+    if (!__coro_main_ok) { __coro_main_fiber = ConvertThreadToFiber(0); __coro_main_ok = 1; }
+    __gen_act = i;
+    SwitchToFiber(__coro_fiber[i]);
+    if (__coro_done[i]) return 0;
+    *v = __gen_val[i];
+    return 1;
+}
+
+long long __gen_yield_v(long long v) { /* 生成器产出: 存值槽 → 挂起回主流程 (恢复后继续) */
+    if (__gen_act >= 0 && __gen_act < 64) __gen_val[__gen_act] = v;
+    SwitchToFiber(__coro_main_fiber);
+    return v;
+}
+
 
 /* 接入 2026-08-28 P1 #6 引用计数 (Rc): 共享所有权, 运行时计数
    Rc = 8B (仅指针, 指向 data; 计数在 data 前 4B) — 按值传参/返回走普通路径 (避开 sret+big 缺口)
