@@ -5128,9 +5128,10 @@ __attribute__((unused))
         tk++; /* 区域 */
         字 opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 分配/重置/释放 — ⚠️ 分配→malloc 释放→free 已被 lexer 映射, 比较用映射后英文 (fix 2026-08-27) */
         字 fname[80];
-        若 (!strcmp(opn, "malloc")) sprintf(fname, "arena_alloc");
-        否 若 (!strcmp(opn, "重置")) sprintf(fname, "arena_reset");
-        否 若 (!strcmp(opn, "free")) sprintf(fname, "arena_free");
+        若 (!strcmp(opn, "malloc")) sprintf(fname, "__arena_alloc"); /* 阶段C-1 #82 内置运行时 (同步英文链) */
+        否 若 (!strcmp(opn, "重置")) sprintf(fname, "__arena_reset");
+        否 若 (!strcmp(opn, "free")) sprintf(fname, "__arena_free");
+        否 若 (!strcmp(opn, "建")) sprintf(fname, "__arena_create"); /* #82: 区域 建(a, cap) 创建池 */
         否 sprintf(fname, "arena_%s", opn);
         若 (tt[tk] == OK) tk++; /* ( */
         整 e_ar = expr(); /* arena 表达式 */
