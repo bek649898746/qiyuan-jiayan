@@ -689,6 +689,13 @@ void __cow_mutate(int **pp, int idx, int val) {
 /* 接入 2026-09-02 #80 异常ABI: 异常对象携带值 — 抛出 码, 值 → ex_val = 值; 试 { } 捕获 名 { } → 名 = ex_val (跨函数传播复用 #55 ex_pending/throw_ex 用户定义) */
 int ex_val = 0;
 
+/* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
+   取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+int __qcc_lazy_get(int *set, int *val, int (*f)(int), int a) {
+    if (!*set) { *val = f(a); *set = 1; }
+    return *val;
+}
+
 /* 接入 2026-09-01 #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create — 动态加载 kernel32
    (CreateFileA 打开 + CreateFileMappingA 建映射 + MapViewOfFile 视图, 读写); 取消映射(指针) → __qcc_map_close */
 static void *__mm_hf[16];
