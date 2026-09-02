@@ -3254,6 +3254,7 @@ static int lbl_reg(const char *n) {
     lbl_tbl[lbl_n].id = new_label();
     return lbl_tbl[lbl_n++].id;
 }
+static char cur_catch_label[64] = ""; static int try_seq = 0; /* 阶段C-1 #55+#80 (同步英文链): 试 块级 try/catch — 当前捕获标签 + 试序号 */
 enum { EK=0, IK, VK, NK, JK=4, PK=5, MK=6, DK=7, QK=8, WK=9, XK=10, LK=11, RK=12, BK=13, CK=14, SK=15, AK=16, OK=17, KK=18, FK=19, UK=20, GK=21, HK=22, YK=23, ZK=24, PT=25, VR=26, DT=27, AR=28, STR=29, ST=30, LB=31, RB=32, EN=33, BR=34, SW=35, CA=36, DF=37, CL=38, LA=39, LO=40, NT=41, DV=42, MD=43, SH=44, SR=45, AN=46, OR=47, XR=48, BN=49, CN=50, PA=51, MA=52, DA=53, SA=54, OA=55, AA=56, XA=57, SHR=58, SHL=59, QU=60, PP=61, MM=62, DW=63, GT=64, FP=65, MS=66, AL=67, GN=68, AG=69, PIPE=70, QA=71 }; /* AL=_Alignof (fix 2026-08-25 支持矩阵补全 step1); GN=_Generic (step6); AG=_Alignas (fix step21: 携带对齐值, parser 消费); MS=%= (fix 2026-08-05: %= previously lexed as MD+AK → compound-assign never matched); QA=?. 可选链 (接入 2026-08-28) */
 
 #define TS 2097152 /* fix 2026-08-09 审计#13: 262144→524288 镜像自举容量 */
@@ -7048,7 +7049,7 @@ static int blk(void) {
            initialized and memset/memcpy counts came out garbage). */
         int unknown_ty_decl = 0;
         if (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "切片前缀") != 0 && strcmp(tn[tk], "切片后缀") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "取消") != 0 && strcmp(tn[tk], "检查取消") != 0 && strcmp(tn[tk], "重试") != 0 && strcmp(tn[tk], "递归保护") != 0 && strcmp(tn[tk], "尾调用优化") != 0 && strcmp(tn[tk], "传线程") != 0 && strcmp(tn[tk], "致命错误") != 0 && strcmp(tn[tk], "可恢复错误") != 0 && strcmp(tn[tk], "用户错误") != 0 && strcmp(tn[tk], "系统错误") != 0 && strcmp(tn[tk], "逻辑错误") != 0 && strcmp(tn[tk], "跑测试") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && strcmp(tn[tk], "加载库") != 0 && strcmp(tn[tk], "取函数") != 0 && strcmp(tn[tk], "动态数组") != 0 && strcmp(tn[tk], "字符串构建") != 0 && strcmp(tn[tk], "追加串") != 0 && strcmp(tn[tk], "追加字符") != 0 && strcmp(tn[tk], "释放串") != 0 && strcmp(tn[tk], "追加") != 0 && strcmp(tn[tk], "长度") != 0 && strcmp(tn[tk], "取元素") != 0 && strcmp(tn[tk], "构建长度") != 0 && strcmp(tn[tk], "忘记") != 0 && strcmp(tn[tk], "单元") != 0 && strcmp(tn[tk], "放单元") != 0 && strcmp(tn[tk], "取单元") != 0 && strcmp(tn[tk], "目标架构") != 0 && strcmp(tn[tk], "目标字长") != 0 && strcmp(tn[tk], "源位置") != 0 && strcmp(tn[tk], "空类型") != 0 && strcmp(tn[tk], "文档") != 0 && strcmp(tn[tk], "文档数") != 0 && strcmp(tn[tk], "越界检查") != 0 && strcmp(tn[tk], "栈") != 0 && strcmp(tn[tk], "推") != 0 && strcmp(tn[tk], "弹") != 0 && strcmp(tn[tk], "惰性") != 0 && strcmp(tn[tk], "取值") != 0 && strcmp(tn[tk], "alloca") != 0 && strcmp(tn[tk], "写时复制") != 0 && strcmp(tn[tk], "定长") != 0 && strcmp(tn[tk], "线性") != 0 && strcmp(tn[tk], "判类型") != 0 && /* 阶段C-1 #33b/#20c/#83/#88/#52/#51/#74 (2026-09-02 同步英文链) */ (
+        if (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "切片前缀") != 0 && strcmp(tn[tk], "切片后缀") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "取消") != 0 && strcmp(tn[tk], "检查取消") != 0 && strcmp(tn[tk], "重试") != 0 && strcmp(tn[tk], "递归保护") != 0 && strcmp(tn[tk], "尾调用优化") != 0 && strcmp(tn[tk], "传线程") != 0 && strcmp(tn[tk], "致命错误") != 0 && strcmp(tn[tk], "可恢复错误") != 0 && strcmp(tn[tk], "用户错误") != 0 && strcmp(tn[tk], "系统错误") != 0 && strcmp(tn[tk], "逻辑错误") != 0 && strcmp(tn[tk], "跑测试") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && strcmp(tn[tk], "加载库") != 0 && strcmp(tn[tk], "取函数") != 0 && strcmp(tn[tk], "动态数组") != 0 && strcmp(tn[tk], "字符串构建") != 0 && strcmp(tn[tk], "追加串") != 0 && strcmp(tn[tk], "追加字符") != 0 && strcmp(tn[tk], "释放串") != 0 && strcmp(tn[tk], "追加") != 0 && strcmp(tn[tk], "长度") != 0 && strcmp(tn[tk], "取元素") != 0 && strcmp(tn[tk], "构建长度") != 0 && strcmp(tn[tk], "忘记") != 0 && strcmp(tn[tk], "单元") != 0 && strcmp(tn[tk], "放单元") != 0 && strcmp(tn[tk], "取单元") != 0 && strcmp(tn[tk], "目标架构") != 0 && strcmp(tn[tk], "目标字长") != 0 && strcmp(tn[tk], "源位置") != 0 && strcmp(tn[tk], "空类型") != 0 && strcmp(tn[tk], "文档") != 0 && strcmp(tn[tk], "文档数") != 0 && strcmp(tn[tk], "越界检查") != 0 && strcmp(tn[tk], "栈") != 0 && strcmp(tn[tk], "推") != 0 && strcmp(tn[tk], "弹") != 0 && strcmp(tn[tk], "惰性") != 0 && strcmp(tn[tk], "取值") != 0 && strcmp(tn[tk], "alloca") != 0 && strcmp(tn[tk], "写时复制") != 0 && strcmp(tn[tk], "定长") != 0 && strcmp(tn[tk], "线性") != 0 && strcmp(tn[tk], "判类型") != 0 && strcmp(tn[tk], "试") != 0 && /* 阶段C-1 #33b/#20c/#83/#88/#52/#51/#74/#55 (2026-09-02 同步英文链) */ (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -9060,9 +9061,11 @@ static int stmt(void) {
         if (tt[tk] == SK) tk++;
         return r;
     }
-    if (tt[tk] == VR && !strcmp(tn[tk], "抛出")) { /* 接入 2026-08-27 确定性异常 (C 模拟约定, 语句级): 抛出 码; → throw_ex(1, 码, ""); — 用户定义 Ex/cur_ex/ex_pending/throw_ex; 配合 若错/捕获 形成异常链 */
+    if (tt[tk] == VR && !strcmp(tn[tk], "抛出")) { /* 接入 2026-08-27 确定性异常 (C 模拟约定, 语句级): 抛出 码; → throw_ex(1, 码, ""); — 用户定义 Ex/cur_ex/ex_pending/throw_ex; 配合 若错/捕获 形成异常链 */ /* 阶段C-1 #80 异常ABI (同步英文链): 抛出 码, 值; → throw_ex + ex_val = 值 (异常对象携带值) */
         tk++; /* 抛出 */
         int e_c = expr(); /* 错误码 */
+        int e_val = -1; int e_hv = 0;
+        if (tt[tk] == CK) { tk++; e_val = expr(); e_hv = 1; } /* #80: 抛出 码, 值 — 异常携带值 */
         if (tt[tk] == SK) tk++; /* ; */
         int call = Nd(4);
         { int ty = Nd(0); nv[ty] = 1; Nc(call, ty); } /* EX_GEN=1 */
@@ -9073,6 +9076,21 @@ static int stmt(void) {
         { int sn = Nd(0); nv[sn] = str_cnt; nt[sn] = STR; Nc(call, sn); }
         str_cnt++;
         { int fn = Nd(1); memcpy((char*)(nn + fn), "throw_ex", 9); Nc(call, fn); } /* callee 最后 */
+        if (cur_catch_label[0]) { /* #55: 试 块内 抛出 → { throw_ex; [ex_val=值;] 跳转 捕获标签; } */
+            int tb = Nd(5);
+            Nc(tb, call);
+            if (e_hv) { int asg = Nd(10); { int vn2 = Nd(1); memcpy((char*)(nn + vn2), "ex_val", 7); Nc(asg, vn2); } Nc(asg, e_val); Nc(tb, asg); } /* #80: ex_val = 值 */
+            { int jmp = Nd(25); memcpy((char*)(nn + jmp), cur_catch_label, 64);
+              { int li = lbl_find(cur_catch_label); if (li < 0) li = lbl_reg(cur_catch_label); nv[jmp] = li + 1; }
+              Nc(tb, jmp); }
+            return tb;
+        }
+        if (e_hv) { /* #80: 非试块 抛出 码, 值 → { throw_ex; ex_val = 值; } */
+            int tb = Nd(5);
+            Nc(tb, call);
+            { int asg = Nd(10); { int vn2 = Nd(1); memcpy((char*)(nn + vn2), "ex_val", 7); Nc(asg, vn2); } Nc(asg, e_val); Nc(tb, asg); }
+            return tb;
+        }
         return call;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "若错")) { /* 接入 2026-08-27 异常传播检查: 若错 <语句>; → if (ex_pending) <语句>; — 中间层传播 (C 模拟栈回卷) */
@@ -9091,6 +9109,48 @@ static int stmt(void) {
         { int z = Nd(0); nv[z] = 0; int asg = Nd(10); Nc(asg, vp); Nc(asg, z); Nc(blk, asg); } /* ex_pending = 0 */
         Nc(ifn, blk);
         return ifn;
+    }
+    if (tt[tk] == VR && !strcmp(tn[tk], "试")) { /* 2026-09-01 #55 异常完整 (同步英文链): 试 { 体 } 捕获 { 体 } — 块级 try/catch; 抛出 在试块内 → throw_ex + 跳转捕获标签 (同函数); 试体尾 ex_pending 检查跳结束 (跨函数传播); #80: 捕获 名 { 体 } → 名 = ex_val (异常值提取) */
+        tk++; /* 试 */
+        int ts = try_seq++;
+        char tc[80], te[80];
+        sprintf(tc, "__try%d_catch", ts);
+        sprintf(te, "__try%d_end", ts);
+        int tc_l = lbl_reg(tc);
+        int te_l = lbl_reg(te);
+        char old_cl[64]; strcpy(old_cl, cur_catch_label);
+        strcpy(cur_catch_label, tc);
+        if (tt[tk] == FK) tk++; /* { */
+        int tb = Nd(5);
+        while (tt[tk] != UK && tt[tk] != EK) { if (tt[tk] == SK) { tk++; continue; } Nc(tb, stmt()); } /* 体 */
+        if (tt[tk] == UK) tk++; /* } */
+        strcpy(cur_catch_label, old_cl);
+        { int ifn = Nd(8);
+          { int vp = Nd(1); memcpy((char*)(nn + vp), "ex_pending", 11);
+            int z0 = Nd(0); nv[z0] = 0;
+            int cmp = Nd(2); nv[cmp] = QK; Nc(cmp, vp); Nc(cmp, z0); /* ex_pending == 0 */
+            Nc(ifn, cmp); }
+          { int jmp = Nd(25); memcpy((char*)(nn + jmp), te, 64); nv[jmp] = te_l + 1; Nc(ifn, jmp); } /* 跳 结束 */
+          Nc(tb, ifn); }
+        { int lb = Nd(20); nv[lb] = tc_l + 1; Nc(tb, lb); } /* 捕获标签: */
+        if (tt[tk] == VR && !strcmp(tn[tk], "捕获")) {
+            tk++; /* 捕获 */
+            char tcn[64] = "";
+            if (tt[tk] == VR) { strcpy(tcn, tn[tk]); tk++; } /* 阶段C-1 #80 (同步英文链): 捕获 名 { 体 } — 捕获体前 名 = ex_val */
+            if (tt[tk] == FK) tk++; /* { */
+            if (tcn[0]) { /* 名 = ex_val; */
+                { int vn2 = Nd(1); memcpy((char*)(nn + vn2), tcn, 32);
+                  int vx = Nd(1); memcpy((char*)(nn + vx), "ex_val", 7);
+                  int asg = Nd(10); Nc(asg, vn2); Nc(asg, vx); Nc(tb, asg); }
+            }
+            while (tt[tk] != UK && tt[tk] != EK) { if (tt[tk] == SK) { tk++; continue; } Nc(tb, stmt()); } /* 捕获体 */
+            if (tt[tk] == UK) tk++; /* } */
+            { int vp = Nd(1); memcpy((char*)(nn + vp), "ex_pending", 11);
+              int z0 = Nd(0); nv[z0] = 0;
+              int asg = Nd(10); Nc(asg, vp); Nc(asg, z0); Nc(tb, asg); } /* ex_pending = 0 */
+        }
+        { int lb2 = Nd(20); nv[lb2] = te_l + 1; Nc(tb, lb2); } /* 结束标签: */
+        return tb;
     }
     if (tt[tk] == VR && !strcmp(tn[tk], "格式化")) { /* 接入 2026-08-27 字符串插值 (模板字符串): 格式化 "x={} y={}", x, y; → printf("x=%d y=%d", x, y); — {} 占位符按参数类型自动转格式符 (%d/%u/%f/%lld/%c/%s), 先解析参数收集类型再拼新格式串 */
         tk++; /* 格式化 */
