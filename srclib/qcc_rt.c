@@ -696,6 +696,17 @@ int __qcc_lazy_get(int *set, int *val, int (*f)(int), int a) {
     return *val;
 }
 
+/* 接入 2026-09-02 #33b 栈式编程 (Forth 试吞): 栈 s, 容量; → 整数 __stk_s_buf[容量] + __stk_s_top;
+   推 s, v → __qcc_stack_push(buf, &top, v); 弹 s → __qcc_stack_pop(buf, &top) (LIFO, 无容量检查简化) */
+void __qcc_stack_push(int *buf, int *top, int v) {
+    buf[*top] = v;
+    *top = *top + 1;
+}
+int __qcc_stack_pop(int *buf, int *top) {
+    *top = *top - 1;
+    return buf[*top];
+}
+
 /* 接入 2026-09-01 #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create — 动态加载 kernel32
    (CreateFileA 打开 + CreateFileMappingA 建映射 + MapViewOfFile 视图, 读写); 取消映射(指针) → __qcc_map_close */
 static void *__mm_hf[16];
