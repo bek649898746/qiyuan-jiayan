@@ -1275,7 +1275,10 @@ __attribute__((unused))
 静 整 recorder_mode = 0; 静 字 recorder_path[512]; 静 整 rec_prev_cp = 0; 静 整 rec_pass = 0; 静 空 rec_line(常 字 *line); 静 空 recorder_frame(常 字 *fn); /* 接入 2026-08-28 可吞清单 P1: 编译黑匣子 — 每函数代码增量哈希帧 (定义在资源护栏区) */
 静 整 serve_mode = 0; /* 接入 2026-08-28 可吞清单 P1: 编译服务器 qccd — --serve 长驻 stdin/stdout JSON-lines (可重入核心+增量缓存, AI 迭代毫秒级; 定义在 main 前) */
 静 整 is_compat_stat_c = 0; /* compat/stat.c 兼容开关 — 2026-08-28 挪文件作用域 (cache_try_hit 键签名要用, 原 main 局部) */
-静 整 refs_mode = 0; 静 整 annot_mode = 0; /* #173 --annotations: 导出注解表 */
+静 整 refs_mode = 0; 静 整 annot_mode = 0;
+/* #173 注解/属性 (2026-09-01): 注解 名 = 值; 顶层元数据标注 — 注解表 (名→值), 编译期可查 */
+静 构 { 字 name[64]; 字 value[256]; } annot_tbl[256];
+静 整 annot_n = 0;
 静 空 refs_record(常 字 *n, 整 line); 静 空 refs_emit(空); /* 接入 2026-08-28 可吞清单 P1: 引用收集 --refs — 谁引用了 X (导航补引用, AI 读代码定位; 定义在资源护栏区) */
 静 构 { 字 fn[64]; 整 pre_stmt; 整 pre_root; 整 post_root; 整 post_str; 整 has_post; } contracts[256]; 静 整 contract_cnt; 静 整 cur_contract; 静 整 contract_find(常 字 *fn); 静 长 长 contract_const_eval(整 n, 常 字 **argnames, 常 长 长 *argvals, 整 argc, 整 *known); /* 接入 2026-08-28 可吞清单 P0-7/P1: 契约表 + 编译期常量前置审判 (声明在此, prim/调用点用; 函数定义在契约表区) */
 #define QCC_CACHE_VER "43B4EBE5" /* 接入 2026-08-28 AI原生 #5: 文件级哈希增量编译 — 缓存键版本签名 (每站与不动点同号 bump, 编译器升级→旧缓存自动失效) */
@@ -1421,10 +1424,11 @@ __attribute__((unused))
 静 整 rsp_used;           /* ????????? */
 
 /* ?????? struct ??????????? */
+静 构 { 字 name[64]; 字 fnames[1024][64]; 整 foffs[1024]; 整 fsizes[1024]; 整 frows[1024]; 整 ftypes[1024]; 整 fbits[1024]; 整 fbitof[1024]; 字 fdbls[1024]; 字 fsgn[1024]; 整 fels[1024]; 整 fpels[1024]; 字 fptrs[1024]; 整 ffins[1024]; 字 fdeep[1024]; 字 fcsgn[1024]; 整 fn; 整 sz; 整 algn; } stypes[4096];
 /* #231 repr 控制 (2026-09-01): 打包 构 名 { } — 结构体紧凑布局 (字段无对齐填充, 尺寸不轮 up) */
 静 整 packed_flag[4096]; /* 结构体打包标志 (0/1) */
 静 整 packed_pending = 0; /* 顶层 打包 前缀暂存 (st_add 消费) */
-静 构 { 字 name[64]; 字 fnames[1024][64]; 整 foffs[1024]; 整 fsizes[1024]; 整 frows[1024]; 整 ftypes[1024]; 整 fbits[1024]; 整 fbitof[1024]; 字 fdbls[1024]; 字 fsgn[1024]; 整 fels[1024]; 整 fpels[1024]; 字 fptrs[1024]; 整 ffins[1024]; 字 fdeep[1024]; 字 fcsgn[1024]; 整 fn; 整 sz; 整 algn; } stypes[4096]; /* fels: 数组字段元素大小 (fix 2026-08-07) */ 静 整 st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放; fcsgn (fix 2026-08-29 csmith): signed char 字段标记 (int8_t 字段读 movsx, s3/s137 静默) */
+ /* fels: 数组字段元素大小 (fix 2026-08-07) */ 静 整 st_n; /* algn: struct 最大对齐（fix 2026-08-06）; fix 2026-08-13 字段表 64→128 (diff_options 71 字段); fix 2026-08-14 128→256 (rev_info 130+ 字段); ffins/fdeep (fix 2026-08-22 t41b): 指针字段最终元素大小 + 指针层级 — T** 双指针字段双层下标 (slab[i][j]) 第二维缩放; fcsgn (fix 2026-08-29 csmith): signed char 字段标记 (int8_t 字段读 movsx, s3/s137 静默) */
 
 静 整 st_find(常 字 *n) {
     遍 (整 i = 0; i < st_n; i++) 若 (!strcmp(stypes[i].name, n)) { 若 (getenv("QCC_DBG_NS")) 若 (strstr(n, "ref_namespace")) fprintf(stderr, "[NS] st_find '%s' -> %d sz=%d algn=%d fn=%d\n", n, i, stypes[i].sz, stypes[i].algn, stypes[i].fn); 返 i; }
@@ -1791,10 +1795,11 @@ __attribute__((unused))
 静 整 dbg_line_n = 0; 静 整 dbg_last_line = 0;
 静 整 dbg_lines[262144][2]; /* [cp, line] */
 静 构 { 字 name[128]; 整 start; 整 end; 整 line; } dbg_fns[8192];
-静 字 dbg_buf[131072]; 静 易失 整 dbg_bufpos = 0; /* 易失: 强制内存读写 */
+静 字 dbg_buf[131072]; 静 volatile 整 dbg_bufpos = 0; /* 易失: 强制内存读写 */
 静 整 dbg_ab_off, dbg_ab_sz; 静 整 dbg_in_off, dbg_in_sz; 静 整 dbg_ln_off, dbg_ln_sz;
 静 空 dbg_gen(空); /* fwd: 定义在 write_pe 前 */
 静 空 b(无 字 v) {
+    extern 整 tk; /* fwd: 全局定义在 token 表区 (gcc 要求使用前声明) */
     若 (dbg_on && dbg_line_n < 262144 && tline[tk] > 0 && tline[tk] != dbg_last_line) {
         dbg_lines[dbg_line_n][0] = cp; dbg_lines[dbg_line_n][1] = tline[tk]; dbg_line_n++;
         dbg_last_line = tline[tk];
@@ -4258,7 +4263,7 @@ __attribute__((unused))
             否 若 (!strcmp(tn[ti], "读取")) strcpy(tn[ti], "fread");
             否 若 (!strcmp(tn[ti], "写入")) strcpy(tn[ti], "fwrite");
             /* 甲言关键字: 中文 → 英文名 (解析器二次 strcmp 判断需要英文 tn) */
-            否 若 (!strcmp(tn[ti], "构")) strcpy(tn[ti], "struct");
+            否 若 (!strcmp(tn[ti], "构") || !strcmp(tn[ti], "类")) strcpy(tn[ti], "struct"); /* 阶段C-1 #79 (2026-09-02): 类 = C++ 互操作别名 (同步中文链) */
             否 若 (!strcmp(tn[ti], "联")) strcpy(tn[ti], "union");
             否 若 (!strcmp(tn[ti], "枚")) strcpy(tn[ti], "enum");
             否 若 (!strcmp(tn[ti], "返回")) strcpy(tn[ti], "return"); /* 接入 2026-08-28: 双字 返回 (原只单字 返) — 多返回值 返回(a,b) 需 RK 关键字; c_to_jy 把 return 翻成单字 返, 必须保留 */
@@ -5109,6 +5114,16 @@ __attribute__((unused))
         { 整 fn = Nd(1); memcpy((字*)(nn + fn), fname, 64); Nc(call, fn); } /* callee 最后 */
         返 call;
     }
+        若 (tt[tk] == VR && !strcmp(tn[tk], "弹")) { /* 阶段C-1 #33b 栈式编程 (同步英文链): 弹 s → __qcc_stack_pop(__stk_s_buf, &__stk_s_top) 弹栈 (LIFO, 表达式返回值) */
+            tk++; /* 弹 */
+            字 stk_n[64]; strcpy(stk_n, tn[tk]); tk++; /* s */
+            字 stk_b[80], stk_t[80]; sprintf(stk_b, "__stk_%s_buf", stk_n); sprintf(stk_t, "__stk_%s_top", stk_n);
+            整 call = Nd(4);
+            { 整 nb = Nd(1); memcpy((字*)(nn + nb), stk_b, 32); Nc(call, nb); } /* buf */
+            { 整 nt2 = Nd(1); memcpy((字*)(nn + nt2), stk_t, 32); 整 nta = Nd(11); Nc(nta, nt2); Nc(call, nta); } /* &top */
+            { 整 fn = Nd(1); memcpy((字*)(nn + fn), "__qcc_stack_pop", 16); Nc(call, fn); }
+            返 call;
+        }
         若 (tt[tk] == VR && !strcmp(tn[tk], "编译期")) { /* 接入 2026-08-27: 甲言 编译期执行 (Zig comptime): 编译期(expr) → const_expr_eval 求值 → 常量节点 — 运行时零计算; 2026-08-28 type-root-16 #76: 编译期 f(常量...) → CTFE 解释用户纯函数 */
         tk++; /* 编译期 */
         若 (tt[tk] == OK) tk++; /* ( */
@@ -6965,7 +6980,7 @@ __attribute__((unused))
            initialized and memset/memcpy counts came out garbage). */
         整 unknown_ty_decl = 0;
         若 (tt[tk] == VR && !strcmp(tn[tk], "register")) { tk++; /* 存储类 register: 忽略——局部变量本就放内存 (fix 2026-08-05: was an undefined identifier → var never registered → read 0) */ }
-        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "切片前缀") != 0 && strcmp(tn[tk], "切片后缀") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "取消") != 0 && strcmp(tn[tk], "检查取消") != 0 && strcmp(tn[tk], "重试") != 0 && strcmp(tn[tk], "递归保护") != 0 && strcmp(tn[tk], "尾调用优化") != 0 && strcmp(tn[tk], "传线程") != 0 && strcmp(tn[tk], "致命错误") != 0 && strcmp(tn[tk], "可恢复错误") != 0 && strcmp(tn[tk], "用户错误") != 0 && strcmp(tn[tk], "系统错误") != 0 && strcmp(tn[tk], "逻辑错误") != 0 && strcmp(tn[tk], "跑测试") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && strcmp(tn[tk], "加载库") != 0 && strcmp(tn[tk], "取函数") != 0 && strcmp(tn[tk], "动态数组") != 0 && strcmp(tn[tk], "字符串构建") != 0 && strcmp(tn[tk], "追加串") != 0 && strcmp(tn[tk], "追加字符") != 0 && strcmp(tn[tk], "释放串") != 0 && strcmp(tn[tk], "追加") != 0 && strcmp(tn[tk], "长度") != 0 && strcmp(tn[tk], "取元素") != 0 && strcmp(tn[tk], "构建长度") != 0 && strcmp(tn[tk], "忘记") != 0 && strcmp(tn[tk], "单元") != 0 && strcmp(tn[tk], "放单元") != 0 && strcmp(tn[tk], "取单元") != 0 && strcmp(tn[tk], "目标架构") != 0 && strcmp(tn[tk], "目标字长") != 0 && strcmp(tn[tk], "源位置") != 0 && strcmp(tn[tk], "空类型") != 0 && strcmp(tn[tk], "文档") != 0 && strcmp(tn[tk], "文档数") != 0 && strcmp(tn[tk], "越界检查") != 0 && (
+        若 (tt[tk] == VR && !td_is(tn[tk]) && st_find(tn[tk]) < 0 && strcmp(tn[tk], "解包") != 0 && strcmp(tn[tk], "范围") != 0 && strcmp(tn[tk], "送") != 0 && strcmp(tn[tk], "收") != 0 && strcmp(tn[tk], "夹取") != 0 && strcmp(tn[tk], "重载") != 0 && strcmp(tn[tk], "推导") != 0 && strcmp(tn[tk], "线程") != 0 && strcmp(tn[tk], "等待") != 0 && strcmp(tn[tk], "投递") != 0 && strcmp(tn[tk], "接收") != 0 && strcmp(tn[tk], "格式化") != 0 && strcmp(tn[tk], "区域") != 0 && strcmp(tn[tk], "生成") != 0 && strcmp(tn[tk], "下一个") != 0 && strcmp(tn[tk], "协程") != 0 && strcmp(tn[tk], "步进") != 0 && strcmp(tn[tk], "抛出") != 0 && strcmp(tn[tk], "若错") != 0 && strcmp(tn[tk], "捕获") != 0 && strcmp(tn[tk], "异步") != 0 && strcmp(tn[tk], "原子") != 0 && strcmp(tn[tk], "屏障") != 0 && strcmp(tn[tk], "映射") != 0 && strcmp(tn[tk], "过滤") != 0 && strcmp(tn[tk], "折叠") != 0 && strcmp(tn[tk], "交换") != 0 && strcmp(tn[tk], "求和") != 0 && strcmp(tn[tk], "求积") != 0 && strcmp(tn[tk], "反转") != 0 && strcmp(tn[tk], "排序") != 0 && strcmp(tn[tk], "最大") != 0 && strcmp(tn[tk], "最小") != 0 && strcmp(tn[tk], "查找") != 0 && strcmp(tn[tk], "保证") != 0 && strcmp(tn[tk], "计数") != 0 && strcmp(tn[tk], "去重") != 0 && strcmp(tn[tk], "归并") != 0 && strcmp(tn[tk], "填充") != 0 && strcmp(tn[tk], "替换") != 0 && strcmp(tn[tk], "累积") != 0 && strcmp(tn[tk], "合拼") != 0 && strcmp(tn[tk], "交错") != 0 && strcmp(tn[tk], "挤压") != 0 && strcmp(tn[tk], "旋转") != 0 && strcmp(tn[tk], "取前") != 0 && strcmp(tn[tk], "丢前") != 0 && strcmp(tn[tk], "打乱") != 0 && strcmp(tn[tk], "相邻差") != 0 && strcmp(tn[tk], "组排") != 0 && strcmp(tn[tk], "窗口") != 0 && strcmp(tn[tk], "展平") != 0 && strcmp(tn[tk], "解构") != 0 && strcmp(tn[tk], "空合") != 0 && strcmp(tn[tk], "切片") != 0 && strcmp(tn[tk], "切片前缀") != 0 && strcmp(tn[tk], "切片后缀") != 0 && strcmp(tn[tk], "使用") != 0 && strcmp(tn[tk], "转置") != 0 && strcmp(tn[tk], "峰值") != 0 && strcmp(tn[tk], "谷值") != 0 && strcmp(tn[tk], "均值") != 0 && strcmp(tn[tk], "方差") != 0 && strcmp(tn[tk], "累积积") != 0 && strcmp(tn[tk], "窗口平均") != 0 && strcmp(tn[tk], "窗口最大") != 0 && strcmp(tn[tk], "窗口最小") != 0 && strcmp(tn[tk], "置位") != 0 && strcmp(tn[tk], "清位") != 0 && strcmp(tn[tk], "翻位") != 0 && strcmp(tn[tk], "读位") != 0 && strcmp(tn[tk], "范围值") != 0 && strcmp(tn[tk], "重复") != 0 && strcmp(tn[tk], "直到") != 0 && strcmp(tn[tk], "阶乘") != 0 && strcmp(tn[tk], "依据") != 0 && strcmp(tn[tk], "点积") != 0 && strcmp(tn[tk], "矩阵乘") != 0 && strcmp(tn[tk], "矩阵加") != 0 && strcmp(tn[tk], "矩阵减") != 0 && strcmp(tn[tk], "矩阵数乘") != 0 && strcmp(tn[tk], "单位阵") != 0 && strcmp(tn[tk], "卷积") != 0 && strcmp(tn[tk], "中位数") != 0 && strcmp(tn[tk], "通道") != 0 && strcmp(tn[tk], "互斥锁") != 0 && strcmp(tn[tk], "尝试锁") != 0 && strcmp(tn[tk], "闭包") != 0 && strcmp(tn[tk], "常量") != 0 && strcmp(tn[tk], "移入") != 0 && strcmp(tn[tk], "错") != 0 && strcmp(tn[tk], "声明") != 0 && strcmp(tn[tk], "守卫") != 0 && strcmp(tn[tk], "借用") != 0 && strcmp(tn[tk], "可变借用") != 0 && strcmp(tn[tk], "放还") != 0 && strcmp(tn[tk], "丢弃") != 0 && strcmp(tn[tk], "取消") != 0 && strcmp(tn[tk], "检查取消") != 0 && strcmp(tn[tk], "重试") != 0 && strcmp(tn[tk], "递归保护") != 0 && strcmp(tn[tk], "尾调用优化") != 0 && strcmp(tn[tk], "传线程") != 0 && strcmp(tn[tk], "致命错误") != 0 && strcmp(tn[tk], "可恢复错误") != 0 && strcmp(tn[tk], "用户错误") != 0 && strcmp(tn[tk], "系统错误") != 0 && strcmp(tn[tk], "逻辑错误") != 0 && strcmp(tn[tk], "跑测试") != 0 && strcmp(tn[tk], "判别") != 0 && strcmp(tn[tk], "契约") != 0 && strcmp(tn[tk], "信号量") != 0 && strcmp(tn[tk], "获取") != 0 && strcmp(tn[tk], "放行") != 0 && strcmp(tn[tk], "读写锁") != 0 && strcmp(tn[tk], "读锁") != 0 && strcmp(tn[tk], "写锁") != 0 && strcmp(tn[tk], "放锁") != 0 && strcmp(tn[tk], "条件变量") != 0 && strcmp(tn[tk], "等条件") != 0 && strcmp(tn[tk], "唤醒") != 0 && strcmp(tn[tk], "唤醒全部") != 0 && strcmp(tn[tk], "栅栏") != 0 && strcmp(tn[tk], "汇合") != 0 && strcmp(tn[tk], "恐慌") != 0 && strcmp(tn[tk], "自动") != 0 && strcmp(tn[tk], "编译期断言") != 0 && strcmp(tn[tk], "不变") != 0 && strcmp(tn[tk], "内存池") != 0 && strcmp(tn[tk], "取块") != 0 && strcmp(tn[tk], "还块") != 0 && strcmp(tn[tk], "加载库") != 0 && strcmp(tn[tk], "取函数") != 0 && strcmp(tn[tk], "动态数组") != 0 && strcmp(tn[tk], "字符串构建") != 0 && strcmp(tn[tk], "追加串") != 0 && strcmp(tn[tk], "追加字符") != 0 && strcmp(tn[tk], "释放串") != 0 && strcmp(tn[tk], "追加") != 0 && strcmp(tn[tk], "长度") != 0 && strcmp(tn[tk], "取元素") != 0 && strcmp(tn[tk], "构建长度") != 0 && strcmp(tn[tk], "忘记") != 0 && strcmp(tn[tk], "单元") != 0 && strcmp(tn[tk], "放单元") != 0 && strcmp(tn[tk], "取单元") != 0 && strcmp(tn[tk], "目标架构") != 0 && strcmp(tn[tk], "目标字长") != 0 && strcmp(tn[tk], "源位置") != 0 && strcmp(tn[tk], "空类型") != 0 && strcmp(tn[tk], "文档") != 0 && strcmp(tn[tk], "文档数") != 0 && strcmp(tn[tk], "越界检查") != 0 && strcmp(tn[tk], "栈") != 0 && strcmp(tn[tk], "推") != 0 && strcmp(tn[tk], "弹") != 0 && /* 阶段C-1 #33b 栈式 (2026-09-02 同步英文链) */ (
             (tt[tk + 1] == VR && (tt[tk + 2] == AK || tt[tk + 2] == SK || tt[tk + 2] == LB || tt[tk + 2] == DK || tt[tk + 2] == CK)) ||
             (tt[tk + 1] == DK && tt[tk + 2] == VR && (tt[tk + 3] == AK || tt[tk + 3] == SK || tt[tk + 3] == LB || tt[tk + 3] == DK || tt[tk + 3] == CK))
         )) {
@@ -8249,6 +8264,33 @@ __attribute__((unused))
         }
         若 (moved_cnt < 256) strcpy(moved_names[moved_cnt++], dn); /* 标记 moved: 生命周期结束, 后续读取 A3101 */
         返 blk_d;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "栈")) { /* 阶段C-1 #33b 栈式编程 (同步英文链): 栈 s, 容量; → 整数 __stk_s_buf[容量] = {0}; 整数 __stk_s_top = 0; (LIFO 数据栈) */
+        tk++; /* 栈 */
+        字 stk_n[64]; strcpy(stk_n, tn[tk]); tk++; /* s */
+        若 (tt[tk] == CK) tk++;
+        整 cap = 0; 若 (!const_expr_eval(&cap) || cap <= 0) { sprintf(g_errbuf, "栈: 容量须为编译期常量正整数 (v3.0 #33b)"); emit_error("A9005", g_errbuf); }
+        若 (tt[tk] == SK) tk++;
+        字 stk_b[80], stk_t[80]; sprintf(stk_b, "__stk_%s_buf", stk_n); sprintf(stk_t, "__stk_%s_top", stk_n);
+        整 stk_blk = Nd(5);
+        var_array(stk_b, cap, 4); vars[vcnt - 1].frows[0] = 4; /* 整数 __stk_s_buf[容量] (元素 4B) */
+        { 整 stk_nd = Nd(7); memcpy((字*)(nn + stk_nd), stk_b, 32); Nc(stk_blk, stk_nd); } /* 声明节点 (数组清零) */
+        { var_offset(stk_t); { 整 stk_nd = Nd(7); memcpy((字*)(nn + stk_nd), stk_t, 32); 整 stk_z = Nd(0); nv[stk_z] = 0; Nc(stk_nd, stk_z); Nc(stk_blk, stk_nd); } } /* 整数 __stk_s_top = 0; */
+        返 stk_blk;
+    }
+    若 (tt[tk] == VR && !strcmp(tn[tk], "推")) { /* 阶段C-1 #33b 栈式编程: 推 s, v; → __qcc_stack_push(__stk_s_buf, &__stk_s_top, v) 压栈 (LIFO) */
+        tk++; /* 推 */
+        字 stk_n[64]; strcpy(stk_n, tn[tk]); tk++; /* s */
+        若 (tt[tk] == CK) tk++;
+        整 val_e = expr(); /* v */
+        若 (tt[tk] == SK) tk++;
+        字 stk_b[80], stk_t[80]; sprintf(stk_b, "__stk_%s_buf", stk_n); sprintf(stk_t, "__stk_%s_top", stk_n);
+        整 call = Nd(4);
+        { 整 nb = Nd(1); memcpy((字*)(nn + nb), stk_b, 32); Nc(call, nb); } /* buf */
+        { 整 nt2 = Nd(1); memcpy((字*)(nn + nt2), stk_t, 32); 整 nta = Nd(11); Nc(nta, nt2); Nc(call, nta); } /* &top */
+        Nc(call, val_e); /* v */
+        { 整 fn = Nd(1); memcpy((字*)(nn + fn), "__qcc_stack_push", 17); Nc(call, fn); }
+        返 call;
     }
     若 (tt[tk] == VR && !strcmp(tn[tk], "移入")) { /* 接入 2026-08-28 机制层 #1/#5/#13: 所有权 move — 移入 dst, src; → { dst = src; src 标记已移动 }; #13 覆写: 移入 dst, src 覆写 钩子名; → { 钩子名(&dst, &src); src 标记已移动 } (可覆写移动, 替代按位) */
         tk++; /* 移入 */
@@ -12188,15 +12230,10 @@ __attribute__((unused))
 /* 嵌套宏展开帧栈: 每帧记录 宏索引 + 原始实参 token 切片 (调用者上下文惰性展开, 替换时括号包裹) */
 静 整 jm_stk_mi[24]; 静 整 jm_stk_an[24]; 静 整 jm_stk_raw[24][16][2];
 
-static void jm_overflow(void); /* fwd (定义在 jm_emit_hyg 之后) */
+静 空 jm_overflow(空); /* fwd (定义在 jm_emit_hyg 之后) */
 /* 接入 2026-09-01 #168 卫生宏: 函数宏体内局部变量声明在每次展开时 gensym 改名 (_hyg<序>_<原名>),
    与调用点同名变量隔离 (无变量捕获). 卫栈按展开深度嵌套; 实参展开在调用者上下文, 用调用者帧. */
-静 字 hyg_orig[32][32][64];
-/* #173 注解/属性 (2026-09-01): 注解 名 = 值; 顶层元数据标注 — 注解表 (名→值), 编译期可查 */
-静 构 { 字 name[64]; 字 value[256]; } annot_tbl[256];
-静 整 annot_n = 0;
-
-静 整 annot_get(常 字 *n, 字 *v) { 遍 (整 i = 0; i < annot_n; i++) 若 (!strcmp(annot_tbl[i].name, n)) { strcpy(v, annot_tbl[i].value); 返 1; } 返 0; } 静 字 hyg_new[32][32][80]; 静 整 hyg_cnt[32]; 静 整 hyg_depth = 0; 静 整 hyg_seq = 0;
+静 字 hyg_orig[32][32][64]; 静 字 hyg_new[32][32][80]; 静 整 hyg_cnt[32]; 静 整 hyg_depth = 0; 静 整 hyg_seq = 0;
 静 字 hyg_buf[32][64];
 
 静 整 hyg_find(常 字 *name, 字 *out) {
@@ -12605,18 +12642,18 @@ lex(exp_src);
             续;
         }
         若 (tt[tk] == VR && !strcmp(tn[tk], "注解")) { /* #173 注解/属性 (2026-09-01): 注解 名 = 值; — 元数据标注, 注册注解表 (顶层) */
-            tk++; /* 注解 */
-            字 an[64] = "";
-            若 (tt[tk] == VR) { strcpy(an, tn[tk]); tk++; }
-            若 (tt[tk] == AK) tk++; /* = */
-            字 av[256] = "";
-            若 (tt[tk] == STR) { 若 (tv[tk] >= 0 && str_tbl[tv[tk]]) strcpy(av, str_tbl[tv[tk]]); tk++; }
-            否 { 整 anum = 0; 若 (const_expr_eval(&anum)) sprintf(av, "%d", anum); }
-            若 (tt[tk] == SK) tk++; /* ; */
-            若 (an[0] && annot_n < 256) { strcpy(annot_tbl[annot_n].name, an); strcpy(annot_tbl[annot_n].value, av); annot_n++; }
-            续;
-        }
-        若 (tt[tk] == VR && (!strcmp(tn[tk], "接口") || !strcmp(tn[tk], "实现"))) { /* 接入 2026-08-29 P2 #207 修复: 接口/实现 顶层声明 — parse 顶层循环原无分支 → else break 吞后续 (main 丢失崩溃); stmt() 级已支持 (blk 内), 顶层显式转发 */
+        tk++; /* 注解 */
+        字 an[64] = "";
+        若 (tt[tk] == VR) { strcpy(an, tn[tk]); tk++; }
+        若 (tt[tk] == AK) tk++; /* = */
+        字 av[256] = "";
+        若 (tt[tk] == STR) { 若 (tv[tk] >= 0 && str_tbl[tv[tk]]) strcpy(av, str_tbl[tv[tk]]); tk++; }
+        否 { 整 anum = 0; 若 (const_expr_eval(&anum)) sprintf(av, "%d", anum); }
+        若 (tt[tk] == SK) tk++; /* ; */
+        若 (an[0] && annot_n < 256) { strcpy(annot_tbl[annot_n].name, an); strcpy(annot_tbl[annot_n].value, av); annot_n++; }
+        续;
+    }
+    若 (tt[tk] == VR && (!strcmp(tn[tk], "接口") || !strcmp(tn[tk], "实现"))) { /* 接入 2026-08-29 P2 #207 修复: 接口/实现 顶层声明 — parse 顶层循环原无分支 → else break 吞后续 (main 丢失崩溃); stmt() 级已支持 (blk 内), 顶层显式转发 */
             整 s = stmt(); /* 接口 名 { 方法 }; / 实现 名 于 类型 { 方法 = fn }; (注册接口/impl 表) */
             若 (s >= 0) Nc(p, s);
             续;
@@ -13170,6 +13207,7 @@ lex(exp_src);
         { 整 _et = tk + 1; 循环 (tt[_et] == VK) _et++; 若 (tt[_et] == ST) { _et++; 若 (tt[_et] == VR) _et++; } 若 (tt[_et] == EN) { _et++; 若 (tt[_et] == VR) _et++; } 若 (tt[_et] == VR && td_is(tn[_et])) _et++; 循环 (tt[_et] == DK || (tt[_et] == VK && !strcmp(tn[_et], "const"))) _et++; 若 (tt[_et] == VR && tt[_et + 1] == OK) { 整 _et2 = _et + 2, _ed = 1; 循环 (_et2 < TS && _ed > 0) { 若 (tt[_et2] == OK) _ed++; 否 若 (tt[_et2] == KK) _ed--; _et2++; } 若 (_et2 < TS && tt[_et2] == FK) qex_def = 1; } }
         若 (tt[tk] == VK && !strcmp(tn[tk], "extern") && !qex_def) {
             tk++; /* skip extern */
+            若 (tt[tk] == STR) tk++; /* 阶段C-1 #79 (2026-09-02): extern "C++"/extern "C" 链接规格串吞掉 (同步中文链) */
             整 e_char = 0, e_dbl = 0, e_ll = 0, e_pesz = 0, e_stidx = -1;
             循环 (tt[tk] == VK) { 若 (!strcmp(tn[tk], "char") || !strcmp(tn[tk], "_Bool")) e_char = 1; 否 若 (!strcmp(tn[tk], "double")) e_dbl = 1; 否 若 (!strcmp(tn[tk], "long")) e_ll = 1; tk++; } /* fix 2026-08-14: 循环消费所有 VK — extern const char * 的 const+char 两个 VK 原只吃一个 → char 残留 → 变量未注册 */
             若 (tt[tk] == ST) { /* extern struct X {...} var; — 注册结构体类型 + 解析 body 字段 (fix 2026-08-14: 原只跳过, body 字段泄漏为全局重复符号) */
@@ -20221,7 +20259,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
 
 静 空 dbg_gen(空) {
     整 pos = 0; /* 局部缓冲位 (qcc 全局计数器跨函数未刷内存) */
-    /* 源码名 (取 src_name 最后段) */
+    /* 源码名 (取 g_src_name 最后段) */
     字 short_name[256]; short_name[0] = 0;
     若 (g_src_name[0]) { 整 last_slash = -1; 遍 (整 i = 0; g_src_name[i]; i++) 若 (g_src_name[i] == '/' || g_src_name[i] == '\\') last_slash = i; strcpy(short_name, g_src_name + last_slash + 1); }
     若 (!short_name[0]) strcpy(short_name, "?");
@@ -20262,15 +20300,15 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     长 长 low_pc = code_base;
     dw8(&pos, (无 字)(low_pc & 0xff)); dw8(&pos, (无 字)((low_pc >> 8) & 0xff)); dw8(&pos, (无 字)((low_pc >> 16) & 0xff)); dw8(&pos, (无 字)((low_pc >> 24) & 0xff));
     dw8(&pos, (无 字)((low_pc >> 32) & 0xff)); dw8(&pos, (无 字)((low_pc >> 40) & 0xff)); dw8(&pos, (无 字)((low_pc >> 48) & 0xff)); dw8(&pos, (无 字)((low_pc >> 56) & 0xff));
-    dw4(&pos, 0); /* stmt_list = 0 (第一个 .debug_line 单元) */
+    dw4(&pos, 0); /* stmt_list = 0 */
     /* 函数 subprograms (覆盖式函数表: 遍历 fdef_list, fi 索引 dbg_fns) */
     遍 (整 i = 0; i < fdef_n; i++) {
         整 c = fdef_list[i];
         若 (c <= 0) 续;
-        字 *fn = (字*)(nn + c);
+        字 *fn = (字 *)(nn + c);
         整 fi2 = func_find(fn);
         若 (fi2 < 0 || fi2 >= 8192) 续;
-        若 (dbg_fns[fi2].end <= dbg_fns[fi2].start) 续; /* 未完成函数跳过 */
+        若 (dbg_fns[fi2].end <= dbg_fns[fi2].start) 续;
         dw_uleb(&pos, 2); /* abbrev 2: subprogram */
         dw_str(&pos, dbg_fns[fi2].name);
         长 长 fn_low = code_base + (长 长)dbg_fns[fi2].start;
@@ -20281,11 +20319,11 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         dw8(&pos, (无 字)((fn_high >> 32) & 0xff)); dw8(&pos, (无 字)((fn_high >> 40) & 0xff)); dw8(&pos, (无 字)((fn_high >> 48) & 0xff)); dw8(&pos, (无 字)((fn_high >> 56) & 0xff));
         dw_uleb(&pos, dbg_fns[fi2].line);
     }
-    dw_uleb(&pos, 0); /* CU children 结束标记 (compile_unit has_children=1) */
+    dw_uleb(&pos, 0); /* CU children 结束标记 */
     /* 回填 unit_length */
     整 info_size = pos - info_body_off;
     dbg_in_sz = info_size + 4;
-    dw4(&pos, 0); /* 占位 (随后覆盖) */
+    dw4(&pos, 0);
     { 整 info_end = pos;
       pos = info_body_off - 4;
       dw4(&pos, info_size);
@@ -20320,7 +20358,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     遍 (整 i = 0; i < fdef_n; i++) {
         整 c = fdef_list[i];
         若 (c <= 0) 续;
-        字 *fn = (字*)(nn + c);
+        字 *fn = (字 *)(nn + c);
         整 fi2 = func_find(fn);
         若 (fi2 < 0 || fi2 >= 8192) 续;
         若 (dbg_fns[fi2].end <= dbg_fns[fi2].start) 续;
@@ -20334,12 +20372,12 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     遍 (整 i = 0; i < dbg_line_n; i++) {
         整 lc = (整)(code_base + (长 长)dbg_lines[i][0]); 整 ln = dbg_lines[i][1]; /* 绝对 VA */
         若 (lc < prev_cp || ln <= 0) 续;
-        dw8(&pos, 2); dw_uleb(&pos, lc - prev_cp); /* advance_pc */
-        dw8(&pos, 3); dw_uleb(&pos, ln - prev_line); /* advance_line */
-        dw8(&pos, 1); /* copy */
+        dw8(&pos, 2); dw_uleb(&pos, lc - prev_cp);
+        dw8(&pos, 3); dw_uleb(&pos, ln - prev_line);
+        dw8(&pos, 1);
         prev_cp = lc; prev_line = ln;
     }
-    { 整 end_cp = (整)(code_base + (长 长)cp); /* end_sequence 在代码末尾, 不覆盖最后函数起点 */
+    { 整 end_cp = (整)(code_base + (长 长)cp); /* end_sequence 在代码末尾 */
       若 (end_cp > prev_cp) { dw8(&pos, 2); dw_uleb(&pos, end_cp - prev_cp); } }
     dw8(&pos, 0); dw8(&pos, 1); dw8(&pos, 1); /* DW_LNE_end_sequence */
     /* 回填 unit_length */
@@ -20362,14 +20400,14 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
        Make .text always end exactly where .data begins. */
     整 need = data_rva_base - text_rva;
     若 (text_size < need) text_size = need;
-    整 text_foff = dbg_on ? 0x400 : FILE_ALIGNMENT; /* #289: 5 节头超 0x200, .text 偏移需加大 */
+    整 text_foff = dbg_on ? 0x400 : FILE_ALIGNMENT; /* #289: 5 节头超 0x200 */
     整 data_rva = data_rva_base; /* dynamic .data base (text may exceed 4KB) */
     整 data_vsize = (data_extent() + 0x100000 + 4095) & ~4095; /* fix 2026-08-12: 随 extent 动态 — 自举 stk_top≈97MB 超旧固定 96MB; +1MB 余量, 覆盖栈底之下 */
     若 (data_vsize < 0x6000000) data_vsize = 0x6000000; /* 保持旧 96MB 地板 (fix 2026-08-11: str_tbl 2048 后 statics 46MB + bump 43MB ≈ 89MB > 80MB → 扩容到 96MB) */
-    整 dw_raw[3]; /* #289: debug 节 raw 指针 (节头写入时填充, 数据写入时定位) */
+    整 dw_raw[3]; /* #289: debug 节 raw 指针 */
     整 image_size = data_rva + data_vsize + 0x1000; /* SizeOfImage */
     { 整 dw_align = dbg_on ? ((dbg_bufpos + 0xfff) & ~0xfff) : 0;
-      若 (dw_align > 0) image_size += dw_align + 0x3000; } /* #289: 映像尺寸含 .debug 节 (3 节 VA 对齐损失 ≤2 页) */
+      若 (dw_align > 0) image_size += dw_align + 0x3000; } /* #289: 映像尺寸含 .debug 节 */
 
     /* DOS Header (64 bytes) */
     fputc('M', f); fputc('Z', f); pad(f, 58);
@@ -20443,21 +20481,21 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     w4(f, 0xC0000040);  /* initialized data + read + write */
 
     若 (dbg_on) { /* #289 DWARF: 3 个调试节 (数据段虚拟区后, 文件末尾) */
-        { 常 字 *dw_names[3] = { "/4", "/18", "/30" }; /* 长节名: 指向符号表后字符串表偏移 */
+        { 常 字 *dw_names[3] = { "/4", "/18", "/30" }; /* 长节名 */
           整 dw_va = (data_rva + data_vsize + 0xfff) & ~0xfff;  /* VA 0x1000 对齐 */
           整 dw_rawp = (data_foff + DATA_RAW_SZ + 0x1ff) & ~0x1ff; /* raw 0x200 对齐 */
           整 dw_sz[3]; dw_sz[0] = dbg_ab_sz; dw_sz[1] = dbg_in_sz; dw_sz[2] = dbg_ln_sz;
           遍 (整 dw_i = 0; dw_i < 3; dw_i++) {
               若 (dw_sz[dw_i] <= 0) dw_sz[dw_i] = 1;
-              dw_raw[dw_i] = dw_rawp; /* 记录 raw 指针 */
+              dw_raw[dw_i] = dw_rawp;
               fwrite(dw_names[dw_i], 1, strlen(dw_names[dw_i]), f); pad(f, 8 - strlen(dw_names[dw_i]));
-              w4(f, dw_sz[dw_i]);                          /* VirtualSize = 实际尺寸 */
+              w4(f, dw_sz[dw_i]);                          /* VirtualSize */
               w4(f, dw_va);                                /* VA 0x1000 对齐 */
               w4(f, (dw_sz[dw_i] + 0x1ff) & ~0x1ff);       /* SizeOfRawData 0x200 对齐 */
               w4(f, dw_rawp);                              /* PointerToRawData 0x200 对齐 */
               w4(f, 0); w4(f, 0); w2(f, 0); w2(f, 0);
-              w4(f, 0x42000040); /* DISCARDABLE + READONLY + INITIALIZED_DATA (BFD 拒 NOT_CACHED) */
-              dw_va += (dw_sz[dw_i] + 0xfff) & ~0xfff;     /* 每节独占页, VA 保持对齐 */
+              w4(f, 0x42000040); /* DISCARDABLE + READONLY + INITIALIZED_DATA */
+              dw_va += (dw_sz[dw_i] + 0xfff) & ~0xfff;
               dw_rawp += (dw_sz[dw_i] + 0x1ff) & ~0x1ff;
           } }
     }
@@ -20530,7 +20568,7 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
     pos = (整)ftell(f);
     整 data_end = data_foff + DATA_RAW_SZ; /* BSS分离: 只写导入表+heap counter (fix 2026-08-25) */
     pad_zero(f, data_end - pos); /* fix 2026-08-12: 原逐字节 fputc, 自宿主 52MB 填充 85s → 分块 fwrite */
-    若 (dbg_on && dbg_bufpos > 0) { /* #289: 写调试数据到文件末尾 (按节定位到 dw_raw[dw_i], raw 指针已 0x200 对齐) */
+    若 (dbg_on && dbg_bufpos > 0) { /* #289: 写调试数据到文件末尾 */
         { 整 dw_s = dbg_ab_off; 整 dw_e = dw_s + dbg_ab_sz;
           fseek(f, dw_raw[0], SEEK_SET);
           循环 (dw_s < dw_e) { fputc(dbg_buf[dw_s], f); dw_s++; } }
@@ -20540,33 +20578,28 @@ tdef_st_tag: /* fix 2026-08-27 ffmpeg demuxer: typedef struct Tag { fields } 有
         { 整 dw_s = dbg_ln_off; 整 dw_e = dw_s + dbg_ln_sz;
           fseek(f, dw_raw[2], SEEK_SET);
           循环 (dw_s < dw_e) { fputc(dbg_buf[dw_s], f); dw_s++; } }
-        /* 文件末尾填充: 最后一节 SizeOfRawData 已 0x200 对齐 (0xC1 修复) */
+        /* 文件末尾填充 */
         { 整 dw_t = dw_raw[2] + ((dbg_ln_sz + 0x1ff) & ~0x1ff);
           整 dw_p = (整)ftell(f);
           循环 (dw_p < dw_t) { fputc(0, f); dw_p++; } }
     }
-    若 (dbg_on) { /* #289 长节名: COFF 符号表 + 字符串表 (gdb/BFD 需要标准 .debug_* 节名) */
+    若 (dbg_on) { /* #289 长节名: COFF 符号表 + 字符串表 */
         { 整 sym_off = (整)ftell(f);
           { 常 字 *sym_names[3] = { ".debug_abbrev", ".debug_info", ".debug_line" };
             遍 (整 dw_i = 0; dw_i < 3; dw_i++) {
-                /* COFF 符号 18 字节: Name[8] + Value[4] + Section[2] + Type[2] + SClass[1] + Aux[1] */
                 { 整 nl = 0; 循环 (sym_names[dw_i][nl] && nl < 8) nl++;
                   fwrite(sym_names[dw_i], 1, nl, f);
                   若 (nl < 8) pad(f, 8 - nl); }
-                w4(f, 0); /* Value */
-                w2(f, dw_i + 3); /* SectionNumber: .debug_a=3, .debug_i=4, .debug_l=5 */
-                w2(f, 0); /* Type */
-                fputc(3, f); /* StorageClass: IMAGE_SYM_CLASS_STATIC */
-                fputc(0, f); /* NumberOfAuxSymbols */
+                w4(f, 0);
+                w2(f, dw_i + 3);
+                w2(f, 0);
+                fputc(3, f); fputc(0, f);
             } }
-          /* 文件符号 (IMAGE_SYM_CLASS_FILE = 103) */
           pad(f, 8); w4(f, 0); w2(f, 0); w2(f, 0); fputc(103, f); fputc(0, f);
-          /* 字符串表: 4 字节大小 + 3 长节名 */
           w4(f, 4 + 14 + 12 + 12);
           fwrite(".debug_abbrev", 1, 13, f); fputc(0, f);
           fwrite(".debug_info", 1, 11, f); fputc(0, f);
           fwrite(".debug_line", 1, 11, f); fputc(0, f);
-          /* 回填 PE 头 (e_lfanew=64: COFF 头@68, PtrToSym@+8=76=0x4C, NumSym@+12=80=0x50) */
           fseek(f, 0x4C, SEEK_SET); w4(f, sym_off);
           fseek(f, 0x50, SEEK_SET); w2(f, 4);
         }
@@ -21505,6 +21538,10 @@ __attribute__((unused))
    语义依据: 《甲言_逆向定律库_IR工程预埋全景.md》§12 优先级 (类型宽度第一)
    纪律: IR_PREBED_ACTIVE 未定义 → 结构定义不参与编译 → 产物零影响 → 自举不变 (85af2ba4)
    激活: Phase 7 打开宏 + 引用 → 必须过预埋尺 (v1.4 §7.2) + 差异测试双闸 */
+/* 阶段C-0 IR 激活: 预埋结构位真实落位, 尚无发射器引用 → GCC -Wunused-variable 豁免 (仅种子层, qcc 自举前端不查 unused) */
+#若 defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
 #define IR_PREBED_ACTIVE 1  /* 阶段C-0 IR 激活 (2026-09-01 大哥: 开炮): 结构位真实落位 (BSS 分离加载, 产物文件大小不变); 关闭删此行 */
 #ifdef IR_PREBED_ACTIVE
 /* 1. IR3 三地址码 (v1.4 §2.1, LLVM 值模型定律 §6) — 类型宽度第一优先 */
@@ -22179,7 +22216,7 @@ serve_compile_done:
         }
         若 (strcmp(argv[argi], "--test") == 0) { printf("qcc_x86 selftest PASS · 铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828\n"); 返 0; }
         若 (strcmp(argv[argi], "-S") == 0) { asm_mode = 1; argi++; 续; }
-        若 (strcmp(argv[argi], "-g") == 0) { dbg_on = 1; argi++; 续; } /* #289 DWARF (2026-09-01): 生成调试信息 */
+    若 (strcmp(argv[argi], "-g") == 0) { dbg_on = 1; argi++; 续; } /* #289 DWARF (2026-09-01): 生成调试信息 */
         若 (strcmp(argv[argi], "-c") == 0) { coff_mode = 1; argi++; 续; }
         若 (strcmp(argv[argi], "-bin") == 0) { bin_mode = 1; argi++; 续; } /* fix 2026-08-08: 裸二进制 (内核) */
         若 (strcmp(argv[argi], "-o") == 0 && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; 续; }
@@ -22204,8 +22241,8 @@ serve_compile_done:
         若 (strcmp(argv[argi], "--interface") == 0) { interface_mode = 1; argi++; 续; } /* 接口文件/语义导航 (可吞清单 P1, MoonBit #4 参考, 甲言化: 接口文件/导航 — 解析后导出 API 表面 JSON + 函数定义行号, AI 读接口不读实现) */
         若 (strcmp(argv[argi], "--recorder") == 0 && argc > argi + 1) { recorder_mode = 1; strncpy(recorder_path, argv[argi + 1], 511); recorder_path[511] = 0; argi += 2; 续; } /* 编译黑匣子 (可吞清单 P1, Agint flight-recorder 参考, 甲言化: 黑匣子) — 每函数代码增量哈希帧, 分歧逐帧定位 */
         若 (strcmp(argv[argi], "--serve") == 0) { serve_mode = 1; argi++; 续; } /* 编译服务器 qccd (甲言化, 可吞清单 P1): 长驻 stdin/stdout JSON-lines — AI 迭代循环毫秒级 */
-         若 (strcmp(argv[argi], "--annotations") == 0) { annot_mode = 1; argi++; 续; } /* #173 注解导出 */
-       若 (strcmp(argv[argi], "--refs") == 0) { refs_mode = 1; argi++; 续; } /* 引用收集 (可吞清单 P1): 谁引用了 X — 解析期记录 (名, 行) 表, JSON 导出 */
+        若 (strcmp(argv[argi], "--refs") == 0) { refs_mode = 1; argi++; 续; }
+    若 (strcmp(argv[argi], "--annotations") == 0) { annot_mode = 1; argi++; 续; } /* #173 注解导出 */ /* 引用收集 (可吞清单 P1): 谁引用了 X — 解析期记录 (名, 行) 表, JSON 导出 */
 若 (strcmp(argv[argi], "-graph") == 0 && argc > argi + 1) { graph_mode = 1; strncpy(graph_out, argv[argi + 1], 511); graph_out[511] = 0; argi += 2; 续; } /* -graph 旁路导出 (P0 工具侧) */
         若 (strcmp(argv[argi], "-I") == 0 && argc > argi + 1) {
             字 *hb = read_file(argv[argi + 1]);
