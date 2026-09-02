@@ -5128,9 +5128,10 @@ static int prim(void) {
         tk++; /* 区域 */
         char opn[64]; strcpy(opn, tn[tk]); tk++; /* 操作名: 分配/重置/释放 — ⚠️ 分配→malloc 释放→free 已被 lexer 映射, 比较用映射后英文 (fix 2026-08-27) */
         char fname[80];
-        if (!strcmp(opn, "malloc")) sprintf(fname, "arena_alloc");
-        else if (!strcmp(opn, "重置")) sprintf(fname, "arena_reset");
-        else if (!strcmp(opn, "free")) sprintf(fname, "arena_free");
+        if (!strcmp(opn, "malloc")) sprintf(fname, "__arena_alloc"); /* 阶段C-1 #82 内置运行时 (同步英文链) */
+        else if (!strcmp(opn, "重置")) sprintf(fname, "__arena_reset");
+        else if (!strcmp(opn, "free")) sprintf(fname, "__arena_free");
+        else if (!strcmp(opn, "建")) sprintf(fname, "__arena_create"); /* #82: 区域 建(a, cap) 创建池 */
         else sprintf(fname, "arena_%s", opn);
         if (tt[tk] == OK) tk++; /* ( */
         int e_ar = expr(); /* arena 表达式 */
