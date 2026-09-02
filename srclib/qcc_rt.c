@@ -655,6 +655,37 @@ void __arena_reset(int *a) {
     if (i >= 0 && i < 16) __arena_size[i] = 0;
 }
 
+/* 接入 2026-09-02 #88 COW 写时复制: 写时复制 建(x, cap) → __cow_create(&x, cap) — COW 块 {refs=1, cap, data[]};
+   写时复制 共享(dst, src) → __cow_share(&dst, src) — dst 共享 src 块 (refs++);
+   写时复制 改(x, i, v) → __cow_mutate(&x, i, v) — 写时复制: refs>1 先深拷贝 (原块 refs--) 再写, 共享方不受影响
+   头偏移用 (char*) 显式 8 字节 (qcc 指针元素算术不可靠, 2026-09-02 实证 a0=99 bug) */
+void __cow_create(int **pp, int cap) {
+    int c = cap > 0 ? cap : 1;
+    int *h = (int *)malloc(8 + c * 4);
+    h[0] = 1;
+    h[1] = c;
+    *pp = (int *)((char *)h + 8);
+}
+void __cow_share(int **dst, int *src) {
+    int *h = (int *)((char *)src - 8);
+    h[0] = h[0] + 1;
+    *dst = src;
+}
+void __cow_mutate(int **pp, int idx, int val) {
+    int *h = (int *)((char *)*pp - 8);
+    if (h[0] > 1) {
+        h[0] = h[0] - 1;
+        int c = h[1];
+        int *np = (int *)malloc(8 + c * 4);
+        np[0] = 1;
+        np[1] = c;
+        memcpy((char *)np + 8, (char *)*pp, c * 4);
+        *pp = (int *)((char *)np + 8);
+        h = (int *)((char *)*pp - 8);
+    }
+    (*pp)[idx] = val;
+}
+
 /* 接入 2026-09-01 #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create — 动态加载 kernel32
    (CreateFileA 打开 + CreateFileMappingA 建映射 + MapViewOfFile 视图, 读写); 取消映射(指针) → __qcc_map_close */
 static void *__mm_hf[16];
