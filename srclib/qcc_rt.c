@@ -686,6 +686,9 @@ void __cow_mutate(int **pp, int idx, int val) {
     (*pp)[idx] = val;
 }
 
+/* 接入 2026-09-02 #80 异常ABI: 异常对象携带值 — 抛出 码, 值 → ex_val = 值; 试 { } 捕获 名 { } → 名 = ex_val (跨函数传播复用 #55 ex_pending/throw_ex 用户定义) */
+int ex_val = 0;
+
 /* 接入 2026-09-01 #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create — 动态加载 kernel32
    (CreateFileA 打开 + CreateFileMappingA 建映射 + MapViewOfFile 视图, 读写); 取消映射(指针) → __qcc_map_close */
 static void *__mm_hf[16];
