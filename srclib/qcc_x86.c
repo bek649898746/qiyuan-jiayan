@@ -2185,7 +2185,7 @@ static void b4_at(int pos, int v) { code[pos] = v & 0xff; code[pos+1] = (v>>8)&0
 /* ?????? ??????: ???????????????????? */
 #define ASZ 1048576 /* 524288→1048576 (fix 2026-08-26 redis/lua: #if 反斜杠续行 + 表达式注释剥离后条件编译更正确 → sqlite3.c 多行 #if 含入更多代码 → AST 顶满 524288) */
 static int blk_vs[ASZ]; /* fix 2026-08-19: 块节点 (nt==5) 的 var 起点 = blk() 入口 vcnt — codegen case-5 设置 cg_blk_start 用 (嵌套块作用域判定) */
-#define MAX_LABELS 262144 /* 131072→262144 (fix 2026-08-31 中文链: layer_change 变量形式词名注入加了 cast 解析中文等价 — qcc_zh.jy 编译时短路 || 标签增多, 原上限恰好被顶满 LABEL-OVERFLOW; 扩容 2 倍给中英双链留余量) */
+#define MAX_LABELS 1048576 /* 262144→1048576 (fix 2026-09-05 P0 攻坚: zh 源 2.5MB 自举 lc=159836/patch_n=262127 贴顶, 余量仅 17 → 任何新特性即 [PATCH-OVERFLOW]; ×4 对齐编译器体积增长; 前序 131072→262144 (fix 2026-08-31 中文链)) */
 static int label_pos[MAX_LABELS];
 static int label_set[MAX_LABELS];
 static int defer_stmts[4096][64]; /* 接入 2026-08-27 defer: 每函数 defer 语句节点 (按函数序号 fvn, LIFO — epi_label 处逆序执行) */
@@ -2193,7 +2193,7 @@ static int defer_cnt[4096];
 static int cur_fn_defer_idx = -1; /* parse 时当前函数序号 (defer 收集目标) */
 /* 接入 2026-08-27 运算符重载: 重载 + 点 = 点_add; → ov 表注册, add() 分派 (左操作数是 struct 变量且类型匹配 → 函数调用) */
 static char ov_op[32]; static char ov_ty[32][64]; static char ov_fn[32][64]; static int ov_n;
-static struct { int patch_at; int target_label; int is_jmp; } patches[262144]; int patch_n; /* fix 2026-08-06: 16384→65536; 2026-08-16 自举回归: 65536→131072; 2026-08-28: 131072→262144 — 新特性批量接入 patch_n 贴上限 ([PATCH-OVERFLOW] 假绿) */
+static struct { int patch_at; int target_label; int is_jmp; } patches[1048576]; int patch_n; /* fix 2026-09-05 P0: 262144→1048576 — zh 源自举 patch_n=262127 贴顶余 17 (见 MAX_LABELS 注); 前序 16384→65536; 2026-08-16 自举回归: 65536→131072; 2026-08-28: 131072→262144 — 新特性批量接入 patch_n 贴上限 ([PATCH-OVERFLOW] 假绿) */
 static struct { int patch_at; int str_idx; } str_patches[32768]; int strpn; /* fix 2026-08-16 自举回归: 2048→8192 — 同步镜像后字符串引用超 2048; fix 2026-08-26 redis: 8192→32768 — redis-benchmark.c 1.6 万字符串字面量引用超 8192 */
 static struct { int patch_at; int dbl_idx; } dbl_patches[2048]; int dbl_patch_n; /* double-literal rip-relative disp32 patches */
 static struct { int patch_at; int label; } fn_patches[2048]; int fnpn; /* function-address imm32 patches */
@@ -2371,7 +2371,7 @@ static void patch_label(int at, int l, int is_jmp) {
         }
         return;
     }
-    if (patch_n >= 262144) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d (at label %d)\n", patch_n, l); abort(); }
+    if (patch_n >= 1048576) { fprintf(stderr, "[PATCH-OVERFLOW] patch_n=%d (at label %d)\n", patch_n, l); abort(); }
     /* Emit the jump mnemonic into the asm text using the REAL label id (l),
        not the placeholder rel value. Fix 2026-08-03: -S output previously
        used jz_rel's rel (always 1 for forward refs), so asm_zh could never
