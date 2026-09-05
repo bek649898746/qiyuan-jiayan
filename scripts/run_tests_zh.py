@@ -53,6 +53,7 @@ CORE_FEAT = [
     'scripts/feat_zh_fieldkw_data.c', 'scripts/feat_zh_fieldkw_long_neg.c',
     'scripts/feat_zh_field_unknown_neg.c', 'scripts/feat_zh_field_nested_unknown_neg.c',
     'scripts/feat_zh_field_scalar_neg.c', 'scripts/feat_zh_iface_field_layout.c',
+    'scripts/feat_zh_iface_field_assign.c',
     'scripts/feat_zh_inherit193.c', 'scripts/feat_zh_inherit193_edge.c',
     'scripts/feat_guard.c', 'scripts/feat_guard2.c', 'scripts/feat_raii_zh.c', 'scripts/feat_unique_zh.c',
 ]
