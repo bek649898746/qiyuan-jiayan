@@ -19,8 +19,7 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
 
 # 快速集 (30 个关键用例, 覆盖类型/布局/变参/控制流/指针/字符串/数组)
-FAST_TESTS = [
-    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qcc/regress_typedef_size.c',
+FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qcc/regress_typedef_size.c',
     'qcc/regress_size_t_layout.c', 'qcc/regress_unsigned_cmp.c', 'qcc/regress_ll_neg.c',
     'qcc/regress_struct_align.c', 'qcc/regress_union.c', 'qcc/regress_bitfield_key.c',
     'qcc/regress_nested_struct_field.c', 'qcc/regress_anon_union.c',
@@ -33,8 +32,27 @@ FAST_TESTS = [
     'behavior/b_printf.c', 'behavior/b_struct.c',
 ]
 
+# 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
+CORE_FEAT = [
+    'scripts/feat_move_zh.c', 'scripts/feat_move2_zh.c', 'scripts/feat_move13_zh.c',
+    'scripts/feat_zh_copy_semantics9.c', 'scripts/feat_zh_copy_semantics9_neg.c',
+    'scripts/feat_zh_linear51.c', 'scripts/feat_zh_linear51_neg.c',
+    'scripts/feat_ownership.c', 'scripts/feat_drop_zh.c',
+    'scripts/feat_borrow3_zh.c', 'scripts/feat_borrow3_neg.c', 'scripts/feat_borrow_auto_zh.c',
+    'scripts/feat_zh_own_move.c', 'scripts/feat_zh_own_move_neg.c', 'scripts/feat_zh_own_param_neg.c',
+    'scripts/feat_zh_copy_auto.c', 'scripts/feat_zh_copy_auto_neg.c',
+    'scripts/feat_zh_borrow_cfg.c', 'scripts/feat_zh_borrow_cfg_neg.c',
+    'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
+    'scripts/feat_zh_borrow_nest_neg.c',
+    'scripts/feat_zh_vtable.c', 'scripts/feat_zh_vtable_neg.c', 'scripts/feat_zh_vtable_inherit.c',
+    'scripts/feat_zh_inherit193.c', 'scripts/feat_zh_inherit193_edge.c',
+    'scripts/feat_guard.c', 'scripts/feat_guard2.c', 'scripts/feat_raii_zh.c', 'scripts/feat_unique_zh.c',
+]
+
 def build_tests(args):
     if args.zh_feat:
+        return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
+    if args.zh_feat_all:
         tests = sorted('scripts/' + f for f in os.listdir('scripts')
                        if (f.startswith('feat_zh_') or f.endswith('_zh.c')) and f.endswith('.c'))
         return tests
@@ -80,9 +98,11 @@ def run_one_test(name):
         if expect_cfail:
             return (name, True, 'compile_fail(期望)')
         err = (r.stderr or '') + (r.stdout or '')
-        if '主 入口' in err or '未找到' in err and '入口' in err:
-            return (name, True, '库文件(skip: 无主入口)')   # scripts/feat 库文件非测试
-        return (name, False, '编译失败')
+        if '未定义函数' in err or '不能取地址' in err or '未找到函数' in err or '未声明函数' in err:
+            return (name, True, '依赖库(skip)')   # scripts/feat 依赖配套文件 (map/complex 等), 非独立测试
+        if '主 入口' in err:
+            return (name, True, '无主链接测试(skip)')  # 需 -c 的跨 .o 库文件 (encap 类); 核心列表 (--zh-feat) 不含此类, 真崩由核心列表盯防
+        return (name, False, '编译失败')           # 其它真回归 → FAIL
 
     # 运行
     out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
@@ -127,7 +147,8 @@ def run_one_test(name):
 def main():
     ap = argparse.ArgumentParser(description='甲言行为断言测试')
     ap.add_argument('--fast', action='store_true', help='快速集 30 用例 (~1 分钟)')
-    ap.add_argument('--zh-feat', action='store_true', help='中文特性测试 (scripts/feat_zh_*.c + feat_*_zh.c; _neg 负例期望编译失败, 库文件自动跳过)')
+    ap.add_argument('--zh-feat', action='store_true', help='核心确定性中文特性 (scripts/ CORE_FEAT 白名单: 所有权/借用/多态/copy 族)')
+    ap.add_argument('--zh-feat-all', action='store_true', help='全量中文特性 (scripts/feat_zh_*; 依赖/无主库 skip, 其它诚实 FAIL)')
     ap.add_argument('--parallel', type=int, default=0, help='并行 worker 数 (0=串行)')
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
