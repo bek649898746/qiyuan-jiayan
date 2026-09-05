@@ -50,6 +50,7 @@ CORE_FEAT = [
     'scripts/feat_zh_vtable_inline.c', 'scripts/feat_zh_vtable_inline_neg.c',
     'scripts/feat_zh_vtable_copyinit.c', 'scripts/feat_zh_vtable_copyinit_neg.c',
     'scripts/feat_zh_vtable_ifaceparent.c',
+    'scripts/feat_zh_fieldkw_data.c', 'scripts/feat_zh_fieldkw_long_neg.c',
     'scripts/feat_zh_inherit193.c', 'scripts/feat_zh_inherit193_edge.c',
     'scripts/feat_guard.c', 'scripts/feat_guard2.c', 'scripts/feat_raii_zh.c', 'scripts/feat_unique_zh.c',
 ]
