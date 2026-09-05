@@ -59,7 +59,7 @@ CORE_FEAT = [
     'scripts/feat_zh_iface_field_arg.c', 'scripts/feat_zh_iface_field_arg_neg.c',
     'scripts/feat_zh_iface_field_copyout.c', 'scripts/feat_zh_iface_field_copyout_neg.c',
     'scripts/feat_zh_iface_field_container.c',
-    'scripts/feat_zh_iface_field_arr_neg.c',
+    'scripts/feat_zh_iface_field_arr.c',
     'scripts/feat_zh_iface_field_nested.c',
     'scripts/feat_zh_inherit193.c', 'scripts/feat_zh_inherit193_edge.c',
     'scripts/feat_guard.c', 'scripts/feat_guard2.c', 'scripts/feat_raii_zh.c', 'scripts/feat_unique_zh.c',
