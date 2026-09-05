@@ -45,6 +45,7 @@ CORE_FEAT = [
     'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
     'scripts/feat_zh_borrow_nest_neg.c',
     'scripts/feat_zh_vtable.c', 'scripts/feat_zh_vtable_neg.c', 'scripts/feat_zh_vtable_inherit.c',
+    'scripts/feat_zh_vtable_multi.c', 'scripts/feat_zh_vtable_mparam.c', 'scripts/feat_zh_vtable_param.c',
     'scripts/feat_zh_inherit193.c', 'scripts/feat_zh_inherit193_edge.c',
     'scripts/feat_guard.c', 'scripts/feat_guard2.c', 'scripts/feat_raii_zh.c', 'scripts/feat_unique_zh.c',
 ]
