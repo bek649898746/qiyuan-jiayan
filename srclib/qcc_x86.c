@@ -2214,8 +2214,8 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 static int stc_disp(int idx);
 static struct { char name[64]; int label; int defined; int ret_si; int declared; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1); declared (接入 2026-08-28 declare 声明先行): 声明 名字(参数) 返回 类型; 注册签名, 未实现生成 stub (缺失=警告非错误, AI 渐进补全) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
-static char fn_static_names[512][64]; static int fn_static_n;
-static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } else budget_fail("static函数表 fn_static", 512); }
+static char fn_static_names[1024][64]; static int fn_static_n;
+static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 1024) { strcpy(fn_static_names[fn_static_n++], n); } else budget_fail("static函数表 fn_static", 1024); }
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static void fn_static_unmark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) { for (int j = i; j < fn_static_n - 1; j++) strcpy(fn_static_names[j], fn_static_names[j + 1]); fn_static_n--; return; } }
 static int func_n = 0;
