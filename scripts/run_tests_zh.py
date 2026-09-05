@@ -55,7 +55,7 @@ CORE_FEAT = [
     'scripts/feat_zh_field_scalar_neg.c', 'scripts/feat_zh_iface_field_layout.c',
     'scripts/feat_zh_iface_field_assign.c',
     'scripts/feat_zh_iface_field_call.c', 'scripts/feat_zh_iface_field_call_neg.c',
-    'scripts/feat_zh_field_decl_swallow_neg.c',
+    'scripts/feat_zh_field_decl_swallow_neg.c', 'scripts/feat_zh_field_decl_swallow_nested_neg.c',
     'scripts/feat_zh_iface_field_arg.c', 'scripts/feat_zh_iface_field_arg_neg.c',
     'scripts/feat_zh_iface_field_copyout.c', 'scripts/feat_zh_iface_field_copyout_neg.c',
     'scripts/feat_zh_iface_field_container.c',
