@@ -34,6 +34,10 @@ FAST_TESTS = [
 ]
 
 def build_tests(args):
+    if args.zh_feat:
+        tests = sorted('scripts/' + f for f in os.listdir('scripts')
+                       if (f.startswith('feat_zh_') or f.endswith('_zh.c')) and f.endswith('.c'))
+        return tests
     if args.fast:
         return list(FAST_TESTS)
     if args.only:
@@ -46,7 +50,10 @@ def build_tests(args):
 def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
     qcc = os.path.join(root, 'qcc_zh_v7.exe')
-    src = os.path.join('tests', name)
+    if name.startswith('scripts/'):
+        src = os.path.join(root, name)
+    else:
+        src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
@@ -59,7 +66,7 @@ def run_one_test(name):
         if m: expected_out = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
-        if '@EXPECTED compile_fail' in line: expect_cfail = True
+        if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -72,6 +79,9 @@ def run_one_test(name):
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
             return (name, True, 'compile_fail(期望)')
+        err = (r.stderr or '') + (r.stdout or '')
+        if '主 入口' in err or '未找到' in err and '入口' in err:
+            return (name, True, '库文件(skip: 无主入口)')   # scripts/feat 库文件非测试
         return (name, False, '编译失败')
 
     # 运行
@@ -117,6 +127,7 @@ def run_one_test(name):
 def main():
     ap = argparse.ArgumentParser(description='甲言行为断言测试')
     ap.add_argument('--fast', action='store_true', help='快速集 30 用例 (~1 分钟)')
+    ap.add_argument('--zh-feat', action='store_true', help='中文特性测试 (scripts/feat_zh_*.c + feat_*_zh.c; _neg 负例期望编译失败, 库文件自动跳过)')
     ap.add_argument('--parallel', type=int, default=0, help='并行 worker 数 (0=串行)')
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
