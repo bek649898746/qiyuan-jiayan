@@ -54,6 +54,7 @@ CORE_FEAT = [
     'scripts/feat_zh_own_switch_case_guard.c', 'scripts/feat_zh_own_guard_nested_neg.c',
     'scripts/feat_zh_own_labeled_break.c', 'scripts/feat_zh_own_guard_defer.c',
     'scripts/feat_zh_typedrop_scope.c', 'scripts/feat_zh_typedrop_overwrite.c',
+    'scripts/feat_zh_typedrop_param.c',
     'scripts/feat_zh_borrow_cfg.c', 'scripts/feat_zh_borrow_cfg_neg.c',
     'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
     'scripts/feat_zh_borrow_nest_neg.c',
