@@ -43,6 +43,7 @@ CORE_FEAT = [
     'scripts/feat_zh_copy_auto.c', 'scripts/feat_zh_copy_auto_neg.c',
     'scripts/feat_zh_own_branch.c', 'scripts/feat_zh_own_branch_neg.c',
     'scripts/feat_zh_own_guardmove.c',
+    'scripts/feat_zh_own_partial.c', 'scripts/feat_zh_own_partial_neg.c',
     'scripts/feat_zh_borrow_cfg.c', 'scripts/feat_zh_borrow_cfg_neg.c',
     'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
     'scripts/feat_zh_borrow_nest_neg.c',
