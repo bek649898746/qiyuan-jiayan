@@ -57,7 +57,7 @@ CORE_FEAT = [
     'scripts/feat_zh_typedrop_param.c', 'scripts/feat_zh_typedrop_branch.c',
     'scripts/feat_zh_typedrop_retmove.c', 'scripts/feat_zh_typedrop_loop.c',
     'scripts/feat_zh_typedrop_movein.c', 'scripts/feat_zh_typedrop_decl_assign.c',
-    'scripts/feat_zh_disc_top.c',
+    'scripts/feat_zh_typedrop_array.c', 'scripts/feat_zh_disc_top.c',
     'scripts/feat_zh_borrow_cfg.c', 'scripts/feat_zh_borrow_cfg_neg.c',
     'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
     'scripts/feat_zh_borrow_nest_neg.c',
