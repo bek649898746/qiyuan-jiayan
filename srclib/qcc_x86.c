@@ -12906,6 +12906,35 @@ lex(exp_src);
             if (sealed_n < 64 && !sealed_find(sn)) strcpy(sealed_names[sealed_n++], sn);
             continue;
         }
+        if (tt[tk] == VR && !strcmp(tn[tk], "判别")) { /* C2fix (2026-09-06 虾米): 判别 顶层定义 (D-1 镜像) — 判别 槽型 于 { 值槽, 数组槽(元素数) }; 顶层生成 struct + 变体常量 */
+            tk++; /* 判别 */
+            const char *tn2 = tn[tk]; tk++; /* 类型名 */
+            if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
+            if (tt[tk] == FK) tk++; /* { */
+            const char *vnames[16]; int vloads[16]; int vn = 0;
+            while (tt[tk] != UK && tt[tk] != EK && vn < 16) {
+                if (tt[tk] == VR) {
+                    vnames[vn] = tn[tk]; tk++;
+                    int load = 0;
+                    if (tt[tk] == OK) { tk++; if (tt[tk] == VR) { load = 1; tk++; } if (tt[tk] == KK) tk++; }
+                    vloads[vn] = load;
+                    vn++;
+                }
+                if (tt[tk] == CK) tk++;
+            }
+            if (tt[tk] == UK) tk++; /* } */
+            if (tt[tk] == SK) tk++; /* ; */
+            int maxload = 0;
+            for (int i = 0; i < vn; i++) { char mn[160]; sprintf(mn, "%s_%s", tn2, vnames[i]); e_reg(mn, i); if (vloads[i] > maxload) maxload = vloads[i]; }
+            int nsi = st_find(tn2);
+            if (nsi < 0) nsi = st_add(tn2);
+            st_field_sz_r(nsi, "tag", 4, 4);
+            st_field_sz_r(nsi, "p0", 4, 4);
+            if (maxload >= 1) st_field_sz_r(nsi, "p1", 4, 4);
+            st_finalize(nsi);
+            disc_reg(tn2, vn);
+            continue;
+        }
         if (tt[tk] == VR && !strcmp(tn[tk], "复制")) { /* 阶段C-1 #9 Copy (同步英文链): 复制 T; → 标记类型 T 可拷贝 — 移入 目标, 源 对 Copy 类型不失效源 */
             tk++; /* 复制 */
             char cp2[64]; strcpy(cp2, tn[tk]); tk++; /* T */
