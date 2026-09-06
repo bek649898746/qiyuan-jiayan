@@ -66,6 +66,7 @@ CORE_FEAT = [
     'scripts/feat_zh_typedrop_order.c', 'scripts/feat_zh_typedrop_order2.c',
     'scripts/feat_zh_typedrop_discard.c', 'scripts/feat_zh_typedrop_elemset.c',
     'scripts/feat_zh_typedrop_fieldarr.c', 'scripts/feat_zh_typedrop_fieldarrcomp.c',
+    'scripts/feat_zh_typedrop_elemdyn.c',
     'scripts/feat_zh_borrow_cfg.c', 'scripts/feat_zh_borrow_cfg_neg.c',
     'scripts/feat_zh_borrow_cfg2_neg.c', 'scripts/feat_zh_borrow_cfg3.c',
     'scripts/feat_zh_borrow_nest_neg.c',
