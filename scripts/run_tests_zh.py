@@ -107,9 +107,17 @@ def build_tests(args):
     return tests
 
 
+def find_qcc():
+    """最新自举产物: qcc_zh_v7 → ... → v1 (审计 2026-09-07: 原硬编码 v7, 仅烟测 v1 时 fallback gcc)"""
+    for n in range(7, 0, -1):
+        p = os.path.join(root, 'qcc_zh_v%d.exe' % n)
+        if os.path.exists(p):
+            return p
+    return os.path.join(root, 'qcc_x86.exe')
+
 def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
-    qcc = os.path.join(root, 'qcc_zh_v7.exe')
+    qcc = find_qcc()
     if name.startswith('scripts/'):
         src = os.path.join(root, name)
     else:
@@ -196,7 +204,7 @@ def main():
     args = ap.parse_args()
 
     # 确保编译器
-    qcc = os.path.join(root, 'qcc_zh_v7.exe')
+    qcc = find_qcc()
     if not os.path.exists(qcc):
         print('[1] 编译宿主 qcc_x86 ...')
         r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/qcc_x86.c', '-o', qcc])
