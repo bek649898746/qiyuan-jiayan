@@ -10667,8 +10667,8 @@ static int stmt(void) {
         const char *tn2 = tn[tk]; tk++; /* 类型名 (指针不拷贝, 防 stmt 栈帧膨胀) */
         if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
         if (tt[tk] == FK) tk++; /* { */
-        const char *vnames[16]; int vloads[16]; int vn = 0; /* 指针数组防栈帧膨胀 */
-        while (tt[tk] != UK && tt[tk] != EK && vn < 16) {
+        const char *vnames[64]; int vloads[64]; int vn = 0; /* 指针数组防栈帧膨胀; E1e (2026-09-06): 16→64 变体 (判别 节点 全类型 32 变体) */
+        while (tt[tk] != UK && tt[tk] != EK && vn < 64) {
             if (tt[tk] == VR) {
                 vnames[vn] = tn[tk]; tk++; /* 指针指向全局 tn */
                 int load = 0;
@@ -12911,8 +12911,8 @@ lex(exp_src);
             const char *tn2 = tn[tk]; tk++; /* 类型名 */
             if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
             if (tt[tk] == FK) tk++; /* { */
-            const char *vnames[16]; int vloads[16]; int vn = 0;
-            while (tt[tk] != UK && tt[tk] != EK && vn < 16) {
+            const char *vnames[64]; int vloads[64]; int vn = 0;
+            while (tt[tk] != UK && tt[tk] != EK && vn < 64) {
                 if (tt[tk] == VR) {
                     vnames[vn] = tn[tk]; tk++;
                     int load = 0;
