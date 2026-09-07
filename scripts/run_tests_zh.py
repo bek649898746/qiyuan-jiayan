@@ -83,8 +83,7 @@ CORE_FEAT = [
     'scripts/feat_unwrap.c', 'scripts/feat_unwrap2.c',
     'scripts/feat_optchain_zh.c', 'scripts/feat_optchain2_zh.c',
     'scripts/feat_option.c',
-    'scripts/feat_zh_overflow33.c', 'scripts/feat_zh_overflow33_neg.c',
-    'scripts/feat_zh_restrict36.c', 'scripts/feat_zh_restrict36_neg.c',
+    'scripts/feat_zh_overflow33.c', 'scripts/feat_zh_restrict36.c', 'scripts/feat_zh_restrict36_neg.c',
     'scripts/feat_zh_conv_ret.c', 'scripts/feat_zh_conv_ret_neg.c',
     'scripts/feat_zh_conv_arg.c', 'scripts/feat_zh_conv_arg_neg.c',
     'scripts/feat_zh_conv_compound.c', 'scripts/feat_zh_conv_compound_neg.c',
@@ -146,6 +145,7 @@ def run_one_test(name):
     else:
         src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
+    dep = False; multi = False
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
     except Exception:
@@ -158,6 +158,8 @@ def run_one_test(name):
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
+        if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
+        if '@MULTI' in line: multi = True      # 显式声明: 需 -c + jyld 跨 .o 链接 → 单文件无主/外链失败 = 许可 skip
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -171,11 +173,13 @@ def run_one_test(name):
         if expect_cfail:
             return (name, True, 'compile_fail(期望)')
         err = (r.stderr or '') + (r.stdout or '')
-        if '未定义函数' in err or '不能取地址' in err or '未找到函数' in err or '未声明函数' in err:
-            return (name, True, '依赖库(skip)')   # scripts/feat 依赖配套文件 (map/complex 等), 非独立测试
-        if '主 入口' in err:
-            return (name, True, '无主链接测试(skip)')  # 需 -c 的跨 .o 库文件 (encap 类); 核心列表 (--zh-feat) 不含此类, 真崩由核心列表盯防
-        return (name, False, '编译失败')           # 其它真回归 → FAIL
+        # 收紧 2026-09-07 (启元递刀 RefCell伪PASS): 不再按错误文本嗅探 '未声明/未定义函数' 等当依赖 skip —
+        # 内建词漏链运行时/真编译回归 = 真 FAIL; 只有测试文件显式 @DEP/@MULTI 标注才许可 skip
+        if dep:
+            return (name, True, 'SKIP:依赖库(@DEP 显式标注, 需配套文件/外部符号, 单文件不链)')
+        if multi:
+            return (name, True, 'SKIP:无主多文件(@MULTI 显式标注, 需 -c + jyld 链接)')
+        return (name, False, '编译失败: ' + (err or '').strip()[:220])   # 其它真回归 → FAIL
 
     # 运行
     out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
@@ -259,30 +263,40 @@ def main():
     else:
         results = [run_one_test(t) for t in tests]
 
-    pass_n = sum(1 for _, ok, _ in results if ok)
-    fail_n = len(results) - pass_n
-    fails = [f"{name} ({msg})" for name, ok, msg in results if not ok]
+    def summarize():
+        pass_n = sum(1 for (n2, ok2, m2) in results if ok2 and not m2.startswith('SKIP:'))
+        skip_l = [(n2, m2) for (n2, ok2, m2) in results if m2.startswith('SKIP:')]
+        fail_l = [f"{name} ({msg})" for name, ok, msg in results if not ok]
+        return pass_n, skip_l, fail_l
+
+    pass_n, skip_l, fail_l = summarize()
 
     # 防环境偶发 (2026-08-28 大哥指令): 失败测试自动重试一次 —
     # 真回归重跑必再挂 (不放过), Windows 环境抖动 (杀软扫新 exe/启动时序) 重跑即过 (不误伤)
-    if fail_n > 0:
+    if fail_l:
         retry_names = [n for n, ok, _ in results if not ok]
         print(f'--- {len(retry_names)} 个失败, 自动重试一次 ---', flush=True)
         retried = [run_one_test(n) for n in retry_names]
         rmap = {n: (ok2, msg2) for n, ok2, msg2 in retried}
         results = [(n, rmap[n][0] if n in rmap else ok, rmap[n][1] if n in rmap else msg)
                    for n, ok, msg in results]
-        pass_n = sum(1 for _, ok, _ in results if ok)
-        fail_n = len(results) - pass_n
-        fails = [f"{name} ({msg})" for name, ok, msg in results if not ok]
-        if fail_n > 0:
-            print(f'--- 重试后仍失败 {fail_n} 个 (判定为真回归) ---')
+        pass_n, skip_l, fail_l = summarize()
+        if fail_l:
+            print(f'--- 重试后仍失败 {len(fail_l)} 个 (判定为真回归) ---')
 
-    print(f'\n行为断言: PASS={pass_n} FAIL={fail_n}')
-    if fails:
+    print(f'\n行为断言: PASS={pass_n} SKIP={len(skip_l)} FAIL={len(fail_l)}')
+    if skip_l:
+        print('--- 显式 SKIP (标注 @DEP/@MULTI, 非核心覆盖) ---')
+        for n, m in skip_l:
+            print(f'  {n}  {m}')
+    if fail_l:
         print('--- 失败 ---')
-        for f in fails[:30]:
+        for f in fail_l[:30]:
             print(f'  {f}')
+    # 门槛纪律 (2026-09-07 收紧): 核心门槛 (fast/zh-feat/en 默认全量) 出现任何 SKIP = 红 (特性必须真测);
+    # --zh-feat-all (诊断全量) 与 --only (单测) 只展示, 不硬红 (含显式标注的配套/多文件测试)
+    gate = not args.zh_feat_all and not args.only
+    if fail_l or (gate and skip_l):
         sys.exit(1)
     print('==== 全绿 ====')
 

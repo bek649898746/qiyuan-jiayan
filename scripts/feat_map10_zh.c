@@ -1,4 +1,5 @@
-#include <stdio.h>
+﻿#include <stdio.h>
+// @DEP 映射库配套 (文件IO 词), 单文件不链
 #include <ctype.h>
 
 /* 甲言 映射第10批 接入测试 (2026-08-28): bn 内置 格式化 IO/判类 中文映射 */
