@@ -15,7 +15,13 @@ int main(void) {
     if (sizeof(struct W) != 8) { printf("W=%d\n", (int)sizeof(struct W)); return 3; }
     __attribute__((packed)) struct P { short a; int b; char c; };
     if (sizeof(struct P) != 7) { printf("P=%d\n", (int)sizeof(struct P)); return 4; }
-    /* 注: 块级 struct 的 long/long long 字段另有词法分类缺陷 (long 词型=词变量非型词), 挂账中 */
+    /* ③b long long 块级 (double-long 词位消费 2026-09-08; 注: unsigned 前缀组合另有缺陷挂账) */
+    __attribute__((packed)) struct PL { char a; long long ll; };
+    if (sizeof(struct PL) != 9) { printf("PL=%d\n", (int)sizeof(struct PL)); return 8; }
+    struct PL pl; pl.a = 1; pl.ll = 1234567890123LL;
+    if (pl.ll != 1234567890123LL) { printf("PL ll=%lld\n", pl.ll); return 9; }
+    struct NW { char a; long long ll; };
+    if (sizeof(struct NW) != 16) { printf("NW=%d\n", (int)sizeof(struct NW)); return 10; }
     /* ③ 嵌套块 */
     int n = 1;
     if (n) {
