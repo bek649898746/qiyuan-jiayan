@@ -79,6 +79,7 @@ CORE_FEAT = [
     'scripts/feat_zh_err_union.c', 'scripts/feat_zh_err_union_neg.c',
     'scripts/feat_zh_err_union_value.c', 'scripts/feat_zh_err_union_multi_neg.c',
     'scripts/feat_zh_err_union_multicode.c', 'scripts/feat_zh_err_union_tag.c',
+    'scripts/feat_zh_err_union_decons.c', 'scripts/feat_zh_err_union_decons_neg.c',
     'scripts/feat_null75_zh.c', 'scripts/feat_init78_zh.c',
     'scripts/feat_unwrap.c', 'scripts/feat_unwrap2.c',
     'scripts/feat_optchain_zh.c', 'scripts/feat_optchain2_zh.c',
