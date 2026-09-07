@@ -1025,5 +1025,37 @@ int __qcc_cell_get(int id) {
     if (id < 0 || id >= 64) return 0;
     return __qcc_cell[id];
 }
+
+/* #23 内部可变性 (RefCell): 运行时借用计数 — 借用单元 x, 初值; 借用/可变借用/放还 x 走运行时计数 (绕开编译期借用检查, 共享可变逃逸口); 值复用 __qcc_cell[], 计数 __qcc_rcell_ref[] (>0=共享借数, -1=可变借持有) */
+static int __qcc_rcell_ref[64];
+int __qcc_rcell_init(int v) {
+    int i = __qcc_cell_cnt; __qcc_cell_cnt = __qcc_cell_cnt + 1;
+    __qcc_cell[i] = v;
+    if (i >= 0 && i < 64) __qcc_rcell_ref[i] = 0;
+    return i;
+}
+int __qcc_rcell_borrow(int id, int mut) {
+    if (id < 0 || id >= 64) return 0;
+    if (mut) {
+        if (__qcc_rcell_ref[id] != 0) { fprintf(stderr, "[借用单元] 运行时借用冲突: 双重可变借用 (id=%d)\n", id); exit(1); }
+        __qcc_rcell_ref[id] = -1;
+    } else {
+        if (__qcc_rcell_ref[id] < 0) { fprintf(stderr, "[借用单元] 运行时借用冲突: 可变借用期间共享借用 (id=%d)\n", id); exit(1); }
+        __qcc_rcell_ref[id] = __qcc_rcell_ref[id] + 1;
+    }
+    return 0;
+}
+int __qcc_rcell_release(int id) {
+    if (id < 0 || id >= 64) return 0;
+    if (__qcc_rcell_ref[id] < 0) __qcc_rcell_ref[id] = 0;
+    else if (__qcc_rcell_ref[id] > 0) __qcc_rcell_ref[id] = __qcc_rcell_ref[id] - 1;
+    return 0;
+}
+
+/* #33 运行时边界 (F2, 2026-09-07): 除零检查 — a/b、a%b 除数运行时 0 → 优雅错误退出 (替代 x86 SIGFPE 陷阱) */
+int __qcc_div_check(int divisor) {
+    if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
+    return divisor;
+}
 #endif
 

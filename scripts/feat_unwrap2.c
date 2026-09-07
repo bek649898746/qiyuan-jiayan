@@ -1,4 +1,5 @@
 #include <stdio.h>
+// @EXPECTED exit:1
 
 /* 甲言 Option 解包空值分支测试 (2026-08-27):
  * 解包 NULL → printf("解包空值\n") + exit(1)
