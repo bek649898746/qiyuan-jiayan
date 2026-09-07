@@ -345,6 +345,13 @@ char *strndup(const char *s, size_t max) {
     return d;
 }
 
+/* 取限长 strnlen (2026-09-08 map2 补全): 前 max 字节内长度 (映射词 取限长; msvcrt 老版无导出, 自实现) */
+int strnlen(const char *s, size_t max) {
+    int n = 0;
+    while (n < max && s[n] != 0) n = n + 1;
+    return n;
+}
+
 /* ---- 排序/搜索 (fix 2026-08-13: Phase 2, Git hash-table 排序需要) ---- */
 void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
     /* 冒泡: 简单可靠, n 通常小 (Git 的 hash 表/数组) */
