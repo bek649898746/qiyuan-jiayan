@@ -75,6 +75,7 @@ CORE_FEAT = [
     'scripts/feat_zh_lifetime_outlives.c', 'scripts/feat_zh_lifetime_outlives_neg.c',
     'scripts/feat_zh_lifetime_elision.c', 'scripts/feat_zh_lifetime_elision_neg.c',
     'scripts/feat_zh_refcell.c', 'scripts/feat_zh_refcell_conflict.c',
+    'scripts/feat_zh_outparam.c',
     'scripts/feat_zh_reborrow.c', 'scripts/feat_zh_reborrow_neg.c',
     'scripts/feat_zh_err_union.c', 'scripts/feat_zh_err_union_neg.c',
     'scripts/feat_zh_err_union_value.c', 'scripts/feat_zh_err_union_multi_neg.c',

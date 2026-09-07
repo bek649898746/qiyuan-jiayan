@@ -30,7 +30,7 @@ int main(void) {
     /* ① 投递/接收 FIFO */
     投递 mb, 100;
     投递 mb, 200;
-    int msg = 0;   /* 2026-09-08: 出参初值 (I1 明确初始化; 内建 接收 展开的出参豁免 挂账待修) */
+    int msg;
     接收 mb, msg;
     if (msg != 100) return 1;
     接收 mb, msg;

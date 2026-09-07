@@ -31,7 +31,7 @@ static void chan_close(Chan *c) { c->closed = 1; }
 int main(void) {
     Chan c;
     chan_init(&c);
-    int v = 0;   /* 2026-09-08: 出参初值 (I1 明确初始化; 内建 收 展开的出参豁免 挂账待修) */
+    int v;
 
     /* ① 送/收 基本 FIFO */
     送 c, 10;
