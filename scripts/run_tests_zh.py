@@ -94,6 +94,7 @@ CORE_FEAT = [
     'scripts/feat_zh_opt_nullcheck_stmt.c',
     'scripts/feat_zh_opt_flow_narrow.c',
     'scripts/feat_zh_opt_flow_narrow_while.c',
+    'scripts/feat_zh_opt_uninit.c', 'scripts/feat_zh_opt_uninit_neg.c',
     'scripts/feat_zh_vtable.c', 'scripts/feat_zh_vtable_neg.c', 'scripts/feat_zh_vtable_inherit.c',
     'scripts/feat_zh_vtable_multi.c', 'scripts/feat_zh_vtable_mparam.c', 'scripts/feat_zh_vtable_param.c',
     'scripts/feat_zh_vtable_rebind.c', 'scripts/feat_zh_vtable_rebind_neg.c',
