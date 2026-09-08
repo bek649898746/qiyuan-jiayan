@@ -22,6 +22,10 @@ int main(void) {
     if (pl.ll != 1234567890123LL) { printf("PL ll=%lld\n", pl.ll); return 9; }
     struct NW { char a; long long ll; };
     if (sizeof(struct NW) != 16) { printf("NW=%d\n", (int)sizeof(struct NW)); return 10; }
+    /* ③c unsigned short 块级无符号标 (2026-09-08: L8018 FSR 后值劣=1, 原局部字段 2B 读符号扩展错) */
+    struct LU { char a; unsigned short us; };
+    struct LU lu; lu.a = 1; lu.us = 65535;
+    if (lu.us != 65535) { printf("LU us=%u\n", lu.us); return 11; }
     /* ③ 嵌套块 */
     int n = 1;
     if (n) {
