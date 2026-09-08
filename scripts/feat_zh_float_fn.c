@@ -20,9 +20,12 @@ int main(void) {
     if (*p != 2.5) { printf("F ptr deref fail\n"); return 7; }
     *p = 3.5f;
     if (*p != 3.5 || arr[1] != 3.5) { printf("G ptr store fail\n"); return 8; }
-    float m[2][2];                               /* R4a-6: 2D float 数组 4B */
+    float m[2][2];                               /* R4a-6-1: 2D float 数组 4B */
     m[0][0] = 1.0f; m[0][1] = 3.0f; m[1][0] = 5.0f; m[1][1] = 7.0f;
     if (m[0][1] != 3.0 || m[1][0] != 5.0 || m[1][1] != 7.0) { printf("H 2D fail\n"); return 9; }
+    float *q = arr;                               /* R4a-6-3: float* p[i] 下标 (4B 步长) 与数组混读 */
+    q[0] = 9.5f; q[1] = 8.5f;
+    if (q[0] != 9.5 || q[1] != 8.5 || arr[0] != 9.5 || arr[1] != 8.5) { printf("I p[i] fail\n"); return 10; }
     printf("PASS\n");
     return 0;
 }
