@@ -20,6 +20,9 @@ int main(void) {
     if (*p != 2.5) { printf("F ptr deref fail\n"); return 7; }
     *p = 3.5f;
     if (*p != 3.5 || arr[1] != 3.5) { printf("G ptr store fail\n"); return 8; }
+    float m[2][2];                               /* R4a-6: 2D float 数组 4B */
+    m[0][0] = 1.0f; m[0][1] = 3.0f; m[1][0] = 5.0f; m[1][1] = 7.0f;
+    if (m[0][1] != 3.0 || m[1][0] != 5.0 || m[1][1] != 7.0) { printf("H 2D fail\n"); return 9; }
     printf("PASS\n");
     return 0;
 }
