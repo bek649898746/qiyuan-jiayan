@@ -7,6 +7,11 @@
 
 struct S { long long x; };   /* 8B 结构体 (byval/赋值路径) */
 struct T { long long x; int a; }; /* 邻接字段 */
+/* B4 (2026-09-09): >8B byval 形参 返回 场景 */
+struct S16 { long long a; long long b; };
+struct S32 { long long a; long long b; long long c; long long d; };
+static struct S16 id16(struct S16 v) { return v; }   /* return 形参 (原 sret 源错取槽内存) */
+static struct S32 bump32(struct S32 v) { v.a += 10; v.b += 20; v.c += 30; v.d += 40; return v; }
 
 static int chk(struct S byv) {
     if (byv.x != 0x1122334400000000LL) { printf("FAIL byval %llx\n", (unsigned long long)byv.x); return 1; }
@@ -60,6 +65,16 @@ int main(void) {
     t.x = 0x1122334400000000LL;                  /* 非零偏移字段 (x 前有 int a? 不, x 在 a 前) */
     t.x = 42;
     if (t.x != 42) { printf("FAIL b3d %llx\n", (unsigned long long)t.x); return 1; }
+
+    /* B4 防回归 (2026-09-09): >8B 结构体 byval 形参 直接返回 (return 形参) —
+       sret 拷贝源须是 槽内指针指向的调用方副本, 非槽内存 (槽=8B 指针+邻居垃圾) */
+    struct S16 x16; x16.a = 0x1122334400000000LL; x16.b = 0x5566778800000000LL;
+    struct S16 r16 = id16(x16);                  /* return 形参 */
+    if (r16.a != x16.a || r16.b != x16.b) { printf("FAIL b4a16 %llx %llx\n", (unsigned long long)r16.a, (unsigned long long)r16.b); return 1; }
+    struct S32 x32; x32.a = 1; x32.b = 2; x32.c = 3; x32.d = 4;
+    struct S32 r32 = bump32(x32);                /* 形参 += 修改 + return */
+    if (r32.a != 11 || r32.b != 22 || r32.c != 33 || r32.d != 44) { printf("FAIL b4b32 %lld %lld %lld %lld\n", (long long)r32.a, (long long)r32.b, (long long)r32.c, (long long)r32.d); return 1; }
+    if (x32.a != 1) { printf("FAIL b4c caller-modified\n"); return 1; }
 
     printf("OK\n");
     return 0;
