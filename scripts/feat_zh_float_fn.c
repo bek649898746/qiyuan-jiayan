@@ -35,6 +35,14 @@ int main(void) {
     struct L { float f; int x; } s;               /* R4a-7: 函数内定义的 struct float 字段 */
     s.f = 2.5f; s.x = 3;
     if (s.f != 2.5 || s.x != 3) { printf("L inline-struct fail %f %d\n", (double)s.f, s.x); return 14; }
+    /* M R4a-8 (2026-09-09): 全局 float 标量 真 4B (位模式 + float* 指向全局标量一致) */
+    if (全局f != 4.5) { printf("M1 glob fail\n"); return 15; }
+    if (*(无整*)&全局f != 0x40900000u) { printf("M2 glob bits=%08X\n", *(无整*)&全局f); return 16; }
+    float *gps = &全局f;                          /* float* 指向全局 float 标量 */
+    if (*gps != 4.5) { printf("M3 glob ptr fail %f\n", (double)*gps); return 17; }
+    *gps = 7.25f;
+    if (全局f != 7.25 || *gps != 7.25) { printf("M4 glob ptr store fail %f\n", (double)全局f); return 18; }
+    if (*(无整*)&全局f != 0x40E80000u) { printf("M5 bits2=%08X\n", *(无整*)&全局f); return 19; }
     printf("PASS\n");
     return 0;
 }
