@@ -1,5 +1,5 @@
 ﻿#include <stdio.h>
-// @DEP 映射库配套 (时间词), 单文件不链
+//  映射库配套 (时间词), 单文件不链
 #include <time.h>
 #include <string.h>
 
