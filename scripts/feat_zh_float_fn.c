@@ -15,6 +15,11 @@ int main(void) {
     if (全局f != 4.5) { printf("D global float fail\n"); return 4; }
     float arr[2]; arr[0] = 1.5f; arr[1] = 2.5f;  /* R4a-3: float 数组 (8B double 值语义自洽) */
     if (arr[0] != 1.5 || arr[1] != 2.5) { printf("E arr fail\n"); return 5; }
+    float vv = 2.5f;
+    float *p = &vv;                              /* R4a-4: float* 指针 (4B 单 deref, 与单标变量一致) */
+    if (*p != 2.5) { printf("F ptr deref fail\n"); return 6; }
+    *p = 3.5f;
+    if (*p != 3.5 || vv != 3.5) { printf("G ptr store fail\n"); return 7; }
     printf("PASS\n");
     return 0;
 }
