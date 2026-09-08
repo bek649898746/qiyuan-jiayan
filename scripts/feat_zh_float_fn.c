@@ -13,13 +13,13 @@ int main(void) {
     float r = sf(2.0f);
     if (r != 4.0) { printf("C fn float fail %f\n", (double)r); return 3; }
     if (全局f != 4.5) { printf("D global float fail\n"); return 4; }
-    float arr[2]; arr[0] = 1.5f; arr[1] = 2.5f;  /* R4a-3: float 数组 (8B double 值语义自洽) */
+    float arr[2]; arr[0] = 1.5f; arr[1] = 2.5f;  /* R4a-5: float 数组元素真 4B (位模式/指针一致) */
     if (arr[0] != 1.5 || arr[1] != 2.5) { printf("E arr fail\n"); return 5; }
-    float vv = 2.5f;
-    float *p = &vv;                              /* R4a-4: float* 指针 (4B 单 deref, 与单标变量一致) */
-    if (*p != 2.5) { printf("F ptr deref fail\n"); return 6; }
+    if (*(无整*)&arr[0] != 0x3FC00000u) { printf("E2 arr bits fail\n"); return 6; }
+    float *p = &arr[1];                          /* float* 指向 4B 数组元素 */
+    if (*p != 2.5) { printf("F ptr deref fail\n"); return 7; }
     *p = 3.5f;
-    if (*p != 3.5 || vv != 3.5) { printf("G ptr store fail\n"); return 7; }
+    if (*p != 3.5 || arr[1] != 3.5) { printf("G ptr store fail\n"); return 8; }
     printf("PASS\n");
     return 0;
 }
