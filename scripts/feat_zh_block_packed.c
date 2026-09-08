@@ -34,6 +34,11 @@ int main(void) {
     struct TB tb; tb.pt.x = 6; tb.tus = 65535;
     if (tb.pt.x != 6) { printf("TB pt\n"); return 12; }
     if (tb.tus != 65535) { printf("TB tus=%u\n", tb.tus); return 13; }
+    /* ③e signed char/short (2026-09-09: 块级 signed 前缀漏 → signed char 读 255) */
+    struct TS { signed char sc; signed short ss; };
+    struct TS ts; ts.sc = -1; ts.ss = -2;
+    if (ts.sc != -1) { printf("TS sc=%d\n", ts.sc); return 14; }
+    if (ts.ss != -2) { printf("TS ss=%d\n", ts.ss); return 15; }
     /* ③ 嵌套块 */
     int n = 1;
     if (n) {
