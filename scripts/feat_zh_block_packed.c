@@ -4,6 +4,9 @@
    ② 块级局部 struct 字段类型判定 (short/int/long 原落默认 4B, packed 无填充暴露)
    ③ 嵌套块 (if/for) + 显式中文 打包 构
    @EXPECT out:BLKPASS */
+struct TPoint { int x; };
+typedef struct TPoint TP;
+typedef unsigned short MyUS;
 int main(void) {
     /* ① 函数体块级 packed */
     __attribute__((packed)) struct F3 { char a; int b; short c; };
@@ -26,6 +29,11 @@ int main(void) {
     struct LU { char a; unsigned short us; };
     struct LU lu; lu.a = 1; lu.us = 65535;
     if (lu.us != 65535) { printf("LU us=%u\n", lu.us); return 11; }
+    /* ③d typedef 字段 (2026-09-09: 块级具名 struct 原无 typedef 判定 → 幻影字段 + 类型丢 A9001) */
+    struct TB { TP pt; MyUS tus; };
+    struct TB tb; tb.pt.x = 6; tb.tus = 65535;
+    if (tb.pt.x != 6) { printf("TB pt\n"); return 12; }
+    if (tb.tus != 65535) { printf("TB tus=%u\n", tb.tus); return 13; }
     /* ③ 嵌套块 */
     int n = 1;
     if (n) {
