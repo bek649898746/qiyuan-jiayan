@@ -46,6 +46,21 @@ int main(void) {
     if (t.a != 7) { printf("FAIL int field\n"); return 1; }
     if ((t.x + v) != 0x1122334400000001LL) { printf("FAIL T add-var\n"); return 1; }
 
+    /* B3 防回归 (2026-09-09): 32 位 int 字面量 覆写 8B 成员 → store 必须 64 位符号扩展
+       清高位 (原 写路径分叉: 局部 member + 32 位字面量 store 曾走 32 位 mov → 高位残留) */
+    ls.x = 0x1122334400000000LL;
+    ls.x = 3;
+    if (ls.x != 3) { printf("FAIL b3a %llx\n", (unsigned long long)ls.x); return 1; }
+    ls.x = 0x1122334400000000LL;
+    ls.x = -1;                                   /* 负 32 位字面量 → 符号扩展 */
+    if (ls.x != -1) { printf("FAIL b3b %llx\n", (unsigned long long)ls.x); return 1; }
+    ls.x = 0x1122334400000000LL;
+    ls.x += 0;                                   /* 复合 += int 常量不丢高位 */
+    if (ls.x != 0x1122334400000000LL) { printf("FAIL b3c %llx\n", (unsigned long long)ls.x); return 1; }
+    t.x = 0x1122334400000000LL;                  /* 非零偏移字段 (x 前有 int a? 不, x 在 a 前) */
+    t.x = 42;
+    if (t.x != 42) { printf("FAIL b3d %llx\n", (unsigned long long)t.x); return 1; }
+
     printf("OK\n");
     return 0;
 }
