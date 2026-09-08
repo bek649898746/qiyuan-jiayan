@@ -30,9 +30,11 @@ int main(void) {
     float la[2] = { 3.5f, 4.5f };                  /* R4a-6-4: float 数组花括初始化 (局部/全局) */
     if (la[0] != 3.5 || la[1] != 4.5) { printf("J init fail\n"); return 11; }
     if (ginit[0] != 1.5 || ginit[1] != 2.5) { printf("K ginit fail\n"); return 12; }
+    float *gp = &ginit[1];                        /* R4a-6-2: float* 指向全局 float 数组元素 (4B) */
+    if (*gp != 2.5) { printf("K2 global arr ptr fail\n"); return 13; }
     struct L { float f; int x; } s;               /* R4a-7: 函数内定义的 struct float 字段 */
     s.f = 2.5f; s.x = 3;
-    if (s.f != 2.5 || s.x != 3) { printf("L inline-struct fail %f %d\n", (double)s.f, s.x); return 13; }
+    if (s.f != 2.5 || s.x != 3) { printf("L inline-struct fail %f %d\n", (double)s.f, s.x); return 14; }
     printf("PASS\n");
     return 0;
 }
