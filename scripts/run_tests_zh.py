@@ -100,6 +100,7 @@ CORE_FEAT = [
     'scripts/feat_zh_float_dbl.c',
     'scripts/feat_zh_float4.c',
     'scripts/feat_zh_float_field.c',
+    'scripts/feat_zh_float_fn.c',
     'scripts/feat_zh_vtable.c', 'scripts/feat_zh_vtable_neg.c', 'scripts/feat_zh_vtable_inherit.c',
     'scripts/feat_zh_vtable_multi.c', 'scripts/feat_zh_vtable_mparam.c', 'scripts/feat_zh_vtable_param.c',
     'scripts/feat_zh_vtable_rebind.c', 'scripts/feat_zh_vtable_rebind_neg.c',
