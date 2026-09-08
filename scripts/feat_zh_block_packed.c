@@ -43,6 +43,13 @@ int main(void) {
     struct TL { signed short ss2; char c3; };
     struct TL tl; tl.ss2 = -2; tl.c3 = -1;
     if (tl.c3 != 255) { printf("TL 泄漏 c3=%d 应255\n", tl.c3); return 16; }
+    /* ③g 函数内 typedef 引用 (R1a 2026-09-09: 原整行跳过零注册 → 块级字段 A9001 非结构体) */
+    typedef struct TPoint FTP;      /* 函数内引用全局标签 (型定加 构标+左系) */
+    typedef unsigned short MyUS2;   /* 函数内标量 typedef (原缺左系 → 字段判定 miss) */
+    struct TG { FTP pt; MyUS2 tus; };
+    struct TG tg; tg.pt.x = 6; tg.tus = 65535;
+    if (tg.pt.x != 6) { printf("TG pt=%d\n", tg.pt.x); return 17; }
+    if (tg.tus != 65535) { printf("TG tus=%u\n", tg.tus); return 18; }
     /* ③ 嵌套块 */
     int n = 1;
     if (n) {
