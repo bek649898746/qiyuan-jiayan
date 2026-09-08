@@ -3,6 +3,7 @@
 /* R4a-2 (2026-09-09): float 函数返回/形参 + typedef 匿名字段 + static float + 全局 float (double 值语义) */
 typedef struct { float f; int x; } T;
 单 全局f = 4.5f;                    /* 全局 float (double 值语义) */
+float ginit[2] = { 1.5f, 2.5f };    /* 全局 float 数组花括初始化 */
 static float sg = 0.0f;
 static float sf(float p) { return p * 2.0f; }
 int main(void) {
@@ -26,6 +27,9 @@ int main(void) {
     float *q = arr;                               /* R4a-6-3: float* p[i] 下标 (4B 步长) 与数组混读 */
     q[0] = 9.5f; q[1] = 8.5f;
     if (q[0] != 9.5 || q[1] != 8.5 || arr[0] != 9.5 || arr[1] != 8.5) { printf("I p[i] fail\n"); return 10; }
+    float la[2] = { 3.5f, 4.5f };                  /* R4a-6-4: float 数组花括初始化 (局部/全局) */
+    if (la[0] != 3.5 || la[1] != 4.5) { printf("J init fail\n"); return 11; }
+    if (ginit[0] != 1.5 || ginit[1] != 2.5) { printf("K ginit fail\n"); return 12; }
     printf("PASS\n");
     return 0;
 }
