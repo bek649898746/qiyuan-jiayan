@@ -1528,6 +1528,29 @@ __attribute__((原粗))
         若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
         返 尾联;
     }
+    若 (!比较字符串(串升, "time.h")) {
+        /* R5c (2026-09-09): <time.h> 内置 — 原系统头被跳过 → sizeof(struct tm)=0 →
+           用户代码 lt->tm_year 字段偏移全 0 读 0 (map7 只过 strftime 未碰字段); 仿 stdint.h 先例.
+           布局 = MinGW (compat_prelude.h L2591, 9 int = 36B, tm_year@20); time_t=long long 64位
+           (x86_64 LLP64, msvcrt _time64 系) */
+        常 字 *构一 =
+            "typedef long long time_t;\n"
+            "typedef long long clock_t;\n"
+            "struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };\n"
+            "time_t time(time_t *t);\n"
+            "clock_t clock(void);\n"
+            "double difftime(time_t a, time_t b);\n"
+            "time_t mktime(struct tm *tm);\n"
+            "char *asctime(const struct tm *tm);\n"
+            "char *ctime(const time_t *t);\n"
+            "struct tm *gmtime(const time_t *t);\n"
+            "struct tm *localtime(const time_t *t);\n"
+            "size_t strftime(char *s, size_t n, const char *fmt, const struct tm *tm);\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
     若 (净厚 > 0 && 空七[净厚 - 1][0]) {
         字 整布[1024];
         复制字符串(整布, 空七[净厚 - 1]);
