@@ -91,6 +91,7 @@ CORE_FEAT = [
     'scripts/feat_zh_borrow_nest_neg.c',
     'scripts/feat_zh_borrow_alias_overwrite_neg.c',
     'scripts/feat_zh_borrow_errparam_move_neg.c',
+    'scripts/feat_zh_borrow_en_struct_move_neg.c',
     'scripts/feat_zh_lifetime_outlives.c', 'scripts/feat_zh_lifetime_outlives_neg.c',
     'scripts/feat_zh_lifetime_elision.c', 'scripts/feat_zh_lifetime_elision_neg.c',
     'scripts/feat_zh_refcell.c', 'scripts/feat_zh_refcell_conflict.c',
