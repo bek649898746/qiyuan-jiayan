@@ -88,6 +88,7 @@ CORE_FEAT = [
     'scripts/feat_zh_alias_arrow_write_dangle_neg.c', 'scripts/feat_zh_alias_decl_deref_write_dangle_neg.c',
     'scripts/feat_zh_alias_decl_arrow_write_dangle_neg.c',
     'scripts/feat_zh_borrow_nest_neg.c',
+    'scripts/feat_zh_borrow_alias_overwrite_neg.c',
     'scripts/feat_zh_lifetime_outlives.c', 'scripts/feat_zh_lifetime_outlives_neg.c',
     'scripts/feat_zh_lifetime_elision.c', 'scripts/feat_zh_lifetime_elision_neg.c',
     'scripts/feat_zh_refcell.c', 'scripts/feat_zh_refcell_conflict.c',
