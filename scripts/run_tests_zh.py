@@ -103,6 +103,7 @@ CORE_FEAT = [
     'scripts/feat_zh_err_union_ll8.c', 'scripts/feat_zh_err_union_ptr8.c',
     'scripts/feat_zh_err_union_ptrbig8.c',
     'scripts/feat_zh_err_union_struct_neg.c', 'scripts/feat_zh_multiret_struct_neg.c',
+    'scripts/feat_zh_err_try_in_normal_neg.c',
     'scripts/feat_zh_s2a_multi_nullable.c',
     'scripts/feat_zh_nullable_value_op_neg.c', 'scripts/feat_zh_nullable_value_op_ok.c',
     'scripts/feat_zh_s2b3_static_value_nullable.c',
