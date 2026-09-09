@@ -83,6 +83,7 @@ CORE_FEAT = [
     'scripts/feat_zh_err_union_decons.c', 'scripts/feat_zh_err_union_decons_neg.c',
     'scripts/feat_zh_err_union_ll8.c', 'scripts/feat_zh_err_union_ptr8.c',
     'scripts/feat_zh_s2a_multi_nullable.c',
+    'scripts/feat_zh_s2b3_static_value_nullable.c',
     'scripts/feat_null75_zh.c', 'scripts/feat_init78_zh.c',
     'scripts/feat_unwrap.c', 'scripts/feat_unwrap2.c',
     'scripts/feat_optchain_zh.c', 'scripts/feat_optchain2_zh.c',
