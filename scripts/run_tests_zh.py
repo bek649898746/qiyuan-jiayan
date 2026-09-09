@@ -54,6 +54,8 @@ CORE_FEAT = [
     'scripts/feat_zh_own_branchdrop_then.c', 'scripts/feat_zh_own_uninitguard.c',
     'scripts/feat_zh_own_uninit_movein.c', 'scripts/feat_zh_own_drop_reassign.c',
     'scripts/feat_zh_own_guard_partial_neg.c', 'scripts/feat_zh_own_guard_param.c',
+    'scripts/feat_zh_guard_shadow_partial.c', 'scripts/feat_zh_guard_shadow_dup.c',
+    'scripts/feat_zh_guard_shadow_discard.c',
     'scripts/feat_zh_own_guard_fieldout_neg.c', 'scripts/feat_zh_own_loopbreak.c',
     'scripts/feat_zh_own_loopcont.c', 'scripts/feat_zh_own_loop_assign.c',
     'scripts/feat_zh_own_for_break.c', 'scripts/feat_zh_own_switch_break.c',
