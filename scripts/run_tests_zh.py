@@ -161,6 +161,7 @@ CORE_FEAT = [
     'scripts/feat_zh_struct_arrfield_copy_ok.c',
     'scripts/feat_zh_partial_then_move_neg.c', 'scripts/feat_zh_partial_then_assign_neg.c', 'scripts/feat_zh_partial_field_move_ok.c',
     'scripts/feat_zh_nullable_unwrap_cmp_ok.c',
+    'scripts/feat_zh_nullable_i64_ok.c', 'scripts/feat_zh_nullable_i64_unchecked_neg.c',
     'scripts/feat_zh_err_transfer_check_ok.c', 'scripts/feat_zh_err_transfer_unchecked_neg.c', 'scripts/feat_zh_err_transfer_use_neg.c',
     'scripts/feat_zh_cell_borrow_ok.c', 'scripts/feat_zh_cell_underflow_rt.c', 'scripts/feat_zh_cell_conflict_rt.c',
     'scripts/feat_zh_err_double_payload_ok.c',
