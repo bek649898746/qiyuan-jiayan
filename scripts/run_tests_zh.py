@@ -118,6 +118,7 @@ CORE_FEAT = [
     'scripts/feat_zh_ret_member_ok.c',
     'scripts/feat_zh_struct_ternary_neg.c', 'scripts/feat_zh_ternary_scalar_ok.c',
     'scripts/feat_zh_unknown_ptr_param_ok.c', 'scripts/feat_zh_closure_capture_ok.c',
+    'scripts/feat_zh_adt_multi_payload_ok.c',
     'scripts/feat_zh_nullable_static_local_wide_ok.c',
     'scripts/feat_zh_typedef_local_ok.c', 'scripts/feat_zh_typedef_scope_ok.c',
     'scripts/feat_zh_nullable_static_wide_ok.c', 'scripts/feat_zh_nullable_static_wide_neg.c',
