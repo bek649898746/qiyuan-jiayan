@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '2D871A3C'  # 2026-09-10 P3-16 多级指针别名 穿透 (不动点 D2BEF9E5->2D871A3C): 别名表 (初二→前十) 原只记单层, q=&x; p=&q 后 经 (*p) 读已移对象 静默放行 → 新 别名终(名,深) 逐层跟随 (深度限 4 + 自环保护), 箭头读/解引用读 两处 改判 链终目标 移动态 → A3101; 新锚 feat_zh_alias_multilevel_dangle_neg; 单级别名 三个既有负例 仍拦 (回归确认); 前: 2026-09-10 P3-6b 接口轴 扫雷两修 (不动点 3495B4F6->D2BEF9E5)
+$expected = 'F99C5227'  # 2026-09-10 P3-17 判别 sum type 构值 假阳修复 (不动点 2D871A3C->F99C5227): 判别构型 struct {tag,p0,p1} 计入 I2-③ '需全写' 可见字段 → 变体构造 (只设 tag + 本变体载荷) 后 值拷贝/传递 被误判 部分初始化 A4001 (判别 idiom 假阳); 修法 尾登记 跳过 判别类型构值 (直寅 判别表 名字匹配, 含 struct 前缀形态); 新锚 feat_zh_disc_value_copy_ok; 部分初始化 两个既有负例 仍拦 (回归确认); 前: 2026-09-10 P3-16 多级指针别名穿透 (不动点 D2BEF9E5->2D871A3C)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
