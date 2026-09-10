@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'BC417BC1'  # 2026-09-10 P3-15 循环携带移动 保守判定 (不动点 F99C5227->BC417BC1): 循环体内 移出 外部变量 (变量序 >= 体前快照 者 排除) → A3102 (循环只解析一遍, 回边状态无人检查 → 第二轮读已移变量 静默放行); 快照 源 = 域六(路径部分移动) + 移标(整变量移动); 只对 简单变量/成员路径 触发 (元素移动 容器[i] 不触发); 新锚 feat_zh_loop_carry_move_neg; 三套自验 全绿 无假阳; 前: 2026-09-10 P3-17 判别构值 假阳修复 (不动点 2D871A3C->F99C5227)
+$expected = '9A4444B9'  # 2026-09-10 P3-15 补挂点 for/do (不动点 BC417BC1->9A4444B9): 循环携带移动 判定 从 仅 循环(while) 扩到 标准 for(;;) + 做/do-while (移环开 快照 / 移环查 判定 对称挂点; 迭代形态 for-range/Vec/切片/数组 已统一走 标准 for 体); 三套自验 全绿 (en 380 + 闸 253 + all 393/4SKIP); 前: 2026-09-10 P3-15 循环携带移动 保守判定 (不动点 F99C5227->BC417BC1)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
