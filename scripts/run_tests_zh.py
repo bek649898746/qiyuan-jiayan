@@ -113,6 +113,7 @@ CORE_FEAT = [
     'scripts/feat_zh_nullable_field_ptr_ok.c', 'scripts/feat_zh_nullable_field_ptr_judge_ok.c',
     'scripts/feat_zh_nullable_field_deref_ok.c', 'scripts/feat_zh_nullable_field_deref_neg.c',
     'scripts/feat_zh_nullable_deep_path_ok.c', 'scripts/feat_zh_nullable_deep_path_neg.c',
+    'scripts/feat_zh_nullable_index_name_ok.c', 'scripts/feat_zh_nullable_index_mixed_neg.c',
     'scripts/feat_zh_value_param_nest_ok.c',
     'scripts/feat_zh_nullable_static_local_wide_ok.c',
     'scripts/feat_zh_typedef_local_ok.c', 'scripts/feat_zh_typedef_scope_ok.c',
