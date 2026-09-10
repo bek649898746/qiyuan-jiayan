@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'F99C5227'  # 2026-09-10 P3-17 判别 sum type 构值 假阳修复 (不动点 2D871A3C->F99C5227): 判别构型 struct {tag,p0,p1} 计入 I2-③ '需全写' 可见字段 → 变体构造 (只设 tag + 本变体载荷) 后 值拷贝/传递 被误判 部分初始化 A4001 (判别 idiom 假阳); 修法 尾登记 跳过 判别类型构值 (直寅 判别表 名字匹配, 含 struct 前缀形态); 新锚 feat_zh_disc_value_copy_ok; 部分初始化 两个既有负例 仍拦 (回归确认); 前: 2026-09-10 P3-16 多级指针别名穿透 (不动点 D2BEF9E5->2D871A3C)
+$expected = 'BC417BC1'  # 2026-09-10 P3-15 循环携带移动 保守判定 (不动点 F99C5227->BC417BC1): 循环体内 移出 外部变量 (变量序 >= 体前快照 者 排除) → A3102 (循环只解析一遍, 回边状态无人检查 → 第二轮读已移变量 静默放行); 快照 源 = 域六(路径部分移动) + 移标(整变量移动); 只对 简单变量/成员路径 触发 (元素移动 容器[i] 不触发); 新锚 feat_zh_loop_carry_move_neg; 三套自验 全绿 无假阳; 前: 2026-09-10 P3-17 判别构值 假阳修复 (不动点 2D871A3C->F99C5227)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
