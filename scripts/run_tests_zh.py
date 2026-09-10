@@ -159,6 +159,7 @@ CORE_FEAT = [
     'scripts/feat_zh_struct_init_ok.c', 'scripts/feat_zh_struct_init_scalar_neg.c', 'scripts/feat_zh_struct_init_undef_neg.c', 'scripts/feat_zh_struct_init_type_neg.c',
     'scripts/feat_zh_arr_elem_call_assign.c', 'scripts/feat_zh_arr_elem_call_assign_big.c', 'scripts/feat_zh_arr_brace_init_ok.c',
     'scripts/feat_zh_struct_arrfield_copy_ok.c',
+    'scripts/feat_zh_partial_then_move_neg.c', 'scripts/feat_zh_partial_then_assign_neg.c', 'scripts/feat_zh_partial_field_move_ok.c',
 ]
 
 def build_tests(args):
