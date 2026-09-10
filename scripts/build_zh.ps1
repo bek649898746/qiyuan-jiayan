@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '9A4444B9'  # 2026-09-10 P3-15 补挂点 for/do (不动点 BC417BC1->9A4444B9): 循环携带移动 判定 从 仅 循环(while) 扩到 标准 for(;;) + 做/do-while (移环开 快照 / 移环查 判定 对称挂点; 迭代形态 for-range/Vec/切片/数组 已统一走 标准 for 体); 三套自验 全绿 (en 380 + 闸 253 + all 393/4SKIP); 前: 2026-09-10 P3-15 循环携带移动 保守判定 (不动点 F99C5227->BC417BC1)
+$expected = '94521241'  # 2026-09-10 G1 错误 双精度 载荷 尝试 传播 闭环 (不动点 9A4444B9->94521241): 错 N 在 双精度 错误函数 里 原被当 普通 double 返回 (xmm0=码, 无 tag) → 尝试 读 rax 高32 当 tag. 修法: 双通道 {xmm0 值/码 | rdx tag} — 返回侧 浮返 分支 加 9001 判定 (错 N → 码转双 + rdx=1; 普通返回 rdx=0; 直接转发 错误双精度调用 不覆盖 rdx = 透传), 中细 登记 错误双精度 (半错一) 使 tag 判定可用, 错载宽 新增 16 类 (值走 xmm0), 尝试 载荷类 一致性 校验 (混合 → A9001), 解构 双载荷 支持; 新锚 feat_zh_err_double_try_ok + feat_zh_err_double_decons_ok + feat_zh_err_try_mixed_neg; 链 早停 2 段 (v1==v2) 276s; 前: 2026-09-10 P3-15 补挂点 for/do (不动点 BC417BC1->9A4444B9): 循环携带移动 判定 从 仅 循环(while) 扩到 标准 for(;;) + 做/do-while (移环开 快照 / 移环查 判定 对称挂点; 迭代形态 for-range/Vec/切片/数组 已统一走 标准 for 体); 三套自验 全绿 (en 380 + 闸 253 + all 393/4SKIP); 前: 2026-09-10 P3-15 循环携带移动 保守判定 (不动点 F99C5227->BC417BC1)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):

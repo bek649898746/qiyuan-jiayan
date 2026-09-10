@@ -164,6 +164,8 @@ CORE_FEAT = [
     'scripts/feat_zh_err_transfer_check_ok.c', 'scripts/feat_zh_err_transfer_unchecked_neg.c', 'scripts/feat_zh_err_transfer_use_neg.c',
     'scripts/feat_zh_cell_borrow_ok.c', 'scripts/feat_zh_cell_underflow_rt.c', 'scripts/feat_zh_cell_conflict_rt.c',
     'scripts/feat_zh_err_double_payload_ok.c',
+    'scripts/feat_zh_err_double_try_ok.c', 'scripts/feat_zh_err_double_decons_ok.c', 'scripts/feat_zh_err_try_mixed_neg.c',
+    'scripts/feat_zh_err_forward_ok.c', 'scripts/feat_zh_err_forward_mixed_neg.c', 'scripts/feat_zh_err_forward_normal_neg.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
