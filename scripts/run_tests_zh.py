@@ -117,7 +117,7 @@ CORE_FEAT = [
     'scripts/feat_zh_value_param_nest_ok.c',
     'scripts/feat_zh_ret_member_ok.c',
     'scripts/feat_zh_struct_ternary_neg.c', 'scripts/feat_zh_struct_ternary_ok.c',
-    'scripts/feat_zh_sugar_wide_ok.c',
+    'scripts/feat_zh_sugar_wide_ok.c', 'scripts/feat_zh_sugar_wide2_ok.c',
     'scripts/feat_zh_bitfield_struct_ok.c', 'scripts/feat_zh_generator_struct_ok.c',
     'scripts/feat_zh_coro_struct_ok.c',
     'scripts/feat_zh_ternary_scalar_ok.c',
