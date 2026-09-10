@@ -74,7 +74,7 @@ CORE_FEAT = [
     'scripts/feat_zh_typedrop_paramglue.c', 'scripts/feat_zh_typedrop_expr_neg.c',
     'scripts/feat_zh_typedrop_partial_neg.c', 'scripts/feat_zh_typedrop_borrow_ok.c',
     'scripts/feat_zh_typedrop_copy_neg.c', 'scripts/feat_zh_typedrop_arrcomposite.c',
-    'scripts/feat_zh_typedrop_initexpr_neg.c', 'scripts/feat_zh_disc_top.c', 'scripts/feat_zh_struct_uninit_read_neg.c', 'scripts/feat_zh_struct_partial_read_neg.c', 'scripts/feat_zh_struct_partial_copy_neg.c', 'scripts/feat_zh_struct_partial_samefield_ok.c', 'scripts/feat_zh_struct_partial_ok.c', 'scripts/feat_zh_struct_reinit_ok.c', 'scripts/feat_zh_for_loop_init_neg.c', 'scripts/feat_zh_discrim_kw_neg.c', 'scripts/feat_zh_discrim_decon_neg.c', 'scripts/feat_zh_block_packed.c',
+    'scripts/feat_zh_typedrop_initexpr_neg.c', 'scripts/feat_zh_disc_top.c', 'scripts/feat_zh_anon_comma_inherit.c', 'scripts/feat_zh_struct_uninit_read_neg.c', 'scripts/feat_zh_struct_partial_read_neg.c', 'scripts/feat_zh_struct_partial_copy_neg.c', 'scripts/feat_zh_struct_partial_samefield_ok.c', 'scripts/feat_zh_struct_partial_ok.c', 'scripts/feat_zh_struct_reinit_ok.c', 'scripts/feat_zh_for_loop_init_neg.c', 'scripts/feat_zh_discrim_kw_neg.c', 'scripts/feat_zh_discrim_decon_neg.c', 'scripts/feat_zh_block_packed.c',
     'scripts/feat_zh_typedrop_order.c', 'scripts/feat_zh_typedrop_order2.c',
     'scripts/feat_zh_typedrop_discard.c', 'scripts/feat_zh_typedrop_elemset.c',
     'scripts/feat_zh_typedrop_fieldarr.c', 'scripts/feat_zh_typedrop_fieldarrcomp.c',
