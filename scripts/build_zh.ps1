@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'D2BEF9E5'  # 2026-09-10 P3-6b 接口轴 扫雷 两修 (不动点 3495B4F6->D2BEF9E5): ① 接口引用 作 函数返回类型 原被'接口引用变量声明'分支吞 → 后随 ( 解析中断 → 整文件报'未找到 主 入口'(误导); 改 显式 A9005 诊断; ② 接口引用冻结(P0-5 只拦'写') 补 移动源 检查 → 移源() 内 接口引用冻结(名) → A3001 (非Copy 对象被接口持有 时 移走 = use-after-move); 新锚 feat_zh_iface_{move_freeze_neg,ret_neg}; 前: 2026-09-10 P3-14 错误结果转存延迟检查 (不动点 B346DB87->3495B4F6)
+$expected = '2D871A3C'  # 2026-09-10 P3-16 多级指针别名 穿透 (不动点 D2BEF9E5->2D871A3C): 别名表 (初二→前十) 原只记单层, q=&x; p=&q 后 经 (*p) 读已移对象 静默放行 → 新 别名终(名,深) 逐层跟随 (深度限 4 + 自环保护), 箭头读/解引用读 两处 改判 链终目标 移动态 → A3101; 新锚 feat_zh_alias_multilevel_dangle_neg; 单级别名 三个既有负例 仍拦 (回归确认); 前: 2026-09-10 P3-6b 接口轴 扫雷两修 (不动点 3495B4F6->D2BEF9E5)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):

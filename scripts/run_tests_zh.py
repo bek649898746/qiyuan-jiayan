@@ -165,6 +165,7 @@ CORE_FEAT = [
     'scripts/feat_zh_cell_borrow_ok.c', 'scripts/feat_zh_cell_underflow_rt.c', 'scripts/feat_zh_cell_conflict_rt.c',
     'scripts/feat_zh_err_double_payload_ok.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
+    'scripts/feat_zh_alias_multilevel_dangle_neg.c',
 ]
 
 def build_tests(args):
