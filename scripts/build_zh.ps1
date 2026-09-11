@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '48E2C09A'  # A40c/d/f 余项 闭环: 整型精度 %.Nd 补零 (原忽略) + 'h'/'hh' 长度修饰 窄化 %hhd/%hd (原 'h' 被通用跳过出口静默丢弃) + %c 宽度/左对齐 (原忽略); 三 者 全 对 gcc 逐值
+$expected = 'F278A8C3'  # A3-7 收尾: 字段函浮 名键旁路侧表 (字段函浮名/构/数) 退役删除 — A41 的真结构位 字段函浮[1024] 成为唯一权威 (侧表与真结构同位写, 回落实际不可达; 旁路表 82->81)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
