@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '417B36C0'  # 地3 A39 闭环: printf %i 别名 (原 未登记 -> 不打印且不消费参数 -> 参数错位) + 修 A37 引入的 域重一 64位 符号测试 对 %d 的回归 (负 int 被当大正数)
+$expected = 'E8B915E0'  # A41 闭环: 字段 「返回浮」 从 名键旁路侧表 -> 类型表 每字段 真结构位 (真结构优先 + 侧表回落), 写入 收口 在 字段类型()
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
