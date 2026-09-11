@@ -125,6 +125,7 @@ CORE_FEAT = [
     'scripts/feat_zh_coro_struct_ok.c',
     'scripts/feat_zh_ternary_scalar_ok.c',
     'scripts/feat_zh_unknown_ptr_param_ok.c', 'scripts/feat_zh_closure_capture_ok.c',
+    'scripts/feat_zh_closure_capture2_ok.c',
     'scripts/feat_zh_adt_multi_payload_ok.c',
     'scripts/feat_zh_iface_sret_ok.c', 'scripts/feat_zh_iface_ret_use_ok.c',
     'scripts/feat_zh_union_ok.c', 'scripts/feat_zh_struct_param_field_ok.c',
