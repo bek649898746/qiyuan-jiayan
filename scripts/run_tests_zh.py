@@ -314,6 +314,10 @@ CORE_FEAT = [
     'scripts/feat_range3.c', 'scripts/feat_range4.c', 'scripts/feat_range5.c',
     'scripts/feat_range6.c', 'scripts/feat_range7.c',
 
+    # ==== 地1 A24 (2026-09-11): 命名违规 修正 — 原 feat_zh_leak86_neg 是运行期用例而非编译失败,
+    #   按闸纪律 (_neg = 编译失败期望) 改名 feat_zh_leak86_leak + 补 @EXPECTED ====
+    'scripts/feat_zh_leak86_leak.c',
+
 ]
 
 def build_tests(args):
@@ -348,6 +352,7 @@ def run_one_test(name):
     else:
         src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
+    expected_err = None
     dep = False; multi = False
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
@@ -358,6 +363,8 @@ def run_one_test(name):
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
+        m = re.search(r'//\s*@EXPECTED\s+err:(.+)$', line)   # G0 (2026-09-11): stderr 断言 —
+        if m: expected_err = m.group(1).strip()              #   运行时诊断 (如 [LEAK]/[ERR]) 走 stderr, stdout 断言 覆盖 不到
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
@@ -397,15 +404,16 @@ def run_one_test(name):
                            encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
         rc = p.returncode
         out = (p.stdout or '').strip()
+        err = (p.stderr or '').strip()
     except subprocess.TimeoutExpired as te:
         try:
             te.kill()
         except Exception:
             pass
-        rc = 'TIMEOUT'; out = ''
+        rc = 'TIMEOUT'; out = ''; err = ''
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)
     except Exception as e:
-        rc = 'ERR'; out = str(e)
+        rc = 'ERR'; out = str(e); err = ''
     try:
         os.remove(h1); os.remove(out_file); os.remove(err_file)
     except OSError:
@@ -418,10 +426,12 @@ def run_one_test(name):
         ok = (str(rc) == expected)
     if ok and expected_out:
         ok = expected_out in out
+    if ok and expected_err:
+        ok = expected_err in err
 
     if ok:
         return (name, True, '')
-    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}'")
+    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}' err='{err[:60]}'")
 
 
 def main():
