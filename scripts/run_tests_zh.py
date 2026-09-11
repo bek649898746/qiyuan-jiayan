@@ -346,6 +346,15 @@ CORE_FEAT = [
     #   (feat_trait 为 原 留观 老 C 锚, 随 本次 修复 由 area=0.0 转正)
     'scripts/feat_trait.c',
 
+    # ==== 地1 A22 (2026-09-11): _Generic 指针 精确 分派 (基类+层级+数组衰减) ====
+    #   旧 行为: 任意 指针 命中 第一个 指针 分支 (字符* 选 整数*), 层级 不 参与, 字符数组 不 衰减
+    'scripts/feat_zh_generic_ptr_ok.c',
+    # ==== 地1 A22/A28 (2026-09-11): 空* 关联 分支 漏 消费 `*` → 关联表达式 被 当 解引用 (静默 错值) ====
+    'scripts/feat_zh_generic_voidptr_ok.c',
+    #   (feat_concepts / feat_overload 为 原 闸外 留观 老 C 锚: 前者 (字符)0 转型 类型码 缺失 → rc=7,
+    #    后者 字符 数组 不 衰减 → r4=1; 本次 A22 双向 修复 后 转正 入闸)
+    'scripts/feat_concepts.c', 'scripts/feat_overload.c',
+
 ]
 
 def build_tests(args):
