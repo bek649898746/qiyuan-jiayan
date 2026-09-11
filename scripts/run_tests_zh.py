@@ -326,6 +326,9 @@ CORE_FEAT = [
     #   (原 o.区(&r)+1.0 = 541229081.0 — 返回被 消费端 当 整数; 具名函数指针 一直正常)
     'scripts/feat_zh_field_fnptr_ret_ok.c',
 
+    # ==== 地1 A18b (2026-09-11): 文件级 结构体 的 字段 函数指 返回浮 (另 一 条 解析路径) ====
+    'scripts/feat_zh_field_fnptr_global_ok.c',
+
 ]
 
 def build_tests(args):
