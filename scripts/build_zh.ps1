@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'E8B915E0'  # A41 闭环: 字段 「返回浮」 从 名键旁路侧表 -> 类型表 每字段 真结构位 (真结构优先 + 侧表回落), 写入 收口 在 字段类型()
+$expected = 'EAFC56F6'  # G1-1a (A42 闭环 + 字段属性 构序直查): 字段类型序/字段尺寸/字段是否浮 全部改 构序直查 (原 构序->名->查类型 往返, 匿名类型 名=空 撞首条目); 嵌套链 xmm0 幽灵 movsd 修 (A19 补编码 时 字节漏出 若 之外 -> 非双精度 8B 字段 也载 xmm0 覆盖浮点实参); 函数指针字段 副优 误置 排除
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
