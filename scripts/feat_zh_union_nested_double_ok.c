@@ -29,8 +29,13 @@ int main(void) {
     if (a.u.r.h < 2.99 || a.u.r.h > 3.01) return 2;
     if (a.u.r.w * a.u.r.h < 5.99 || a.u.r.w * a.u.r.h > 6.01) return 3;
 
-    /* ② 具名 struct 在 匿名 union 内 — 未 纳入 本 锚: 见 台账 A26-③
-       (根因 不 同: 具名 类型 成员 的 字段类型序 未 登记 → 内存地址 链 断) */
+    /* ② 具名 struct 在 匿名 union 内 (A26-③: 该 层 的 字段类型序 需 登记) */
+    S1 b;
+    b.kind = B;
+    b.u.r.w = 4.0;
+    b.u.r.h = 5.0;
+    if (b.u.r.w < 3.99 || b.u.r.w > 4.01) return 4;
+    if (b.u.r.h < 4.99 || b.u.r.h > 5.01) return 5;
 
     /* ③ 普通 嵌套 (对照) */
     S2 c;
@@ -53,8 +58,8 @@ int main(void) {
     d.u.r.h = 2.0;
     if (d.u.r.w != 1.0 || d.u.r.h != 2.0) return 9;
 
-    printf("anon=%.1f,%.1f flat=%.1f,%.1f g=%.1f,%.1f\n",
-           a.u.r.w, a.u.r.h, c.r.w, c.r.h, g0.u.r.w, g0.u.r.h);
+    printf("anon=%.1f,%.1f named=%.1f,%.1f flat=%.1f,%.1f g=%.1f,%.1f\n",
+           a.u.r.w, a.u.r.h, b.u.r.w, b.u.r.h, c.r.w, c.r.h, g0.u.r.w, g0.u.r.h);
     printf("PASS\n");
     return 0;
 }
