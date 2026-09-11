@@ -361,6 +361,9 @@ CORE_FEAT = [
     # ==== 地2 G0-4/A30 (2026-09-11): 取环境(getenv) 真读 (原 无导入槽 → 静默 恒空) ====
     'scripts/feat_zh_getenv_ok.c',
 
+    # ==== 地2 G0-2/A31 (2026-09-11): 导入表 已 有 槽 的 函数 必须 可 调用 (白名单 补 13 个) ====
+    'scripts/feat_zh_math_import_ok.c',
+
 ]
 
 def build_tests(args):

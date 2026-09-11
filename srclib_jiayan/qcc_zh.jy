@@ -3868,6 +3868,11 @@ __attribute__((原粗))
     "_bump_set","_bump_top","_va_alloc","_start","_exit_proc","__qcc_va_start",
     "__qcc_mfence", /* 阶段C-1 #21 内存屏障 (2026-09-01): 屏障() → 真 mfence */
     "isalpha_zh","strncmp_zh","strcmp_zh","strlen_zh","strcpy_zh","strchr_zh","strstr_zh",
+    /* A31 (2026-09-11, 差分 通道 抓): 导入表 已 有 槽 但 白名单 漏 → 调用 直接 A1001 (能力 缺口)。
+       补 13 个: 三角/反三角 (asin/acos/sinh/cosh/tanh), 数学 (log10/hypot/copysign),
+       ctype (iscntrl/isgraph/isprint/ispunct), 字符串 (strnlen)。清单 已 由 探针 比对 生成。 */
+    "asin","acos","sinh","cosh","tanh","log10","hypot","copysign",
+    "iscntrl","isgraph","isprint","ispunct","strnlen",
 };
 静 整 度卯(常 字 *数) {
     遍 (整 计 = 0; 计 < (整)(大小(后聚) / 大小(后聚[0])); 计++)

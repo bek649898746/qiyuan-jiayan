@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '39509738'  # 地2 G0-4+A30: 编译期 结构化 转储 (QCC_DUMP) + 取环境(getenv) 真读 (msvcrt 槽 76 + PE 布局)
+$expected = 'EA89DF4B'  # A31 闭环: 隐式声明 白名单 补 13 个 导入表 已 有 槽 的 函数 (差分 通道 抓)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
