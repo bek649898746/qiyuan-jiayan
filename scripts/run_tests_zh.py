@@ -386,7 +386,13 @@ def build_tests(args):
 
 
 def find_qcc():
-    """最新自举产物: qcc_zh_v7 → ... → v1 (审计 2026-09-07: 原硬编码 v7, 仅烟测 v1 时 fallback gcc)"""
+    """最新自举产物: qcc_zh_v7 → ... → v1 (审计 2026-09-07: 原硬编码 v7, 仅烟测 v1 时 fallback gcc)
+
+    G0-3 (2026-09-11) 反馈提速: 环境变量 QCC_TEST_BIN 可 指定 编译器 —— 小改 时 用
+    「旧 seed 编 当前 源」 出 的 探针 编译器 只 跑 目标锚 (无 链 / 无 seed 交换 / 无 全闸)。"""
+    env = os.environ.get('QCC_TEST_BIN')
+    if env and os.path.exists(env):
+        return env
     for n in range(7, 0, -1):
         p = os.path.join(root, 'qcc_zh_v%d.exe' % n)
         if os.path.exists(p):
