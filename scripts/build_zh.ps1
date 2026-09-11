@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'FD4315E8'  # A35b 同形态清扫: 变偏指/变构/变参 新建条目 补 旧零 初始化 (块可见性 权威, 原 依赖 BSS 0 -> '_' 前缀 内部临时 被 误当 块内变量)
+$expected = 'C3351D4B'  # 地3 A36 闭环: 64 位 整数 (长 长) -> 双精度 转换 走 64 位 通道 (原 一律 32 位 加载+cvtsi2sd -> 高 32 位 静默丢)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
