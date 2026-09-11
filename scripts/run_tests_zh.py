@@ -322,6 +322,10 @@ CORE_FEAT = [
     #   (原 r = 5 |> add1 |> dbl 被解析成 (r=5) |> add1 |> dbl — 链结果丢弃, r=5)
     'scripts/feat_pipe2.c',
 
+    # ==== 地1 A18 (2026-09-11): 结构体字段 函数指针 返回 浮 → 调用点 补 节浮标 ====
+    #   (原 o.区(&r)+1.0 = 541229081.0 — 返回被 消费端 当 整数; 具名函数指针 一直正常)
+    'scripts/feat_zh_field_fnptr_ret_ok.c',
+
 ]
 
 def build_tests(args):
