@@ -201,6 +201,12 @@ CORE_FEAT = [
     'scripts/feat_zh_closure_capture_iface_ok.c',
     'scripts/feat_zh_tern_narrow_ok.c', 'scripts/feat_zh_tern_narrow_neg.c',
     'scripts/feat_zh_builtin_outparam_ok.c',
+    # A3 (2026-09-11): 闭包数组 (编译期常量下标 解析期展开) + 三种误用精确拒
+    'scripts/feat_zh_closure_array_ok.c', 'scripts/feat_zh_closure_array_neg.c',
+    'scripts/feat_zh_closure_array_bounds_neg.c', 'scripts/feat_zh_closure_array_dynidx_neg.c',
+    # A1 (2026-09-11): 尝试 传播 约定 复核锚 + 转存变量 传播 规范写法 + 裸返 拦截负例
+    'scripts/feat_zh_try_propagate_ok.c',
+    'scripts/feat_zh_err_transfer_propagate_ok.c', 'scripts/feat_zh_err_transfer_return_neg.c',
 ]
 
 def build_tests(args):
