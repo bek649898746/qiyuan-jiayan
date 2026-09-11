@@ -303,6 +303,10 @@ class Gen:
             iv = self.v()
             lines.append('    struct Inner %s;' % iv)
             lines.append('    %s.a = %d;' % (iv, r.choice(SAFE_VAL)))
+            # A32 (2026-09-11): 按值 传参 前 必须 写满 全 字段 — 甲言 #78 明确初始化 规定
+            #   「结构体 值 传参/返回 前 每 个 字段 都 须 已 写」 (比 C 严); 原 只 写 a/c 漏 b
+            #   → 甲言 A4001 编译失败 而 gcc 通过 → 差分台 假 编译失败 噪声 (layout/alignas 族 16 例)
+            lines.append('    %s.b = %d;' % (iv, r.choice(CHAR_VAL)))
             lines.append('    %s.c = %d;' % (iv, r.choice(SAFE_VAL)))
             m.append(('    printf("%%d\\n", inner_sum(%s));' % iv, 'int'))
         # 大 struct 定向访问 (高危布局模式)
