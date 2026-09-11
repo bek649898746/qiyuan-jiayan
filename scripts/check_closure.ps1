@@ -8,7 +8,7 @@
 #   5 新锚 入闸   — 最新 施工日志 里 提到 的 scripts/*.c 锚 都 在 CORE_FEAT 内
 #   6 台账 已记   — grok-build/_DEBT_LEDGER.md 里 出现 当前 不动点 哈希
 #
-# 用法: powershell -File scripts/check_closure.ps1 [-SkipGate] [-SkipChain] [-Quiet]
+# 用法: powershell -File scripts/check_closure.ps1 [-SkipGate] [-SkipChain] [-Quiet] [-Parallel N]
 # 退出码: 0 = 全 PASS; 1 = 有 FAIL
 
 param(
@@ -16,7 +16,8 @@ param(
     [switch]$SkipChain,
     [string]$LogFile = '',
     [string]$Ledger = '',
-    [switch]$Quiet
+    [switch]$Quiet,
+    [int]$Parallel = 4
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,7 +72,7 @@ else {
 if ($SkipGate) { Info "跳过 闸 (SkipGate)" }
 else {
     Write-Host "  ... 跑 闸 --zh-feat"
-    $out = & python scripts/run_tests_zh.py --zh-feat 2>&1 | Out-String
+    $out = & python scripts/run_tests_zh.py --zh-feat --parallel $Parallel 2>&1 | Out-String
     if ($LASTEXITCODE -eq 0) {
         $last = ($out.Trim() -split "`n") | Select-Object -Last 1
         Ok "闸 全绿: $($last.Trim())"
