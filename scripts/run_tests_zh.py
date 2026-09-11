@@ -207,6 +207,16 @@ CORE_FEAT = [
     # A1 (2026-09-11): 尝试 传播 约定 复核锚 + 转存变量 传播 规范写法 + 裸返 拦截负例
     'scripts/feat_zh_try_propagate_ok.c',
     'scripts/feat_zh_err_transfer_propagate_ok.c', 'scripts/feat_zh_err_transfer_return_neg.c',
+    # C7 并发轴 (2026-09-11 扫雷: 16 个 锚 原 全部 在 闸 外 → 逐个 复验 通过 后 入闸;
+    #   其中 feat_lock2 抓出 真 bug: 锁住 延迟 解锁 在 提前返回 路径 漏发 — 已修, 见 施工日志)
+    'scripts/feat_thread_zh.c', 'scripts/feat_chan_zh.c', 'scripts/feat_chan2_zh.c',
+    'scripts/feat_actor_zh.c', 'scripts/feat_zh_actor19.c', 'scripts/feat_zh_async20.c',
+    'scripts/feat_zh_select24.c', 'scripts/feat_select2.c', 'scripts/feat_zh_struct_concur25.c',
+    'scripts/feat_atomic_zh.c', 'scripts/feat_atomic_cas_zh.c', 'scripts/feat_atomic_xchg_zh.c',
+    'scripts/feat_memorder_zh.c', 'scripts/feat_zh_fence21.c', 'scripts/feat_mutex2_zh.c',
+    'scripts/feat_lock2.c',
+    # C7 修 的 回归 锚 (锁住 三 退出路径 全 解锁; 原 提前返回 漏发)
+    'scripts/feat_zh_lock_defer_ok.c',
 ]
 
 def build_tests(args):
