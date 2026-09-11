@@ -358,6 +358,9 @@ CORE_FEAT = [
     # ==== 地1 A16 (2026-09-11): 未知 结构体 标签 的 值 声明 → 显式 诊断 (原 静默 跳过 → 隐式变量 垃圾值) ====
     'scripts/feat_zh_struct_unknown_tag_neg.c', 'scripts/feat_zh_struct_decl_ok.c',
 
+    # ==== 地2 G0-4/A30 (2026-09-11): 取环境(getenv) 真读 (原 无导入槽 → 静默 恒空) ====
+    'scripts/feat_zh_getenv_ok.c',
+
 ]
 
 def build_tests(args):
