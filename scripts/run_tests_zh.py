@@ -121,6 +121,7 @@ CORE_FEAT = [
     'scripts/feat_zh_sugar_wide3_ok.c', 'scripts/feat_zh_sugar_wide4_ok.c',
     'scripts/feat_zh_sugar_wide5_ok.c',
     'scripts/feat_zh_init_elem_branch_ok.c', 'scripts/feat_zh_init_elem_branch_neg.c',
+    # feat_zh_try_propagate_ok.c 暂 不 入闸: 目标 测试 (尝试 传播 修法 未 落地, 见 Hy2 审计)
     'scripts/feat_zh_bitfield_struct_ok.c', 'scripts/feat_zh_generator_struct_ok.c',
     'scripts/feat_zh_coro_struct_ok.c',
     'scripts/feat_zh_ternary_scalar_ok.c',
