@@ -342,6 +342,10 @@ CORE_FEAT = [
     'scripts/feat_zh_union_nested_double_ok.c',
     'scripts/feat_pattern.c', 'scripts/feat_unistruct.c', 'scripts/feat_usr2.c',
 
+    # ==== 地1 A27 (2026-09-11): 字段 函数指针 「返回浮」 侧表 补 两个 typedef 分支 ====
+    #   (feat_trait 为 原 留观 老 C 锚, 随 本次 修复 由 area=0.0 转正)
+    'scripts/feat_trait.c',
+
 ]
 
 def build_tests(args):
