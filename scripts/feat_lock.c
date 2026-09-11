@@ -1,5 +1,10 @@
 #include <stdio.h>
 
+/* @DEP 归档 (2026-09-12 定性, G0-1): 本 锚 写 于 「v1 块尾 解锁」 语义 时代, 后 语言 升级为
+   **defer 语义** (锁住 m { body } → mutex_lock(&m); defer mutex_unlock(&m); **函数退出** epi 处 解锁,
+   提前 返回 也 解锁 — Go 风格)。本 锚 断言 「块 尾 立即 解锁」 (m==0) → 与 现行 语义 冲突, 实测 退出码 2。
+   现行 语义 的 回归 锚: `feat_lock2.c` / `feat_zh_lock_defer_ok.c` (闸内 ✓)。本 文件 保留 仅 作 演进 记录。
+   @DEP */
 /* 甲言互斥锁临界区 (锁住) 接入测试: 锁住 m { body } → mutex_lock(&m); body; mutex_unlock(&m);
    用户定义 mutex_lock/mutex_unlock (约定名); v1 块尾解锁 (提前 return 不解锁留后续) */
 

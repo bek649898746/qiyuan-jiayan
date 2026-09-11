@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <ctype.h>
 
+/* @DEP 归档 (2026-09-12 定性, G0-1): 探针 性质 —— 依赖 **标准输入** (`scanf("%d", &v)` 期待 42),
+   无 stdin 时 必然 FAIL scanf (非 语言 缺陷)。 编译 与 其余 断言 (printf/fprintf/ferror/isalnum) 均 ✓。
+   要 跑 通过 请: `echo 42 | ft_map10_probe.exe`。 不 入闸 (闸 无 stdin 通道)。
+   @DEP */
 /* 第10批映射候选实测: printf/fprintf/ferror/isalnum/scanf (bn 内置) */
 
 int main(void) {

@@ -971,8 +971,15 @@ def main():
             stats['gcc_fail_only'] += 1
         elif cat == 'qcc_compile_fail':
             stats['qcc_compile_fail'] += 1
-            print('[qcc_compile_fail] seed=%d fam=%s' % (seed, family))
-            print(prog[:400])
+            # A35 (2026-09-12): 原 print(prog[:400]) 打的是 **上一轮** 残留变量 (误导定位, 实际 用例
+            #   在 OUT_DIR/t<seed>_<fam>.c) → 改为 打印 真实 用例 路径 + 编译器 报错 首行 ✓
+            print('[qcc_compile_fail] seed=%d fam=%s file=%s' % (seed, family, src_path))
+            try:
+                _err = (det or '').strip().split('\n')[0][:160] if det else ''
+                if _err:
+                    print('    %s' % _err)
+            except Exception:
+                pass
         elif cat == 'run_timeout':
             stats['run_timeout'] += 1
         else:  # diff
