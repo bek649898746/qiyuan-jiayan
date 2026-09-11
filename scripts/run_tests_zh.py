@@ -197,6 +197,10 @@ CORE_FEAT = [
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
     'scripts/feat_zh_loop_carry_move_neg.c',
+    # A2/A4/A11 (2026-09-11): 闭包捕获接口引用 / 三目条件窄化(±) / 内建展开出参豁免
+    'scripts/feat_zh_closure_capture_iface_ok.c',
+    'scripts/feat_zh_tern_narrow_ok.c', 'scripts/feat_zh_tern_narrow_neg.c',
+    'scripts/feat_zh_builtin_outparam_ok.c',
 ]
 
 def build_tests(args):
