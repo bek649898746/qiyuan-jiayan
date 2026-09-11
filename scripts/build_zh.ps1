@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'F278A8C3'  # A3-7 收尾: 字段函浮 名键旁路侧表 (字段函浮名/构/数) 退役删除 — A41 的真结构位 字段函浮[1024] 成为唯一权威 (侧表与真结构同位写, 回落实际不可达; 旁路表 82->81)
+$expected = 'AC9767E2'  # A3-契约指纹 闭环: 契约 P; 的结构接口指纹 SHA256 从 名键旁路侧表 (整伴[64][64]/长退[64][65], 线性扫+64上限) 迁 真结构 类型表[构序].契约印[65] (键=构序, 空=未登记; 构加 建条目时置空 保证可重入); 新锚 feat_zh_contract_fingerprint_ok 钉死两布局具体哈希 (兼结构布局回归网); 旁路表 81->79
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
