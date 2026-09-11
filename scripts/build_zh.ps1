@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'B23202DF'  # 地2 A34 闭环: GNU 语句表达式 ({...}) 块内变量 作用域修复 (外层临时槽 转存); 差分台 alignas 族噪声清零
+$expected = 'B839E625'  # 地2 A33 闭环: 尾登记 判别豁免 改用 声明期构序查直寅判别表 (原 strstr 指针 >=0 恒真 -> 任何判别类型存在即关闭全部构值字段级追踪); 新锚 feat_zh_disc_scope_neg
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
