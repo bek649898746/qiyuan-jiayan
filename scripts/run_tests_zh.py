@@ -329,6 +329,11 @@ CORE_FEAT = [
     # ==== 地1 A18b (2026-09-11): 文件级 结构体 的 字段 函数指 返回浮 (另 一 条 解析路径) ====
     'scripts/feat_zh_field_fnptr_global_ok.c',
 
+    # ==== 地1 A19 (2026-09-11): 嵌套成员链 双精度字段读 — 编码缺失 修复 ====
+    #   (feat_adt3/adt5 为 原 留观 的 老 C 锚, 随 A19 修复 转正)
+    'scripts/feat_zh_nested_field_double_ok.c',
+    'scripts/feat_adt3.c', 'scripts/feat_adt5.c',
+
 ]
 
 def build_tests(args):
