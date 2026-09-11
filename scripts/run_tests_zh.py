@@ -309,6 +309,11 @@ CORE_FEAT = [
     'scripts/feat_zh_borrow_split_ok.c', 'scripts/feat_zh_borrow_split_neg.c',
     'scripts/feat_zh_recursive_type_ok.c', 'scripts/feat_zh_macro_hygiene_ok.c',
 
+    # ==== 地1 A21/D1 修复 后 转正 (2026-09-11): 遍-范围 系列 原 长期 挂红 ====
+    #   (D1: 迭代变量 预声明 假阳 A4001; A21: 字符串 迭代 长度 取错 表 → 恒 60 次)
+    'scripts/feat_range3.c', 'scripts/feat_range4.c', 'scripts/feat_range5.c',
+    'scripts/feat_range6.c', 'scripts/feat_range7.c',
+
 ]
 
 def build_tests(args):
