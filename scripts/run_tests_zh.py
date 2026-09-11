@@ -334,6 +334,9 @@ CORE_FEAT = [
     'scripts/feat_zh_nested_field_double_ok.c',
     'scripts/feat_adt3.c', 'scripts/feat_adt5.c',
 
+    # ==== 地1 A26-① (2026-09-11): 逗号 连写 双精度 字段 (浮标 跨 逗号 继承) ====
+    'scripts/feat_zh_comma_field_double_ok.c',
+
 ]
 
 def build_tests(args):
