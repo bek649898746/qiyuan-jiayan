@@ -337,6 +337,11 @@ CORE_FEAT = [
     # ==== 地1 A26-① (2026-09-11): 逗号 连写 双精度 字段 (浮标 跨 逗号 继承) ====
     'scripts/feat_zh_comma_field_double_ok.c',
 
+    # ==== 地1 A26-② (2026-09-11): 内存地址 成员分支 改按构序查 ====
+    #   (feat_pattern/unistruct/usr2 为 原 留观 的 老 C 锚, 随 本次 修复 转正)
+    'scripts/feat_zh_union_nested_double_ok.c',
+    'scripts/feat_pattern.c', 'scripts/feat_unistruct.c', 'scripts/feat_usr2.c',
+
 ]
 
 def build_tests(args):
