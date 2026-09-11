@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'B1DEB8D0'  # 地2 A32 闭环: 转储 阶段过滤 (查找子串=strstr 返指针, 判命中改 != NULL + 阶段名 ASCII) + 差分台 byval 生成修复
+$expected = 'B23202DF'  # 地2 A34 闭环: GNU 语句表达式 ({...}) 块内变量 作用域修复 (外层临时槽 转存); 差分台 alignas 族噪声清零
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):

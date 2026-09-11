@@ -364,6 +364,9 @@ CORE_FEAT = [
     # ==== 地2 G0-2/A31 (2026-09-11): 导入表 已 有 槽 的 函数 必须 可 调用 (白名单 补 13 个) ====
     'scripts/feat_zh_math_import_ok.c',
 
+    # ==== 地2 A34 (2026-09-11): GNU 语句表达式 ({ ... }) 块内变量 作用域 (原 码生成 落空 → 当函数名) ====
+    'scripts/feat_zh_stmtexpr_ok.c',
+
 ]
 
 def build_tests(args):
