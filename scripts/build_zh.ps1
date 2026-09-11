@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'B839E625'  # 地2 A33 闭环: 尾登记 判别豁免 改用 声明期构序查直寅判别表 (原 strstr 指针 >=0 恒真 -> 任何判别类型存在即关闭全部构值字段级追踪); 新锚 feat_zh_disc_scope_neg
+$expected = '23FCA38A'  # 地3 G3-1 闭环: 接口引用 槽位 4B->8B (__ir_* 局部/重绑定/形参 全通道, 原 32 位 存储读取 -> 高地址 静默截断)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
