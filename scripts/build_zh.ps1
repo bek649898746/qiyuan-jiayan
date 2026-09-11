@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'AC9767E2'  # A3-契约指纹 闭环: 契约 P; 的结构接口指纹 SHA256 从 名键旁路侧表 (整伴[64][64]/长退[64][65], 线性扫+64上限) 迁 真结构 类型表[构序].契约印[65] (键=构序, 空=未登记; 构加 建条目时置空 保证可重入); 新锚 feat_zh_contract_fingerprint_ok 钉死两布局具体哈希 (兼结构布局回归网); 旁路表 81->79
+$expected = '4385C01D'  # A3-类型属性 容量守卫+可重入: 5 个 T 标注注册表 (复制/密封/线性/线程不安全/枚举底层) 满 64(枚底 32) 时 原静默丢弃 -> 原得 A5001 确定性拒绝; 5 计数器 加入 每编译重置块 (原 只在声明处初值 0, 跨编译 残留)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
