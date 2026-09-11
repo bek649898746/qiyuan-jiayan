@@ -219,6 +219,17 @@ CORE_FEAT = [
     'scripts/feat_lock2.c',
     # C7 修 的 回归 锚 (锁住 三 退出路径 全 解锁; 原 提前返回 漏发)
     'scripts/feat_zh_lock_defer_ok.c',
+    # v1.2 深度清单 审计 补齐 (2026-09-11): 原 判 ✅ 但 无 锚 / 只 有 闸外 锚 的 项 —
+    #   ① 忘记 #20: 新 写 语义 锚 (析构 计数 三 面: 忘记不析构 / 对照析构 / 丢弃即析构)
+    #   ② 背压 #68: 新 写 语义 锚 (+ 汇编 自旋回边 结构 证据)
+    #   ③④⑤⑥⑦: 原 闸外 锚 入闸 (惰性/重载/CTFE/异步定时器/编译期反射) — 消除 "✅ 无 回归 保护"
+    'scripts/feat_zh_forget_ok.c', 'scripts/feat_zh_backpressure_ok.c',
+    'scripts/feat_zh_lazy20c.c', 'scripts/feat_overload_zh.c', 'scripts/feat_comptime_zh.c',
+    'scripts/feat_async_zh.c', 'scripts/feat_reflect.c',
+    # 同上 第二批: 类型别名泛型 #104 / 可变参数模板 #171+175 / 生成器 #149 / 解释求值 #170
+    'scripts/feat_zh_generic_typedef46.c', 'scripts/feat_zh_generic_typedef46_arr.c',
+    'scripts/feat_zh_generic_bounds45.c', 'scripts/feat_gen_zh.c', 'scripts/feat_zh_generator56.c',
+    'scripts/feat_interp.c',
 ]
 
 def build_tests(args):
