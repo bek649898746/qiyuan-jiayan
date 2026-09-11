@@ -219,7 +219,7 @@ class Gen:
         # 大 struct (模拟 layout_sensitive 高危模式: z_stream_s 30 字段等, 2026-08-25)
         has_big = r.random() < 0.5
         if has_big:
-            self.big_nf = r.randrange(20, 40)
+            self.big_nf = r.randrange(20, 25)   # A36 (2026-09-12): 上限 40→24 — 甲言 字段级 追踪 用 32 位 位图, 可见字段 > 24 时 主动 降 整变量 粗粒度 (保守), 于是 "只 写 部分 字段 后 读 已写 字段" 被 误判 部分初始化 A4001 (生成器 噪声: 实测 t7049/7069/7094 三 例 全部 是 >24 字段 + 逐字段 写 + 只 读 已写 字段)。 保 ≤24 既 保留 布局 测试 意图, 又 不 撞 该 保守 分支
             self.big_flds = []
             for bi in range(self.big_nf):
                 bt = r.choice(['int', 'char', 'long long', 'int', 'unsigned', 'int', 'short'])
