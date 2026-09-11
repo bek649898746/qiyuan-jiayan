@@ -318,6 +318,10 @@ CORE_FEAT = [
     #   按闸纪律 (_neg = 编译失败期望) 改名 feat_zh_leak86_leak + 补 @EXPECTED ====
     'scripts/feat_zh_leak86_leak.c',
 
+    # ==== 地1 A23 (2026-09-11): 管道 |> 优先级 低于 赋值 = 修复后 转正 ====
+    #   (原 r = 5 |> add1 |> dbl 被解析成 (r=5) |> add1 |> dbl — 链结果丢弃, r=5)
+    'scripts/feat_pipe2.c',
+
 ]
 
 def build_tests(args):
