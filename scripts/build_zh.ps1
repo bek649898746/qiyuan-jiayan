@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'CEB7925F'  # 地3 A37 闭环: %f 整数部分/缩放/小数 全 64 位 (原 32 位: |v|>=2^31 打错 + %.10f 除零崩)
+$expected = '53C358DD'  # 地3 A38 闭环: %f 宽度/填充 (空格/左对齐/零填充/符号与填充次序), 原 忽略 宽度
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
