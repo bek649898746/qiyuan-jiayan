@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'EAFC56F6'  # G1-1a (A42 闭环 + 字段属性 构序直查): 字段类型序/字段尺寸/字段是否浮 全部改 构序直查 (原 构序->名->查类型 往返, 匿名类型 名=空 撞首条目); 嵌套链 xmm0 幽灵 movsd 修 (A19 补编码 时 字节漏出 若 之外 -> 非双精度 8B 字段 也载 xmm0 覆盖浮点实参); 函数指针字段 副优 误置 排除
+$expected = '83A0ECDE'  # A40a/b/e 闭环: printf 填充/符号 三段式 (空格填充 在符号前, 零填充 在符号后) — %5d 负数额 -   5->   -5; ' ' 空格标志 原静默丢弃 -> % d 得 ' 42'; %f 左对齐 丢符号 -> %-8.2f 负数 补符号; 新锚 feat_zh_printf_int_pad_ok
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
