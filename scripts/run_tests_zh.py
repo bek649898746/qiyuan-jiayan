@@ -355,6 +355,9 @@ CORE_FEAT = [
     #    后者 字符 数组 不 衰减 → r4=1; 本次 A22 双向 修复 后 转正 入闸)
     'scripts/feat_concepts.c', 'scripts/feat_overload.c',
 
+    # ==== 地1 A16 (2026-09-11): 未知 结构体 标签 的 值 声明 → 显式 诊断 (原 静默 跳过 → 隐式变量 垃圾值) ====
+    'scripts/feat_zh_struct_unknown_tag_neg.c', 'scripts/feat_zh_struct_decl_ok.c',
+
 ]
 
 def build_tests(args):

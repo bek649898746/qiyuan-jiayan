@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'C1BB6AF4'  # A22 闭环 (_Generic 指针 精确 分派 + 数组衰减 + 层级 + 空* 分支): 44BD1B9D -> C1BB6AF4
+$expected = '8EA990A0'  # 地1 A22+A16 闭环 (44BD1B9D->C1BB6AF4->8EA990A0): _Generic 指针 精确 分派 + 未知 结构体 标签 值声明 诊断
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
