@@ -383,12 +383,22 @@ CORE_FEAT = [
 
     # ==== 探雷 启灵 雷2/雷5/雷6 (2026-09-13): 显式置空 / 未声明标识符 文案 / 实参 成员 逃逸 (I2 假阳) ====
     #   雷1 (接口死循环) 已 于 068da05 修; 雷3 (除零检查) 实测 已 好; 雷4 (返 错 N) 本 批 修
-    'scripts/feat_zh_null_assign_ok.c',
-    'scripts/feat_zh_null_assign_neg.c', 'scripts/feat_zh_null_assign_neg2.c',
+    #   T3 (2026-09-13) 收尾: `可空 变量 = 空;` 赋值置空 真支持 → 原 neg2 (响亮 A8002) **转正** 为 null_assign2_ok
+    'scripts/feat_zh_null_assign_ok.c', 'scripts/feat_zh_null_assign2_ok.c',
+    'scripts/feat_zh_null_assign_neg.c',
     'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
 
     # ==== 嵌套匿名体 字段 布局/对齐 矩阵 (2026-09-13): 匿名嵌套 注册 未设 标合 → 总尺寸 12 轮 up 16 ====
     'scripts/feat_zh_nested_anon_matrix_ok.c',
+
+    # ==== T1 (2026-09-13): `大小(裸标签)` 静默 返 4 → 响亮 A1001 (零静默) ====
+    #   原: `大小(P3)` = 4 而 `大小(构 P3)` = 12; 裸标签 指针 形态 更 荒谬 (`大小(P3 *)` = 16 静默通过)
+    'scripts/feat_zh_sizeof_tag_ok.c',
+    'scripts/feat_zh_bare_tag_sizeof_neg.c', 'scripts/feat_zh_bare_tag_sizeof_neg2.c',
+
+    # ==== T2 (2026-09-13): typedef 匿名体 内 的 匿名嵌套 字段 — 原 挂账「整字段丢失」实测 已 好, 锚 钉死 ====
+    #   6 形态 (单层/双层/匿名联合/匿名数组/对齐抬升) 全部 与 gcc 逐值 一致: 12 4 8 16 16 32
+    'scripts/feat_zh_typedef_anon_nested_ok.c',
 
 ]
 
