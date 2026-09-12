@@ -10,8 +10,8 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'B638C2E2'  # 第1刀-第四段 (2026-09-12): ④ 文件级匿名块 —— 补 `构 <类型名> <字段>[...];` 正规分支 + 外层循环防死循环守卫; `构 <类型名> <字段>[N];` 由 **死循环** 变 正确解析 (数组维度 登记, 元素不串扰) —— 本次 链 v2 = v3 = B638C2E2 (v1 为种子 transient: 老解析器 对新源 的解释与 新解析器 不同)
-                         # 前值 9EEF2C64 (A2 本体 字段录 真结构化)
+$expected = '395B5732'  # (2026-09-13) R1a 修复: ③ typedef 匿名路径 外层 结构体字段注册 —— 联合成员 走 联合字段 (偏移0+尺寸取最大) + 补 是否联 标记. `typedef union {...} UA;` sz 8→4, 字节覆盖 0→120 === gcc —— 本次 链 v1 = v2 = 395B5732
+                         # 前值 C1167892 (A2 重复字段去除 + 是否联 半修复)
 
 Write-Host "== [1/2] 生成 qcc_zh.jy =="
 if ($Regenerate) {

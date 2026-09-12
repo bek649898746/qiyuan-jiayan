@@ -367,7 +367,7 @@ CORE_FEAT = [
     # ==== 地2 A34 (2026-09-11): GNU 语句表达式 ({ ... }) 块内变量 作用域 (原 码生成 落空 → 当函数名) ====
     'scripts/feat_zh_struct_fnptr_float_ok.c', 'scripts/feat_zh_printf_spec_ok.c', 'scripts/feat_zh_printf_f_wide_ok.c', 'scripts/feat_zh_printf_int_pad_ok.c', 'scripts/feat_zh_contract_fingerprint_ok.c', 'scripts/feat_zh_annot_cap_neg.c', 'scripts/feat_zh_contract_ret_ok.c', 'scripts/feat_zh_ll_to_double_ok.c', 'scripts/feat_zh_stmtexpr_ok.c', 'scripts/feat_zh_call_widearg_ok.c', 'scripts/feat_zh_fmt_interp_wide_ok.c', 'scripts/feat_zh_closure_cap_neg.c', 'scripts/feat_zh_struct_arr_member_inc_ok.c', 'scripts/feat_zh_pending_tag_ok.c', 'scripts/feat_zh_label_cap_neg.c',
     'scripts/feat_zh_nested_struct_field_ok.c', 'scripts/feat_zh_nested_struct_arrfield_ok.c',
-    'scripts/feat_zh_bigfield_ok.c', 'scripts/feat_zh_struct_field_matrix_ok.c', 'scripts/feat_zh_gouarray_field_ok.c',
+    'scripts/feat_zh_bigfield_ok.c', 'scripts/feat_zh_struct_field_matrix_ok.c', 'scripts/feat_zh_gouarray_field_ok.c', 'scripts/feat_zh_typedef_union_anon_ok.c',
 
 ]
 
