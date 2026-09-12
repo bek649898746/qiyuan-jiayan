@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '21F781CB'  # 雷1 修复 (2026-09-12 启灵探雷): 接口 名 于 {...} 死循环 — 接口解析循环 词变量分支 缺 否 词位++ 兜底, 错位 token (左花/赋号等) 不推进 → 卡死; 补 否 词位++ —— 本次 链 v1 = v2 = 21F781CB
+$expected = '5F8BB9A5'  # A3-c1/c2 (2026-09-12): 域五/双繁/行次/借基/度平 5 平行数组 → 借用表{名/别/深/基/末用} + 初二/前十/前十基 → 别名表{指/目标/基} (借用态 真结构化) —— 本次 链 v1 = v2 = 5F8BB9A5
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
