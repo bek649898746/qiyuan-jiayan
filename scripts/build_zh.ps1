@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'B1E03A31'  # A3-e1 (2026-09-12): 域六/域六别/域六基/域六字段 4 平行数组 → 结构体数组 域六[2048]{路径/别/基/字段} (部分移动路径 真结构化) —— 本次 链 v1 = v2 = B1E03A31
+$expected = '52B7440C'  # A3-e2 (2026-09-12): 移事A/B+移型A/B+移事A终 与 移事域A/B+移型域A/B+移事域A/B基 平行数组 → 移支表A/B + 移支域A/B 结构体数组 (分支移动撤销日志 真结构化) —— 本次 链 v1 = v2 = 52B7440C
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
