@@ -386,6 +386,7 @@ CORE_FEAT = [
     #   T3 (2026-09-13) 收尾: `可空 变量 = 空;` 赋值置空 真支持 → 原 neg2 (响亮 A8002) **转正** 为 null_assign2_ok
     'scripts/feat_zh_null_assign_ok.c', 'scripts/feat_zh_null_assign2_ok.c',
     'scripts/feat_zh_null_assign_neg.c',
+    'scripts/feat_zh_null_struct_decl_ok.c', 'scripts/feat_zh_null_struct_decl_neg.c',  # T3b (2026-09-13) 构值 声明 置空
     'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
 
     # ==== 嵌套匿名体 字段 布局/对齐 矩阵 (2026-09-13): 匿名嵌套 注册 未设 标合 → 总尺寸 12 轮 up 16 ====
