@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'FE6ADECD'  # A3-参析 容量: 析构形参表 16->64 (原 收集循环 '&& 参析数 < 16' 静默截断 -> 第17个起 析构形参 永不注册 = 静默资源泄漏); 满 64 改 原得 确定性拒绝
+$expected = '2187E2CC'  # A44 调用 子槽 窗口: 被调者 定位 硬编码 倒扫 19..0 -> 真末子 (节末子/末变子); 实参 收集 20 槽 -> 全宽; 槽高[20] 越界写栈 修复; 解析器 实参 表 静默丢弃 -> 原得 确定性拒绝
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
