@@ -381,6 +381,12 @@ CORE_FEAT = [
     # ==== 序8 (2026-09-13): decl_form_matrix.py 报出的 三 个 零格 形态 —— C 具名标签 typedef ×2 + 别名 反射 ====
     'scripts/feat_zh_typedef_named_tag_ok.c',
 
+    # ==== 探雷 启灵 雷2/雷5/雷6 (2026-09-13): 显式置空 / 未声明标识符 文案 / 实参 成员 逃逸 (I2 假阳) ====
+    #   雷1 (接口死循环) 已 于 068da05 修; 雷3 (除零检查) 实测 已 好; 雷4 (返 错 N) 本 批 修
+    'scripts/feat_zh_null_assign_ok.c',
+    'scripts/feat_zh_null_assign_neg.c', 'scripts/feat_zh_null_assign_neg2.c',
+    'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
+
 ]
 
 def build_tests(args):
