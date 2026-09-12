@@ -10,7 +10,8 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '18A0B89E'  # A3-h (2026-09-12): 存期表/域约束 2 平行数组 → 存期表{名/父} (生命周期域表 真结构化) —— 本次 链 v1 = v2 = 18A0B89E
+$expected = '93B15D4E'  # A2-prereq (2026-09-12): 嵌套结构体字段 支持 三处根治 —— ① 文件级/全局 匿名结构体 字段 登记 结构体类型序 (毛利) ② 内存地址 下标分支 保存/恢复 码生成免解引用 (丢弃调用者语义 → 例14/15 嵌套链 多发射一次解引用 → 0xC0000005) ③ 数组[i].字段 读/写 回落 支持 下标基链 (序七 兜底) —— 本次 链 v1 = v2 = 93B15D4E
+                         # 前值 18A0B89E (A3-h 存期表 真结构化)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
