@@ -552,7 +552,7 @@ def main():
         if fail_l:
             print(f'--- 重试后仍失败 {len(fail_l)} 个 (判定为真回归) ---')
 
-    print(f'\n行为断言: PASS={pass_n} SKIP={len(skip_l)} FAIL={len(fail_l)}')
+    print(f'\n行为断言: 通过 PASS={pass_n} SKIP={len(skip_l)} FAIL={len(fail_l)}')
     if skip_l:
         print('--- 显式 SKIP (标注 @DEP/@MULTI, 非核心覆盖) ---')
         for n, m in skip_l:

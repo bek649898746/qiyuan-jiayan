@@ -25,8 +25,8 @@ New-Item -ItemType Directory -Force -Path 'scratch_gl' | Out-Null
 Write-Host "== check_fast: 旧 seed 编 当前 源 → 探针 编译器 =="
 $t0 = Get-Date
 & .\qcc_zh_seed.exe srclib_jiayan\qcc_zh.jy -o $probe
-if ($LASTEXITCODE -ne 0) { Write-Host "  [FAIL] 探针 编译 失败 (当前 源 编 不过 → 立即 回查)"; exit 1 }
-Write-Host ("  [PASS] 探针 OK ({0:n0}s)" -f ((Get-Date) - $t0).TotalSeconds)
+if ($LASTEXITCODE -ne 0) { Write-Host "  [失败 FAIL] 探针 编译 失败 (当前 源 编 不过 → 立即 回查)"; exit 1 }
+Write-Host ("  [通过 PASS] 探针 通过 ({0:n0}s)" -f ((Get-Date) - $t0).TotalSeconds)
 
 if (-not $Only) { Write-Host "  (未 给 --Only 锚 列表 → 只 编 探针)"; exit 0 }
 
@@ -35,6 +35,6 @@ Write-Host "== check_fast: 目标 锚 (probe) =="
 python scripts/run_tests_zh.py --only $Only
 $rc = $LASTEXITCODE
 Remove-Item Env:\QCC_TEST_BIN -ErrorAction SilentlyContinue
-if ($rc -ne 0) { Write-Host "  [FAIL] 目标 锚 有 失败 → 改动 未 达标"; exit 1 }
-Write-Host "  [PASS] 目标 锚 全绿 (≤3min 回路; 验收 再 上 链 + 闸)"
+if ($rc -ne 0) { Write-Host "  [失败 FAIL] 目标 锚 有 失败 → 改动 未 达标"; exit 1 }
+Write-Host "  [通过 PASS] 目标 锚 全绿 (≤3min 回路; 验收 再 上 链 + 闸)"
 exit 0

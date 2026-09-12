@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '587CFB87'  # A3-子表 清剿 第二片: 标签循环(64)/限止表 restrict(64)/结构化线程(8·16) 静默丢弃 -> 原得 A5001 + 三 登记表 入 每编译 重置块; 新 负锚 feat_zh_label_cap_neg.c
+$expected = 'C7E76E81'  # A46 回写: 闭包计数 ++ 恢复 (种子 已 同步到 587CFB87, 一代即全等) —— 本次 链 v1 = v2 = C7E76E81, 顺带 证实 「种子 滞后」已 消除
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
@@ -69,18 +69,18 @@ foreach ($n in 1..7) {
 }
 $total = [math]::Round(((Get-Date) - $chainT0).TotalSeconds, 1)
 
-if ($hs.Count -eq 0) { Write-Host "[FAIL] 链未产出 (第 1 代失败)" -ForegroundColor Red; exit 1 }
+if ($hs.Count -eq 0) { Write-Host "[失败 FAIL] 链未产出 (第 1 代失败)" -ForegroundColor Red; exit 1 }
 $finalHash = $hs[$hs.Count - 1]
 if ($finalHash -ne $expected) {
-    Write-Host "[FAIL] 不动点 $finalHash != 期望 $expected  (链耗时 ${total}s)" -ForegroundColor Red
+    Write-Host "[失败 FAIL] 不动点 $finalHash != 期望 $expected  (链耗时 ${total}s)" -ForegroundColor Red
     exit 1
 }
 $converged = ($hs.Count -ge 2 -and $hs[$hs.Count - 1] -eq $hs[$hs.Count - 2])
 if (-not $converged) {
-    Write-Host "[FAIL] $($hs.Count) 段内 无连续两代全等 (疑 振荡/多代漂移) — 链: $($hs -join ' ')" -ForegroundColor Red
+    Write-Host "[失败 FAIL] $($hs.Count) 段内 无连续两代全等 (疑 振荡/多代漂移) — 链: $($hs -join ' ')" -ForegroundColor Red
     exit 1
 }
 if ($convDepth -lt 0) { $convDepth = $hs.Count }
-Write-Host "[PASS] 中文自举链不动点 $expected 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
-if (-not $NoSeed) { Copy-Item $finalExe qcc_zh_seed.exe -Force; Write-Host "  [seed] qcc_zh_seed.exe <- $finalExe (同步到不动点; -NoSeed 可跳过)" }
+Write-Host "[通过 PASS] 中文自举链不动点 $expected 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
+if (-not $NoSeed) { Copy-Item $finalExe qcc_zh_seed.exe -Force; Write-Host "  [种子 seed] qcc_zh_seed.exe <- $finalExe (同步到不动点; -NoSeed 可跳过)" }
 exit 0
