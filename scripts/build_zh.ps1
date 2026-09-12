@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '027E7C60'  # A44b 表达式是否浮(调用) 子 0 -> 真末子 (被调者 定位); 因 seed 尚含 A44b/A46 旧 行为, v1 携带 旧 行为, v2 = v3 才是 真 不动点
+$expected = 'D02DC8EA'  # A3 待定结构体标签 真结构: 余对/目凶/段对 3 平行数组 -> 待标表 结构体数组; 因 seed 尚含 旧 行为, v1 携带 旧 行为, v2 = v3 才是 真 不动点
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
