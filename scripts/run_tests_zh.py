@@ -387,6 +387,9 @@ CORE_FEAT = [
     'scripts/feat_zh_null_assign_neg.c', 'scripts/feat_zh_null_assign_neg2.c',
     'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
 
+    # ==== 嵌套匿名体 字段 布局/对齐 矩阵 (2026-09-13): 匿名嵌套 注册 未设 标合 → 总尺寸 12 轮 up 16 ====
+    'scripts/feat_zh_nested_anon_matrix_ok.c',
+
 ]
 
 def build_tests(args):
