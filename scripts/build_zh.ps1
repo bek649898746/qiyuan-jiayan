@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '3B1AD9BB'  # A3-f1 (2026-09-12): 原合/短玖/栈进二/副平/父接口 5 平行数组 → 接口表{名/槽数/槽名/槽函/父序} 结构体数组 (trait 接口表 真结构化) —— 本次 链 v1 = v2 = 3B1AD9BB
+$expected = 'ACDB4C90'  # A3-f2/f3 (2026-09-12): 宽失/旁从/间吉/满败/栈合 → 实现表{接口名/类型名/绑名/绑函/绑数} + 接口引用名/接口/目标/函/伍 → 接口引用表{名/接口名/目标/函/伍} (impl 实现表 + 接口引用表 真结构化) —— 本次 链 v1 = v2 = ACDB4C90
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
