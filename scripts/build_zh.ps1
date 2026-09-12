@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '00EC4D80'  # A3-d1/d2 (2026-09-12): 窄化名/窄化旧 → 窄化表{名/旧} + 可空字段名/可空字段构 → 可空字段表{构序/名} (变可空 真结构化) —— 本次 链 v1 = v2 = 00EC4D80
+$expected = '18A0B89E'  # A3-h (2026-09-12): 存期表/域约束 2 平行数组 → 存期表{名/父} (生命周期域表 真结构化) —— 本次 链 v1 = v2 = 18A0B89E
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
