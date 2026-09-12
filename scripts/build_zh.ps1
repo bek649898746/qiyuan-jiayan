@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'D02DC8EA'  # A3 待定结构体标签 真结构: 余对/目凶/段对 3 平行数组 -> 待标表 结构体数组; 因 seed 尚含 旧 行为, v1 携带 旧 行为, v2 = v3 才是 真 不动点
+$expected = '587CFB87'  # A3-子表 清剿 第二片: 标签循环(64)/限止表 restrict(64)/结构化线程(8·16) 静默丢弃 -> 原得 A5001 + 三 登记表 入 每编译 重置块; 新 负锚 feat_zh_label_cap_neg.c
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
