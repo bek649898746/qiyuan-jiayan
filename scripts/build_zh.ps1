@@ -10,8 +10,8 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'EB38E44E'  # 第1刀-第三段 (2026-09-12): 关键字 静默降级 扫尾 —— 补注册 `结构体` (结构词) / `枚举` (枚词): 原 被当 标识符 → `typedef 结构体 {..} 外;` 静默错值, `结构体 外 {..};` / `typedef 枚举` 解析中断 —— 本次 链 v1 = v2 = EB38E44E
-                         # 前值 F5D375F6 (第1刀-第二段 ③指针字段 + 联合判定收口)
+$expected = '9EEF2C64'  # A2 本体 (2026-09-12): 类型表 16 个每字段平行数组 → `typedef 构 {...} 字段录;` + `字段录 字段[1024]` (真结构化) —— 298 处下标访问 重写 + 继承拷贝 15 行 手工平行拷贝 塌缩 为 1 行 整记录拷贝 —— 本次 链 v1 = v2 = 9EEF2C64
+                         # 前值 EB38E44E (第1刀-第三段 结构体/枚举 关键字注册)
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
