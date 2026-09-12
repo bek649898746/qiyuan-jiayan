@@ -374,6 +374,13 @@ CORE_FEAT = [
     'scripts/feat_zh_type_alias_anon_ok.c', 'scripts/feat_zh_type_alias_anon_union_ok.c',
     'scripts/feat_zh_type_alias_local_ok.c', 'scripts/feat_zh_type_alias_anon_local_neg.c',
 
+    # ==== R4 (2026-09-13): `sizeof(((struct T *)0)->字段)` —— 结构词 前缀 (struct/union/构/联) 反射 取字段尺寸 ====
+    #   修复前: 判据 只认 (词变量|型词)+`*` → C 形态落 通用表达式 → 码生成 对成员取址 → 未定义函数 'x'
+    'scripts/feat_zh_sizeof_ptrfield_ok.c',
+
+    # ==== 序8 (2026-09-13): decl_form_matrix.py 报出的 三 个 零格 形态 —— C 具名标签 typedef ×2 + 别名 反射 ====
+    'scripts/feat_zh_typedef_named_tag_ok.c',
+
 ]
 
 def build_tests(args):

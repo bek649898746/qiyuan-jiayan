@@ -122,5 +122,13 @@ elseif ($expected) {
     else { Bad "台账 里 没 有 不动点 $expected — 收尾 未 回写" }
 }
 
+# ---- 7 声明形态 覆盖矩阵 (启元 复盘 序8, 2026-09-13) ---------------------------
+#   零格 = 至少 一条 声明 解析路径 **整条 零覆盖** (R1-R4 四条 缺陷 全部 出自 此) ⇒ 一等 闸 指标, 零格即红.
+if (Test-Path 'scripts/decl_form_matrix.py') {
+    $mo = & python scripts/decl_form_matrix.py 2>&1
+    if ($LASTEXITCODE -eq 0) { Ok "声明形态 覆盖矩阵: 全 形态 有 入闸 锚" }
+    else { Bad "声明形态 覆盖矩阵 有 零格:"; $mo | Select-Object -Last 8 | ForEach-Object { Write-Host "      $_" } }
+} else { Info "decl_form_matrix.py 不存在, 跳过" }
+
 Write-Host "== 结果: $(if ($script:fail -eq 0) { '全 PASS' } else { "$($script:fail) 项 FAIL" }) =="
 exit $(if ($script:fail -eq 0) { 0 } else { 1 })

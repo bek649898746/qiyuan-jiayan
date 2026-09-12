@@ -232,6 +232,17 @@ class Gen:
         # union (int/char 同构 — explore: 规避混排对齐)
         if has_union:
             lines.append('union U { int i; char c[4]; };')
+            # 序7 (2026-09-13 启元复盘): **停止 规避 混排** —— int/char 同构 时 结构体求和 与 联合取大 数值 巧合 相同,
+            #   于是 R1 缺陷 (union 退化成 struct) 200 轮 都 测不出。int/double 混排 是 判别器: 联合 8 vs 结构体 16。
+            lines.append('union UM { int i; double d; };')
+        # typedef 声明形态 (序7): 原 200 轮 语料 **零 typedef** ⇒ typedef 走的 解析路径 (③ 具名标签+体+别名 / 匿名体)
+        #   在 差分台 完全 盲区 —— 启元 R1/R2/R3/R4 复盘 报的 "零格" 就 是 这里。
+        has_td = r.random() < 0.7
+        if has_td:
+            lines.append('typedef struct Pad3 { int a; char b[2]; } PadAlias;')  # 具名标签+体+别名 (尾填充 6→8)
+            lines.append('typedef struct { int a; char b[2]; } AnonAlias;')      # 匿名体+别名
+            lines.append('typedef union { int i; double d; } UMix;')             # 匿名 union (联合取大 8)
+            lines.append('typedef union TagU { char c[3]; int i; } UMix2;')      # 具名 union (char[3] vs int → 4)
         # 位域
         if has_bf:
             lines.append('struct BF { unsigned b0:1; unsigned b1:3; unsigned b2:4; int full; };')
@@ -255,12 +266,32 @@ class Gen:
             lines.append('    %s.in.c = %d;' % (o, r.choice(SAFE_VAL)))
             lines.append('    %s.z = %d;' % (o, r.choice(SAFE_VAL)))
             m.append(('    printf("%%d\\n", %s.in.a + (int)%s.in.c + %s.z);' % (o, o, o), 'int'))
+            # 序7 (R4 形态, 2026-09-13): **结构词 前缀** 的 成员取址 反射 —— 原 判据 只认 typedef/型词
+            #   → `(struct Inner *)0` 落 通用表达式 → 码生成 对成员取址 → 未定义函数 'c' (整个 编译 失败)
+            m.append(('    printf("%%d\\n", (int)sizeof(((struct Inner *)0)->c));', 'int'))  # 8 (long long)
+            m.append(('    printf("%%d\\n", (int)sizeof(((struct Inner *)0)->b));', 'int'))  # 1 (char)
         # union 访问
         if has_union:
             u = self.v()
             lines.append('    union U %s;' % u)
             lines.append('    %s.i = %d;' % (u, r.choice(SAFE_VAL)))
             m.append(('    printf("%%d\\n", %s.i);' % u, 'int'))
+            um = self.v()
+            lines.append('    union UM %s;' % um)
+            lines.append('    %s.i = %d;' % (um, r.choice(SAFE_VAL)))
+            # 序7: 混排 union 布局 判别 (联合 8 / 结构体 16) + 成员 尺寸
+            m.append(('    printf("%%d\\n", (int)sizeof(union UM));', 'int'))
+            m.append(('    printf("%%d\\n", (int)sizeof(((union UM *)0)->d));', 'int'))
+        if has_td:
+            # 序7: typedef 路径 布局 判别 (尺寸 / 尾填充 / 别名 sizeof / 匿名体 / 联合语义)
+            pv = self.v()
+            lines.append('    PadAlias %s; %s.a = 1;' % (pv, pv))
+            m.append(('    printf("%%d\\n", (int)sizeof(PadAlias));', 'int'))            # 8 (6 未尾填充)
+            m.append(('    printf("%%d\\n", (int)sizeof(((PadAlias *)0)->b));', 'int'))  # 2
+            m.append(('    printf("%%d\\n", (int)sizeof(AnonAlias));', 'int'))           # 8
+            m.append(('    printf("%%d\\n", (int)sizeof(UMix));', 'int'))                # 8 (联合取大; 结构体化 = 16)
+            m.append(('    printf("%%d\\n", (int)sizeof(UMix2));', 'int'))               # 4
+            m.append(('    printf("%%d\\n", (int)sizeof(((UMix2 *)0)->i));', 'int'))     # 4
         # 位域
         if has_bf:
             b = self.v()
