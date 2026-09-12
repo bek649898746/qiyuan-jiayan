@@ -369,6 +369,11 @@ CORE_FEAT = [
     'scripts/feat_zh_nested_struct_field_ok.c', 'scripts/feat_zh_nested_struct_arrfield_ok.c',
     'scripts/feat_zh_bigfield_ok.c', 'scripts/feat_zh_struct_field_matrix_ok.c', 'scripts/feat_zh_gouarray_field_ok.c', 'scripts/feat_zh_typedef_union_anon_ok.c', 'scripts/feat_zh_typedef_struct_anon_align_ok.c', 'scripts/feat_zh_type_alias_sizeof_ok.c',
 
+    # ==== R3-匿 (2026-09-13): 匿名体 中文 类型别名 (类型 名 = 构/联合/枚 { ... };) + 函数级 别名 真尺寸 ====
+    #   文件级 原 解析中断 / 函数级 原 静默 4 (8 字节体 当 4 用 → 运行崩); 词法 补注册 中文关键字 类型定义 ≡ typedef
+    'scripts/feat_zh_type_alias_anon_ok.c', 'scripts/feat_zh_type_alias_anon_union_ok.c',
+    'scripts/feat_zh_type_alias_local_ok.c', 'scripts/feat_zh_type_alias_anon_local_neg.c',
+
 ]
 
 def build_tests(args):

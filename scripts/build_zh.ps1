@@ -10,7 +10,11 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '6349DC50'  # (2026-09-13) 启元复盘 R1b/R2/R3 修复: 具名 typedef union 联合语义 · 匿名 typedef struct 尾部填充 · 中文类型别名(sizeof 不再静默返 4) —— 本次 链 v2 = v3 = 6349DC50 (v1 为 种子 transient)
+$expected = '4BDDCAD2'  # (2026-09-13) R3-匿: 匿名体 中文 类型别名 (类型 名 = 构/联合/枚 { ... };) 词元级 等长重写 →
+                        #   文件级 复用 具名标签解析器 (原 解析中断); 函数级 具名/别名链 取真尺寸 (原 静默 4);
+                        #   函数级 匿名体 → 响亮报错 A1002; 词法 补注册 中文关键字 类型定义 ≡ typedef. 本次 v1 = v2 = 4BDDCAD2
+                        # 前值 6349DC50 (启元复盘 R1b/R2/R3). 注: 中间版本 C0BD5664 因 ③ 分支 插在 `;` 消费 之后
+                        #   (词位 已 越过 语句 → 下一条 语句 首 类型名 被 误吃) 而 回退重做 ⇒ 见 施工日志
                          # 前值 395B5732 (R1a)
 
 Write-Host "== [1/2] 生成 qcc_zh.jy =="
