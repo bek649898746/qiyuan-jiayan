@@ -436,9 +436,14 @@ class Gen:
             m.append(('    printf("%%d\\n", %d / %d);' % (a, b), 'int'))
             m.append(('    printf("%%d\\n", %d %% %d);' % (a, b), 'int'))
         # 移位 (0..31, 非负左操作数避免 UB)
+        # 2026-09-13 全族 差分 抓到 seed=5065 一例: `2 << 30` (int 左移 溢出 = C 里 **UB**)
+        #   gcc = INT_MIN(-2147483648), 甲言 = 64 位 结果(+2147483648) 且 %d 打印 出 64 位值;
+        #   两边 都 只是 UB 下 的一种 合法 选择 → 这类 用例 对 差分台 是 **噪声**, 生成器 必须 规避:
+        #   左移位数 收 到 结果 仍 落 int32 正数 范围 (a<<s <= 0x7FFFFFFF).
         for _ in range(2):
             a = r.choice([1, 2, 7, 0x100])
-            s = r.randrange(0, 32)
+            smax = 30 - (a.bit_length() - 1)
+            s = r.randrange(0, max(0, smax) + 1)
             m.append(('    printf("%%d\\n", %d << %d);' % (a, s), 'int'))
             m.append(('    printf("%%d\\n", %d >> %d);' % (a, s), 'int'))
         # 位运算 (符号扩展测试: 负数 & 0xFF)
