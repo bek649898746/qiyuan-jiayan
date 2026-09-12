@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '7D0FF3E4'  # A3-析构位 真结构化: 析构 T, fn; 登记 从 2 个名键平行数组 (型析名[64][64]/型析函[64][64], 反向线性扫 + 64 条静默上限) 迁 真结构 类型表[构序].析构函[64] (容量 4096); 型析查序 不再走 构序->名->查名 往返 (匿名类型名='' 会撞首条目, 同 G1-1a 类); 构加 建条目置空 保可重入
+$expected = 'FE6ADECD'  # A3-参析 容量: 析构形参表 16->64 (原 收集循环 '&& 参析数 < 16' 静默截断 -> 第17个起 析构形参 永不注册 = 静默资源泄漏); 满 64 改 原得 确定性拒绝
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
