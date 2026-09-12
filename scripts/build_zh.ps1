@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '02C6F5EE'  # A3-4b (2026-09-12): 尾阵 簇 5 平行数组 (尾阵/尾阵元/尾阵基/尾阵深/尾阵数) + 支阵名 → 变量表.就绪阵/就绪阵丙 + 支阵序 (元素级 索引化; 就绪阵丙=净丙+1 哨兵); 逆合一 删 尾阵 平移压缩; 终子 就绪阵丙 全清 —— 本次 链 v1 = v2 = 02C6F5EE
+$expected = 'FE5EB1E1'  # A3-4c (2026-09-12): 标量 分支汇合 快照 名列表 (支A名/支T名/支E名 6MB BSS) → 支A序/支T序/支E序 (变量表 条目序; 消除 遮蔽同名 名歧义); 支合 改 序比较 + 直读 就绪丙 —— 本次 链 v1 = v2 = FE5EB1E1
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
