@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '91A8838A'  # A3-g (2026-09-12): 满属/总复/栈聚 3 平行数组 → 重载表{符/型名/函名} 结构体数组 (运算符重载 登记 真结构化) —— 本次 链 v1 = v2 = 91A8838A
+$expected = '3B1AD9BB'  # A3-f1 (2026-09-12): 原合/短玖/栈进二/副平/父接口 5 平行数组 → 接口表{名/槽数/槽名/槽函/父序} 结构体数组 (trait 接口表 真结构化) —— 本次 链 v1 = v2 = 3B1AD9BB
                          # cast32 修复后中文链 4-step 收敛 (v4..v7 稳定; v1 种子 transient)
                          # cast32: 32 位类型 cast 标记表 + nll 清零 (uint32<int64 比较误判无符号根治)
                          # (en 链同步 2DED3F47, 均种子修复)  # 2026-08-31 中文前端语法独立 站A+B+C + typedef double 局部声明修复 (种子层):
