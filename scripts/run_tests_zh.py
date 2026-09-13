@@ -467,6 +467,14 @@ CORE_FEAT = [
     #   ⚠️ 未修 (另立): F5 有 tag 内联 union (走 `联合字段`, 且 读取 也 异常)
     'scripts/feat_zh_inline_def_double_ok.c',
 
+    # ==== A64 (2026-09-14): 「具标签 无变量名」匿名成员 四矩阵 —— 外层 union + 内层 union (U2) 尺寸错 ====
+    #   四矩阵: S1 外struct+内struct 24 / S2 外struct+内union 16 / U1 外union+内struct 16 / **U2 外union+内union 8 (甲言曾 16)**
+    #   根因 (探针铁证): 提升时 `字段登记(构序,...)` 把每个提升字段**累加**进外层尺寸 (U2: x→4, p→+4, q→+8=16),
+    #     而 max 分支拿**已被污染的当前尺寸**去比 (16>8) ⟹ 永远失效
+    #   修法: 字段登记循环前存 `旧尺寸`, max 与**旧尺寸**比; A56(`内构序`)/A53(`深进`) 两处兄弟分支同修
+    #   覆盖: 四矩阵 sizeof + 具名对照 N1/N2 + 提升后读写 (union 覆盖语义); 与 gcc 逐字节全等
+    'scripts/feat_zh_anon_union_matrix_ok.c',
+
 ]
 
 def build_tests(args):
