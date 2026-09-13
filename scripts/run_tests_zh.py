@@ -451,6 +451,14 @@ CORE_FEAT = [
     #   覆盖: INT32_MIN 作 变量/字面量/多实参交错 位置 + 邻近边界; 与 gcc 逐字节 全等
     'scripts/feat_zh_printf_int_min_ok.c',
 
+    # ==== A56 (2026-09-14): 具标签 无变量名 的 结构体/联合 成员 (C11 6.7.2.1p13 匿名成员) ====
+    #   病灶三合一: ① 内联定义链 只有「有变量名」的 `若` (与 A53 同语义 两条路径) → 无变量名 整块跳过;
+    #   ② 外层 union 误用 结构体累加 (`union E { int x; union EU {...}; }` 得 16 应 8);
+    #   ③ 提升时 只传 6 个参数 → 副优(双精度)/原进(指针)/位域 等 标记位 全丢 (`d.b = 1.5` 报 A9002);
+    #   ④ (顺带) 内联定义路径 缺 双精度标记 (既存: `f.fs.b` 读 0.0, 主路径有 `末进一`→`构域浮` 内联路径没有)
+    #   覆盖: 外层 struct+内union / 外层 struct+内struct / 外层 union+内union + 提升后 字段读写(含 double) + sizeof + offsetof
+    'scripts/feat_zh_tagged_anon_member_ok.c',
+
 ]
 
 def build_tests(args):
