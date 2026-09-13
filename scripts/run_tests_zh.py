@@ -516,6 +516,8 @@ CORE_FEAT = [
     #     修 = 扫描前 `循环 (词型表[扫B] == 左括) 扫B++;` + 排他 `乘 后 紧跟 )` (= `((T*)0)` 指针声明符),
     #     反射形态 (`feat_zh_sizeof_ptrfield_ok` / `feat_zh_typedef_named_tag_ok` / `feat_reflect`) 已回归确认.
     'scripts/feat_zh_sizeof_expr_ok.c',
+    # A9-余账 #2/#3 (2026-09-14): 逗号表达式 全形态 (表达式语句 / 控制语句体 / for 增量 / 括号 / 返回 / 值语义)
+    'scripts/feat_zh_comma_expr_ok.c',
 
 ]
 
