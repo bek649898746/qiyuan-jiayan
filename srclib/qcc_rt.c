@@ -1067,5 +1067,9 @@ int __qcc_div_check(int divisor) {
     if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
     return divisor;
 }
+long long __qcc_div_check64(long long divisor) {
+    if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
+    return divisor;
+}
 #endif
 
