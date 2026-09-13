@@ -392,6 +392,13 @@ CORE_FEAT = [
     'scripts/feat_zh_uint_shr_ok.c',  # 位运算族 (2026-09-13) 无符号 右移 (~ 继承 无符号性)
     'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
 
+    # ==== D 系列 收口 (2026-09-13): 5 站 一次 钉死 (审计 探针 到 正锚 的 落闸) ====
+    'scripts/feat_zh_union_anon_ok.c',         # D2/D8 裸匿名 union (④ 文件级匿名块 补 联合分派)
+    'scripts/feat_zh_array_field_align_ok.c',  # D5/D9 多维数组字段 对齐依据 = 元素尺寸 (与 域行数 拆开)
+    'scripts/feat_zh_bitfield_narrow_ok.c',    # D4 位域 容器 宽度 按 基类型 (原 硬编 4 字节槽)
+    'scripts/feat_zh_sizeof_addr_ok.c',        # D12/D13 大小(&x) = 8 (原 返 0/随机) + 未初始化 作 大小() 操作数 不误拒
+    'scripts/feat_zh_union_array_align_ok.c',  # D14 联合 含 数组成员 的 对齐 (联合字段 补 满卯 汇总)
+
     # ==== 嵌套匿名体 字段 布局/对齐 矩阵 (2026-09-13): 匿名嵌套 注册 未设 标合 → 总尺寸 12 轮 up 16 ====
     'scripts/feat_zh_nested_anon_matrix_ok.c',
 
