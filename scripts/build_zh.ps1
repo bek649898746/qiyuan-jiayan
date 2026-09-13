@@ -10,7 +10,14 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'ECA89BFC'
+$expected = '2DEA97DC'
+                        # (2026-09-14) **A54: `sizeof(<不完整类型>)` 原 静默 返 0 → 响亮 A1001** (层3 扫锚 tests/ 产物):
+                        #   C11 6.5.3.4p1: sizeof 不完整类型 是 **编译错误** (gcc: "invalid application of 'sizeof' to incomplete type");
+                        #   甲言 静默 返 0 ⟹ 假尺寸 进 `分配内存(n * 大小(X))` 只分 0 → 堆溢出炸弹 (与 T1 裸标签 / A15 同类危害), 且 用户 无信号。
+                        #   修: 结构体分支 指针情形 之后 补 `否 若 (尺寸 <= 0) → A1001` (前向声明 + 指针 合法, 已 在上方 置 8)。
+                        #   新负锚 `scripts/feat_zh_sizeof_incomplete_neg.c` (名字带 `_neg` → 框架期望编译失败)。
+                        #   前值 ECA89BFC (A52)
+                        # (2026-09-14) **A52: union 的 内联匿名 结构体成员 的 union 语义** (层3 扫锚 tests/ 产物):
                         # (2026-09-14) **A52: union 的 内联匿名 结构体成员 的 union 语义** (层3 扫锚 tests/ 产物):
                         #   病灶: `union u2 { int file; struct { int a; double b; } buf; }` —— 内联匿名 struct 成员的登记路径
                         #     **无条件 走 `字段登记` (顺序累加)**, 漏 union 分支 ⟹ union 当 结构体 布局 (尺寸 24 应 16, `buf` 偏移 8 应 0)。

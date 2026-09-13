@@ -439,6 +439,10 @@ CORE_FEAT = [
     #   同形具名 struct 成员 (u1) 正确; 内联匿名 (u2) 走另一登记点漏了联合语义。插桩一次定位。
     'scripts/feat_union_inline_anon_ok.c',
 
+    # ==== A54 (2026-09-14): `sizeof(<不完整类型>)` 原静默返 0 → 响亮 A1001 (C11 6.5.3.4p1) ====
+    #   假尺寸进 `分配内存(n * 大小(X))` 只分 0 → 堆溢出炸弹; 负锚验证「因正确原因失败」
+    'scripts/feat_zh_sizeof_incomplete_neg.c',
+
 ]
 
 def build_tests(args):
