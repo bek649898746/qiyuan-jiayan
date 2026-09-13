@@ -10,7 +10,16 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'A3661F42'
+$expected = 'ECA89BFC'
+                        # (2026-09-14) **A52: union 的 内联匿名 结构体成员 的 union 语义** (层3 扫锚 tests/ 产物):
+                        #   病灶: `union u2 { int file; struct { int a; double b; } buf; }` —— 内联匿名 struct 成员的登记路径
+                        #     **无条件 走 `字段登记` (顺序累加)**, 漏 union 分支 ⟹ union 当 结构体 布局 (尺寸 24 应 16, `buf` 偏移 8 应 0)。
+                        #   **同形 具名 struct 成员 (`union u1 { int f; struct Inner buf; }`) 是 对的** (走 L16446 的 `若 (源高) 联合字段`)。
+                        #   **插桩定位 (一次)**: 加 `[A52-16446]` 探针 → 编译 → **只有 u1 命中**, u2/s1 不命中 ⟹ 病灶在 另一处登记点。
+                        #   修法: 该处 补 `若 (源高) { 联合字段(...); 字段类型(构序, 源酉, 深进); } 否 字段登记(...)` (回填 毛利, 否则嵌套访问找不到类型)。
+                        #   新钉锚 `scripts/feat_union_inline_anon_ok.c` (u1/u2/s1 三形态, 与 gcc 逐值全等)。
+                        #   前值 A3661F42 (A55)
+                        # (2026-09-14) **A55: `offsetof` 嵌套 member-designator (C99 7.17) 原来只读一个字段名** (层3 扫锚 追查 中 分离):
                         # (2026-09-14) **A55: `offsetof` 嵌套 member-designator (C99 7.17) 原来只读一个字段名** (层3 扫锚 追查 中 分离):
                         #   病灶: 编译器内置 offsetof 处理 只 读 一个 字段名 就 跳到 `)`, 后续 `.字段` 链 **静默 跳过**
                         #     ⟹ 返回 最外层字段 的 偏移, 内层偏移 全丢。实测 `offsetof(struct s1, buf.b)` 甲言 **8** / gcc **16**。

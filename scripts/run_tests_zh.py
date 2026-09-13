@@ -435,6 +435,10 @@ CORE_FEAT = [
     #        ⟹ 布局没问题, 错的是编译期那个计算 (字段序只给下标, 字段[].毛利 才是类型序)
     'scripts/feat_offsetof_nested_ok.c',
 
+    # ==== A52 (2026-09-14): union 的内联匿名 struct 成员 — 原漏 union 分支 (当结构体累加) ====
+    #   同形具名 struct 成员 (u1) 正确; 内联匿名 (u2) 走另一登记点漏了联合语义。插桩一次定位。
+    'scripts/feat_union_inline_anon_ok.c',
+
 ]
 
 def build_tests(args):
