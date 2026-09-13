@@ -1,4 +1,4 @@
-// @EXPECTED out:i64x=8 int=4 gv=4 lv=4 arr=20 ea=4 sz=8 t2=1 call=4 ccall=1 dcall=8
+// @EXPECTED out:i64x=8 int=4 gv=4 lv=4 arr=20 ea=4 sz=8 t2=1 call=4 ccall=1 dcall=8 fcall=4
 /* A15-b + A67 回归锚 (2026-09-14): `大小(<名字>)` 的 **全部合法 形态** 必须 通过, 且 **不 误伤**.
    钉 住 新增 的 "名字 不存在 → A1001" 判据 不 误伤 每 一 类 合法 名字:
      · i64x   typedef 名 (`型定判断` 在 上方 已 分流)
@@ -18,8 +18,10 @@
         `源己`/`当三` **都 只 在 码生成器 阶段** 登记, 解析期 查 恒 0, 故 单列 一 表.
      ③ 判据 加 `查函数纯 < 0` 豁免 —— 首版 漏 了 `大小(函数名)` (无 调用) 形态, 会 误报 "未声明"
         (闸 当时 无 此 锚, 未 拦下 —— **闸 盲区**, 本 锚 补).
-   覆盖: call (int 返回) / ccall (字符 返回 1) / dcall (双精度 返回 8) —— 与 gcc **逐字节全等**.
-   ⚠️ 已知 限制 (挂账 A68): 单精度 返回 的 函数, `函返浮` 不 区分 float/double ⟹ 本 表 记 8 (应 4). */
+   覆盖: call (int 返回) / ccall (字符 返回 1) / dcall (双精度 返回 8) / **fcall (单精度 返回 4, A68)** —— 与 gcc **逐字节全等**.
+   ✅ A68 已闭环 (2026-09-14 同日): 解析函数头时的 `函返浮` **不区分 float/double** (float 返回 = double xmm0 值语义, 码生成器需要),
+     故 首版 返宽表 对 `float f(void)` 也 记 8 (应 4) ⟹ 新增 `函返单` 标记 (类型词 `单`/`float` 处 + 类型定义 浮标且尺寸==4 处),
+     `登返宽` 里 `若 (函返单) 4 否 若 (函返浮) 8`. */
 #include <stdio.h>
 
 typedef __int64 i64x;
@@ -28,6 +30,7 @@ int gv = 7;
 int fun(int a) { return a + 1; }
 char cfun(void) { return 65; }
 double dfun(void) { return 1.5; }
+float ffun(void) { return 1.5f; }
 
 int main(void) {
     int lv = 3;
@@ -36,9 +39,9 @@ int main(void) {
     unsigned char t2 = 0;
     arr[0] = 1;
     t2 = (unsigned char)sizeof(char);
-    printf("i64x=%d int=%d gv=%d lv=%d arr=%d ea=%d sz=%d t2=%d call=%d ccall=%d dcall=%d\n",
+    printf("i64x=%d int=%d gv=%d lv=%d arr=%d ea=%d sz=%d t2=%d call=%d ccall=%d dcall=%d fcall=%d\n",
            (int)sizeof(i64x), (int)sizeof(int), (int)sizeof(gv), (int)sizeof(lv),
            (int)sizeof(arr), (int)sizeof(EA), (int)sizeof(sz), (int)sizeof(t2),
-           (int)sizeof(fun(lv)), (int)sizeof(cfun()), (int)sizeof(dfun()));
+           (int)sizeof(fun(lv)), (int)sizeof(cfun()), (int)sizeof(dfun()), (int)sizeof(ffun()));
     return 0;
 }

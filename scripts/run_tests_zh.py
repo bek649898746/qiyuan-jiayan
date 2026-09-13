@@ -494,6 +494,15 @@ CORE_FEAT = [
     'scripts/feat_zh_sizeof_name_forms_ok.c',
     'scripts/feat_zh_sizeof_undeclared_neg.c',
 
+    # ==== A50 (2026-09-14): `大小(<浮点字面量>)` —— `f`/`F` 后缀 被 词法层 丢弃 ====
+    #   病灶: 词法 **直接丢弃** `f` 后缀, 且 是 **两条路径** (数字开头 `1.5f` L5510 / 句点开头 `.5f` L5767 内)
+    #     ⟹ float 字面量 一律 被当 双精度, `大小(1.5f)` 得 8 (应 4). 又一例「同一语义 多条路径」.
+    #   修法: 词法 打标记 `词长表[词序] = 3` (1/2 已 用于 长/长整 整数 后缀), `大小` 终简分支 据此 4/8.
+    #   覆盖: `1.5f` / `0.5F` / `2.5e2f` 三形态, 与 gcc 逐字节全等.
+    #   ⚠️ 本 锚 只 钉 宽度; float 字面量 的 运算/传参 语义 是否 需 单精度 通道 属 另 一 议题.
+    # (同站 A68: 单精度 **返回** 的 `大小(函())` —— 见 `feat_zh_sizeof_name_forms_ok.c` 的 fcall 形态)
+    'scripts/feat_zh_sizeof_float_lit_ok.c',
+
 ]
 
 def build_tests(args):
