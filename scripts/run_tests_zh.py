@@ -430,6 +430,11 @@ CORE_FEAT = [
     #   修 = 扁平化 (C11 6.7.2.1): 联合成员 offset 都=基偏 / 结构体成员 累加 / 外层尺寸 = 基偏+匿名体尺寸
     'scripts/feat_c11_anon_member_ok.c',
 
+    # ==== A55 (2026-09-14): `offsetof` 嵌套 member-designator (C99 7.17) — 原只读一个字段名 ====
+    #   铁证: `offsetof(s1, buf.b)` 甲言 8 / gcc 16, 而**地址差** `&v.buf.b - &v` = 16 与 gcc 一致
+    #        ⟹ 布局没问题, 错的是编译期那个计算 (字段序只给下标, 字段[].毛利 才是类型序)
+    'scripts/feat_offsetof_nested_ok.c',
+
 ]
 
 def build_tests(args):
