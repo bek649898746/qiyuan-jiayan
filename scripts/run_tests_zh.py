@@ -459,6 +459,14 @@ CORE_FEAT = [
     #   覆盖: 外层 struct+内union / 外层 struct+内struct / 外层 union+内union + 提升后 字段读写(含 double) + sizeof + offsetof
     'scripts/feat_zh_tagged_anon_member_ok.c',
 
+    # ==== A62 (2026-09-14): 内联定义 里的 双精度字段 读 0.0 (多条路径 缺 双精度标记) ====
+    #   病灶: 无 tag 路径 (L16947 `满再二`) / 主循环 A 块 (`末进一`) 都 设 标记 → `构域浮`;
+    #         有 tag 的 多条 路径 (`条件尺寸` / `新尺寸` 两族 共 10 处) 全 无 → double 字段 副优 恒 0 → 读 走 整数 通道 得 0.0
+    #   修法 (根治): 全局 `字段浮待` —— 各 路径 识别 double 时 置 1 (每字段 开头 重置), `字段尺寸递归` 一处 统一 消费 标 副优
+    #   覆盖: F2 前置定义 / **F1 有 tag 内联 struct** / F4 无 tag 内联 / F6 有 tag 内联 enum; 与 gcc 逐字节 全等
+    #   ⚠️ 未修 (另立): F5 有 tag 内联 union (走 `联合字段`, 且 读取 也 异常)
+    'scripts/feat_zh_inline_def_double_ok.c',
+
 ]
 
 def build_tests(args):
