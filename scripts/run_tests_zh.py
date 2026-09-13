@@ -36,6 +36,7 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
 CORE_FEAT = [
     'scripts/feat_zh_field_layout_matrix_ok.c',
     'scripts/feat_zh_ret_scalar_loop_ok.c',
+    'scripts/feat_zh_sizeof_unknown_neg.c',
     'scripts/feat_move_zh.c', 'scripts/feat_move2_zh.c', 'scripts/feat_move13_zh.c',
     'scripts/feat_zh_copy_semantics9.c', 'scripts/feat_zh_copy_semantics9_neg.c',
     'scripts/feat_zh_linear51.c', 'scripts/feat_zh_linear51_neg.c',
