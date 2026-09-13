@@ -388,6 +388,7 @@ CORE_FEAT = [
     'scripts/feat_zh_null_assign_neg.c',
     'scripts/feat_zh_null_struct_decl_ok.c', 'scripts/feat_zh_null_struct_decl_neg.c',  # T3b (2026-09-13) 构值 声明 置空
     'scripts/feat_zh_alias_target_ok.c', 'scripts/feat_zh_alias_target_neg.c',  # D11 (2026-09-13) 类型别名 目标类型 校验
+    'scripts/feat_zh_array_2d_sizeof_ok.c',  # D6 (2026-09-13) 多维数组 下标链 大小()
     'scripts/feat_zh_i2_argfield_ok.c', 'scripts/feat_zh_undeclared_var_neg.c',
 
     # ==== 嵌套匿名体 字段 布局/对齐 矩阵 (2026-09-13): 匿名嵌套 注册 未设 标合 → 总尺寸 12 轮 up 16 ====
