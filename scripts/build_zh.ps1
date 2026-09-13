@@ -10,7 +10,18 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '4E2FE8BF'
+$expected = '9F145946'
+                        # (2026-09-13) **A53: C11 匿名 结构体/联合 成员 (无 变量名) 原来 被 整体 丢弃** (层3 扫锚 扩展轮 tests/ 产物):
+                        #   病灶: 字段位置 的 `结构词 + 左花` 解析出 匿名类型后, **只有「有 变量名」(`union {...} u;`) 才 登记 到 外层**;
+                        #     **无 变量名** (`union { ... };` / `struct { ... };`) ⟹ 匿名类型 成孤儿 ⟹ 外层 既 无 该 字段
+                        #     (`offsetof` 返 -1) 也 不计尺寸 (整体尺寸 少一块). 实测 `struct A { int x; union { int p; double q; }; }`
+                        #     gcc `size=16 q=8` / 甲言 `size=4 q=-1`; 具名 `} u;` 形态 正确 = **只 匿名形态 死**。
+                        #   修法: **扁平化** (C11 6.7.2.1: 匿名成员 名字 提升到 外层作用域) —— 联合成员 offset 都 = 基偏;
+                        #     结构体成员 = 基偏 + 内部偏移; 外层尺寸 = 基偏 + 匿名体尺寸 (非成员累加); 对齐取 max。
+                        #   覆盖: A 匿名 union ✓ D 匿名 struct ✓ B 具名变量 (回归保护, 本就对) ✓; **C 具标签无变量 未修** (走 L16333 另一路径)。
+                        #   新钉锚 `scripts/feat_c11_anon_member_ok.c` (A/B/D 断言; C 只见输出 不断言)。
+                        #   前值 4E2FE8BF (A51)
+                        # (2026-09-13) **A51: `stdint.h` 预置 缺 C99 7.18.2 整数极值宏** (层3 A 类扫锚产物):
                         # (2026-09-13) **A51: `stdint.h` 预置 缺 C99 7.18.2 整数极值宏** (层3 A 类扫锚产物):
                         #   病灶: `stdint.h` 预置 **只有 typedef, 零 极值宏** ⟹ `INT64_MAX`/`INT64_MIN`/`UINT64_MAX` 等
                         #     报「未声明标识符」(`scripts/feat_si.c` 甲言 **编译失败**); 而 内建 `<限制.h>` 只提供

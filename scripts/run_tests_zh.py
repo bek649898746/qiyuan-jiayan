@@ -425,6 +425,11 @@ CORE_FEAT = [
     #   覆盖: 结构体指针/结构体本体/浮点指针/标量指针/typedef 数组本体 (防改坏); 与 gcc 逐字节全等
     'scripts/feat_zh_sizeof_typedef_ptr_ok.c',
 
+    # ==== A53 (2026-09-13): C11 匿名 结构体/联合 成员 (无 变量名) — 原 被 整体 丢弃 ====
+    #   字段位置 `结构词 + 左花` 只把 匿名类型 登记到外层 (若 有 变量名); 无 变量名 ⟹ 孤儿 ⟹ offsetof=-1 且 尺寸 少一块
+    #   修 = 扁平化 (C11 6.7.2.1): 联合成员 offset 都=基偏 / 结构体成员 累加 / 外层尺寸 = 基偏+匿名体尺寸
+    'scripts/feat_c11_anon_member_ok.c',
+
 ]
 
 def build_tests(args):
