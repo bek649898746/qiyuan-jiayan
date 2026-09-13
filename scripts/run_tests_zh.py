@@ -420,6 +420,11 @@ CORE_FEAT = [
     #   多行/少实参 形态 (刻意 避开 排查 中 发现 的 既存 A47 `sizeof(别名*)` 缺陷); 断言行 = 最后 一行; 与 gcc 逐字节 全等
     'scripts/feat_zh_msvc_types_ok.c',
 
+    # ==== A48 (2026-09-13): `尺寸(类型定义别名*)` 求值错乱 — `尺寸()` 的 typedef 名 4 个子分支 都不消费 `*` ====
+    #   触发边界: 别名指针 sizeof 在 **首位 + 后跟实参** 时残留 `*` → 词元错位 (静默错值 64,0; 单独/第二位侥幸正确)
+    #   覆盖: 结构体指针/结构体本体/浮点指针/标量指针/typedef 数组本体 (防改坏); 与 gcc 逐字节全等
+    'scripts/feat_zh_sizeof_typedef_ptr_ok.c',
+
 ]
 
 def build_tests(args):
