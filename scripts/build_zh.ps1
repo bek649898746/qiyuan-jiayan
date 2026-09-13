@@ -10,7 +10,17 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '2DEA97DC'
+$expected = '12E8BBB1'
+                        # (2026-09-14) **A40g: printf `%d` 打 INT32_MIN 错 —— 32位 neg + A39 movsxd 组合残留**:
+                        #   病灶: %d 三步不合 — ① 负路径 取反 是 32位 `neg ebx`; ② A39 在 调用 域重一 前 补 `movsxd rbx, ebx` (48 63 DB);
+                        #     ③ 域重一 (A37 已改 64位) 按 64位 打印。INT32_MIN 时 ① 无效 (0x80000000 取反 仍是 自身)
+                        #     → ② 扩成 0xFFFFFFFF80000000 → ③ 输出 18446744071562067968 (再 带 '-')
+                        #     ⇒ 实测 `printf("%d", INT32_MIN)` 得 `-18446744071562067968`, gcc `-2147483648`。
+                        #   修: ② 改 零扩展 (`mov ebx, ebx`, 89 DB) — 32位 |值| 本身 已 正确 (INT32_MIN 绝对值 = 无符号 0x80000000 = 2147483648),
+                        #     零扩展 后 域重一 得 2147483648 + 已 打出的 '-' ⇒ `-2147483648` ✓; 其余值 高位 已 0, 无 变化 (A39 的 -5 不 回归)。
+                        #   新钉锚 `scripts/feat_zh_printf_int_min_ok.c` (INT32_MIN 作 变量/字面量/多实参交错 + 邻近边界, 与 gcc 逐字节 全等)。
+                        #   ⚠️ 本改 触及 编译器自身 大量使用 的 codegen 路径 ⟹ 自举 出现 v1≠v2 (第一代 仍 带 旧 %d codegen); **v2 == v3 == 不动点**。
+                        #   前值 2DEA97DC (A54)
                         # (2026-09-14) **A54: `sizeof(<不完整类型>)` 原 静默 返 0 → 响亮 A1001** (层3 扫锚 tests/ 产物):
                         #   C11 6.5.3.4p1: sizeof 不完整类型 是 **编译错误** (gcc: "invalid application of 'sizeof' to incomplete type");
                         #   甲言 静默 返 0 ⟹ 假尺寸 进 `分配内存(n * 大小(X))` 只分 0 → 堆溢出炸弹 (与 T1 裸标签 / A15 同类危害), 且 用户 无信号。

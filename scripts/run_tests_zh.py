@@ -443,6 +443,14 @@ CORE_FEAT = [
     #   假尺寸进 `分配内存(n * 大小(X))` 只分 0 → 堆溢出炸弹; 负锚验证「因正确原因失败」
     'scripts/feat_zh_sizeof_incomplete_neg.c',
 
+    # ==== A40g (2026-09-14): printf `%d` 打 INT32_MIN 错 (32位 neg + A39 movsxd 组合残留) ====
+    #   根因: 负路径 取反 是 32位 `neg ebx` (对 INT32_MIN 无效: 0x80000000 取反仍自身) →
+    #         调用点 A39 `movsxd rbx, ebx` 把 0x80000000 符号扩展成 0xFFFFFFFF80000000 →
+    #         域重一 (A37 已改 64位) 按 64位 打印 18446744071562067968 ⇒ "-18446744071562067968"
+    #   修: 调用点 movsxd 改 零扩展 (mov ebx,ebx, 89 DB) — 32位 |值| 本身已正确, 高位已是 0 无变化
+    #   覆盖: INT32_MIN 作 变量/字面量/多实参交错 位置 + 邻近边界; 与 gcc 逐字节 全等
+    'scripts/feat_zh_printf_int_min_ok.c',
+
 ]
 
 def build_tests(args):
