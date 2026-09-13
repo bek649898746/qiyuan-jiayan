@@ -10,7 +10,14 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '83673806'
+$expected = '4E2FE8BF'
+                        # (2026-09-13) **A51: `stdint.h` 预置 缺 C99 7.18.2 整数极值宏** (层3 A 类扫锚产物):
+                        #   病灶: `stdint.h` 预置 **只有 typedef, 零 极值宏** ⟹ `INT64_MAX`/`INT64_MIN`/`UINT64_MAX` 等
+                        #     报「未声明标识符」(`scripts/feat_si.c` 甲言 **编译失败**); 而 内建 `<限制.h>` 只提供
+                        #     `LLONG_MAX` 系 的 **另一套名字** ⟹ 标准 C 代码用 `INT64_MAX` 直接死 (= "标准库替身不完整"类缺口).
+                        #   修: 补 INT8/16/32/64 + INTPTR + SIZE + PTRDIFF + INTMAX 系 极值宏; 负值 不括号 (同 限制.h 既有风格).
+                        #   新钉锚: `scripts/feat_si.c` 加 out: (输出与 gcc 逐字节一致).
+                        #   前值 83673806 (A49)
                         # (2026-09-13) **A49: `尺寸(typedef float 别名)` 硬编码 8 → 应 4** (层3 A 类扫锚产物):
                         #   病灶: `尺寸()` 的 **typedef 名 浮标分支** 硬编码 `节值表[数] = 8` ⇒ `sizeof(ff)` (ff = typedef float) 得 8;
                         #   而 **非别名** `sizeof(float)` (类型词路径) 一直对 = **两形态不一致** (与 A15-余-b 同族)。

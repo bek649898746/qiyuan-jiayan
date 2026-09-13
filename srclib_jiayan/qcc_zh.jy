@@ -1528,7 +1528,19 @@ __attribute__((原粗))
             "typedef long long int_fast64_t;\n"
             "typedef unsigned long long uint_fast64_t;\n"
             "typedef int int_fast32_t;\n"
-            "typedef unsigned int uint_fast32_t;\n";
+            "typedef unsigned int uint_fast32_t;\n"
+            /* A51 (2026-09-13): C99 7.18.2 整数 极值 宏 —— 本 预置 原 **只有 typedef, 完全 无 极值宏** ⟹
+               `INT64_MAX` / `UINT64_MAX` 等 报「未声明标识符」(实测 `scripts/feat_si.c` 编译失败);
+               而 内建 `<限制.h>` 只 提供 `LLONG_MAX` 系 的 **另一套 名字** ⟹ 用 `INT64_MAX` 的 标准 C 代码 死。
+               负值 **不 括号** (同 内建 限制.h 既有 风格: 毛简 只认 `-N` / `(N)`); 命名的 宽度 与 上面 typedef 一致. */
+            "#define INT8_MIN -128\n#define INT8_MAX 127\n#define UINT8_MAX 255\n"
+            "#define INT16_MIN -32768\n#define INT16_MAX 32767\n#define UINT16_MAX 65535\n"
+            "#define INT32_MIN -2147483648\n#define INT32_MAX 2147483647\n#define UINT32_MAX 4294967295u\n"
+            "#define INT64_MIN -9223372036854775808LL\n#define INT64_MAX 9223372036854775807LL\n#define UINT64_MAX 18446744073709551615ULL\n"
+            "#define INTPTR_MIN -9223372036854775808LL\n#define INTPTR_MAX 9223372036854775807LL\n#define UINTPTR_MAX 18446744073709551615ULL\n"
+            "#define PTRDIFF_MIN -9223372036854775808LL\n#define PTRDIFF_MAX 9223372036854775807LL\n"
+            "#define SIZE_MAX 18446744073709551615ULL\n"
+            "#define INTMAX_MIN -9223372036854775808LL\n#define INTMAX_MAX 9223372036854775807LL\n#define UINTMAX_MAX 18446744073709551615ULL\n";
         size_t 槽长 = 取字长(构一);
         字 *尾联 = 内存分配(槽长 + 1);
         若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
