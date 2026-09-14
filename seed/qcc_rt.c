@@ -345,6 +345,13 @@ char *strndup(const char *s, size_t max) {
     return d;
 }
 
+/* 取限长 strnlen (2026-09-08 map2 补全): 前 max 字节内长度 (映射词 取限长; msvcrt 老版无导出, 自实现) */
+int strnlen(const char *s, size_t max) {
+    int n = 0;
+    while (n < max && s[n] != 0) n = n + 1;
+    return n;
+}
+
 /* ---- 排序/搜索 (fix 2026-08-13: Phase 2, Git hash-table 排序需要) ---- */
 void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*)) {
     /* 冒泡: 简单可靠, n 通常小 (Git 的 hash 表/数组) */
@@ -1024,6 +1031,45 @@ int __qcc_cell_set(int id, int v) {
 int __qcc_cell_get(int id) {
     if (id < 0 || id >= 64) return 0;
     return __qcc_cell[id];
+}
+
+/* #23 内部可变性 (RefCell): 运行时借用计数 — 借用单元 x, 初值; 借用/可变借用/放还 x 走运行时计数 (绕开编译期借用检查, 共享可变逃逸口); 值复用 __qcc_cell[], 计数 __qcc_rcell_ref[] (>0=共享借数, -1=可变借持有) */
+static int __qcc_rcell_ref[64];
+int __qcc_rcell_init(int v) {
+    int i = __qcc_cell_cnt;
+    if (i < 0 || i >= 64) { fprintf(stderr, "[借用单元] 资源上限: 借用单元 数量超过 64 个 (id=%d) — 减少 借用单元 声明数\n", i); exit(1); } /* P3-2 (2026-09-10): 原 无上界检查 → 第 65 个 越界写 __qcc_cell[64+]/__qcc_rcell_ref[64+] 内存破坏 */
+    __qcc_cell_cnt = __qcc_cell_cnt + 1;
+    __qcc_cell[i] = v;
+    if (i >= 0 && i < 64) __qcc_rcell_ref[i] = 0;
+    return i;
+}
+int __qcc_rcell_borrow(int id, int mut) {
+    if (id < 0 || id >= 64) return 0;
+    if (mut) {
+        if (__qcc_rcell_ref[id] != 0) { fprintf(stderr, "[借用单元] 运行时借用冲突: 双重可变借用 (id=%d)\n", id); exit(1); }
+        __qcc_rcell_ref[id] = -1;
+    } else {
+        if (__qcc_rcell_ref[id] < 0) { fprintf(stderr, "[借用单元] 运行时借用冲突: 可变借用期间共享借用 (id=%d)\n", id); exit(1); }
+        __qcc_rcell_ref[id] = __qcc_rcell_ref[id] + 1;
+    }
+    return 0;
+}
+int __qcc_rcell_release(int id) {
+    if (id < 0 || id >= 64) return 0;
+    if (__qcc_rcell_ref[id] == 0) { fprintf(stderr, "[借用单元] 运行时借用冲突: 放还 多于借用 (计数下溢, id=%d) — 每个 放还 必须对应一次 借用/可变借用\n", id); exit(1); } /* P3-2 (2026-09-10): 原 计数==0 时静默 no-op → 下溢不可见, 且后续 独占借用 判定被污染 */
+    if (__qcc_rcell_ref[id] < 0) __qcc_rcell_ref[id] = 0;
+    else __qcc_rcell_ref[id] = __qcc_rcell_ref[id] - 1;
+    return 0;
+}
+
+/* #33 运行时边界 (F2, 2026-09-07): 除零检查 — a/b、a%b 除数运行时 0 → 优雅错误退出 (替代 x86 SIGFPE 陷阱) */
+int __qcc_div_check(int divisor) {
+    if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
+    return divisor;
+}
+long long __qcc_div_check64(long long divisor) {
+    if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
+    return divisor;
 }
 #endif
 

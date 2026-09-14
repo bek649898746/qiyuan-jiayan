@@ -2214,8 +2214,8 @@ static int nuns[ASZ]; /* per-node flag: expression is unsigned (u suffix literal
 static int stc_disp(int idx);
 static struct { char name[64]; int label; int defined; int ret_si; int declared; } func_tbl[65536]; /* fix 2026-08-06: 512 满 → main 等后注册函数被拒 (func_find 返 -1) → 编译产物无 main 崩; 2026-08-09 审计#2: 1024→2048; 2026-08-15 name 32→64 长函数名截断碰撞 (reftable min_update_index/_void); fix 2026-08-16 根因E3: 1024→2048 时 func_find 守卫漏改仍为 1024 → attr.c 等大文件超 1024 函数名 → func_find 返 -1 → func_tbl[-1].ret_si 越界写崩; 2048→8192 覆盖 Git 全量 + 守卫满则 [ERR] 硬退 (绝不返 -1); declared (接入 2026-08-28 declare 声明先行): 声明 名字(参数) 返回 类型; 注册签名, 未实现生成 stub (缺失=警告非错误, AI 渐进补全) */
 /* static 函数名映射 (gen_code 重置 func_n, 用名字; fix 2026-08-06 Task 5.3: 多 .o 时 static 函数应 scl=3 局部符号, 否则 jystd 等头库每 .o 重复导出冲突) */
-static char fn_static_names[512][64]; static int fn_static_n;
-static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 512) { strcpy(fn_static_names[fn_static_n++], n); } else budget_fail("static函数表 fn_static", 512); }
+static char fn_static_names[1024][64]; static int fn_static_n;
+static void fn_static_mark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return; if (fn_static_n < 1024) { strcpy(fn_static_names[fn_static_n++], n); } else budget_fail("static函数表 fn_static", 1024); }
 static int fn_static_is(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) return 1; return 0; }
 static void fn_static_unmark(const char *n) { for (int i = 0; i < fn_static_n; i++) if (!strcmp(fn_static_names[i], n)) { for (int j = i; j < fn_static_n - 1; j++) strcpy(fn_static_names[j], fn_static_names[j + 1]); fn_static_n--; return; } }
 static int func_n = 0;
@@ -10667,8 +10667,8 @@ static int stmt(void) {
         const char *tn2 = tn[tk]; tk++; /* 类型名 (指针不拷贝, 防 stmt 栈帧膨胀) */
         if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
         if (tt[tk] == FK) tk++; /* { */
-        const char *vnames[16]; int vloads[16]; int vn = 0; /* 指针数组防栈帧膨胀 */
-        while (tt[tk] != UK && tt[tk] != EK && vn < 16) {
+        const char *vnames[64]; int vloads[64]; int vn = 0; /* 指针数组防栈帧膨胀; E1e (2026-09-06): 16→64 变体 (判别 节点 全类型 32 变体) */
+        while (tt[tk] != UK && tt[tk] != EK && vn < 64) {
             if (tt[tk] == VR) {
                 vnames[vn] = tn[tk]; tk++; /* 指针指向全局 tn */
                 int load = 0;
@@ -12904,6 +12904,35 @@ lex(exp_src);
             char sn[64]; strcpy(sn, tn[tk]); tk++;
             if (tt[tk] == SK) tk++;
             if (sealed_n < 64 && !sealed_find(sn)) strcpy(sealed_names[sealed_n++], sn);
+            continue;
+        }
+        if (tt[tk] == VR && !strcmp(tn[tk], "判别")) { /* C2fix (2026-09-06 虾米): 判别 顶层定义 (D-1 镜像) — 判别 槽型 于 { 值槽, 数组槽(元素数) }; 顶层生成 struct + 变体常量 */
+            tk++; /* 判别 */
+            const char *tn2 = tn[tk]; tk++; /* 类型名 */
+            if (tt[tk] == VR && !strcmp(tn[tk], "于")) tk++; /* 于 */
+            if (tt[tk] == FK) tk++; /* { */
+            const char *vnames[64]; int vloads[64]; int vn = 0;
+            while (tt[tk] != UK && tt[tk] != EK && vn < 64) {
+                if (tt[tk] == VR) {
+                    vnames[vn] = tn[tk]; tk++;
+                    int load = 0;
+                    if (tt[tk] == OK) { tk++; if (tt[tk] == VR) { load = 1; tk++; } if (tt[tk] == KK) tk++; }
+                    vloads[vn] = load;
+                    vn++;
+                }
+                if (tt[tk] == CK) tk++;
+            }
+            if (tt[tk] == UK) tk++; /* } */
+            if (tt[tk] == SK) tk++; /* ; */
+            int maxload = 0;
+            for (int i = 0; i < vn; i++) { char mn[160]; sprintf(mn, "%s_%s", tn2, vnames[i]); e_reg(mn, i); if (vloads[i] > maxload) maxload = vloads[i]; }
+            int nsi = st_find(tn2);
+            if (nsi < 0) nsi = st_add(tn2);
+            st_field_sz_r(nsi, "tag", 4, 4);
+            st_field_sz_r(nsi, "p0", 4, 4);
+            if (maxload >= 1) st_field_sz_r(nsi, "p1", 4, 4);
+            st_finalize(nsi);
+            disc_reg(tn2, vn);
             continue;
         }
         if (tt[tk] == VR && !strcmp(tn[tk], "复制")) { /* 阶段C-1 #9 Copy (同步英文链): 复制 T; → 标记类型 T 可拷贝 — 移入 目标, 源 对 Copy 类型不失效源 */
