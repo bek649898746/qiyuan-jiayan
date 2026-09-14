@@ -1157,6 +1157,7 @@ static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 
 static int proc_type_GetCurrentConsoleFontEx;  /* qcc ## 长标识符合成截断, 补符号满足链接 (fix 2026-08-15: proc_type_GetCurrentConsoleFont undefined) */
 #define regex_t void*  /* regex.h typedef 指针/结构别名 */
 #define regmatch_t int
+static int execv(void *a, void *b) { (void)a; (void)b; return -1; } /* POSIX execv (A75 2026-09-14): shell.c L221 — 顶层 内联 结构体 数组 `cmd_list[]` 原 被 解析错位, 该调用 在 旧编译器 上 从未 被 解析 (假 OK); 修复后 正确 解析 → 需 声明 */
 static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
 static int getppid(void) { return 1; } /* POSIX 父进程 ID, Windows msvcrt 无 _getppid (fix 2026-08-15: getppid undefined) */

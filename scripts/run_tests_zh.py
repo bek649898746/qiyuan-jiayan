@@ -555,6 +555,11 @@ CORE_FEAT = [
     'scripts/feat_c_ternary_ptr_depth2_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
+    # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
+    'scripts/feat_c_top_inline_struct_init_ok.c',
+    'scripts/feat_c_top_array_init_ok.c',
+    'scripts/feat_c_anon_array_init_ok.c',
+    'scripts/feat_c_top_2d_array_access_ok.c',
 
 ]
 
