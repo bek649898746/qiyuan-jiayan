@@ -567,6 +567,8 @@ CORE_FEAT = [
     # A78-A81 (2026-09-14): 函数内 内联定义 结构体 变量/数组 花括初始化 —— 三条平行路径 只修了一条
     # (花括=已触标记 / 指针字段标记 / 是否数组判定 / 空维度元素数推断 / 声明初始化 未初始化移除)
     'scripts/feat_c_inline_struct_array_init_ok.c',
+    # A95/A95b (2026-09-14): 文件级 extern 函数指针变量 声明 (extern void (*名字)(参数);) 原被静默跳过
+    'scripts/feat_c_extern_funcptr_ok.c',
 
 ]
 

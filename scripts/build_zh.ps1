@@ -10,7 +10,24 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'C936CD4E'
+$expected = '83EFDB32'
+                        # (2026-09-14) **A95/A95b 文件级 `extern` 函数指针变量 声明 被静默跳过** (前值 C936CD4E):
+                        #   病灶: 顶层 extern 分支 (L16976) 原 **不认** `extern void (*名字)(参数);` 形态 ——
+                        #     型词循环 消费 `void` 后 词位 停在 `(`, 三个分支 (结构词 / 枚词 / 「词变量 + 左括」函数声明) 全不命中,
+                        #     前厚循环 的 `循环 (乘)` 也 不命中 (`(` 非 `*`) ⇒ 整条声明 被 「跳到分号」 静默跳过
+                        #     ⇒ 名字 未登记 ⇒ 调用处 报 A1001「未声明函数 'report_garbage'」.
+                        #   实测: git `packfile.h` L66 `extern void (*report_garbage)(unsigned seen_bits, const char *path);`
+                        #     + `path.c` L383 `report_garbage(PACKDIR_FILE_GARBAGE, sb.buf);` → `path.c` 编译失败.
+                        #   最小复现 p6: `extern void (*fp)(int);` + `int main(void){ fp(3); return 0; }` → A1001.
+                        #    对照 p1 (`void (*fp)(int);` 无 extern) / p2 (extern 声明 + 后面另有 非-extern 定义) 均 OK
+                        #     ⇒ 差异只在 **声明形态** (无 extern 时 走 L18175 文件级 函数指 路径, 正常).
+                        #   修法: extern 分支 补 该形态 (对齐 **非-extern 文件级路径 L18185**):
+                        #     跳过 `( *` → 名字 → `)` → 参数类型列表, 再 `变量静态(名, 4)` + `数组元素尺寸 = 8` (函数指针 8 字节).
+                        #   ⚠️ **第一版 (A95) 用 `半一` (外部符号) 登记 —— 实测调用侧不认** (`p6` 仍 A1001;
+                        #     探针 P1/P2 证明 分支已命中: `[P2] 词位=8626 词型=17(左括) 下一=7(乘) 下二=26(词变量)` ⇒ 词位/词型 全对)
+                        #     ⇒ 改 与 L18185 **完全一致** 的 `变量静态`. **教训: 登记方式 必须 与 同语义 的既有路径 逐字对齐**, 不能"看起来等价".
+                        #   效果: `path.c` 由 FAIL → PASS (git 226 → **227/231**); 新锚 `feat_c_extern_funcptr_ok.c`
+                        #     与 gcc 逐字节一致 (`7 abc`; 回归保护锚 —— 该路径 旧种子 亦通过, 分辨力 由 git 批量 承担).
                         # (2026-09-14) **A78-A81 函数内 内联定义 结构体 变量/数组 的花括初始化 —— 三条平行路径 只修了一条** (前值 AFA763E2):
                         #   起点: git `commit.c` 的 `bufs` (A77 修好 `sigs` 后 前进 一层)
                         #     `struct sig_pairs { struct strbuf *sig; struct git_hash_algo *algo; } bufs[2] = { {..},{..} };`
