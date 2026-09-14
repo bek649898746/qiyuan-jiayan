@@ -534,6 +534,9 @@ CORE_FEAT = [
     # P0-8 (2026-09-14): C 原型/声明 登记表 静默上限 256 → 8192 + 溢出响亮报错
     #   (400 条声明 + 末条调用; 确保 登记表 不静默截断)
     'scripts/feat_zh_decltab_ok.c',
+    # P0-11 (2026-09-14): 局部「空维度数组 + 花括号初始化」长度推断
+    #   (struct / typedef / 尾逗号 三形态; sizeof 断言; 与 gcc 逐字节对照)
+    'scripts/feat_zh_local_array_infer_ok.c',
 
 ]
 
