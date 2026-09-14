@@ -537,6 +537,18 @@ CORE_FEAT = [
     # P0-11 (2026-09-14): 局部「空维度数组 + 花括号初始化」长度推断
     #   (struct / typedef / 尾逗号 三形态; sizeof 断言; 与 gcc 逐字节对照)
     'scripts/feat_zh_local_array_infer_ok.c',
+    # P0-14 (2026-09-14): 逗号声明的 续行 declarator —— ① 自身对齐继承 ② 名撞已注册标签 被当类型名吞
+    #   (sizeof + offsetof 与 gcc 逐字节对照; 撞/不撞 × 结构体/typedef 双通道 对照)
+    'scripts/feat_zh_comma_decl_align_ok.c',
+    'scripts/feat_zh_comma_cont_clash_ok.c',
+    # P0-15 / P0-16 (2026-09-14): C 兼容模式 的 所有权/借用 检查 误伤 ——
+    #   ① `返移节` 缺 甲言模式 门控 → C 源 `return 聚合变量;` 被标已移 (git attr.c)
+    #   ② A3105 悬垂引用 漏判 static 局部变量 (存储期 = 程序期)
+    'scripts/feat_c_ret_agg_ok.c',
+    'scripts/feat_c_static_local_ret_ok.c',
+    'scripts/feat_zh_ret_move_neg.c',   # 甲言模式 下 返回移动 仍生效 (回归保护, 期望 编译失败)
+    # P0-17 (2026-09-14): 多级指针 解引用 作 三目 分支 (`表达式构序` 丢 指针层级 → T** 的 *q 误判 构值)
+    'scripts/feat_c_ternary_ptr_depth_ok.c',
 
 ]
 
