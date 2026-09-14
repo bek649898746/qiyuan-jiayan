@@ -551,6 +551,8 @@ CORE_FEAT = [
     'scripts/feat_c_ternary_ptr_depth_ok.c',
     # P0-19 (2026-09-14): `sizeof(<类型>[<非常量维度>])` 无条件覆盖基类型尺寸
     'scripts/feat_c_sizeof_array_type_ok.c',
+    # P0-20 (2026-09-14): `表达式构序` 的 下标/成员 分支 丢指针层级 (P0-17 的解引用姊妹)
+    'scripts/feat_c_ternary_ptr_depth2_ok.c',
 
 ]
 
