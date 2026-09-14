@@ -560,6 +560,8 @@ CORE_FEAT = [
     'scripts/feat_c_top_array_init_ok.c',
     'scripts/feat_c_anon_array_init_ok.c',
     'scripts/feat_c_top_2d_array_access_ok.c',
+    # A76 (2026-09-14): `尾逃逸` 对 数组变量 只看 标量登记 表 -> `&arr[i]` 误 A4001
+    'scripts/feat_c_addr_taken_array_ok.c',
 
 ]
 
