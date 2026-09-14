@@ -1052,6 +1052,57 @@ int dup(int fd);
 long lseek(int fd, long offset, int whence);
 struct tm *localtime_r(const time_t *timep, struct tm *result);
 
+
+/* P0-18 (2026-09-14): 第三轮 —— git 根目录 231 个 .c 大扫 (自动迭代抓取) 所得缺失 (同 P0-9 族:
+   git 的 compat/mingw.h 因 __MINGW32__ 未定义而 **整块未展开** ⟹ 其原型与宏映射都缺。
+   实测: 该头里的 `#if defined(__MINGW32__)` 分支未被进入, 于是 isatty/chdir/chmod/getcwd/
+   rmdir/write/raise 等既无原型也无宏重定向 ⟹ -c 模式 A1001。
+   此处按 **POSIX 原型** 补 (与 P0-9 的 close/unlink 同风格) —— **刻意不做宏重定向**:
+   `symlinks.c` L340 有 `#undef rmdir` 再调用 `rmdir(path)`, 重定向会让原型失效。
+   ⚠️ 边界 (同 P0-9): 只补 **实测报缺失** 的 (231 文件大扫名单), 未报缺的一律不动。
+   ⚠️ 未处理的可选依赖符号 (SSL_ / EVP_ / X509_ / XML_ / ERR_ 前缀) 属 **环境配置** (-D NO_OPENSSL / NO_EXPAT),
+      不在此补 (补了会掩盖"可选库未启用"这一事实)。 */
+int isatty(int fd);
+int chdir(const char *dirname);
+int chmod(const char *path, int mode);
+char *getcwd(char *pointer, int len);
+int rmdir(const char *path);
+long write(int fd, const char *buf, unsigned long len);
+int raise(int sig);
+int fileno(void *stream);
+long read(int fd, void *buf, unsigned long count);
+unsigned int sleep(unsigned int seconds);
+int link(const char *oldpath, const char *newpath);
+int mkstemp(char *template);
+void perror(const char *s);
+int atexit(void (*fn)(void));
+struct tm *gmtime_r(const long *timep, struct tm *result);
+int poll(void *fds, unsigned long nfds, int timeout);
+int uname(void *name);
+int mingw_kill(int pid, int sig);                     /* kill  ->  mingw_kill  (上部已有 #define) */
+int mingw_utime(const char *name, const void *times); /* utime ->  mingw_utime (上部已有 #define) */
+
+
+/* P0-18b (2026-09-14): **git 上游漏声明**的兜底 (实测 231 文件大扫: 8 个文件卡此)。
+   实测: diff_q / diff_queue / diffcore_order 在 git-2.45.2 全仓 .h 里 **没有任何声明**
+   (只有 diff.c / diffcore-order.c 的**定义**), 而 diffcore-break/pickaxe/rename/rotate.c、
+   diff-no-index.c、range-diff.c、line-log.c、combine-diff.c 都直接调用它们。
+   现代 gcc 对 implicit declaration 报 error (实测), 甲言 A1001 同 — **这是上游代码问题, 非甲言过严**。
+   此处补**语义完全照抄上游定义**的原型 (前向声明结构体, 避免依赖 include 顺序)。 */
+struct diff_queue_struct;
+struct diff_filepair;
+struct diff_filespec;
+void diff_q(struct diff_queue_struct *queue, struct diff_filepair *dp);
+struct diff_filepair *diff_queue(struct diff_queue_struct *queue,
+                                 struct diff_filespec *one,
+                                 struct diff_filespec *two);
+void diffcore_order(const char *orderfile);
+void diff_free_queue(struct diff_queue_struct *q);   /* 同上: diff.c 定义, 头文件无声明 (line-log.c 卡此) */
+void order_objects();                                 /* 同上: diffcore-order.c 定义, 头文件无声明 (combine-diff.c 卡此);
+                                                        参数表留空 = 不指定 (C99), 避免为 obj_path_fn_t / struct obj_order 再加依赖 */
+
+
+
 
 #define pthread_setspecific(a,b) 0
 #define pthread_getspecific(a) 0
