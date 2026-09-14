@@ -1578,6 +1578,15 @@ typedef long time_t;
 struct timespec { time_t tv_sec; long tv_nsec; };
 struct timeval { long tv_sec; long tv_usec; };
 struct itimerval { struct timeval it_interval; struct timeval it_value; };
+
+/* gettimeofday 桩 (2026-09-14, P0-3 余账): git-compat-util.h 的 git_time() 调 gettimeofday(&tv,NULL) ——
+   原 prelude 缺 → A1001 未声明函数, 打死 git 全部 .c。Windows 无该系统调用, 用 msvcrt 的 time() 近似
+   (秒级精度; git_time 只用 tv_sec, tv_usec 置 0 可接受)。 */
+extern long time(long *);
+static int gettimeofday(struct timeval *tv, void *tz) {
+    if (tv) { tv->tv_sec = time(0); tv->tv_usec = 0; }
+    return 0;
+}
 struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define _alloca(n) malloc(n) /* msvcrt has no _alloca export; headless.c GUI stack buffer -> heap (fix 2026-08-17) */
 
