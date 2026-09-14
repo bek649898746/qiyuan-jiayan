@@ -14,7 +14,7 @@
 // @EXPECTED out:d=10000900
 // @EXPECTED out:a=1234
 // @EXPECTED out:i=0070
-// @EXPECTED out:sz=16,8
+// @EXPECTED out:sz=16,32,16
 // @EXPECTED exit:0
 #include <stdio.h>
 
@@ -33,6 +33,6 @@ int main(void)
     printf("d=%d%d%d%d%d%d%d%d\n", ad[0].a, ad[0].b, ad[1].a, ad[1].b, ad[2].a, ad[2].b, ad[3].a, ad[3].b);
     printf("a=%d%d%d%d\n", aa[0].a, aa[0].b, aa[1].a, aa[1].b);
     printf("i=%d%d%d%d\n", ai[0], ai[1], ai[2], ai[3]);
-    printf("sz=%d,%d\n", (int)sizeof(af), (int)sizeof(af[0]));
+    printf("sz=%d,%d,%d\n", (int)sizeof(af), (int)sizeof(a2), (int)sizeof(a2[0]));
     return 0;
 }
