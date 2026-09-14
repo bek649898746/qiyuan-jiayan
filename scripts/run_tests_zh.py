@@ -549,6 +549,8 @@ CORE_FEAT = [
     'scripts/feat_zh_ret_move_neg.c',   # 甲言模式 下 返回移动 仍生效 (回归保护, 期望 编译失败)
     # P0-17 (2026-09-14): 多级指针 解引用 作 三目 分支 (`表达式构序` 丢 指针层级 → T** 的 *q 误判 构值)
     'scripts/feat_c_ternary_ptr_depth_ok.c',
+    # P0-19 (2026-09-14): `sizeof(<类型>[<非常量维度>])` 无条件覆盖基类型尺寸
+    'scripts/feat_c_sizeof_array_type_ok.c',
 
 ]
 
