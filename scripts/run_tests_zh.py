@@ -524,6 +524,8 @@ CORE_FEAT = [
     # A71 (2026-09-14): 指针变量 多级下标 — 局部 T** / 形参 T** / 字符双指针 / 数组名对照 /
     #   2D 数组对照 / 全局指针数组对照 / 单跳对照 (7 组 与 gcc 逐字节 一致)
     'scripts/feat_zh_ptrptr_index_ok.c',
+    # P0-4 (2026-09-14): 命令行 -I <目录> 头文件搜索 — 引号 + 尖括号 双形式 (靠 @ARG 传 -I)
+    'scripts/feat_zh_incdir_search_ok.c',
 
 ]
 
