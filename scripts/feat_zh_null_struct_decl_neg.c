@@ -1,4 +1,5 @@
 // @EXPECTED compile_fail
+// @EXPECTED out:A8002
 // @EXPECTED exit:nonzero
 /* 负锚 T3b (2026-09-13): **非可空** 构值 声明 `= 空` —— 必须 响亮 报错.
    T3b 修复 前: 落 表达式() → 原级 A8002 (文案 反向 建议 写 本 形态, 与 用户 意图 矛盾);

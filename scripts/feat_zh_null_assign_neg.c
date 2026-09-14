@@ -1,4 +1,5 @@
 // @EXPECTED compile_fail
+// @EXPECTED out:A8002
 // @EXPECTED exit:nonzero
 /* 负例锚 (探雷 雷2, 2026-09-13): **非可空** 变量 `= 空` —— `空` 是 void 类型词, 不是 值.
    修复前: 静默 生成 未初始化变量 (初值 未生成, 后续 读 垃圾) —— 属 G1-5 静默兜底 类.

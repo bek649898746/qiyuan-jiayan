@@ -588,6 +588,15 @@ def run_one_test(name):
                        encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
+            # 闸盲区修补 (2026-09-14): 原 直接 return PASS —— 连 "编译器 优雅 报错" 与 "编译器 自身 崩溃"
+            # (0xC0000005/0xC0000094 也 是 非零退出) 都 不 区分, 更 不 检查 @EXPECTED out:/err: 断言
+            # (既有 `err:A1001` 类 断言 因此 是 装饰). 现: 合并 编译器 两 路 输出 后 逐条 校验 断言。
+            # ⚠️ 注意 甲言 编译器 的 诊断 实测 落 **stdout** (非 stderr) ⟹ 两 路 合并 检查。
+            cerr_all = (r.stderr or '') + (r.stdout or '')
+            if expected_out and expected_out not in cerr_all:
+                return (name, False, 'compile_fail 期望 out 含 %r 实际=%r' % (expected_out, cerr_all.strip()[:150]))
+            if expected_err and expected_err not in cerr_all:
+                return (name, False, 'compile_fail 期望 err 含 %r 实际=%r' % (expected_err, cerr_all.strip()[:150]))
             return (name, True, 'compile_fail(期望)')
         err = (r.stderr or '') + (r.stdout or '')
         # 收紧 2026-09-07 (启元递刀 RefCell伪PASS): 不再按错误文本嗅探 '未声明/未定义函数' 等当依赖 skip —

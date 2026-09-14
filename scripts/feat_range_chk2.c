@@ -1,5 +1,6 @@
 ﻿#include <stdio.h>
 // @EXPECTED exit:nonzero  /* 范围 越界 → 范围越界 + exit(1) (地1 G0-1 补 意图标注 2026-09-11) */
+// @EXPECTED out:范围越界
 
 /* 甲言 范围检查 越界终止测试 (2026-08-27):
  * 越界 → printf("范围越界\n") + exit(1)

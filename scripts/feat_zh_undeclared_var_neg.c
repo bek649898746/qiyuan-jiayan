@@ -1,4 +1,5 @@
 // @EXPECTED compile_fail
+// @EXPECTED out:未声明标识符
 // @EXPECTED exit:nonzero
 /* 负例锚 (探雷 雷5, 2026-09-13): **表达式位置 的 未声明标识符**.
    修复前 文案: `未定义函数 'y' 不能取地址 — 多文件请用 编译器 -c + 链接器 链接` —— 红鲱鱼
