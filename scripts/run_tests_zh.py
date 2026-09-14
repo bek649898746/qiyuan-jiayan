@@ -559,6 +559,10 @@ CORE_FEAT = [
     'scripts/feat_c_ternary_arr_elem_ptr_ok.c',
     # A71-3 根治 (2026-09-15): 解引用「下标结果」宽度 (char** 下标+解引用 用 堆次 而非 变量元素)
     'scripts/feat_c_char_arr_deref_ok.c',
+    # A71 第1项 (2026-09-15): T***p 三跳 下标 (嵌套基 逐层传递 码生成内存指+长卯)
+    'scripts/feat_c_triple_ptr_ok.c',
+    # A71 第2项 (2026-09-15): 指针到数组 (*pm)[i][j] (声明器误判函数指针 + 解引用衰减取址)
+    'scripts/feat_c_ptr_to_array_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
