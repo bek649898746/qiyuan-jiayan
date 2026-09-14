@@ -571,6 +571,8 @@ CORE_FEAT = [
     'scripts/feat_c_extern_funcptr_ok.c',
     # A103/A104/A104b (2026-09-14): 元素级 读检查 的 分支汇合 / 嵌套 else-if 上抛 / 循环回边 时机
     'scripts/feat_c_branch_elem_init_ok.c',
+    # A107 (2026-09-14): 内建 <limits.h> 的 INT_MIN 少一 / 最小值字面量 溢出 -> 表达式形式
+    'scripts/feat_c_limits_min_ok.c',
 
 ]
 
