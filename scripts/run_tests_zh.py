@@ -573,6 +573,8 @@ CORE_FEAT = [
     'scripts/feat_c_branch_elem_init_ok.c',
     # A107 (2026-09-14): 内建 <limits.h> 的 INT_MIN 少一 / 最小值字面量 溢出 -> 表达式形式
     'scripts/feat_c_limits_min_ok.c',
+    # A108/A108b (2026-09-14): extern <类型> 变量 = 初始化; (= 定义) 原静默丢失初始化器
+    'scripts/feat_c_extern_init_ok.c',
 
 ]
 
