@@ -553,6 +553,8 @@ CORE_FEAT = [
     'scripts/feat_c_sizeof_array_type_ok.c',
     # P0-20 (2026-09-14): `表达式构序` 的 下标/成员 分支 丢指针层级 (P0-17 的解引用姊妹)
     'scripts/feat_c_ternary_ptr_depth2_ok.c',
+    # P0-20 未修 (2026-09-14): 数组元素是指针 slot[i] 的三目 (数组 base 且 元素是指针 -> 下标结果 = 指针)
+    'scripts/feat_c_ternary_arr_elem_ptr_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
