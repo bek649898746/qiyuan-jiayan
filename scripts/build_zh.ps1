@@ -10,7 +10,12 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'A609F128'
+$expected = 'B565ADCB'
+                        # (2026-09-15) **A71-3 解引用「下标结果」宽度错 (char** 下标+解引用 读 8 字节) 根治 (前值 A609F128)**:
+                        #   病灶: 解引用节点 对「下标基」用 `变量元素`(指元素尺寸, char** -> 8 = char* 指针宽),
+                        #     而 `*argv[1]`(char* 解引用) 的 宽度 应为 char(1) -> printf("%d", *argv[1]) 读 0x3534 应 0x34.
+                        #   修法: 下标基 改 `堆次`(去掉一级指向: char** -> 1 char; int*数组 -> 4 int) — 与 变量基 用 变量元素 区分.
+                        #   验证: 8 形态与 gcc 逐字节一致; git 231/231; 新锚 feat_c_char_arr_deref_ok.c.
                         # (2026-09-15) **parenbang: sizeof 维度含一元逻辑非 `!` 的常量求值缺失 → 运行崩 根治 (前值 1C40F42C)**:
                         #   病灶: `末列`(常量求值一元分支) 缺 `总零`(`!`) → `sizeof(char [!(1)])` 的 维度 `!(1)` 求值失败 且 词位 停在 `!`
                         #     ⇒ sizeof 的 `]` 未消费 ⇒ 后续 AST 错乱 ⇒ printf 调用 被调者/实参 变 1 ⇒ 运行 0xC0000005 (gcc 正常 -1).
