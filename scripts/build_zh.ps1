@@ -10,7 +10,22 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '12382EE9'
+$expected = 'AFA763E2'
+                        # (2026-09-14) **A77 `memset(数组, 0, sizeof(数组))` 后的读取 误 A4001** (前值 12382EE9):
+                        #   病灶: `#78 明确初始化` 只认 **赋值** 与 **&expr 取地址** 两种"写";
+                        #     `memset(目标, ...)` 的 **首实参 = 写入目标** 未被识别 ⟹ 清零后读取 误 A4001.
+                        #   实测 (git `commit.c`): `struct sigbuf { ... } sigs[2], *sigp = &sigs[0];`
+                        #     `... memset(sigs, 0, sizeof(sigs));` → `A4001 数组元素 'sigs[0]' 未初始化就读取`.
+                        #   最小复现 (r1): `struct sigbuf sigs[2]; memset(sigs, 0, sizeof(sigs)); return sigs[0].start;`
+                        #     → 甲言 误报; gcc 正常; **旧种子 12382EE9 同样失败** (既存).
+                        #   修法: 通用调用的 **首实参** —— 被调者 是 `memset`/`内存设置` 且 首实参是变量:
+                        #     标量 → `未初始化移除(名)`; 数组 (`尾阵索 >= 0`) → `尾阵触(名, -1)` (同 A76 的整体豁免).
+                        #   效果: r1 通过; 新锚 `feat_c_memset_init_ok.c` 与 gcc 逐字节一致 (旧种子 失败).
+                        #   验证: 链 **v1 == v2 == AFA763E2** (一步收敛); 闸 全绿; git 不回归.
+                        #   ⚠️ **未修 (能力限制, 记台账)**: r2 — 同一循环体内 **互斥分支** 的
+                        #     `if (i==1) t[1] = t[0]; else init_tree_desc(&t[i]);` (git `merge-ort.c` `t[0]`):
+                        #     解析顺序 then 先于 else ⟹ then 读时 else 的 `&t[0]` 尚未解析 ⟹ 误报.
+                        #     需 循环回边 / 前瞻 数据流 (单遍扫描做不到), 归 架构级 待办.
                         # (2026-09-14) **A76 `尾逃逸` 对 数组变量 只看 标量登记 表 → `&arr[i]` 误 A4001** (前值 FB96E80B):
                         #   病灶: `#78 明确初始化` 的 元素级追踪 有 **两套登记** —— 标量 `就绪丙` / 数组 `就绪阵丙`;
                         #     而 `尾逃逸` (&expr 取地址 = 潜在写) **只查 标量那套** ⟹ 数组变量 命中 `尾索 < 0` 早退

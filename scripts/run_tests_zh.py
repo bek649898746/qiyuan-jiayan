@@ -562,6 +562,8 @@ CORE_FEAT = [
     'scripts/feat_c_top_2d_array_access_ok.c',
     # A76 (2026-09-14): `尾逃逸` 对 数组变量 只看 标量登记 表 -> `&arr[i]` 误 A4001
     'scripts/feat_c_addr_taken_array_ok.c',
+    # A77 (2026-09-14): `memset(数组, 0, sizeof)` 首实参 = 写入目标, 原未识别 -> 误 A4001
+    'scripts/feat_c_memset_init_ok.c',
 
 ]
 
