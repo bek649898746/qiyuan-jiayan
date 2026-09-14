@@ -10,7 +10,56 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '83EFDB32'
+$expected = 'B5F78C13'
+                        # (2026-09-14) **A103/A104/A104b 元素级 读检查 的 时机 —— git `merge-ort.c` 攻克 (= git 语料 231/231 全通)** (前值 B7198DCF):
+                        #   病灶: `#78` 元素级读检查 (`尾阵查触(名, 位)`) 原在 **`赋值()` 语句末尾** 判定 ——
+                        #     而 then 分支 的 `t[1] = t[0];` 判定时 **else 分支 尚未解析** ⇒ `init_td(&t[i])` 里
+                        #     `&t[i]` 的整体已触 (`尾阵触(t,-1)`) 未登记 ⇒ 误 A4001.
+                        #   **关键实验 (推翻台账旧判断)**: 最小复现 r2 = **无循环、纯 if/else** 同样误报
+                        #     ⇒ 第一步其实是 **分支汇合时机** (非「必须循环回边」); 循环回边只是 第二层.
+                        #   三层修法:
+                        #     **A103** 分支内 (`支层 > 0`) 的元素读 → 记入 本层 缓冲, 由 `支阵合()` 在**汇合点**判定;
+                        #     **A104b** 嵌套 `if / else if / else` 链 —— 写在外层支 / 读在内层支时, 内层汇合尚不见外层写 ⇒
+                        #       **未触读 上抛到外层缓冲**, 直到最外层 (`层 == 0`) 再判; **循环体内** (`环体深 > 0`) 放行 (回边语义);
+                        #     **A104** 循环体**内** 的 if-else 汇合 用 宽松规则 `P | T | E` (多轮执行 ⇒ 各支都可能执行过);
+                        #       循环体**自身**的 支开/支合 仍 严格 (`环体深` 已归零) ✓.
+                        #   **A105/A106 (prelude)**: `merge-ort.c` 的 仓库级 隐式声明
+                        #     (`partial_clear_dir_rename_count` / `diffcore_rename_extended` / `strmap_clear_func` /
+                        #      `strintmap_clear_func` / `strset_clear_func`) —— 扫描器 `_a105_scan.py` 一次给全.
+                        #   效果: **git 语料 230 → 231/231 全通** 🎉 (起点约 183);
+                        #     新锚 `feat_c_branch_elem_init_ok.c` 与 gcc 逐字节一致 (`7 7 9`).
+                        #   ⚠️ 教训: **台账 里 的「架构级/做不了」判断 也要 用 最小复现 去 撞** —— 本次 r2 (无循环)
+                        #     一击 推翻了 「必须循环回边」 的假设, 把 三层 拆成了 可做 的 三层.
+                        # (2026-09-14) **A98-A102 A9002 过严 (纯 C 源) + git diff.c 缺声明 连补** (前值 6FDE93F2):
+                        #   **A98 (诊断)**: A9002 消息 加 **函数名 + 词行号** —— 诊断 JSON 的 `line` 是
+                        #     **include 展开后**的行号 (`diff.c` 报 33497), 无法 映射 源码行 ┓ 大文件 定位 只能 猜.
+                        #     实测 立竿见影: 立即 定位到 `函数 'similarity_index'`.
+                        #   **A99 (根因)**: `similarity_index` 是 `static int` 函数, `return p->score * 100 / MAX_SCORE;`
+                        #     (`p->score` 是 double, `MAX_SCORE` = `60000.0`) —— **C 里 合法 隐式转换**,
+                        #     甲言 的 无隐式转换 检查 对 纯 C 源 过严 ⟹ 加 **`甲言模式` 门控**
+                        #     (与 源移动/参移动/返移节 的 `!甲言模式` 门控 **同型**, P0-15/P0-16 家族).
+                        #   **A100–A102 (prelude)**: `diff.c` 调用 `diffcore_break` / `diffcore_rename` /
+                        #     `diffcore_merge_broken` / `diffcore_pickaxe` / `diffcore_order` / `diffcore_rotate` /
+                        #     `diffcore_fix_diff_index` —— 这些 定义在 各自 `diffcore-*.c`, 而 **全仓库 无声明**
+                        #     (gcc 走 C99 隐式声明 容忍; 甲言 拒绝). prelude 按「缺什么补什么」补 声明.
+                        #   效果: git 227 → **230/231** (仅剩 `merge-ort.c` = 架构级 循环回边 待办).
+                        #   ⚠️ 教训: **诊断质量 = 定位速度** —— A98 三行改动 省掉 一轮 二分;
+                        #     **C 兼容模式 的 每条 语义检查 都要审一遍 是否有 `甲言模式` 门控**.
+                        # (2026-09-14) **A96 + A97 prelude 补桩 的 连带: 参数名池 溢出 (git `sequencer.c`)** (前值 83EFDB32):
+                        #   **A96 (prelude)**: `hash-ll.h` L72-76 的 `#ifdef SHA1_MAX_BLOCK_SIZE` 块内 有
+                        #     `#undef git_SHA1_Update` + `#define git_SHA1_Update git_SHA1_Update_Chunked`,
+                        #     而 **甲言的 `#define` 激活是文本级 (不判 `#ifdef`)** ⟹ 宏被激活, 但 同 在 `#ifdef` 内 的
+                        #     `#include "compat/sha1-chunked.h"` (声明) 未引入 ⟹ `object-file.c` 报 A1001「未声明
+                        #     `git_SHA1_Update_Chunked`」. 修: prelude 补该函数桩 (根因 = 已知挂账「副组() 文本级
+                        #     #define 激活不看 #ifdef」, 本次 只 绕过, 未 根治).
+                        #   **A97 (编译器)**: prelude 陆续补 ~40 个 系统桩函数 后, 参数名池
+                        #     (`度伍`/`内丑一`, 上限 2048) **被撑爆** ⟹ git `sequencer.c` 报
+                        #     `A5001 资源护栏: 表 '参数映射表 fn_param' 满 (容量 2048)`.
+                        #     护栏 本身 正确 (响亮拒绝, 不静默) —— 但 该表 是 **全局去重** 的 (跨函数只增不减),
+                        #     项目规模上去 必然 越过. 修: 容量 2048 → 4096 (注释 记 根治方向 = 按函数重置名池, 另立台账).
+                        #   效果: git 226 → **227/231** (`diff.c` 之外 全通; `merge-ort.c` 仍为 架构级待办).
+                        #   ⚠️ 教训: **补桩 会 改变 编译器内部资源水位** —— 大批 补桩 后 必须 **重跑 闸 + git 批量**
+                        #     (本次 若 只跑 单文件 验证, `sequencer.c` 的 回归 会 漏过).
                         # (2026-09-14) **A95/A95b 文件级 `extern` 函数指针变量 声明 被静默跳过** (前值 C936CD4E):
                         #   病灶: 顶层 extern 分支 (L16976) 原 **不认** `extern void (*名字)(参数);` 形态 ——
                         #     型词循环 消费 `void` 后 词位 停在 `(`, 三个分支 (结构词 / 枚词 / 「词变量 + 左括」函数声明) 全不命中,

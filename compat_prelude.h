@@ -1081,6 +1081,22 @@ static int EVP_DecodeBlock(unsigned char *t, const unsigned char *f, int n) { (v
 static int EVP_EncodeBlock(unsigned char *t, const unsigned char *f, int n) { (void)t; (void)f; (void)n; return 0; }
 static void *EVP_md5(void) { return 0; }
 static unsigned char *HMAC(const void *evp, const void *key, int keylen, const unsigned char *data, int datalen, unsigned char *md, unsigned int *mdlen) { (void)evp; (void)key; (void)keylen; (void)data; (void)datalen; (void)mdlen; if (md) md[0] = 0; return md; }  /* A94 (2026-09-14): OpenSSL HMAC 桩 (git imap-send.c CRAM-MD5 L860) */
+/* A96 (2026-09-14): git `compat/sha1-chunked` 桩 —— `hash-ll.h` L72-76 的 `#define git_SHA1_Update git_SHA1_Update_Chunked` 在 `#ifdef SHA1_MAX_BLOCK_SIZE` 内, 而 甲言 的 `#define` 激活是**文本级**(不判 `#ifdef`) ⟹ 宏 被激活 但 其 声明 (`compat/sha1-chunked.h`, 同 在 `#ifdef` 内) 未 引入 ⟹ `object-file.c` 报 A1001「未声明 `git_SHA1_Update_Chunked`」. (根因 已 记 台账: 「副组() 文本级 #define 激活不看 #ifdef」) */
+static int git_SHA1_Update_Chunked(void *c, const void *data, unsigned long len) { (void)c; (void)data; (void)len; return 0; }
+/* A100 (2026-09-14): git 自身 的 **缺声明调用** —— `diff.c` L7000 调用 `diffcore_break` (定义在 `diffcore-break.c` L128) 但 **全仓库 无 任何 声明** (gcc 走 C99 隐式声明 容忍; 甲言 拒绝). 按 prelude 的「缺什么补什么」补 声明. */
+void diffcore_break(void *r, int break_score);
+void diffcore_fix_diff_index(void);  /* A101 (2026-09-14): 同 上 (diff.c L6593) */
+void diffcore_merge_broken(void);  /* A101: diff.c L7005 */
+void diffcore_pickaxe(void *options);  /* A101: diff.c L7008 */
+void diffcore_order(void *orderfile);  /* A101: diff.c L7010 */
+void diffcore_rotate(void *options);  /* A101: diff.c L7012 */
+void diffcore_rename(void *options);  /* A102 (2026-09-14): diff.c L7003 */
+void partial_clear_dir_rename_count(void *dir_rename_count);  /* A105 (2026-09-14): 定义在 `diffcore-rename.c` L669, 全仓库 无声明 (gcc 隐式声明 容忍); git `merge-ort.c` L677/L3295 调用 */
+/* A106 (2026-09-14): git `merge-ort.c` 的 仓库级 隐式声明 (扫描器 `_a105_scan.py` 一次给全: 既 不在 prelude 也 不在 任何 .h) */
+void diffcore_rename_extended(void *a, void *b, void *c, void *d, void *e, void *f);  /* merge-ort.c L3310 (6 参) */
+void strmap_clear_func(void *map, int free_values);  /* merge-ort.c L653 */
+void strintmap_clear_func(void *map);  /* merge-ort.c L667 */
+void strset_clear_func(void *set);  /* merge-ort.c L674 */
 static void SSL_library_init(void) { }
 static void SSL_load_error_strings(void) { }
 static const SSL_METHOD *SSLv23_method(void) { return 0; }

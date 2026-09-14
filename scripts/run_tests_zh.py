@@ -569,6 +569,8 @@ CORE_FEAT = [
     'scripts/feat_c_inline_struct_array_init_ok.c',
     # A95/A95b (2026-09-14): 文件级 extern 函数指针变量 声明 (extern void (*名字)(参数);) 原被静默跳过
     'scripts/feat_c_extern_funcptr_ok.c',
+    # A103/A104/A104b (2026-09-14): 元素级 读检查 的 分支汇合 / 嵌套 else-if 上抛 / 循环回边 时机
+    'scripts/feat_c_branch_elem_init_ok.c',
 
 ]
 
