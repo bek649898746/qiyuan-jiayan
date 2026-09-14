@@ -551,6 +551,8 @@ CORE_FEAT = [
     'scripts/feat_c_ternary_ptr_depth_ok.c',
     # P0-19 (2026-09-14): `sizeof(<类型>[<非常量维度>])` 无条件覆盖基类型尺寸
     'scripts/feat_c_sizeof_array_type_ok.c',
+    # parenbang 根治 (2026-09-15): sizeof 维度含一元逻辑非 ! 的常量求值 (末列 缺 总零 -> 词位停 ! -> AST 错乱 -> 运行崩)
+    'scripts/feat_c_sizeof_bang_dim_ok.c',
     # P0-20 (2026-09-14): `表达式构序` 的 下标/成员 分支 丢指针层级 (P0-17 的解引用姊妹)
     'scripts/feat_c_ternary_ptr_depth2_ok.c',
     # P0-20 未修 (2026-09-14): 数组元素是指针 slot[i] 的三目 (数组 base 且 元素是指针 -> 下标结果 = 指针)
