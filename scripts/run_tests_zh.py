@@ -528,6 +528,9 @@ CORE_FEAT = [
     'scripts/feat_zh_incdir_search_ok.c',
     # P0-6 (2026-09-14): defined()/#ifdef 只认宏, 不认函数/变量 (五种非宏声明 + 真宏对照组)
     'scripts/feat_zh_defined_semantics_ok.c',
+    # P0-7 (2026-09-14): #93 内联 误注册 标准 C「跨行花括号」inline 函数
+    #   (条件块内同名 #define 文本级激活 → 展开残破宏体 → 括号不匹配; 跨行 + 同行对照组)
+    'scripts/feat_zh_inline_hdr_ok.c',
 
 ]
 
