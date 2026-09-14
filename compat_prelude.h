@@ -1034,6 +1034,11 @@ void WakeAllConditionVariable(CONDITION_VARIABLE *cv);
 int _stricmp(const char *a, const char *b);
 int _strnicmp(const char *a, const char *b, unsigned long n);
 int close(int fd);
+/* P0-13 (2026-09-14): setbuf —— 实测 A1001 (add-interactive.c 用 setbuf(stdout, NULL));
+   同 P0-9 族: git 的 compat/mingw.h 未展开 ⟹ C 运行库函数无原型。
+   ⚠️ 只补**实测报缺失**的; 其余 stdio 名字 (fprintf/fopen/...) 另有来源, 不动。 */
+void setbuf(void *stream, char *buf);
+
 /* P0-9b (2026-09-14): 第二轮 —— 自动抓取 (反复编译, 收集 `未声明函数`) 得的 POSIX/msvcrt 缺声明:
    mkdir/getpid/unlink/fdopen/umask/dup2/localtime_r/lseek/dup。
    (git 的 compat/mingw.h 在甲言侧未展开, 这些 POSIX 名没有原型 → -c 模式 A1001。) */
