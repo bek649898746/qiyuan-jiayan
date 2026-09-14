@@ -1015,7 +1015,39 @@ typedef struct { DWORD dwLowDateTime; DWORD dwHighDateTime; } FILETIME;
 #define pthread_cond_broadcast WakeAllConditionVariable
 #define pthread_key_t DWORD
 #define pthread_key_create(a,b) (*(a)=0)
-#define pthread_key_delete(a) 0
+#define pthread_key_delete(a) 0
+
+/* P0-9 (2026-09-14): 上面 pthread→Win32 映射 引用的 Win32 API **只有宏没有声明** → -c 模式 A1001
+   (实测 git apply.c: `未声明函数 'EnterCriticalSection'`; 同理 Initialize/Leave/DeleteCriticalSection,
+    Initialize/Sleep/Wake/WakeAll ConditionVariable)。此处补原型 —— 链接模式由 kernel32 提供实现,
+   -c 模式只需声明即可通过。同时补 msvcrt 的 _stricmp/_strnicmp (被 `#define strcasecmp _stricmp` 引用)
+   与 POSIX close() (git 的 compat/mingw.h 未展开时缺)。 */
+void InitializeCriticalSection(CRITICAL_SECTION *cs);
+void EnterCriticalSection(CRITICAL_SECTION *cs);
+void LeaveCriticalSection(CRITICAL_SECTION *cs);
+void DeleteCriticalSection(CRITICAL_SECTION *cs);
+int TryEnterCriticalSection(CRITICAL_SECTION *cs);
+void InitializeConditionVariable(CONDITION_VARIABLE *cv);
+void SleepConditionVariableCS(CONDITION_VARIABLE *cv, CRITICAL_SECTION *cs, unsigned long ms);
+void WakeConditionVariable(CONDITION_VARIABLE *cv);
+void WakeAllConditionVariable(CONDITION_VARIABLE *cv);
+int _stricmp(const char *a, const char *b);
+int _strnicmp(const char *a, const char *b, unsigned long n);
+int close(int fd);
+/* P0-9b (2026-09-14): 第二轮 —— 自动抓取 (反复编译, 收集 `未声明函数`) 得的 POSIX/msvcrt 缺声明:
+   mkdir/getpid/unlink/fdopen/umask/dup2/localtime_r/lseek/dup。
+   (git 的 compat/mingw.h 在甲言侧未展开, 这些 POSIX 名没有原型 → -c 模式 A1001。) */
+int mkdir(const char *path, int mode);
+int getpid(void);
+int unlink(const char *path);
+void *fdopen(int fd, const char *mode);
+int umask(int mask);
+int dup2(int oldfd, int newfd);
+int dup(int fd);
+long lseek(int fd, long offset, int whence);
+struct tm *localtime_r(const time_t *timep, struct tm *result);
+
+
 #define pthread_setspecific(a,b) 0
 #define pthread_getspecific(a) 0
 #define pthread_create(a,b,c,d) 0
