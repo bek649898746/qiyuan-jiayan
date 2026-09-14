@@ -1579,6 +1579,13 @@ struct timespec { time_t tv_sec; long tv_nsec; };
 struct timeval { long tv_sec; long tv_usec; };
 struct itimerval { struct timeval it_interval; struct timeval it_value; };
 
+/* __attribute__ 抹空 (2026-09-14 P0-5 验证): git 等真实项目的 __attribute__ 用法
+   (format/noinline/always_inline/unused/deprecated/noreturn/warn_unused_result) **全是语义无害的**;
+   而甲言词法器吞 __attribute__ 时遇**跨行函数签名**会致 "括号不匹配" (gettext.h L53-54 的 Q_ 就是)。
+   注意: 这会连带抹掉 packed/aligned 的语义 —— git 侧**无**这两者 (已侦察),
+   其它语料若依赖 packed/aligned 需另行处理。 */
+#define __attribute__(x)
+
 /* gettimeofday 桩 (2026-09-14, P0-3 余账): git-compat-util.h 的 git_time() 调 gettimeofday(&tv,NULL) ——
    原 prelude 缺 → A1001 未声明函数, 打死 git 全部 .c。Windows 无该系统调用, 用 msvcrt 的 time() 近似
    (秒级精度; git_time 只用 tv_sec, tv_usec 置 0 可接受)。 */
