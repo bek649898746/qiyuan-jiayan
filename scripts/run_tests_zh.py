@@ -12,7 +12,7 @@
   // @EXPECTED out:<str>        stdout 包含该字符串 (可选)
 无 @EXPECTED 时默认 exit:0
 """
-import sys, os, subprocess, re, argparse
+import sys, os, subprocess, re, argparse, shlex
 sys.stdout.reconfigure(encoding='utf-8')
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -518,6 +518,9 @@ CORE_FEAT = [
     'scripts/feat_zh_sizeof_expr_ok.c',
     # A9-余账 #2/#3 (2026-09-14): 逗号表达式 全形态 (表达式语句 / 控制语句体 / for 增量 / 括号 / 返回 / 值语义)
     'scripts/feat_zh_comma_expr_ok.c',
+    # P0-3 (2026-09-14): 命令行 -D 宏注入 — 分离形 / 紧凑形 / #ifdef 判定 / #if 数值求值 /
+    #   源码文本替换 / 无 = 值 默认 1。靠 @ARG 指令 把 编译器选项 传进 闸 (框架 扩展, 见 run_one_test)
+    'scripts/feat_zh_cmdline_define_ok.c',
 
 ]
 
@@ -561,6 +564,8 @@ def run_one_test(name):
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     expected_err = None
     dep = False; multi = False
+    arg_extra = []          # @ARG <编译器选项> (2026-09-14 P0-3): 闸 原 只 能 传 固定 [qcc, src, -o, out],
+                            #   命令行 -D 宏 类 特性 完全 无法 覆盖 — 补 此 指令 (与 F5 闸盲区 同族: 闸 够不着 即 盲区)
     try:
         head = open(src, encoding='utf-8', errors='replace').read(600)
     except Exception:
@@ -577,6 +582,8 @@ def run_one_test(name):
         if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
         if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
         if '@MULTI' in line: multi = True      # 显式声明: 需 -c + jyld 跨 .o 链接 → 单文件无主/外链失败 = 许可 skip
+        m = re.search(r'//\s*@ARG\s+(.+)$', line)
+        if m: arg_extra += shlex.split(m.group(1).strip())   # 2026-09-14 P0-3: 编译器 选项 (shlex 切分: `-D A=1` 与 `-DA=1` 两 形 皆可)
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -584,7 +591,7 @@ def run_one_test(name):
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True,
+    r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
                        encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
