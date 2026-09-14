@@ -526,6 +526,8 @@ CORE_FEAT = [
     'scripts/feat_zh_ptrptr_index_ok.c',
     # P0-4 (2026-09-14): 命令行 -I <目录> 头文件搜索 — 引号 + 尖括号 双形式 (靠 @ARG 传 -I)
     'scripts/feat_zh_incdir_search_ok.c',
+    # P0-6 (2026-09-14): defined()/#ifdef 只认宏, 不认函数/变量 (五种非宏声明 + 真宏对照组)
+    'scripts/feat_zh_defined_semantics_ok.c',
 
 ]
 

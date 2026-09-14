@@ -10,7 +10,23 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'CF857007'
+$expected = 'B683C2B9'
+                        # (2026-09-14) **P0-6 `defined()`/`#ifdef` 对"函数名"判真 —— 根治** (git 缺口链第三层):
+                        #   **病灶**: `#93 内联` 特性 (L1176) 把用户可见的 `inline 类型 名(参数) { 返 expr; }` **注册进 函数宏表**
+                        #     (注释自陈 "→ 注册函数宏 (体=expr), 调用点副组 展开") ⟹ `邻细()`/`外合()` (即 `defined(名)` / `#ifdef 名`)
+                        #     **误判"名已定义"** ⟹ git 的 `gettext.h` L12 `#if defined(_) || defined(Q_)` 误报 `#错误 "namespace conflict"`,
+                        #     **打死 git 全部 .c** (20 个真实源文件里 **15 个** 都卡在这)。
+                        #   **精确刻画 (逐名矩阵)**: `static inline int nm(void){...}` → `defined(nm)` **真**;
+                        #     `static int nm(void){...}` / `int nm(void){...}` / 函数声明 / 变量 / typedef / struct / enum / 裸 → **假**。
+                        #     即 **触发条件 = `inline` 关键字** (#93 把它当宏注册)。
+                        #   **修法**: 新增独立标记表 `内联宏标[2048]`, #93 注册时置 1, `邻细()` 第三循环 **跳过标记条目**
+                        #     —— **保留 #93 的展开能力**, 只关掉它对 "是否已定义" 判定 的污染 (单点收口)。
+                        #   **⚠️ 深层的特性冲突 (挂账)**: #93 还会把**普通 C 的 `inline` 函数**当宏展开 (语义层面), 本修只解决"是否已定义"。
+                        #   **效果**: `defined_fn`/`ifdef_vs_defined` 两组最小复现从 FAIL → PASS;
+                        #     git `advice.c` 从 `namespace conflict` → **括号不匹配** (前进一层, 14/20 现在卡在这一层)。
+                        #   **验证**: 新锚 `scripts/feat_zh_defined_semantics_ok.c` (五种非宏声明 + 真宏对照组, 双向断言) 与 gcc **逐字节一致**;
+                        #     链 **v1==v2==v3==B683C2B9**; 闸 **637/637 全绿**。
+                        #   前值 CF857007 (P0-5)
                         # (2026-09-14) **P0-4 命令行 `-I <目录>` 头文件搜索 —— 新增 (原语义是"预包含文件")**:
                         #   **病灶**: 原 `-I <路径>` 语义 = **"预包含该文件"**（读文件 + 前插 = GCC 的 `-include`）,
                         #     **完全没有"搜索目录"概念**; 而真实多目录项目（git/zlib/lua/curl）的构建
