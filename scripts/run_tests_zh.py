@@ -564,6 +564,9 @@ CORE_FEAT = [
     'scripts/feat_c_addr_taken_array_ok.c',
     # A77 (2026-09-14): `memset(数组, 0, sizeof)` 首实参 = 写入目标, 原未识别 -> 误 A4001
     'scripts/feat_c_memset_init_ok.c',
+    # A78-A81 (2026-09-14): 函数内 内联定义 结构体 变量/数组 花括初始化 —— 三条平行路径 只修了一条
+    # (花括=已触标记 / 指针字段标记 / 是否数组判定 / 空维度元素数推断 / 声明初始化 未初始化移除)
+    'scripts/feat_c_inline_struct_array_init_ok.c',
 
 ]
 
