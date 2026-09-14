@@ -1038,6 +1038,69 @@ int close(int fd);
    同 P0-9 族: git 的 compat/mingw.h 未展开 ⟹ C 运行库函数无原型。
    ⚠️ 只补**实测报缺失**的; 其余 stdio 名字 (fprintf/fopen/...) 另有来源, 不动。 */
 void setbuf(void *stream, char *buf);
+static void *freopen(const char *path, const char *mode, void *stream) { (void)path; (void)mode; return stream; }  /* A89 (2026-09-14): C stdio freopen 桩 — 实测 A1001 (git daemon.c) */
+/* A90 (2026-09-14): expat (XML 解析) 类型 + 函数 stub —— git http-push.c; Windows 构建 通常 加 -DNO_EXPAT, 本链 保持 基线 参数 ⇒ 补桩 (命名 前缀 XML_ 不 与 其它 冲突) */
+typedef void XML_Char;
+typedef void *XML_Parser;
+#define XML_STATUS_OK 1  /* A90: http-push.c `#ifndef XML_STATUS_OK` ⇒ 走 宏 分支 (不用 它自己的 enum) */
+#define XML_STATUS_ERROR 0
+static XML_Parser XML_ParserCreate(const char *encoding) { (void)encoding; return 0; }
+static void XML_ParserFree(XML_Parser p) { (void)p; }
+static void XML_SetUserData(XML_Parser p, void *d) { (void)p; (void)d; }
+static void XML_SetElementHandler(XML_Parser p, void *a, void *b) { (void)p; (void)a; (void)b; }
+static void XML_SetCharacterDataHandler(XML_Parser p, void *h) { (void)p; (void)h; }
+static int XML_Parse(XML_Parser p, const char *s, int len, int isFinal) { (void)p; (void)s; (void)len; (void)isFinal; return 0; }
+static int XML_GetErrorCode(XML_Parser p) { (void)p; return 0; }
+static const char *XML_ErrorString(int code) { (void)code; return "expat stub"; }
+/* A91 (2026-09-14): OpenSSL stub —— git imap-send.c; Windows 构建 通常 加 -DNO_OPENSSL, 本链 保持 基线 参数 ⇒ 补桩 */
+#define OPENSSL_VERSION_NUMBER 0x10100000L
+#define SSL_CTRL_SET_TLSEXT_HOSTNAME 55
+#define SSL_ERROR_NONE 0
+#define SSL_ERROR_SYSCALL 5
+#define SSL_OP_NO_SSLv2 0x01000000L
+#define SSL_OP_NO_SSLv3 0x02000000L
+#define SSL_VERIFY_PEER 0x01
+typedef void SSL_METHOD;
+typedef void SSL_CTX;
+typedef void SSL;
+typedef void X509;
+#define STACK_OF(x) void  /* A92 (2026-09-14): OpenSSL 类型构造宏 — `STACK_OF(X509) *chain;` ⇒ `void *chain;` (git imap-send.c) */
+/* A93 (2026-09-14): X509 / GENERAL_NAME / EVP stub —— git imap-send.c 证书校验与 base64 */
+#define GEN_DNS 2
+#define NID_commonName 13
+#define NID_subject_alt_name 85
+typedef void X509_NAME;
+typedef void GENERAL_NAME;
+static void *X509_get_ext_d2i(X509 *x, int nid, int *crit, int *idx) { (void)x; (void)nid; (void)crit; (void)idx; return 0; }
+static X509_NAME *X509_get_subject_name(X509 *x) { (void)x; return 0; }
+static int X509_NAME_get_text_by_NID(X509_NAME *n, int nid, char *buf, int len) { (void)n; (void)nid; (void)buf; (void)len; return -1; }
+static int sk_GENERAL_NAME_num(void *st) { (void)st; return 0; }
+static GENERAL_NAME *sk_GENERAL_NAME_value(void *st, int i) { (void)st; (void)i; return 0; }
+static void sk_GENERAL_NAME_pop_free(void *st, void *f) { (void)st; (void)f; }
+static int EVP_DecodeBlock(unsigned char *t, const unsigned char *f, int n) { (void)t; (void)f; (void)n; return -1; }
+static int EVP_EncodeBlock(unsigned char *t, const unsigned char *f, int n) { (void)t; (void)f; (void)n; return 0; }
+static void *EVP_md5(void) { return 0; }
+static unsigned char *HMAC(const void *evp, const void *key, int keylen, const unsigned char *data, int datalen, unsigned char *md, unsigned int *mdlen) { (void)evp; (void)key; (void)keylen; (void)data; (void)datalen; (void)mdlen; if (md) md[0] = 0; return md; }  /* A94 (2026-09-14): OpenSSL HMAC 桩 (git imap-send.c CRAM-MD5 L860) */
+static void SSL_library_init(void) { }
+static void SSL_load_error_strings(void) { }
+static const SSL_METHOD *SSLv23_method(void) { return 0; }
+static SSL_CTX *SSL_CTX_new(const SSL_METHOD *m) { (void)m; return 0; }
+static void SSL_CTX_set_options(SSL_CTX *c, long o) { (void)c; (void)o; }
+static void SSL_CTX_set_verify(SSL_CTX *c, int m, void *cb) { (void)c; (void)m; (void)cb; }
+static int SSL_CTX_set_default_verify_paths(SSL_CTX *c) { (void)c; return 0; }
+static SSL *SSL_new(SSL_CTX *c) { (void)c; return 0; }
+static int SSL_set_rfd(SSL *s, int fd) { (void)s; (void)fd; return 0; }
+static int SSL_set_wfd(SSL *s, int fd) { (void)s; (void)fd; return 0; }
+static int SSL_set_tlsext_host_name(SSL *s, const char *n) { (void)s; (void)n; return 0; }
+static int SSL_connect(SSL *s) { (void)s; return -1; }
+static int SSL_get_error(SSL *s, int r) { (void)s; (void)r; return 5; }
+static X509 *SSL_get_peer_certificate(SSL *s) { (void)s; return 0; }
+static int SSL_read(SSL *s, void *b, int n) { (void)s; (void)b; (void)n; return -1; }
+static int SSL_write(SSL *s, const void *b, int n) { (void)s; (void)b; (void)n; return -1; }
+static int SSL_shutdown(SSL *s) { (void)s; return 0; }
+static void SSL_free(SSL *s) { (void)s; }
+static unsigned long ERR_get_error(void) { return 0; }
+static const char *ERR_error_string(unsigned long e, char *buf) { (void)e; (void)buf; return "openssl stub"; }
 
 /* P0-9b (2026-09-14): 第二轮 —— 自动抓取 (反复编译, 收集 `未声明函数`) 得的 POSIX/msvcrt 缺声明:
    mkdir/getpid/unlink/fdopen/umask/dup2/localtime_r/lseek/dup。
@@ -1148,9 +1211,28 @@ static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* P
 #define GIT_USER_AGENT "git/2.45.2"  /* version.c git_user_agent() 用户代理字符串 (fix 2026-08-15: GIT_USER_AGENT undefined) */
 #define GIT_VERSION "2.45.2"  /* version.c git_version_string[] (fix 2026-08-15: GIT_VERSION undefined) */
 #define GIT_BUILT_FROM_COMMIT ""  /* version.c git_built_from_commit_string[] (fix 2026-08-15: GIT_BUILT_FROM_COMMIT undefined) */
-struct passwd { char *pw_name; char *pw_gecos; char *pw_dir; };  /* POSIX pwd 字段子集 (fix 2026-08-15: getpwnam/path.c) */
+struct passwd { char *pw_name; char *pw_gecos; char *pw_dir; unsigned int pw_uid; unsigned int pw_gid; };  /* A85 (2026-09-14): 补 pw_uid/pw_gid (git daemon.c L1199/1213 用; 末尾追加 不改既有偏移, 零回归) */  /* POSIX pwd 字段子集 (fix 2026-08-15: getpwnam/path.c) */
 #define getpwnam(a) ((struct passwd*)0)  /* POSIX getpwnam stub */
 #define getpwuid(a) ((struct passwd*)0)  /* POSIX getpwuid stub */
+#define LOG_PID 0x01  /* A86 (2026-09-14): syslog 选项 (git daemon.c L1409) */
+#define LOG_DAEMON (3 << 3)  /* A86: syslog facility (git daemon.c L1409) */
+static void openlog(const char *ident, int option, int facility) { (void)ident; (void)option; (void)facility; }  /* A86: POSIX openlog 桩 (git daemon.c L1409) */
+static void syslog(int priority, const char *fmt, ...) { (void)priority; (void)fmt; }  /* A86: POSIX syslog 桩 (git daemon.c L98) */
+static void closelog(void) { }  /* A86: POSIX closelog 桩 */
+struct group { char *gr_name; unsigned int gr_gid; char **gr_mem; };  /* A87 (2026-09-14): POSIX 组 类型 stub (git daemon.c getgrnam) */
+static struct group *getgrnam(const char *name) { (void)name; return 0; }  /* A87: POSIX getgrnam 桩 */
+static int initgroups(const char *user, int group) { (void)user; (void)group; return -1; }  /* A87: POSIX initgroups 桩 (git daemon.c L1198) */
+static int setgid(int gid) { (void)gid; return -1; }  /* A87: POSIX setgid 桩 (git daemon.c L1199) */
+static int setuid(int uid) { (void)uid; return -1; }  /* A88 (2026-09-14): POSIX setuid 桩 (git daemon.c L1199) */
+static int setreuid(int r, int e) { (void)r; (void)e; return -1; }  /* A88: POSIX setreuid 桩 */
+static int setregid(int r, int e) { (void)r; (void)e; return -1; }  /* A88: POSIX setregid 桩 */
+static int setgroups(int n, const unsigned int *g) { (void)n; (void)g; return -1; }  /* A88: POSIX setgroups 桩 */
+static int chroot(const char *path) { (void)path; return -1; }  /* A88: POSIX chroot 桩 */
+static int daemon(int nochdir, int noclose) { (void)nochdir; (void)noclose; return -1; }  /* A88: POSIX daemon 桩 */
+static int inet_pton(int af, const char *src, void *dst) { (void)af; (void)src; (void)dst; return -1; }  /* A88: POSIX inet_pton 桩 (git daemon.c) */
+static int inet_aton(const char *cp, struct in_addr *inp) { (void)cp; (void)inp; return 0; }  /* A88: POSIX inet_aton 桩 */
+static int getsockname(int s, struct sockaddr *addr, int *len) { (void)s; (void)addr; (void)len; return -1; }  /* A87: POSIX getsockname 桩 */
+static int getpeername(int s, struct sockaddr *addr, int *len) { (void)s; (void)addr; (void)len; return -1; }  /* A87: POSIX getpeername 桩 */
 static int execlp(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execlp undefined) */
 static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 1)) { n++; x >>= 1; } return n; } /* GCC builtin (fix 2026-08-15: __builtin_ctzll undefined) */
 #define __builtin_expect(exp, c) (exp)  /* GCC 分支预测内置 (fix 2026-08-15: __builtin_expect undefined) */
@@ -1861,6 +1943,19 @@ intptr_t _get_osfhandle(int fd); /* fix 2026-08-20: mingw_fstat 需要真 fd→H
 #define socket(a,b,c) ((int)-1)  /* Winsock socket stub (fix 2026-08-15: socket undefined) */
 #define SOCK_DGRAM 2
 struct sockaddr_un { short sun_family; char sun_path[108]; };  /* Unix 域套接字地址类型 stub (fix 2026-08-15: unix-socket.c sockaddr_un undefined) */
+struct sockaddr { short sa_family; char sa_data[14]; };  /* A82 (2026-09-14): POSIX 通用地址类型 stub — struct addrinfo.ai_addr 字段需要; 原 未定义 (daemon.c) */
+struct in_addr { unsigned int s_addr; };  /* A83 (2026-09-14): POSIX IPv4 地址类型 stub (git daemon.c) */
+struct sockaddr_in { short sin_family; unsigned short sin_port; struct in_addr sin_addr; char sin_zero[8]; };  /* A83: POSIX IPv4 套接字地址 stub (git daemon.c) */
+struct sockaddr_storage { short ss_family; char ss_pad[126]; };  /* A83: POSIX 通用地址容器 stub — 尺寸须 >= sockaddr_in (git daemon.c addrcmp) */
+#define INADDR_ANY 0  /* A83: 绑定 任意 地址 (git daemon.c L1060) */
+struct in6_addr { unsigned char s6_addr[16]; };  /* A84 (2026-09-14): POSIX IPv6 地址 stub (git daemon.c `大小(struct in6_addr)`) */
+struct sockaddr_in6 { short sin6_family; unsigned short sin6_port; unsigned int sin6_flowinfo; struct in6_addr sin6_addr; unsigned int sin6_scope_id; };  /* A84: POSIX IPv6 套接字地址 stub (git daemon.c addrcmp) */
+static char *inet_ntop(int af, const void *src, char *dst, unsigned int size) { (void)af; (void)src; (void)size; if (dst) dst[0] = 0; return dst; }  /* A84: POSIX 地址→文本 桩 (git daemon.c L676/703/888) */
+static int pipe(int *fd) { (void)fd; return -1; }  /* A84: POSIX pipe 桩 (git run-command.c L675/689/703; dup2/fcntl 已有) */
+static int waitpid(int pid, int *status, int options) { (void)pid; if (status) *status = 0; (void)options; return -1; }  /* A83: POSIX waitpid 桩 (git run-command.c L73/548/1876; WNOHANG/WIFEXITED/WEXITSTATUS 已有) */
+struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; int ai_addrlen; struct sockaddr *ai_addr; char *ai_canonname; struct addrinfo *ai_next; };  /* A82: POSIX getaddrinfo 类型 stub — 原 未定义 ⇒ `struct addrinfo hints;` 声明 被静默跳过 ⇒ `大小(hints)` 报「未声明标识符」(git daemon.c L664/968) */
+struct pollfd { int fd; short events; short revents; };  /* A82: POSIX poll 类型 stub — 原 未定义 ⇒ `struct pollfd *pfd;` 未注册 ⇒ io_pump.pfd 成员访问 报 A9001 (git run-command.c L1295) */
+struct sigaction { void *sa_handler; unsigned long sa_mask; int sa_flags; };  /* A82: POSIX 信号动作 类型 stub — 原 只有 函数式宏 sigaction(a,b,c) (不影响 `struct sigaction sa;` 解析) ⇒ 类型 未定义 (git progress.c L71) */
 static int sun_path;  /* qcc sizeof(((sockaddr_un*)0)->sun_path) 兜底 (fix 2026-08-15: trace2 sun_path undefined) */
 typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undefined) */
 #define FD_SETSIZE 64  /* select 最大 fd 数 (fix 2026-08-15: FD_SETSIZE undefined) */
