@@ -576,6 +576,10 @@ CORE_FEAT = [
     'scripts/feat_c_call_base_member_ok.c',
     'scripts/feat_c_call_base_member_neg.c',    # f().typo
     'scripts/feat_c_assign_base_member_neg.c',  # (s = t).typo
+    # A71-续3 (2026-09-15): 赋值表达式作构值成员基 的 **codegen** 根治 (A71-续2 同站发现并挂账, 本轮销账)
+    #   ① 内存地址() 增 节点_赋值 分支 (先发射赋值副作用, 再取 LHS 地址)
+    #   ② 成员读 "链基" 判据 补 10 (赋值) — 原 只列 12/13/15/4/22 ⟹ 分支加了也走不到
+    'scripts/feat_c_call_assign_base_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
