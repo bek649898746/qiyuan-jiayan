@@ -569,6 +569,13 @@ CORE_FEAT = [
     'scripts/feat_c_addr_base_member_neg.c',    # (&s)->typo
     'scripts/feat_c_addr_base_member_neg2.c',   # ((结构体 S*)&s)->typo
     'scripts/feat_c_addr_base_member_neg3.c',   # (*p).typo
+    # A71-续2 (2026-09-15): 调用基/赋值基 成员静态检查 —— 序七() 再扩 两家族 (同族复查 q3/q4 收口)
+    #   调用: f().typo (构值返回调用作成员基) — 序七 调用分支 (调用构返 退 调用构指)
+    #   赋值: (s = t).typo — 序七 赋值分支 (值 = LHS 类型)
+    #   ⚠️ 赋值基的 **构值语义** (codegen) 另有既存缺陷 ((s=t).字段 值错/赋值失效, 新旧编译器同错) — 已记台账, 本锚只钉检查不钉取值
+    'scripts/feat_c_call_base_member_ok.c',
+    'scripts/feat_c_call_base_member_neg.c',    # f().typo
+    'scripts/feat_c_assign_base_member_neg.c',  # (s = t).typo
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
