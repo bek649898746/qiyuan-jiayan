@@ -629,6 +629,10 @@ CORE_FEAT = [
     #   实参 含引号 时 (git `OPT__FORCE(var,h,f)` 体 含 'f') 升级为 括号失配
     #   ⟹ git 11 个 builtin/*.c 整文件 编不出 (`[ERR] 括号不匹配 '(' 长简 '}'`)
     'scripts/feat_c_macro_lit_arg_ok.c',
+    # A2002 (2026-09-16): 数组 指定初始化器 [enum/宏 常量] = ... 的 尺寸推断 (语料闸 — git gc 根治)
+    #   三条 数组推断循环 记 指定下标 时 只认 常数 字面量 ⟹ [K_A] = {...} 不记 终转 ⟹ 尺寸 退化为 项数
+    #   ⟹ git builtin/gc.c scheduler_fn[] (4 项 / 最大下标 4) 尺寸算成 4 ⟹ [4] 误报 A2001 越界
+    'scripts/feat_c_desig_init_const_idx_ok.c',
 ]
 
 def build_tests(args):
