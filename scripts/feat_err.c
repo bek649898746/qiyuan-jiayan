@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 错误返回 (Zig error union / Go 多返回值): C 用 struct 打包错误码+值

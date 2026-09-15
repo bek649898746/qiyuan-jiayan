@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 #define TYPE_MAX(x, y) _Generic((x), \

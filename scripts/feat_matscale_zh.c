@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 矩阵数乘/单位阵 接入测试 (2026-08-28): 矩阵数乘 C,A,s,m,n + 单位阵 I,n — 蓝图 §一 矩阵族 */

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 遮蔽写端恢复修复 (2026-09-09): 内层遮蔽块内 移出再整字段恢复 应放行
    (原误清外层登记 → 内层恢复无效 → 内层读误拦 A3101) */

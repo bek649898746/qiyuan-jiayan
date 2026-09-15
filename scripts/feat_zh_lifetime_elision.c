@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 生命周期 elision (t4) + 变型 (t5) 锁定 (2026-09-07):

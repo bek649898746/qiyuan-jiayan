@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR STRUCT BIG OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G2b (2026-09-10): 大结构体 (>8B) 错误载荷 — 结构体 走 sret (rcx 隐藏指针), rax = tag, rdx = 错码

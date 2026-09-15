@@ -1,3 +1,4 @@
+// @EXPECTED out:#82 Arena 内置运行时 PASS
 #包含 <stdio.h>
 
 /* #82 Arena 分配器 内置运行时: 区域 建/分配/重置/释放 → __arena_* (qcc_rt.c 大块池)

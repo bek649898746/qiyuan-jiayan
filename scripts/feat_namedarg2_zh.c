@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 真具名参数 接入测试 (2026-08-28): f(b: 2, a: 1) — 乱序重排到签名位置 */

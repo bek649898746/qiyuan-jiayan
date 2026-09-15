@@ -1,3 +1,4 @@
+// @EXPECTED out:typeof 类型查询 PASS
 #包含 <stdio.h>
 
 /* C23 typeof 类型查询 (中文 类型取 双认) — typeof(变量)/typeof(类型) 声明 */

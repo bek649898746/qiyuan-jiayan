@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR STRUCT SMALL OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G2a (2026-09-10): 小结构体 (≤8B) 错误载荷 — 结构体 ≤8B 按值返回, 值 占 rax, tag 走 rdx (与 长整 同类)

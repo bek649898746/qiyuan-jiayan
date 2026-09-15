@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN LOOBBRK OK
 # 包含 <stdio.h>
 /* 所有权 循环 break 前置守卫析构 (2026-09-06 虾米 G10): break 与守卫同块 → 跳转不绕过守卫析构 (计数1)
    旧: break 直跳绕过块尾 → 泄漏 (计数0)

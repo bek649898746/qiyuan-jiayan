@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 协程 (stackless/async): 显式状态机 — 暂停=保存状态(state+局部变量), resume=状态分派继续

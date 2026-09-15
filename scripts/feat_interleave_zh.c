@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 交错 接入测试 (2026-08-27): 交错 dst, a, na, b, nb; — zip 交替合并 */

@@ -1,3 +1,4 @@
+// @EXPECTED out:TD MOVEIN OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop + 移入 目标 (2026-09-06): a/b 同类型析构; 移入 b, a → b 覆写析构旧(1) + b 持 a 值作用域析构(2) = 2
    @EXPECT out:TD MOVEIN OK */

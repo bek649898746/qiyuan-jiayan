@@ -1,3 +1,4 @@
+// @EXPECTED out:TD A6 OK
 # 包含 <stdio.h>
 /* TypeDrop A6 探针 (2026-09-06): 裸调用 新X(2); 返回值丢弃 → sret 临时应析构一次 (Rust: 临时值语句尾 drop)
    期望: a 作用域析构 1 + 裸调用临时析构 1 = 2

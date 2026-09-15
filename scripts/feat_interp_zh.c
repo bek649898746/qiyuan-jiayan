@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 字符串插值 (格式化 "x={} y={}", x, y) 接入测试 (2026-08-27):

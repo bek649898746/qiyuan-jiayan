@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 模式匹配穷尽 接入测试 (2026-08-28): 机制层 #141 — 依据 r, x 穷尽 Shape 对照 ... 覆盖检查 */

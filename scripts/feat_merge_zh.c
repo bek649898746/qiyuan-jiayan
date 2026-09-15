@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 归并 (归并 dst, a, na, b, nb) 接入测试 (2026-08-27):

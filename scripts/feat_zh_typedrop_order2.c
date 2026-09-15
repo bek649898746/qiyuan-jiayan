@@ -1,3 +1,4 @@
+// @EXPECTED out:TD A2 EXTRA OK
 # 包含 <stdio.h>
 /* TypeDrop A2 补充探针: 自引用 a=f(a) + 源移动 a=b (Rust 语义) @EXPECT out:TD A2 EXTRA OK */
 整 计数 = 0;

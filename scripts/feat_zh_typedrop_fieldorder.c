@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 # 包含 <stdio.h>
 /* 波3a (2026-09-09): 容器字段 drop glue 析构顺序 = 声明逆序 (Rust) — 原正序 (a,b,c) 实测;
    逆序防字段依赖 (后声明先析构, 同 Rust 局部/字段规则) */

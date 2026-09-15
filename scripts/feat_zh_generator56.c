@@ -1,3 +1,4 @@
+// @EXPECTED out:#56 生成器语言级 yield PASS
 #包含 <stdio.h>
 
 /* #56 生成器完整: 语言级 yield (基于 stackful fiber)

@@ -1,5 +1,6 @@
 ﻿#include <stdio.h>
 //  映射库配套 (时间词), 单文件不链
+// @EXPECTED out:PASS
 #include <time.h>
 #include <string.h>
 

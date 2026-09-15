@@ -1,3 +1,4 @@
+// @EXPECTED out:Copy 自动派生 PASS
 # 包含 <stdio.h>
 /* #16 Copy 自动派生 (2026-09-05 S7): 全标量字段构 → 自动 Copy (赋值=复制, 源可用);
    含指针构 非 Copy 由 feat_zh_copy_auto_neg 编译期覆盖 (移动 A3101);

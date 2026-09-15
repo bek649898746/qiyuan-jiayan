@@ -1,3 +1,4 @@
+// @EXPECTED out:TD BRANCH OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 分支+返回路径 (2026-09-06): f(1) t 返路径析构; f(0) u 落出析构 → 计数 2
    @EXPECT out:TD BRANCH OK */

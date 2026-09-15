@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 actor 消息投递 (投递 m, v / 接收 m, v) 接入测试 (2026-08-27):

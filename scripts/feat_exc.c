@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 确定性异常 (try/catch): C 模拟 — 全局异常对象 + 显式传播 (qcc 无 longjmp)

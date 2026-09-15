@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 窗口最大/最小 接入测试 (2026-08-28): 窗口最大/窗口最小 dst, src, n, w — 滑动窗口极值 */

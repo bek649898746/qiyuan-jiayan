@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 变参模板 (C++20): C 用 X-macro + 变参宏模拟

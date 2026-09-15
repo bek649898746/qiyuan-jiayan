@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 typedef struct { double r; } Circle;
 static double circle_area2(const Circle *c) { return c->r * c->r; }

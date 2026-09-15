@@ -1,3 +1,4 @@
+// @EXPECTED out:解包空值
 #include <stdio.h>
 // @EXPECTED exit:1
 

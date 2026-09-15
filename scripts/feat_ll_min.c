@@ -1,3 +1,4 @@
+// @EXPECTED out:e=4294967296 f2=2147483648
 #include <stdio.h>
 int main(void) {
     long long a = -9223372036854775807LL - 1;

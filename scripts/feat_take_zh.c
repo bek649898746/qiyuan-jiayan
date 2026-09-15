@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 取前 接入测试 (2026-08-27): 取前 dst, src, n, k; — 复制前 k 个, k>n 复制全部 */

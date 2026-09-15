@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 窗口平均 接入测试 (2026-08-28): 窗口平均 dst, src, n, w — 滑动窗口平均 */

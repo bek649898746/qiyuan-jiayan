@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 阶乘 接入测试 (2026-08-28): 阶乘 f, n; — n! */

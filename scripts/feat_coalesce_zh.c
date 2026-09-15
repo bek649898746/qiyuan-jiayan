@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 空合 接入测试 (2026-08-28): 空合 x, a, b; — a 非 0 用 a, 否则 b */

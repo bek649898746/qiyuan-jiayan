@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* async/await: 事件循环 + 协程式任务 (单线程确定性模拟)

@@ -1,3 +1,4 @@
+// @EXPECTED out:CELL BORROW OK
 # 包含 <stdio.h>
 /* P3-2 (2026-09-10): 借用单元 (RefCell) 正例 — 多次共享借用 逐次放还; 独占 借还 后再共享
    @EXPECT out:CELL BORROW OK */

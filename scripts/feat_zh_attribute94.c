@@ -1,3 +1,4 @@
+// @EXPECTED out:#94 属性语义 PASS
 # 包含 <stdio.h>
 
 /* #94 属性语义: __attribute__((packed)) 走打包机制 + __attribute__((aligned(N))) 变量对齐 (词法器发射 打包/直联 词元, 原吞掉无语义) */

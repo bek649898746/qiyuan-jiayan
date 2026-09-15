@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE I64 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1a (2026-09-11): 可空 长 长 (64 位 载荷 放不进 8B 打包槽) — 新表示: 值槽 + 分离 tag 槽 `__nt_名`

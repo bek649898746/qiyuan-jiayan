@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 矩阵乘 接入测试 (2026-08-28): 矩阵乘 dst, a, b, m, n, p; — C[m][p]=A[m][n]*B[n][p] (蓝图 §一 矩阵/向量族) */

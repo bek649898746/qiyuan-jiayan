@@ -1,3 +1,4 @@
+// @EXPECTED out:x=-32768 y=65535
 #include <stdio.h>
 #include <stdint.h>
 int main(void) {

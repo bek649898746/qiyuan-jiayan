@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 for-range 索引: 遍 i, x 于 arr {body} — i 索引, x 值 (Go for i, x := range)

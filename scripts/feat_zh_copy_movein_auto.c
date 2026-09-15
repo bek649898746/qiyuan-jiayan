@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* t8b (2026-09-07): 移入 auto-Copy 构 (全标量字段) → 源不失效
    (复制查 显式-only → 类型可复制 权威 修复; 移入 与 赋值 对齐) */

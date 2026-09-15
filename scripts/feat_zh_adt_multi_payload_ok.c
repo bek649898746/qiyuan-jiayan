@@ -1,3 +1,4 @@
+// @EXPECTED out:ADT MULTI PAYLOAD OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1l (2026-09-11): 判别 (ADT) 多载荷 变体 — 无类型 形式 `方(宽, 高)` 先前 误解析

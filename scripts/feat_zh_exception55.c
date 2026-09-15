@@ -1,3 +1,4 @@
+// @EXPECTED out:#55 异常完整 真异常栈 PASS
 #包含 <stdio.h>
 
 /* #55 异常完整 (真异常栈): 试 { 体 } 捕获 { 体 } 块级 try/catch

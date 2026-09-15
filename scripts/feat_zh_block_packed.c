@@ -1,3 +1,4 @@
+// @EXPECTED out:BLKPASS
 #include <stdio.h>
 /* 2026-09-08 块级 packed + 块级局部 struct 字段类型 (防回归):
    ① 块级 __attribute__((packed)) struct 定义+字段访问 (原编译崩 "未定义函数 打包")

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 枚遮蔽修复 (2026-09-09): 局部变量 同名 枚常量 → 读局部; 未遮蔽枚常量 正常 */
 枚 标记 { 名 = 999, 另 = 5 };

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 打乱 接入测试 (2026-08-27): 打乱 arr, n; — Fisher-Yates 洗牌, 元素集合不变 */

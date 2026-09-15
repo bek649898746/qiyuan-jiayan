@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 交换 (交换 a, b) 接入测试 (2026-08-27):

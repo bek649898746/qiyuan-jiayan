@@ -1,3 +1,4 @@
+// @EXPECTED out:站A PASS
 #包含 <stdio.h>
 
 /* 中文前端语法独立 站A: 函数/变量/常量 (重建) */

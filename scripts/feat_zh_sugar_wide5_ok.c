@@ -1,3 +1,4 @@
+// @EXPECTED out:SUGAR WIDE5 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1w (2026-09-11): 糖 双精度 收尾 — ① 嵌套下标 (矩阵[i][j] 一路 下钻 到根变量 判浮性) ② 滑窗/矩阵 累加器 双槽

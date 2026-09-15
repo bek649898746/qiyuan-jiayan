@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 可变借用 &mut 接入测试 (2026-08-28): 机制层借用族 P0 #3 — 可变借用 x; 独占可变借用

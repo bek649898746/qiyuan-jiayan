@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:N1-unwrap-ok
 #include <stdio.h>
 /* P0-1 N1 正例 (2026-09-10): 解包后运算 / 判空窄化后运算 放行 */
 函数 整 主(空) {

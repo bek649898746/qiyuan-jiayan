@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE DEEP PATH OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1e-② (2026-09-11): 深层成员链 / 下标基 的 可空指针字段 — 解引用检查 + 路径级 窄化

@@ -1,3 +1,4 @@
+// @EXPECTED out:宏卫生 PASS
 #包含 <stdio.h>
 
 /* G4-1 补锚 (#181 宏卫生深化):

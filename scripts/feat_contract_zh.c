@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 契约审判 接入测试 (2026-08-28 可吞清单 P0-7): 前置/后置 子句

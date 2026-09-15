@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* S2a (2026-09-09): 可空 声明 无初始化器 → 确定性空 (注入 0) + 空值合法 (免 A4001) — 值类型/指针 双形态 */
 int main(void) {

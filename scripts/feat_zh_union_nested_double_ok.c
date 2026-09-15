@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* A26-② 回归 锚 (2026-09-11): 联合/匿名 聚合 内 的 双精度 字段 读写

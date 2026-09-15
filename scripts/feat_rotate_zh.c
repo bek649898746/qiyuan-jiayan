@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 旋转 接入测试 (2026-08-27): 旋转 arr, n, k; — 循环右移 k (三次反转法), k 负=左移, k>=n 取模 */

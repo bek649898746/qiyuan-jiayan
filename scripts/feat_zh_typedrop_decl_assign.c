@@ -1,3 +1,4 @@
+// @EXPECTED out:TD DECLASS OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 裸单值声明+后续赋值 (2026-09-06 站3.5): 构 X t; t = 新X(5); → 登记 F=0, 赋值武装 → 作用域析构 1
    旧: 无init声明不登记 → 泄漏 0

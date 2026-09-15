@@ -1,3 +1,4 @@
+// @EXPECTED out:nullptr 空指针 PASS
 #包含 <stdio.h>
 
 /* nullptr 空指针字面量 (C23, 中文 空指针 双认) — 赋值/比较/初始化 */

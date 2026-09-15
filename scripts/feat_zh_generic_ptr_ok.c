@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS 泛型指针分派
 #include <stdio.h>
 
 /* A22 (2026-09-11) 回归 锚: _Generic 控制表达式 的 **精确 类型 分派**

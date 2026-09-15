@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式I2 (2026-09-07): 无隐式转换 传参方向 — 显式 转 / double 形参 放行 */
 int 加一(int x) { return x + 1; }

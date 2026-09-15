@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 高阶函数 过滤 (过滤 dst, src, n, cond) 接入测试 (2026-08-27):

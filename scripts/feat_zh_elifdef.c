@@ -2,6 +2,7 @@
 
 /* C23 #elifdef / #elifndef 预处理简写 (等价 #elif defined(名) / #elif !defined(名)) */
 
+// @EXPECTED out:elifdef/elifndef PASS
 #define 甲 1
 
 函数 整 主(空) {

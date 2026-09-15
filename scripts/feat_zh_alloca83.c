@@ -1,3 +1,4 @@
+// @EXPECTED out:#83 栈分配 alloca PASS
 # 包含 <stdio.h>
 
 /* #83 栈分配 alloca (重攻): alloca 名, 大小; → 栈分配字节缓冲区

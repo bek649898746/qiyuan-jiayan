@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 原子加(真xadd)/原子交换(xchg) 接入测试 (2026-08-28): 机制层并发 — 真原子指令 (非用户函数) */

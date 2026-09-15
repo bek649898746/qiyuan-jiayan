@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT PTRBIG8 OK
 # 包含 <stdio.h>
 /* R6b ptrbig (2026-09-09): 指针返回 错误函数 8B 双通道 大错码 —
    原 指针错误函数 未登记 中细 8B (只 满平 ll) → 错误走 int 打包通道; 补登记后 8B 通道 (rax=码 8B + rdx=tag)

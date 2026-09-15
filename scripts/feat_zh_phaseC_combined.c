@@ -1,3 +1,4 @@
+// @EXPECTED out:阶段C 综合吃狗粮 PASS
 #包含 <stdio.h>
 
 /* 阶段C 综合吃狗粮: #197 封装 + #193 单继承 + C23 nullptr + typeof 协同 */

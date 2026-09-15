@@ -1,3 +1,4 @@
+// @EXPECTED out:IFACE RET USE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1t (2026-09-11): 接口 (trait) 分派 调用 的 返回构体 — 各 消费位 真闭环

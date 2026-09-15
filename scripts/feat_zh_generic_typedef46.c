@@ -1,4 +1,5 @@
-﻿#包含 <stdio.h>
+// @EXPECTED out:#46 类型别名泛型 PASS
+#包含 <stdio.h>
 
 /* #46 类型别名泛型: 类型 名(T) = 类型体 — 参数化类型别名 (泛型 typedef) */
 

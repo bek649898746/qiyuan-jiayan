@@ -1,3 +1,4 @@
+// @EXPECTED out:TD RETMOVE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 返回=移动 (2026-09-06): 取件() 内 b 类型析构但 返 b 移动 → 函数内不析构; 调用侧 t 自动析构 = 1
    @EXPECT out:TD RETMOVE OK */

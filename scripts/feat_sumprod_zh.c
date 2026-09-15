@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 求和/求积 (求和 s, arr, n) 接入测试 (2026-08-27):

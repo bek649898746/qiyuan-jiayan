@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN FORBRK OK
 # 包含 <stdio.h>
 /* 所有权 标准 for(遍) break 前置守卫析构 (2026-09-06 虾米 G10): 遍 C 形态 体内守卫 t; i==1 断 → 析构 v0+v1 = 2
    验证 G10 对 标准 for 循环体 压栈 (跳转析构包)

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* t8c 遮蔽同名隔离 (2026-09-07): 外层 s.子 移出, 内层同名 s 字段读 应放行
    (字段路径 符号化判定 = 基变量 条目序 作用域感知, 去字符串匹配边角) */

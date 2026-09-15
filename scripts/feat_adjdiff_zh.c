@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 相邻差 接入测试 (2026-08-27): 相邻差 dst, src, n; — dst[0]=src[0]; dst[i]=src[i]-src[i-1] */

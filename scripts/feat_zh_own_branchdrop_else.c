@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN BRDROPE OK
 # 包含 <stdio.h>
 /* 所有权 分支drop else路径 (2026-09-06 虾米 BatchB): 守卫 b; 若(0){移入t,b} 否则 {b=新X(2)}
    → else 运行时: 覆写析构 value1 + 作用域退出 value2 = 2 (旧 线性模型 计数0 双漏, BatchB F 精确)

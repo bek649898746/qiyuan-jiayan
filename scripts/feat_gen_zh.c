@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #包含 <stdio.h>
 
 /* 生成器 (2026-09-08 重写): 旧 08-27 gen_init/gen_next 用户约定已被 #56 语言级 fiber 生成器取代

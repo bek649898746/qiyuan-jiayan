@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 守卫条件 (Rust match guard): 模式匹配 + 额外约束 — switch 判别 + if 守卫

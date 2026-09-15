@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* D1 (2026-09-11) 回归 锚: 遍-范围 迭代变量 **用户 预声明** (整 x;) 时 不 得 误报 A4001。

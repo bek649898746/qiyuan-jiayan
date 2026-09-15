@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR DOUBLE DECONS OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G1 (2026-09-10): 解构(v, t) = 错误 双精度 函数() — 值 走 xmm0 (v 为 双), tag 走 rdx (t) */

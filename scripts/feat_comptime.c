@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 编译期执行 (Zig comptime 模拟): 宏表 + 常量折叠 — 值在编译期算好, 运行时零计算

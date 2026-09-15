@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 生成器 (generator): 协程链的惰性迭代器 — 不预生成, next() 时才计算产出

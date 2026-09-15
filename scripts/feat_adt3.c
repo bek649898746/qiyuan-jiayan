@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 #include <string.h>
 typedef enum { T_INT, T_DBL, T_STR } Kind;

@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN UNINITMI OK
 # 包含 <stdio.h>
 /* 所有权 未初始化守卫 + 移入初始化 (2026-09-06 虾米 G3+G4+BatchB): 构 X t; 守卫 t; b=新X(1); 移入 t,b
    → 无垃圾覆写析构 + 移入 武装 → 作用域退出析构 value1 = 1

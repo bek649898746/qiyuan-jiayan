@@ -1,3 +1,4 @@
+// @EXPECTED out:ANON COMMA INHERIT PASS
 // @EXPECT out:ANON COMMA INHERIT PASS
 # 包含 <stdio.h>
 /* 2026-09-10 修复锚: 匿名构体 逗号字段类型继承 (C 语义 `双 一, 二` → 二 也是 双)

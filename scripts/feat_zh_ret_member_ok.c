@@ -1,3 +1,4 @@
+// @EXPECTED out:RET MEMBER OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1i (2026-09-11): 构值 返回调用 的 成员访问 — `造(...).字段` (原 静默 得 0)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 计数 (计数 c, arr, n, cond) 接入测试 (2026-08-27):

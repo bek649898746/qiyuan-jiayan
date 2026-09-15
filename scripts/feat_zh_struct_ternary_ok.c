@@ -1,3 +1,4 @@
+// @EXPECTED out:TERN STRUCT OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1q (2026-09-11): 构值 三目表达式 真支持 (原 H1j 一律 A9001 拦截)

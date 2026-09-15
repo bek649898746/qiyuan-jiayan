@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 线程/原子/volatile: 确定性单线程并发模拟 (qcc 无 pthread/无 longjmp)

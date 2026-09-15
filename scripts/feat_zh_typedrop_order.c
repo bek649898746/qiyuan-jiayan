@@ -1,3 +1,4 @@
+// @EXPECTED out:TD ORDER OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop A2 (2026-09-06 虾米): drop 顺序追平 (先求值 RHS 再析构旧值, Rust 序)
    a = 新X(2) 时: 新X(2) 求值(副作用) 必须先于 析构旧值 a=1

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 映射第8批 接入测试 (2026-08-28): bn 内置内存/字符串/程序控制函数中文映射 */

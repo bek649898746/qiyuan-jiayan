@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS getenv
 #include <stdio.h>
 #include <stdlib.h>
 

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 切片 接入测试 (2026-08-28): 切片 dst, src, n, lo, hi; — 复制 src[lo..hi) 到 dst */

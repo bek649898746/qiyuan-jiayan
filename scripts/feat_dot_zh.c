@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 点积 接入测试 (2026-08-28): 点积 d, a, b, n; — 向量内积 Σa[i]*b[i] (蓝图 §一 矩阵/向量族) */

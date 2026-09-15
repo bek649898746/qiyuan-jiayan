@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 typedef enum { T_INT, T_DBL, T_STR } Kind;
 typedef struct { Kind kind; union { int i; double d; const char *s; } val; } Value;

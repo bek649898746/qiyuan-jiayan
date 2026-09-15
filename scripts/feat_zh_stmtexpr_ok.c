@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS stmt-expr
 #include <stdio.h>
 
 /* A34 (2026-09-11, 差分 台 alignas 族 抓) 回归 锚: GNU 语句表达式 ({ ... })

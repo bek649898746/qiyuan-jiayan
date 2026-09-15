@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 矩阵加/减 接入测试 (2026-08-28): 矩阵加 C,A,B,m,n / 矩阵减 C,A,B,m,n — 逐元素 (蓝图 §一 矩阵族) */

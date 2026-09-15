@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 完全中文化: 常用库函数中文映射测试 (2026-08-27):

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 struct R { int ok; int val; };
 static struct R f(void) {

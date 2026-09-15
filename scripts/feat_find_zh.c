@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 查找 (查找 idx, arr, n, val) 接入测试 (2026-08-27):

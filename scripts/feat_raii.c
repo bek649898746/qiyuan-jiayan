@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* RAII 模拟: C 资源获取 + 清理 (手动/集中清理模式) */

@@ -1,3 +1,4 @@
+// @EXPECTED out:站C PASS
 #包含 <stdio.h>
 
 /* 中文前端语法独立 站C: 类型 名 = 基础类型 (重建) */

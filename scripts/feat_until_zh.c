@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 直到 接入测试 (2026-08-28): 直到 条件 { body } — do-until (条件为真退出, 至少执行一次) */

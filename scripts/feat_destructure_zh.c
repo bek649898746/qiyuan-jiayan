@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 解构 接入测试 (2026-08-28): 解构(a, b, c) = (e1, e2, e3); — RHS 先整体求值再逐个写 LHS */

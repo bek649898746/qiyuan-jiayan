@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 遮蔽 + 分支 正例 (2026-09-09): then 遮蔽移出被撤销, else/汇合 外层 s.子 (从未移) 读放行
    (撤销 基感知: 只撤 then 内层登记, 不碰外层; 无外层登记时 汇合读自然放行) */

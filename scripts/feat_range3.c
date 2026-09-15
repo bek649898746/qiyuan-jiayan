@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 for-range (遍...于...) 接入测试: 迭代数组

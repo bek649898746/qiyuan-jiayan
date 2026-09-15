@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE F64 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1b (2026-09-11): 可空 双 (xmm0 载荷) — 值槽 + 分离 tag 槽 `__nt_名`; 判空 读 tag; 解包 走 xmm0 (节浮标) */

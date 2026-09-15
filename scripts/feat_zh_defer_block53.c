@@ -1,4 +1,5 @@
-﻿#包含 <stdio.h>
+// @EXPECTED out:#53 defer 块级 PASS
+#包含 <stdio.h>
 
 /* #53 defer 完整 — 块级 defer: 嵌套块自然退出 LIFO 刷新 + 返路径刷新 + 函数级兜底 */
 

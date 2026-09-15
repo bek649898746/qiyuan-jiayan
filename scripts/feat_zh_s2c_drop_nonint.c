@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT S2C DROP NONINT OK
 # 包含 <stdio.h>
 /* S2b-3/4 externk 文件级 弃可空 (2026-09-09): 文件作用域 可空 只支持 32位整标量/指针 —
    浮/长/短/字 标量 → 弃可空 作普通变量 (防 tag 污染: 可空 double 初值丢 0)

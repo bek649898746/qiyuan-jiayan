@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 反转 (反转 arr, n) 接入测试 (2026-08-27):

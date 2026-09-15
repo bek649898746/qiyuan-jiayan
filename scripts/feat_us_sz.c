@@ -1,3 +1,4 @@
+// @EXPECTED out:sizeof S=24 K=4
 #include <stdio.h>
 typedef enum { A, B } K;
 typedef struct {

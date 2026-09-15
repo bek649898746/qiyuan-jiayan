@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 窗口 接入测试 (2026-08-27): 窗口 dst, src, n, w; — 滑动窗口和 dst[i]=sum(src[i..i+w)) */

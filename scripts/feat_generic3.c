@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 int main(void) {
     int x = 5;

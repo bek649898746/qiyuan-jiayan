@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN PARAMG OK
 # 包含 <stdio.h>
 /* 所有权 守卫形参 传参移动 (2026-09-06 虾米 BatchB2): f(b) 传参移动 b (非Copy) → b F=0; f 内 形参守卫 → f 结束析构 1 次
    main b 不析构 → 总计数 1 (旧: main 陈旧F 双析构 计数2 — 语句级 F 冲刷修复)

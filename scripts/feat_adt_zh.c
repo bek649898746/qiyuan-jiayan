@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 判别 接入测试 (2026-08-28): 机制层 ADT (v3.0 #97) — 判别 Shape 于 { 圆(1), 方(1), 点(0) };

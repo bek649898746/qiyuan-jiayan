@@ -1,3 +1,4 @@
+// @EXPECTED out:digit
 #include <stdio.h>
 int main(void) {
     const char *s = "7";

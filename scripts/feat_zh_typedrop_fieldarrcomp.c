@@ -1,3 +1,4 @@
+// @EXPECTED out:TD B2C OK
 # 包含 <stdio.h>
 /* TypeDrop B2 复合数组字段探针: 合成容器数组字段 逐元素递归析构
    { 构 Y y = 造Y(); } → 计数=3 (y.zs[0..2].x 各析构一次)

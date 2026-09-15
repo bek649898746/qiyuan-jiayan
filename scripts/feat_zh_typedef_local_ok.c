@@ -1,3 +1,4 @@
+// @EXPECTED out:TYPEDEF LOCAL OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* P3-7 (2026-09-11): 函数体内 类型别名 —— `类型 名 = 类型;`

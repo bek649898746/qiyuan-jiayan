@@ -1,3 +1,4 @@
+// @EXPECTED out:STATIC LOCAL WIDE NULLABLE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1g (2026-09-11): 函数级 静态 (可空 静) 宽载荷 长 长/双 的可空 — 真闭环

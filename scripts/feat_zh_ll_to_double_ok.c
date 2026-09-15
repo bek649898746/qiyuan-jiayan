@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:LL TO DOUBLE OK
 #include <stdio.h>
 /* A36 (2026-09-12): 64 位 整数 (长 长) → 双精度 转换 必须 走 64 位 通道.
    修前: 一律 32 位 (mov eax,[槽] + cvtsi2sd xmm0,eax) → 高 32 位 静默 丢

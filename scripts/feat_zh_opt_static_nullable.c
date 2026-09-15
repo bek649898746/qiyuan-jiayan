@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 静态可空 落位正例 (2026-09-09): 可空 静 → 变量静态 落 tag=无值 (BSS 0 = 空, A8001 守卫生效) */
 int main(void) {

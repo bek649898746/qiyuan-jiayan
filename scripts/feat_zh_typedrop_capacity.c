@@ -1,3 +1,4 @@
+// @EXPECTED out:TD CAP OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 容量 (2026-09-06): 单函数 66 个析构变量 (越旧 64 槽限; 扩容 256 后过) → 作用域尾 66 析构
    @EXPECT out:TD CAP OK */

@@ -1,3 +1,4 @@
+// @EXPECTED out:TERN SCALAR OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1j (2026-09-11): 标量/指针/双精度 三目 回归 (构值 三目 被 A9001 拦截 的 同时, 这些 必须 照常) */

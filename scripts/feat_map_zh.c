@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 高阶函数 映射 (映射 dst, src, n, fn) 接入测试 (2026-08-27):

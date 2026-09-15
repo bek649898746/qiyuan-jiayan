@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 范围值 接入测试 (2026-08-28): 范围值 r, arr, n — 极差 max-min */

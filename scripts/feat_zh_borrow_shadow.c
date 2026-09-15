@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 借用遮蔽修复 (2026-09-09): 外层 x 可变借用中, 遮蔽块内 同名 x 读写 应放行
    (原 A3001 按名误拦内层) — 借用表 借基 作用域感知 */

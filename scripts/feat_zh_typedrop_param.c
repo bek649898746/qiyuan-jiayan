@@ -1,3 +1,4 @@
+// @EXPECTED out:TD PARAM OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v1 站2 形参 (2026-09-06): f(构 X r) 值参带析构 → f 出口自动析构 1 次;
    b 传 f(b) 移动 → main 不析构 (无双析构/无泄漏)

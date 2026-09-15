@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 替换 (替换 arr, n, old, new) 接入测试 (2026-08-27):

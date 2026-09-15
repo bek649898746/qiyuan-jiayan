@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* Option: C 可空指针约定 (NULL = 无值) */

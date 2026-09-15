@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* A26-① 回归 锚 (2026-09-11): 逗号 连写 的 双精度 字段 必须 与 分号 写 等价

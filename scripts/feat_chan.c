@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 通道 (Go 风格 channel): 有界 FIFO 队列 + 状态 (单线程确定性模拟)

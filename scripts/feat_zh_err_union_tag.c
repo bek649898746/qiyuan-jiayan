@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 真 sum type ABI (2026-09-07): 运行时判别通道 — 成功载荷数值 == 声明错误码 不再误传播
    f 成功返 100 (payload) 恰等于 错 100 → 旧 0=成功 语义 (编译期码比较) 误判为错误;

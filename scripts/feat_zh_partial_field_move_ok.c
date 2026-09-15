@@ -1,3 +1,4 @@
+// @EXPECTED out:PARTIAL FIELD OK
 # 包含 <stdio.h>
 /* P3-1 正例锚 (2026-09-10): 部分移出 只影响被移字段 — 其余字段 读写 放行; 重新赋值 整体恢复
    @EXPECT out:PARTIAL FIELD OK */

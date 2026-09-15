@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* select (Go 风格选择性接收): 多路通道轮询 — 依次检查各通道, 第一个可用的被选中

@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN OVERWRITE OK
 # 包含 <stdio.h>
 /* 所有权 drop 序列 (2026-09-06 虾米 BatchB): 守卫 b; b=新2/新3/新4 → 覆写析构 1,2,3 + 作用域退出 4 = 4
    (drop-on-overwrite + 运行时武装标志 路径精确)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 可选链 扩展测试 (2026-08-28): a?.b + (expr)?.b — 空指针短路 */

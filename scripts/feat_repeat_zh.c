@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 重复 接入测试 (2026-08-28): 重复 N { body } — 循环糖 */

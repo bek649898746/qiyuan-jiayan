@@ -1,3 +1,4 @@
+// @EXPECTED out:SUGAR WIDE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1r (2026-09-11): 数组 语法糖 × 双精度 元素 (切片/切片前缀/切片后缀/转置/峰值/谷值)

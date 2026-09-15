@@ -1,3 +1,4 @@
+// @EXPECTED out:char8_t PASS
 #包含 <stdio.h>
 
 /* C23 char8_t UTF-8 字符 (无符号 8 位) — 变量/数组/比较 */

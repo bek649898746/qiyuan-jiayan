@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言互斥锁 (锁住) defer 升级: 锁住 m { body } → mutex_lock(&m); defer mutex_unlock(&m); body

@@ -1,3 +1,4 @@
+// @EXPECTED out:TD OVERWRITE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v1 覆写析构 (2026-09-06): 析构 X 类型 → a=新X(1); a=新X(2) → 覆写析构(1)+作用域(2)=2
    @EXPECT out:TD OVERWRITE OK */

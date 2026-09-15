@@ -1,3 +1,4 @@
+// @EXPECTED out:VALUE PARAM NEST OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1f (2026-09-11): 大结构体 (>8B) 值 形参 的 嵌套成员 读/写 (预存缺陷 闭环)

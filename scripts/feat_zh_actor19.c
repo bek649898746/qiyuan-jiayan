@@ -1,3 +1,4 @@
+// @EXPECTED out:#19 actor 语言级邮箱 PASS
 #包含 <stdio.h>
 
 /* #19 actor 模型完整 (语言级邮箱): actor 名, 容量; 声明邮箱 (环形缓冲)

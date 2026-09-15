@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* t8 域六去字符串化 (2026-09-07): 基重赋值 清除字段路径 —
    移入 t, s.子 (s.子 移出) → s 重赋值 → s.子 恢复可用 (修复前 仍判已移 A3101) */

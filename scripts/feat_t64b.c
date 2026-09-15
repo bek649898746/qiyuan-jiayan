@@ -1,3 +1,4 @@
+// @EXPECTED out:v1=-9223372036854775808 v2=18446744073709551615
 #include <stdio.h>
 typedef long long int64_t;
 typedef unsigned long long uint64_t;

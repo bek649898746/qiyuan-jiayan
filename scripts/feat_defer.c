@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* defer (延迟执行): Go/Zig 语义 — 函数退出时按 LIFO 执行本函数注册的 defer

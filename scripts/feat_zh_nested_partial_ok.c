@@ -1,3 +1,4 @@
+// @EXPECTED out:NESTED PARTIAL OK
 // @EXPECT out:NESTED PARTIAL OK
 # 包含 <stdio.h>
 /* 2026-09-10 I2-③ 嵌套成员 正例: 同叶读放行 (o.n.x / o.n.y 已写), 直接字段 o.k 独立记账

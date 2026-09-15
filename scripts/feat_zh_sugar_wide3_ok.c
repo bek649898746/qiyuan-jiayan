@@ -1,3 +1,4 @@
+// @EXPECTED out:SUGAR WIDE3 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1u (2026-09-11): 语法糖 双精度 — 统一「糖后标」后处理 覆盖的 数值/拷贝/比较 糖

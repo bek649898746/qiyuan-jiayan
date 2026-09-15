@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 for-range 区间: 遍 i 于 a 到 b {body} — i 从 a 到 b-1 (Go for range 语义)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言管道操作符 (|>) 接入测试: a |> f |> g = g(f(a)) — 数据流向函数链

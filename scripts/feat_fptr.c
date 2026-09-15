@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 static int int_max(int a, int b) { return a > b ? a : b; }
 int main(void) {

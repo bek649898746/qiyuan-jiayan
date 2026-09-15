@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS x=99
 #include <stdio.h>
 
 /* 甲言 重借用 t7 (2026-09-07): 可变借用 变量 传入函数 (&x = 重借用), 函数返回后原可变借用保留 */

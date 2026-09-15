@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 闭包模拟: 函数指针 + 环境捕获 (C 的 ctx 约定, 无 RTTI) */

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 volatile 中文化 (易失) + 屏障 接入测试 (2026-08-27):

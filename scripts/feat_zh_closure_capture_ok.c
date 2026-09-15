@@ -1,3 +1,4 @@
+// @EXPECTED out:CLOSURE CAPTURE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* 闭包 捕获 三 模式 (2026-09-11 首次 建 锚 — 该 特性 此前 零 覆盖, 疑点 见 H1k):

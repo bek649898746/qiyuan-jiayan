@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 字符串插值: sprintf 编译期拼接 — "Hello {name}, score={n}"

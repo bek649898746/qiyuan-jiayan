@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 智能指针 (C++/Rust): 引用计数自动释放 — 共享所有权 + 最后持有者释放

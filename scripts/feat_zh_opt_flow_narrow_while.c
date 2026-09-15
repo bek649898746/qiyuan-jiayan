@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式H2 flow-sensitive (2026-09-07): 循环(!判空 p) 循环体 自动窄化 p 非空, 解引用放行 */
 构 P { 整 x; };

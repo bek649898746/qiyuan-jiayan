@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN LOOBCON OK
 # 包含 <stdio.h>
 /* 所有权 循环 continue 前置守卫析构 (2026-09-06 虾米 G10): t 声明于循环体顶层, i==1 时 续 → 每次迭代析构 1 次 (计数3)
    旧: continue 直跳绕过块尾 → 第2迭代泄漏 (计数2)

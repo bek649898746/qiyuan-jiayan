@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS entered=3
 #include <stdio.h>
 
 /* 甲言 使用 接入测试 (2026-08-28): 使用 前置, 后置 { body } — 进入执行前置, 退出自动执行后置 (defer) */

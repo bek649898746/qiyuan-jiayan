@@ -1,3 +1,4 @@
+// @EXPECTED out:PARTIAL SAMEFIELD OK
 // @EXPECT out:PARTIAL SAMEFIELD OK
 # 包含 <stdio.h>
 /* I2-③ (2026-09-10) 字段级正例: 已写字段读放行 (非整变量粗粒度污染)

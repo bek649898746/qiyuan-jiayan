@@ -1,3 +1,4 @@
+// @EXPECTED out:#33b 栈式编程 PASS
 # 包含 <stdio.h>
 
 /* #33b 栈式编程 (Forth 试吞): 栈 s, 容量; 声明 LIFO 数据栈 + 推 s, v; 压栈 + 弹 s 弹栈 (表达式返回值) */

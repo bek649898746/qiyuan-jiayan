@@ -1,3 +1,4 @@
+// @EXPECTED out:ARRFIELD OK
 # 包含 <stdio.h>
 /* P2-20 (2026-09-10 修 en 链 regress_static_struct_assign): 构值 含数组字段 时, 数组字段不计入"需全写"字段
    — 语料常态是 逐元素填数组 (s.v[0]=7) + 整体拷贝; 计入会把这种写法误判 部分初始化 → A4001 假阳

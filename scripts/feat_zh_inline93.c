@@ -1,3 +1,4 @@
+// @EXPECTED out:#93 内联 PASS
 # 包含 <stdio.h>
 
 /* #93 内联 (inline): 内联 类型 名(参数) { 返 expr; } → 注册函数宏, 调用点展开

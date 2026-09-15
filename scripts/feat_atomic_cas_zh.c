@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 原子比较交换 接入测试 (2026-08-28): 机制层并发 — 真 cmpxchg 原子 CAS

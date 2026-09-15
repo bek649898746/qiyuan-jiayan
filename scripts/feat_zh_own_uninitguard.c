@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN UNINITG OK
 # 包含 <stdio.h>
 /* 所有权 未初始化守卫不析构 (2026-09-06 虾米 G3+BatchB): 构 X t; (无初值) 守卫 t → F=0, 块退出不析构垃圾 (计数 0)
    旧: 析构未初始化内存 (串寅 静态误判)

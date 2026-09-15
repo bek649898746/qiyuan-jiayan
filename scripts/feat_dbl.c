@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 struct S { double d; int x; };
 struct T { int x; double d; };

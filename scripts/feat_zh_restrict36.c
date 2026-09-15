@@ -1,3 +1,4 @@
+// @EXPECTED out:#36 restrict 别名管理 PASS
 #包含 <stdio.h>
 
 /* #36 显式别名管理 (restrict): 类型修饰符完整解析 + A5002 别名冲突检测

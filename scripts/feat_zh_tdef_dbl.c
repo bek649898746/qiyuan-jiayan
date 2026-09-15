@@ -1,3 +1,4 @@
+// @EXPECTED out:typedef double 修复 PASS
 #包含 <stdio.h>
 
 /* typedef double 局部声明修复验证 */

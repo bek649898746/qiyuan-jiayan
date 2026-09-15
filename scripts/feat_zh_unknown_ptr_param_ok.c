@@ -1,3 +1,4 @@
+// @EXPECTED out:UNKNOWN PTR PARAM OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1k (2026-09-11): 未知类型名 + 指针 形参 (`整数 *n` / 未注册 typedef `尺寸_t *p`)

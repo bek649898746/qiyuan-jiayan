@@ -1,3 +1,4 @@
+// @EXPECTED out:F PASS
 #include <stdio.h>
 typedef struct { int *data; int n; } Buffer;
 static int gbuf[8];

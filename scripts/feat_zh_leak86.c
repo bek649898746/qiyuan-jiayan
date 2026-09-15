@@ -1,3 +1,4 @@
+// @EXPECTED out:[LEAK] 无泄漏
 # 包含 <stdio.h>
 
 /* #86 内存泄漏检测: 泄漏报告; → __qcc_leak_report() — 报告运行时资源泄漏

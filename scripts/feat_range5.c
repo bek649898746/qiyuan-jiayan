@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 for-range 字符串: 遍 c 于 "abc" {body} — 迭代字符串字符 */

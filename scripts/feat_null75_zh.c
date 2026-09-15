@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 可空类型完整 接入测试 (2026-08-28): 机制层显式族 P0 #75 — 解包 x → __qcc_unwrap(x) 空值运行时检查

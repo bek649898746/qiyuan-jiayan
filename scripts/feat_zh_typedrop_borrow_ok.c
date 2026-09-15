@@ -1,3 +1,4 @@
+// @EXPECTED out:TD BORDROP OK
 # 包含 <stdio.h>
 /* A4a 借×析构 协同正例 (2026-09-06): 借用析构类型 a → 放还 → 作用域退出自动析构 = 1
    @EXPECT out:TD BORDROP OK */

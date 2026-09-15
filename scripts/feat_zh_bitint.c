@@ -1,3 +1,4 @@
+// @EXPECTED out:_BitInt 位宽整数 PASS
 #包含 <stdio.h>
 
 /* C23 _BitInt(N) 位宽整数: 存储宽度按位对齐字节 + 有符号/无符号 */

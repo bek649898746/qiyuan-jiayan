@@ -1,3 +1,4 @@
+// @EXPECTED out:站B PASS
 #包含 <stdio.h>
 
 /* 中文前端语法独立 站B: 核心控制词无括号 (重建) */

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 defer (延迟) 接入测试: 函数退出延迟执行 — LIFO, 静态收集 (v1 语义)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* D1 (2026-09-11) 回归 锚: 动态数组 (Vec) 的 遍-范围 迭代

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式H2 (2026-09-07): 判空 x → (x == 0) 布尔 (可空 空值检查) — 供 若 (判空 x) 分支 */
 int main(void) {

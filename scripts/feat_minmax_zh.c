@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 最大/最小 (最大 m, arr, n) 接入测试 (2026-08-27):

@@ -1,3 +1,4 @@
+// @EXPECTED out:TD SCOPE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v1 (2026-09-06 虾米): 析构 X, 析构X; 声明 → 构 X a = 新X(1) 无需手动 守卫
    作用域退出自动析构 1 次 (Rust Drop 用户面)

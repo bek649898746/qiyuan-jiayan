@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 // @EXPECTED exit:0
 #包含 <stdio.h>
 

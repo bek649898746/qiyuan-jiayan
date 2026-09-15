@@ -1,3 +1,4 @@
+// @EXPECTED out:#80 异常ABI PASS
 # 包含 <stdio.h>
 
 /* #80 异常ABI: 抛出 码, 值 → ex_val (异常对象携带值, qcc_rt.c);

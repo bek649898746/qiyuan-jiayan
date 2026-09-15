@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 select (择收) 接入测试: 多路条件分派 — 第一个可用条件执行对应分支

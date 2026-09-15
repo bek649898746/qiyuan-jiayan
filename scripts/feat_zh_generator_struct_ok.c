@@ -1,3 +1,4 @@
+// @EXPECTED out:GEN STRUCT OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1r 扫雷批 (2026-09-11): 生成器 (fiber) × 构值 — 生成器函数 内 用 构值 返回调用 + 值形参,

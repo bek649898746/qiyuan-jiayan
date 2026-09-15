@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 排序 (排序 arr, n) 接入测试 (2026-08-27):

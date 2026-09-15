@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式I2 (2026-09-07): 无隐式转换 返回方向 — double 函数返 double 放行, 显式 转 放行 */
 双 加双() { return 3.14; }

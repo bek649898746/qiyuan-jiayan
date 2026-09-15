@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN GDEFER OK
 # 包含 <stdio.h>
 /* 所有权 守卫析构 vs 延迟(defer) 顺序 (2026-09-06 虾米): 返路径 守卫先析构 (号寅), 函数级延迟后执行
    @EXPECT out:FEAT OWN GDEFER OK */

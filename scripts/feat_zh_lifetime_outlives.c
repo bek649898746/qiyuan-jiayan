@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 生命周期存活约束 t3 (2026-09-07): 重借用不得延长既有借期 —

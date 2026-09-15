@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 RAII 完整(析构) 接入测试 (2026-08-28): 机制层所有权族 P0 #8 — 守卫 x, 析构名;

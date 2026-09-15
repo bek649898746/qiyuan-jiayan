@@ -1,3 +1,4 @@
+// @EXPECTED out:动态多态 PASS
 # 包含 <stdio.h>
 /* #195 真 vtable 动态多态 (2026-09-05): 接口引用变量 = fat pointer {对象指针, vtable};
    调用 经 vtable 槽间接分派 — 同一调用点对不同运行时实现分派 */

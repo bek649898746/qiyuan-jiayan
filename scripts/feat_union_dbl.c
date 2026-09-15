@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 typedef struct { union { int i; double d; } val; } V;
 typedef struct { int k; union { int i; double d; } val; } V2;

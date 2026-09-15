@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* P0-4 K1 (2026-09-10): 中文 构 + 契约 登记 → 放行 (修复前 契约被当实例变量吞 → 主丢失崩溃) */
 构 点 { 整 x; 整 y; }

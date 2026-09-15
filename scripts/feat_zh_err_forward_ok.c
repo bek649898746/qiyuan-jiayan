@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR FORWARD OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G1 (2026-09-10): 错误函数 内 直接转发 `返回 f()` (整数载荷类) — rax 打包 {tag 高32|码 低32} 原样传播

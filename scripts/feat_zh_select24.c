@@ -1,3 +1,4 @@
+// @EXPECTED out:#24 select 多路复用 PASS
 #包含 <stdio.h>
 
 /* #24 select 多路复用 (真多通道轮询): 就绪(q)/就绪送(q) 通道状态检测原语 + 择收 条件链

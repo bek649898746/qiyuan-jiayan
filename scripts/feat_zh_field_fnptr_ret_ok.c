@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* G1-1 / A18 回归 锚: 结构体 **字段 函数指针** 的 返回值 型 通道

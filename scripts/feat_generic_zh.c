@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 泛型 接入测试 (2026-08-28): 机制层 #96 — 泛型 名字(参数) = 体; 注册 fn_macro (文本级模板),

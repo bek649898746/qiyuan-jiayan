@@ -1,3 +1,4 @@
+// @EXPECTED out:PARTIAL INIT OK
 // @EXPECT out:PARTIAL INIT OK
 # 包含 <stdio.h>
 /* I2-③ (2026-09-10) 正例: 整体初始化后 字段覆盖写/读 照常 (非污染路径不受影响) */

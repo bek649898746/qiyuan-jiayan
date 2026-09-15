@@ -1,3 +1,4 @@
+// @EXPECTED out:SUGAR WIDE4 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1v (2026-09-11): 糖 双精度 残差 收口 — 累加/交换 临时 双槽 + 「变量引用节点」补浮标

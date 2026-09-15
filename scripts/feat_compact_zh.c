@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 挤压 接入测试 (2026-08-27): 挤压 dst, src, n, cond; — 删除 cond 为真的元素, 剩余前移 */

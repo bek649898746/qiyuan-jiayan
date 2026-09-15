@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 转置 接入测试 (2026-08-28): 转置 dst, src, rows, cols — 矩阵转置 dst[j*rows+i] = src[i][j] */

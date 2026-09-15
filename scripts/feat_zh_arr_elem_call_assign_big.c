@@ -1,3 +1,4 @@
+// @EXPECTED out:ARR-ELEM-CALL-BIG OK
 # 包含 <stdio.h>
 /* P2-19 (2026-09-10): 结构体数组 元素 = 构值返回调用 — 24B 构值 (sret 隐藏指针)
    @EXPECT out:ARR-ELEM-CALL-BIG OK */

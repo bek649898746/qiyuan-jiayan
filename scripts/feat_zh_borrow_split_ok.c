@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* G4-1 补锚 (#33 借用分裂 · 字段路径借用):

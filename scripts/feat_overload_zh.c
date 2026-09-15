@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 运算符重载 (重载 + 点 = 点_add) 接入测试 (2026-08-27):

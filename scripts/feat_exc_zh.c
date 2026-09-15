@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 确定性异常 (抛出/若错/捕获) 接入测试 (2026-08-27):

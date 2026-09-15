@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE STRUCT OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1c (2026-09-11): 可空 构 X 值 — 值槽 = 结构体本体 + 分离 tag 槽 `__nt_名` (可空值标=2)

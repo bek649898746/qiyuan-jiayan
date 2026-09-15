@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR STRUCT FORWARD OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G2b 补 (2026-09-11): 大结构体 错误载荷 直接转发 `返回 f()` — sret 透传

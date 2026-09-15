@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 契约保证 (保证 条件;) 接入测试 (2026-08-27):

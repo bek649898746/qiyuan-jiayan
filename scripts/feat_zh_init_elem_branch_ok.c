@@ -1,3 +1,4 @@
+// @EXPECTED out:INIT ELEM BRANCH OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1x (2026-09-11): 元素级 分支汇合 — 双分支 都写 的 元素, 汇合后 可读 (无 假阳) */

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 均值/方差 接入测试 (2026-08-28): 均值 m, arr, n / 方差 v, arr, n — 数组统计 */

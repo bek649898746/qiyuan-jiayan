@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 峰值/谷值 接入测试 (2026-08-28): 峰值 idx, arr, n / 谷值 idx, arr, n — 极值下标 */

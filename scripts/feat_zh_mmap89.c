@@ -1,3 +1,4 @@
+// @EXPECTED out:#89 mmap PASS
 # 包含 <stdio.h>
 
 /* #89 mmap 内存映射: 内存映射(路径, 大小) → __qcc_map_create (动态加载 kernel32

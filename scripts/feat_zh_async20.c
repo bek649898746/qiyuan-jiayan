@@ -1,3 +1,4 @@
+// @EXPECTED out:#20 异步 等候 PASS
 #包含 <stdio.h>
 
 /* #20 异步/await 语言级: 等候 表达式; → __gen_yield_v (fiber 挂起传值给事件循环)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 for-range 切片支持: 遍 x 于 sl {body} — Slice {data, len} struct

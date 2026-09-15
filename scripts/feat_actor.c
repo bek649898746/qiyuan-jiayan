@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* actor (Erlang 消息传递模型): 独立状态 + 邮箱 + 消息类型分派

@@ -1,3 +1,4 @@
+// @EXPECTED out:TD ARRAY OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 站4 数组 (2026-09-06): 构 X a[2] = { 新X(1), 新X(2) } 整组花括初始化 → 作用域尾逐元素析构 2
    @EXPECT out:TD ARRAY OK */

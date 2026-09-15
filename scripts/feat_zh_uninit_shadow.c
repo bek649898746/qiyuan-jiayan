@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 未初始化遮蔽 正例 (2026-09-09): 外层 x 未初始化(不读), 遮蔽块内 同名 x 初始化后读 放行
    (遮蔽隔离 — 内层读不受外层未初始化影响) */

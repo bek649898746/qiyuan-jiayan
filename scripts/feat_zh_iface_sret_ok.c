@@ -1,3 +1,4 @@
+// @EXPECTED out:IFACE SRET OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1m+H1n (2026-09-11): 接口 (trait) 方法 返回 结构体 (>8B, 走 sret) 闭环

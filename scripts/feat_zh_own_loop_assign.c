@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN LOOPASG OK
 # 包含 <stdio.h>
 /* 所有权 循环体守卫+真赋值 (2026-09-06 虾米 G10 stale-F 回归): 每迭代 { t 声明; 守卫 t; t=新X(i); }
    每迭代 overwrite(无旧值F=0) → 块尾析构 1 次 → 计数3 (析构后清 F 修复 跨迭代 stale-F 双析构)

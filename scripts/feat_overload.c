@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* _Generic 重载: 按第一个参数类型选函数 (C11 泛型选择 = 编译期重载) */

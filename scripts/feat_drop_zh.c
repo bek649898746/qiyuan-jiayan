@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 丢前 接入测试 (2026-08-27): 丢前 dst, src, n, k; — 跳过前 k 个复制剩余, k>=n 复制 0 个 */

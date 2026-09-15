@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 夹取 (夹取 x, lo, hi) 接入测试 (2026-08-27):

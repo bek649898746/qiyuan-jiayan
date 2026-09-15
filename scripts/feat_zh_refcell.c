@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 内部可变性 RefCell (t6, 2026-09-07): 借用单元 = 运行时借用计数 —

@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE FIELD DEREF OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1d-③ (2026-09-11): 可空指针字段 解引用 检查 + 路径级 窄化

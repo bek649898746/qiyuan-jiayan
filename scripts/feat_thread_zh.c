@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 线程 (线程 t 跑 work, arg / 等待 t) 接入测试 (2026-08-27):

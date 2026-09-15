@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 互斥锁 + 条件变量: 锁状态 + 临界区 + 等待/唤醒 (单线程确定性模拟)

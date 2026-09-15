@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 零拷贝切片 (Go/Rust): 指针 + 长度视图 — 不复制数据, 共享底层

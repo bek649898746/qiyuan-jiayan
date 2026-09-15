@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式H2 (2026-09-07): 判空 x; 语句 → 窄化 (清可空, 断言非空) — 窄化后解引用放行 */
 int main(void) {

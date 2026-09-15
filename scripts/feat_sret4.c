@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 struct U { int ok; union { int val; const char *err; } u; };
 static struct U g(int x) {

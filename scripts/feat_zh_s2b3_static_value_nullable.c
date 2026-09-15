@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT S2B3 STATIC VALUE NULLABLE OK
 # 包含 <stdio.h>
 /* S2b-3 可空值类型 静态/全局 tag 存储 (2026-09-09): 文件级/函数级 可空 整 8B 打包槽 {高32 tag|低32 值}
    — 无初始化器 = 空 (程序入口 后凶 注入 tag=1); 显式 =0/非0 = 有值 (tag=0); 赋值改写 打包; 邻槽隔离

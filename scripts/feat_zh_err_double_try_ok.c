@@ -1,3 +1,4 @@
+// @EXPECTED out:ERR DOUBLE TRY OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* G1 (2026-09-10): 错误 双精度 载荷 尝试 传播 — 双通道 {xmm0 值/码 | rdx tag}

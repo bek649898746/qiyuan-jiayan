@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 协程 (协程(c, fn, ctx) / 步进(c)) 接入测试 (2026-08-27):

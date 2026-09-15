@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 可选链 接入测试 (2026-08-28): a?.b → (a != 0) ? a->b : 0 — 空指针短路 */

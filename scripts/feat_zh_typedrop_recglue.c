@@ -1,3 +1,4 @@
+// @EXPECTED out:TD RECGLUE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v2-2 递归 drop glue (2026-09-06): 外{内 中;} 内{X 子;} 均未标析构 → 外 变量退出递归析构 外.中.子
    @EXPECT out:TD RECGLUE OK */

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* R4a-0b (2026-09-09): 顶层构 float/单 字段真 4B 存取 (movss+cvt) — C ABI 布局 (float+int=8B) + IEEE 单精度位模式 */
 构 A { float f; 整 x; };

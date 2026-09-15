@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 原子操作 (原子 加/读/写 → atomic_fetch_add/load/store) 接入测试 (2026-08-27):

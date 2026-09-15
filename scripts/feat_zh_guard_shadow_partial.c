@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 守卫遮蔽修复 (2026-09-09): 外层守卫 s, 遮蔽块内 同名 s.子 部分移动 应放行
    (原 A3106 按名撞外层守卫误报) — 守卫表 槽基 作用域感知 */

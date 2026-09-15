@@ -1,3 +1,4 @@
+// @EXPECTED out:ARR ELEM OK
 // @EXPECT out:ARR ELEM OK
 # 包含 <stdio.h>
 /* 2026-09-10 I2-③ 元素级 正例:

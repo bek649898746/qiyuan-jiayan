@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 依据 接入测试 (2026-08-28): switch 表达式 (有值) — 依据 r, x 对照 1: a, 2: b, 其他: c; */

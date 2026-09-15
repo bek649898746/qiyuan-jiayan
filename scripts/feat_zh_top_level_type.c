@@ -1,3 +1,4 @@
+// @EXPECTED out:顶层 typeof/_BitInt PASS
 #包含 <stdio.h>
 
 /* 顶层全局声明: typeof + _BitInt (大哥验收发现的路径缺口修复) */

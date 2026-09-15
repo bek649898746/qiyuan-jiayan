@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* R6b (2026-09-09): 错误 长 长 8B 载荷 — 值占满 rax, tag 走 rdx 双通道 {rax 值 | rdx tag}
    3 层 尝试 传播: 8B 错码全值透传 (9001 传播 rax=错码 + rdx=1);

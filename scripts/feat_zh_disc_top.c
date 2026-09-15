@@ -1,3 +1,4 @@
+// @EXPECTED out:TD DTOPTD OK
 # 包含 <stdio.h>
 /* 判别 顶层定义+跨函数 (2026-09-06 D-1): 判别类型 顶层全局注册, helper 跨函数引用 — 吃狗粮 DOG-0 前置
    @EXPECT out:TD DTOPTD OK */

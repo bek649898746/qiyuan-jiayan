@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE INDEX NAME OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1h (2026-09-11): 下标 路径 用 真变量名 — `包阵[i].左` 与 `包阵[j].左` 是 不同 路径

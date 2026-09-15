@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 移入 接入测试 (2026-08-28): 机制层所有权 move (#1) — 移入 dst, src; 值独占移动, 源失效 */

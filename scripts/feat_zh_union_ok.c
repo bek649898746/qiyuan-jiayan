@@ -1,3 +1,4 @@
+// @EXPECTED out:UNION OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1o (2026-09-11): 联合 (联) 语义 + 字段级初始化 分析 闭环

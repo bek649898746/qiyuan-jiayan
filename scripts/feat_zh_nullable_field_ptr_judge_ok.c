@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE FIELD JUDGE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1d-② (2026-09-11): 成员路径 判空 — `判空 n.左` / `判空 p->左` 走 指针 语义 (成员 == 0)

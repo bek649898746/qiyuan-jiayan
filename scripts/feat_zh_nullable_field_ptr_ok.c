@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE PTR FIELD OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1d-① (2026-09-11): 结构体 **指针字段** 可空 接受 (空 = 0 指针, 布局不变零成本; 侧表 登记 构序+字段名)

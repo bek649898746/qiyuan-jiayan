@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* A18b 回归 锚: **文件级** 结构体 的 字段 函数指针 返回浮 通道

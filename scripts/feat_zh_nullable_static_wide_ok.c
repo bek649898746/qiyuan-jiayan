@@ -1,3 +1,4 @@
+// @EXPECTED out:NULLABLE STATIC WIDE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1e (2026-09-11): 文件作用域 (全局/静态) 可空 宽载荷 类 — 真支持

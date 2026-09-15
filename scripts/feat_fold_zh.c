@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 高阶函数 折叠 (折叠 arr, n, acc, fn) 接入测试 (2026-08-27):

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 简化借用 (Rust 简化版): C const 指针表达借用契约 — vt_lifetime 简化

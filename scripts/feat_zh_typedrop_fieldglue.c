@@ -1,3 +1,4 @@
+// @EXPECTED out:TD GLUE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v2-1 合成 drop glue (2026-09-06): 构 包 { X 子; 整 t; } 未标析构但字段 X 带析构
    → 包 变量作用域退出 自动析构字段 子 (计数1)

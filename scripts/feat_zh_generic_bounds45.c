@@ -1,4 +1,5 @@
-﻿#包含 <stdio.h>
+// @EXPECTED out:#45 泛型约束 PASS
+#包含 <stdio.h>
 
 /* #45 泛型约束 bounds: 泛型 名: 接口(参数) = 体 — 参数类型必须实现接口 */
 

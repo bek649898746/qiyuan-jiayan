@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 declare 声明先行 接入测试 (2026-08-28): AI启动单/MoonBit#1 — 声明 名字(参数) 返回 类型;

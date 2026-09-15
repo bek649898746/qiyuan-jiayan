@@ -1,3 +1,4 @@
+// @EXPECTED out:#9 Copy 语义 PASS
 #包含 <stdio.h>
 
 /* #9 拷贝语义 Copy: 复制 T; 标记类型可拷贝 — 移入 目标, 源 对 Copy 类型不失效源 (Rust Copy trait; C 按位复制默认) */

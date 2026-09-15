@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式G (2026-09-07): 错误联合 0=成功 语义 — 3 层 尝试 传播 + 显式判断豁免 (比较即检查) */
 错误 int f3(int x) { if (x < 0) 错 100; return 0; }

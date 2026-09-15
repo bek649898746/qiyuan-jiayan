@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言断言 (断言) 接入测试: 断言(expr); → if (expr==0) { exit(1); }

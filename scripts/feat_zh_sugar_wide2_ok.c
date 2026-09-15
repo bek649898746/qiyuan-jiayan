@@ -1,3 +1,4 @@
+// @EXPECTED out:SUGAR WIDE2 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1s (2026-09-11): 数组语法糖 双精度 — 值 类 糖 (排序/反转/求和/求积/均值/去重)

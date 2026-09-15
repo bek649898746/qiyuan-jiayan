@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 卷积 接入测试 (2026-08-28): 卷积 dst, a, na, b, nb; — 1D valid 卷积 (核反转, 输出 na-nb+1) */

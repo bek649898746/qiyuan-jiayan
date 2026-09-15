@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 列表推导 (推导 dst, x*x 于 x 遍 0 到 5) 接入测试 (2026-08-27):

@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN SWBRK OK
 # 包含 <stdio.h>
 /* 所有权 switch(择) 内断 不误析构外层循环守卫 (2026-09-06 虾米 G10 哨兵): while 内守卫 b; 择 0 例内 断
    期望 b 仅块尾析构 1 次 (switch-break 压0 哨兵 防 循环断 误包装 → 无双析构)

@@ -1,3 +1,4 @@
+// @EXPECTED out:STRUCT PARAM FIELD OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1p (2026-09-11): ≤8 字节 构值/联值 形参 的 字段 读 与 取址 闭环

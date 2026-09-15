@@ -1,3 +1,4 @@
+// @EXPECTED out:x=99 *r=2
 # 包含 <stdio.h>
 /* #10 CFG 探针 t7': 分支两路都重绑 r (指向 y/z) 后写 x + 解引用 r
    x=99 应合法 (两路 r 均不再指向 x); *r 读 y/z 与 x 无关

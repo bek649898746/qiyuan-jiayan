@@ -1,3 +1,4 @@
+// @EXPECTED out:CLOSURE CAPTURE2 OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* Hy (2026-09-11): 闭包 捕获 双精度 / 结构体 闭环

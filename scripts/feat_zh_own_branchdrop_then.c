@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN BRDROPT OK
 # 包含 <stdio.h>
 /* 所有权 分支drop then路径 (2026-09-06 虾米 BatchB): b=value1 守卫; t=新X(0) 守卫; 若(1){ 移入 t,b }
    → 覆写析构 t旧(0) + then 块退出析构 value1 = 2; b 已移 F=0 外层不误析构 (旧 计数3, F 后精确 2)

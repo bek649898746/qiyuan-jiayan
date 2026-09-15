@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 列表推导 (Python/Haskell): [f(x) for x in src if cond] → 循环 + 条件收集

@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS 2.5 3.5
 #include <stdio.h>
 /* R4a-1 (2026-09-09): 单/float 局部变量真 4B 单精度存储 (movss+cvt), 值语义 double */
 int main(void) {

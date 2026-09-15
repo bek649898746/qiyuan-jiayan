@@ -1,3 +1,4 @@
+// @EXPECTED out:v1=-9223372036854775808 v2=18446744073709551615 v3=-9223372036854775808 v4=-9223372036854775808
 #include <stdio.h>
 #include <stdint.h>
 typedef long long ll2;

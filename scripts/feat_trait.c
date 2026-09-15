@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* trait 静态分发: C 的函数指针表 (接口模拟, 无 RTTI 静态分发) */

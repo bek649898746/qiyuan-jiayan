@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* 显式G 载荷化 (2026-09-07): 尝试 常量错误码精确传播 — 非零成功值 不误传播 */
 错误 int f(int x) { if (x < 0) 错 100; return x * 2; }

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 展平 接入测试 (2026-08-28): 展平 dst, src, rows, cols; — 二维展平一维 (行主序, 两级下标) */

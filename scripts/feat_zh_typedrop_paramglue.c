@@ -1,3 +1,4 @@
+// @EXPECTED out:TD PARAMGLUE OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop v2-2 形参合成容器 (2026-09-06): f(构 包 r) 含析构字段未标析构 → r 函数出口析构字段 = 1
    @EXPECT out:TD PARAMGLUE OK */

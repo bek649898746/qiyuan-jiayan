@@ -1,5 +1,6 @@
 ﻿#include <stdio.h>
 //  映射库配套 (时间词), 单文件不链
+// @EXPECTED out:PASS 2026-09-15
 #include <time.h>
 
 /* 甲言 中文化映射 第7批 测试 (2026-08-28): 格式时间 */

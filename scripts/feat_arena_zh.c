@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 Arena 区域分配 (区域 分配/重置/释放) 接入测试 (2026-08-27):

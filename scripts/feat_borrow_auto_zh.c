@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 借用自动化 接入测试 (2026-08-28 完善, 大哥"不好用的先完善"第 2 项):

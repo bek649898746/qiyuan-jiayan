@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* for-range (Go/Rust): 数组/切片迭代器 — 显式迭代状态

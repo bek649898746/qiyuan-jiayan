@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS math-import
 #include <stdio.h>
 #include <math.h>
 #include <string.h>

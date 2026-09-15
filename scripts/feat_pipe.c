@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 管道操作符 (Elixir/F#): data |> f |> g — 函数链 (后一函数接收前一结果)

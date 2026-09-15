@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS
 #include <stdio.h>
 /* NLL 别名正例 (2026-09-09): 目标未移时 经别名读放行; 目标移走后 不再经别名访问 → 正常 */
 构 内部 { 字 *p; 整 v; };

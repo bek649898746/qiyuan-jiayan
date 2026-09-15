@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED out:PASS 2.5 3.5 4.5
 #include <stdio.h>
 /* R4a-0 (2026-09-09): 单/float 词元归一 double 值语义 (真 4B 单精度 = R4a-0b 站) — 局部/字段/算数/打印 全兼容 */
 构 A { float f; 整 x; };

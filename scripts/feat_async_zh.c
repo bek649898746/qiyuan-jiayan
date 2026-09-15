@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 异步 (异步 <op>(args) → async_<op>(args)) 接入测试 (2026-08-27):

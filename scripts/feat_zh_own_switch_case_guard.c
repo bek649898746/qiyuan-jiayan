@@ -1,3 +1,4 @@
+// @EXPECTED out:FEAT OWN SWCASEG OK
 # 包含 <stdio.h>
 /* 所有权 switch(择) case 内 块守卫 + 断 (2026-09-06 虾米 G13): case 内 显式块 守卫 t → 断 析构 1 次
    (switch 负深度哨兵; 旧 0 哨兵 → 泄漏 0)

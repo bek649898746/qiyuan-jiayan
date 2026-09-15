@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 标注参数 接入测试 (2026-08-28): f(x: 1, y: 2) — 跳过 名: 前缀 (顺序与签名一致) */

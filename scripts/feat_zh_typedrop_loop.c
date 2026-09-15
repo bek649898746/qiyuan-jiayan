@@ -1,3 +1,4 @@
+// @EXPECTED out:TD LOOP OK
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop 循环体 (2026-09-06): 每迭代 构 X t = 新X(i) 自动析构 → 计数 3
    @EXPECT out:TD LOOP OK */

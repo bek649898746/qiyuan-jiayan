@@ -1,3 +1,4 @@
+// @EXPECTED out:TYPEDEF SCOPE OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* P3-7b (2026-09-11): 类型别名 作用域 (遮蔽 + 出块恢复)

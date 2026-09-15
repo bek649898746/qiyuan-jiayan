@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言守卫条件 (match guard) 接入测试: 例 <常量> 若 <条件>: — 模式命中且守卫为真才匹配

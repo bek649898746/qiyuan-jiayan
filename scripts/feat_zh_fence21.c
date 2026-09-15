@@ -1,3 +1,4 @@
+// @EXPECTED out:#21 内存屏障 PASS
 #包含 <stdio.h>
 
 /* #21 内存屏障: 屏障(); → __qcc_mfence() 真 mfence (0F AE F0 全序栅栏)

@@ -1,3 +1,4 @@
+// @EXPECTED out:PARTIAL REINIT OK
 // @EXPECT out:PARTIAL REINIT OK
 # 包含 <stdio.h>
 /* I2-③ (2026-09-10) 正例: 污染态 整体赋值 → 重初始化恢复, 后续读 OK */

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* concepts 类型约束 (C++20): C 用 _Generic 类型判定模拟

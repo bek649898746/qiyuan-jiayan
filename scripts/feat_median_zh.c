@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 中位数 接入测试 (2026-08-28): 中位数 m, arr, n; — 第 n/2 小 (上中位数, O(n²) 选择法) */

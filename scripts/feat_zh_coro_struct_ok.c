@@ -1,3 +1,4 @@
+// @EXPECTED out:CORO STRUCT OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1r 扫雷批 (2026-09-11): 协程 状态机 × 构值 — 每 步进 内 构值 返回调用 + 值形参

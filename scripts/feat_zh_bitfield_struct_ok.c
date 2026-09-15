@@ -1,3 +1,4 @@
+// @EXPECTED out:BITFIELD STRUCT OK
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* H1r 扫雷批 (2026-09-11): 位域 × 构值 组合面 — 位域 打包槽 在 值形参/返回/数组/指针/三目 各 路 上 一致

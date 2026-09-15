@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 编译期执行 (编译期(expr)) 接入测试 (2026-08-27):

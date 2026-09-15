@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 组排 接入测试 (2026-08-27): 组排 dst, src, n, cond; — cond 真前假后 (不稳定分区) */

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 互斥锁 接入测试 (2026-08-28): 机制层并发 — 内建自旋锁 (真原子 CAS): 互斥锁 m; + 锁住 m {..} */
