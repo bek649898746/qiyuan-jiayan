@@ -563,6 +563,12 @@ CORE_FEAT = [
     'scripts/feat_c_triple_ptr_ok.c',
     # A71 第2项 (2026-09-15): 指针到数组 (*pm)[i][j] (声明器误判函数指针 + 解引用衰减取址)
     'scripts/feat_c_ptr_to_array_ok.c',
+    # A71-续 (2026-09-15): 取址基/解引用基/转型基 成员静态检查 —— 原 只 认 变量基 ⟹ 6/8 漏检 (静默 codegen 垃圾)
+    #   修: 节转序[] 记 转型 目标构序 (后缀链() 之前 预标) + 序七() 增 取址 下钻/转型 分支 + 后缀链 检查改用 序七()
+    'scripts/feat_c_addr_base_member_ok.c',
+    'scripts/feat_c_addr_base_member_neg.c',    # (&s)->typo
+    'scripts/feat_c_addr_base_member_neg2.c',   # ((结构体 S*)&s)->typo
+    'scripts/feat_c_addr_base_member_neg3.c',   # (*p).typo
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
