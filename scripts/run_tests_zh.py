@@ -624,7 +624,11 @@ CORE_FEAT = [
     'scripts/feat_c_limits_min_ok.c',
     # A108/A108b (2026-09-14): extern <类型> 变量 = 初始化; (= 定义) 原静默丢失初始化器
     'scripts/feat_c_extern_init_ok.c',
-
+    # A2 (2026-09-16): 宏体 字符串/字符 字面量 与 注释 内的标识符 被 实参 替换 —— 语料闸根治
+    #   副组() 宏体→暂存 的 3 处 循环 裸扫 体[] ⟹ `#定义 F(a) 'a'` 的 a 随实参变 ('a'→'9', "z"→"Q");
+    #   实参 含引号 时 (git `OPT__FORCE(var,h,f)` 体 含 'f') 升级为 括号失配
+    #   ⟹ git 11 个 builtin/*.c 整文件 编不出 (`[ERR] 括号不匹配 '(' 长简 '}'`)
+    'scripts/feat_c_macro_lit_arg_ok.c',
 ]
 
 def build_tests(args):
