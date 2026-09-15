@@ -633,6 +633,12 @@ CORE_FEAT = [
     #   三条 数组推断循环 记 指定下标 时 只认 常数 字面量 ⟹ [K_A] = {...} 不记 终转 ⟹ 尺寸 退化为 项数
     #   ⟹ git builtin/gc.c scheduler_fn[] (4 项 / 最大下标 4) 尺寸算成 4 ⟹ [4] 误报 A2001 越界
     'scripts/feat_c_desig_init_const_idx_ok.c',
+    # A2003 + A2004 (2026-09-16): 转型 成员基 的 检查 + 取值 双修 (语料闸 — git merge; builtin 9/11 -> 10/11)
+    #   检查: 后缀链 嵌套链 遍历 不看 链中间 的 转型结果 ⟹ 用「字段自身类型」检查 ⟹ 误报 A9001
+    #   取值: 内存地址 成员分支 用「基自身声明类型」查字段 ⟹ 字段序 < 0 ⟹ 地址表达式 静默丢弃 ⟹ 写丢
+    'scripts/feat_c_cast_member_base_ok.c',
+    # A1005 (2026-09-16): 内置/导入表 豁免表 缺 clearerr (语料闸 — git pack-objects; builtin 10/11 -> 11/11)
+    'scripts/feat_c_clearerr_ok.c',
 ]
 
 def build_tests(args):
