@@ -595,6 +595,10 @@ CORE_FEAT = [
     # A71-续8 (2026-09-15): 二维数组作函数参数 — 行宽 + 指深/指内 登记 (族 A 根治)
     #   形参解析「跳过 [N]」从不登记行宽 ⟹ `整数 a[][3]` 的 a[i][j] 行/列偏移全错
     'scripts/feat_c_2d_arr_param_ok.c',
+    # A71-续9 (2026-09-15): 浮点比较 NaN 语义 — 族 C 根治
+    #   setb/setbe/sete/setne 不看 PF ⟹ 无序(NaN) 时 全错; < / <= 交换操作数走 seta/setae,
+    #   == / != 用 setnp/setp 组合
+    'scripts/feat_c_nan_cmp_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
