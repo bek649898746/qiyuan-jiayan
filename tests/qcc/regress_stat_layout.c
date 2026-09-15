@@ -1,3 +1,5 @@
+// @EXPECTED out:st_atime_off=32
+// @ARG -I compat_prelude.h
 #include <stdio.h>
 #include <stddef.h>
 #include <sys/stat.h>

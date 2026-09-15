@@ -10,7 +10,16 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '6617E92B'
+$expected = '15E3F4CF'
+                        # (2026-09-15) **顶层匿名结构体 指针字段 + struct stat 布局 (启元账单第③层 2 既存红 清) (前值 6617E92B)**:
+                        #   ① regress_anon_struct_brace: `struct { int v; struct LNode *next; } b; ... b.next->v` 读 garbage —
+                        #      顶层匿名结构体 字段循环 (L17581区) **缺 指针标记** (原进/符肆/主挂/高贰) 且 `结构体 <标签>` 分支 **不消费 `*`**
+                        #      ⟹ next 字段 型序=-1/指针=0 → b.next->v 少一次解引用 (读到 &a 的低 4 字节);
+                        #      修: +顶指层 变量 (镜像 L16504 嵌套匿名的 列酉 处理) + 消费 `*` + 补 指针标记.
+                        #   ② regress_stat_layout: 甲言 struct stat = 80B (POSIX st_atim/st_mtim/st_ctim + 宏映射) ≠ MSVCRT 56B —
+                        #      st_mtime@48 (应 @40) / st_ctime@64 (应 @48) 偏移错; 修: struct stat 改 MSVCRT 布局 (time_t 直名) + 删 timespec 宏 + 加 NO_NSEC (git Windows 构建);
+                        #      锚补 @ARG -I compat_prelude.h + @EXPECTED out.
+                        #   验证: 自举 v1==v2==15E3F4CF; 默认套件 380/380 (2 既存红 转绿); git 231/231; zh-feat 666/666.
                         # (2026-09-15) **P1 家族 补: 可空字段表[256] 护栏 (前值 299087B2)**:
                         #   可空字段登 原 '若 (可空字段数 >= 256 || !名 || !名[0]) 返;' 合并 ⟹ 满员 静默 丢 可空字段 登记 (可空 检查 失效);
                         #   拆开: 无效参数 返 / 满员 原得 响亮拒绝. 自举 v1==v2==6617E92B; git 231/231; zh-feat 666/666.
