@@ -599,6 +599,9 @@ CORE_FEAT = [
     #   setb/setbe/sete/setne 不看 PF ⟹ 无序(NaN) 时 全错; < / <= 交换操作数走 seta/setae,
     #   == / != 用 setnp/setp 组合
     'scripts/feat_c_nan_cmp_ok.c',
+    # A71-续10 (2026-09-16): 内联匿名结构体 的 位域 — 族 D 根治
+    #   两条内联路径 (深进/行散) 都 只 `新升=4` 而 不走 构域位 ⟹ 每 位域 各占 4 字节
+    'scripts/feat_c_inline_bf_ok.c',
     # P0-21 (2026-09-14): `extern 结构体 X { ... } 变量;` 内联定义的字段登记不完整
     'scripts/feat_c_extern_inline_struct_ok.c',
     # A75–A75f (2026-09-14): 顶层 内联/匿名 结构体 变量 的 花括 初始化器 (值布契约 / 数组左升 / 设计器 / 多维 行宽)
