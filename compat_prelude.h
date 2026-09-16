@@ -394,9 +394,7 @@ int lstat(const char *path, void *buf);
 #define NO_STRCASESTR 1
 #define getpass(a) ((char*)0)  /* POSIX getpass stub (fix 2026-08-15: getpass undefined) */
 #define NO_MEMMEM 1
-#ifndef __MINGW32__
-#define NO_SETENV 1  /* (C2 2026-09-16) __MINGW32__ 下 由 compat/mingw.h 提供 setenv */
-#endif
+#define NO_SETENV 1  /* C7 2026-09-16 回滚 C2 的过度条件化: mingw.h L290 明确 "We require NO_SETENV" (gitsetenv → mingw_putenv); __MINGW32__ 下同样需要, 否则 compat/mingw.c 的 setenv 无声明 (A1001) */
 extern int putenv(const char *name);  /* POSIX putenv -> msvcrt _putenv (fix 2026-08-23 t49e: was 0-stub, gitsetenv() putenv() silently returned 0 -> GIT_CONFIG_PARAMETERS never written -> git -c ignored; real decl + jyld alias _putenv, same msvcrt env block as getenv) */
 #ifndef __MINGW32__
 #define NO_UNSETENV 1  /* (C2 2026-09-16) __MINGW32__ 下 compat/mingw.h 的 #error 检查 禁止 此宏 */
@@ -1887,7 +1885,8 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define SIG_DFL 0
 #define SIG_IGN 1
 #define SIG_ERR ((void*)-1)
-#define signal(a,b) 0  /* POSIX signal stub */
+typedef void (*qcc_sighandler_t)(int);
+qcc_sighandler_t signal(int sig, qcc_sighandler_t handler);  /* C7: mingw.c L2394 `#undef signal` 后 调用真 POSIX signal (sysv_signal 的 default 分支), 原 stub 宏被 undef 后一无所有; msvcrt 有真符号 */
 #define SA_RESTART 0 /* sigaction 标志 (fix 2026-08-15: SA_RESTART undefined) */
 #define sigemptyset(x) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigemptyset undefined) */
 #ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
@@ -1957,30 +1956,30 @@ typedef struct {
 #ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define xutftowcs(a, b, c) 0  /* compat/mingw.h UTF-8→wchar_t 转换 stub (fix 2026-08-15: xutftowcs undefined) */
 #endif
-#define _wchmod(a, b) 0  /* C runtime 宽字符 chmod stub (fix 2026-08-15: _wchmod undefined) */
-#define _wunlink(a) 0  /* C runtime 宽字符 unlink stub (fix 2026-08-15: _wunlink undefined) */
-#define _wrename(a, b) 0  /* C runtime 宽字符 rename stub (fix 2026-08-15: _wrename undefined) */
-#define _waccess(a, b) 0  /* C runtime 宽字符 access stub (fix 2026-08-15: _waccess undefined) */
-#define _wchdir(a) 0  /* C runtime 宽字符 chdir stub (fix 2026-08-15: _wchdir undefined) */
-#define _wmktemp(a) 0  /* C runtime 宽字符 mktemp stub (fix 2026-08-15: _wmktemp undefined) */
-#define _wrmdir(a) 0  /* C runtime 宽字符 rmdir stub (fix 2026-08-15: _wrmdir undefined) */
-#define _wmkdir(a) 0  /* C runtime 宽字符 mkdir stub (fix 2026-08-15: _wmkdir undefined) */
+int _wchmod(const wchar_t *path, int mode);  /* C7: msvcrt 真符号 (原 0-stub 使 chmod 静默失效) */
+int _wunlink(const wchar_t *path);  /* C7: msvcrt 真符号 (原 0-stub 使删除静默失效) */
+int _wrename(const wchar_t *oldpath, const wchar_t *newpath);  /* C7: msvcrt 真符号 */
+int _waccess(const wchar_t *path, int mode);  /* C7: msvcrt 真符号 (原 0-stub 使「存在性」恒真) */
+int _wchdir(const wchar_t *path);  /* C7: msvcrt 真符号 */
+wchar_t *_wmktemp(wchar_t *templ);  /* C7: msvcrt 真符号 */
+int _wrmdir(const wchar_t *path);  /* C7: msvcrt 真符号 (原 0-stub 使删除目录静默失效) */
+int _wmkdir(const wchar_t *path);  /* C7: msvcrt 真符号 (原 0-stub 使建目录静默失效) */
 static int _wopen(const wchar_t *filename, int oflags, int pmode) { (void)filename; (void)oflags; (void)pmode; return 0; }  /* C runtime 宽字符 open stub; 函数指针赋值需要真函数 (fix 2026-08-15: _wopen undefined) */
-#define _wfopen(a, b) 0  /* C runtime 宽字符 fopen stub (fix 2026-08-15: _wfopen undefined) */
-#define _wfreopen(a, b, c) 0  /* C runtime 宽字符 freopen stub (fix 2026-08-15: _wfreopen undefined) */
+void *_wfopen(const wchar_t *path, const wchar_t *mode);  /* C7: msvcrt 真符号 */
+void *_wfreopen(const wchar_t *path, const wchar_t *mode, void *stream);  /* C7: msvcrt 真符号 */
 #define _open_osfhandle(a,b) 0  /* C runtime fd 包装 stub (fix 2026-08-15: _open_osfhandle undefined) */
 intptr_t _get_osfhandle(int fd); /* fix 2026-08-20: mingw_fstat 需要真 fd→HANDLE — 原 stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败; jyld 已加 msvcrt 导入 */
-#define swprintf(buf, len, fmt, ...) 0  /* C runtime 宽字符格式化 stub (fix 2026-08-15: swprintf undefined) */
-#define wcscmp(a, b) 0  /* C runtime 宽字符串比较 stub (fix 2026-08-15: wcscmp undefined) */
-#define wcslen(a) 0  /* C runtime 宽字符串长度 stub (fix 2026-08-15: wcslen undefined) */
-#define wcsncmp(a, b, c) 0  /* C runtime 宽字符串前缀比较 stub (fix 2026-08-15: wcsncmp undefined) */
-#define wcsicmp(a, b) 0  /* C runtime 宽字符串不区分大小写比较 stub (fix 2026-08-15: wcsicmp undefined) */
-#define wcsnicmp(a, b, c) 0  /* C runtime 宽字符串不区分大小写前缀比较 stub (fix 2026-08-15: wcsnicmp undefined) */
-#define _wcsnicmp(a, b, c) 0  /* C runtime MSVC 名不区分大小写前缀比较 stub (fix 2026-08-15: _wcsnicmp undefined) */
-#define wcsncpy(a, b, c) 0  /* C runtime 宽字符串拷贝 stub (fix 2026-08-15: wcsncpy undefined) */
-#define wcscpy(a, b) 0  /* C runtime 宽字符串拷贝 stub (fix 2026-08-15: wcscpy undefined) */
-#define wcscat(a, b) 0  /* C runtime 宽字符串拼接 stub (fix 2026-08-15: wcscat undefined) */
-#define wcschr(a, b) ((wchar_t*)0)  /* C runtime 宽字符串查找 stub (fix 2026-08-15: wcschr undefined) */
+int swprintf(wchar_t *buf, size_t len, const wchar_t *fmt, ...);  /* C7: msvcrt 真符号 */
+int wcscmp(const wchar_t *s1, const wchar_t *s2);  /* C7: msvcrt 真符号 (原 0-stub 使比较恒「相等」) */
+size_t wcslen(const wchar_t *s);  /* C7: msvcrt 真符号 (原 0-stub 致 mingw.c wpath[wcslen-4] 折叠成 [-4] 误报 A2001) */
+int wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n);  /* C7: msvcrt 真符号 */
+#define wcsicmp(a, b) _wcsicmp(a, b)  /* C7: 转发 msvcrt 真符号 (仅下划线版导出) */
+#define wcsnicmp(a, b, c) _wcsnicmp(a, b, c)  /* C7: 转发 msvcrt 真符号 (仅下划线版导出) */
+int _wcsnicmp(const wchar_t *s1, const wchar_t *s2, size_t n);  /* C7: msvcrt 真符号 */
+wchar_t *wcsncpy(wchar_t *dst, const wchar_t *src, size_t n);  /* C7: msvcrt 真符号 */
+wchar_t *wcscpy(wchar_t *dst, const wchar_t *src);  /* C7: msvcrt 真符号 (原 0-stub 使拷贝静默不发生) */
+wchar_t *wcscat(wchar_t *dst, const wchar_t *src);  /* C7: msvcrt 真符号 */
+wchar_t *wcschr(const wchar_t *s, wchar_t c);  /* C7: msvcrt 真符号 (原 NULL-stub 使查找恒「未找到」) */
 
 /* <sys/socket.h> shutdown 常量 (fix 2026-08-15: SHUT_WR undefined) */
 #define SHUT_RD 0
@@ -2292,3 +2291,35 @@ int wcsncpy_s(wchar_t *dest, size_t destsz, const wchar_t *src, size_t count);
 int git_stat(const char *path, struct stat *buf);
 int git_fstat(int fd, struct stat *buf);
 int git_lstat(const char *path, struct stat *buf);
+
+/* ============================================================================
+ * C7 (2026-09-16) 新增声明块 — 根治批次: 「prelude 只有 stub 宏 ⟹ #undef 后裸奔 / 或返回假常量」
+ * 来源: compat/mingw.c + __MINGW32__ 的 A1001 未声明函数链 (侦察清单 11 项)
+ * 依据: 本机 msvcrt.dll / kernel32.dll 导出表实测 (pe_exports.py), 非猜测
+ * ==========================================================================*/
+
+/* --- msvcrt.dll 真符号 --- */
+int _commit(int fd);                      /* 原 无声明; msvcrt 导出表: YES */
+int _wcsicmp(const wchar_t *s1, const wchar_t *s2);   /* wcsicmp 转发宏的落点 (msvcrt 仅导出下划线版) */
+int _wcsnicmp(const wchar_t *s1, const wchar_t *s2, size_t n);
+
+/* --- kernel32.dll 真符号 (文件系统/时间/堆 API) --- */
+int DeleteFileW(const wchar_t *lpFileName);
+void Sleep(unsigned long dwMilliseconds);
+unsigned int GetFileAttributesW(const wchar_t *lpFileName);
+void GetSystemTimeAsFileTime(void *lpSystemTimeAsFileTime);
+void *HeapAlloc(void *hHeap, unsigned int dwFlags, unsigned long long dwBytes);
+int HeapFree(void *hHeap, unsigned int dwFlags, void *lpMem);
+void GetSystemInfo(void *lpSystemInfo);
+void *GetProcessHeap(void);
+unsigned long GetCurrentProcessId(void);   /* 原 被 `#define swprintf(...) 0` 掩盖: 实参从未被解析 ⟹ 报错从未出现, 而运行时 `swprintf(...) < 0` 恒为假 (winansi 管道名进程号恒 0) */
+
+/* --- 无真符号者: 给出**语义正确**的实现, 而非「返回 0 的伪 stub** ---
+ * ntohl/htonl: msvcrt/kernel32 均无导出; git 的 bswap.h 虽有 __x86_64__ 分支,
+ * 但 compat/mingw.h L425 的 git_ntohl 包装出现在 bswap.h 生效之前, 故此处兜底。
+ * 32 位字节序翻转, 与 bswap.h 语义一致。 */
+#define ntohl(x) ((unsigned int)((((unsigned int)(x) & 0xFFu) << 24) | \
+                                 (((unsigned int)(x) & 0xFF00u) << 8) | \
+                                 (((unsigned int)(x) & 0xFF0000u) >> 8) | \
+                                 (((unsigned int)(x) >> 24) & 0xFFu)))
+#define htonl(x) ntohl(x)
