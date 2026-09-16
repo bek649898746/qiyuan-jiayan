@@ -1443,5 +1443,13 @@ if (-not $converged) {
 }
 if ($convDepth -lt 0) { $convDepth = $hs.Count }
 Write-Host "[通过 PASS] 中文自举链不动点 $expected 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
-if (-not $NoSeed) { Copy-Item $finalExe qcc_zh_seed.exe -Force; Write-Host "  [种子 seed] qcc_zh_seed.exe <- $finalExe (同步到不动点; -NoSeed 可跳过)" }
+if (-not $NoSeed) {
+    Copy-Item $finalExe qcc_zh_seed.exe -Force
+    $seedH = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash.Substring(0,8)
+    if ($seedH -ne $expected) {
+        Write-Host "[失败 FAIL] 种子同步校验失败: seed=$seedH 期望=$expected (exe 可能被占用; 请先 Move-Item 再 Copy-Item 重试)" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  [种子 seed] qcc_zh_seed.exe <- $finalExe (哈希校验 $seedH 通过; -NoSeed 可跳过)"
+}
 exit 0

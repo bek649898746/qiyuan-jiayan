@@ -150,7 +150,15 @@ static const char *k32_names[] = {
     "TlsFree",
     "TlsGetValue",
     "TlsSetValue",
-    "GetCurrentThreadId"   /* C13 配套 (2026-09-17) */
+    "GetCurrentThreadId"   /* C13 配套 (2026-09-17) */,
+    /* C18a (2026-09-17): prelude 常量型 stub 改真原型后暴露的真链接需求 (kernel32 导出表核实) */
+    "GetCurrentProcess",
+    "OpenProcess",
+    "WaitForMultipleObjects",
+    "CreateThread",
+    "CreateEventW",
+    "CreateNamedPipeW",
+    "CreateToolhelp32Snapshot"
 };
 #define K32_MAX 256  /* C10c (2026-09-17): 128 -> 256 — 本次补 51 项后 已用 127, 扩容留余量 */
 static int k32_used[K32_MAX]; /* 槽 → 名字索引 */
@@ -681,7 +689,13 @@ static const char *msvcrt_names[] = {
     /* C10e (2026-09-17): msvcrt 真缺口补全 (导出表核实);
        注: prelude 中 extern 写作 _wpgmprt 疑似拼写有误, msvcrt 真名为 _wpgmptr */
     "_wpgmptr",
-    "swprintf_s"
+    "swprintf_s",
+    /* C18a (2026-09-17): 同上 (msvcrt 导出表核实) */
+    "_open_osfhandle",
+    "_setmode",
+    "_flushall",
+    "_beginthreadex",
+    "setlocale"
 };
 #define MSVCRT_MAX 256  /* C10b (2026-09-17): 192 -> 256 — 补 _lseeki64 后 已用 191; 扩容留余量 (msvcrt_used/msvcrt_direct_slot 均为 jyld 自身 BSS, 不影响输出 PE 布局) */
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */

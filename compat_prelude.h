@@ -965,7 +965,7 @@ void *RegisterEventSourceA(const char *lpUNCServerName, const char *lpSourceName
 #define EVENTLOG_INFORMATION_TYPE 4
 int ReportEventA(void *hEventLog, unsigned short wType, unsigned short wCategory, unsigned long dwEventID, void *lpUserSid, unsigned short wNumStrings, unsigned long dwDataSize, const char **lpStrings, void *lpRawData);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 int DeregisterEventSource(void *hEventLog);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
-#define CreateToolhelp32Snapshot(a,b) ((HANDLE)-1)  /* Windows 进程快照 stub (fix 2026-08-15: CreateToolhelp32Snapshot undefined) */
+void *CreateToolhelp32Snapshot(unsigned long dwFlags, unsigned long th32ProcessID); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows 进程快照 stub */
 int Process32First(void *hSnapshot, void *lppe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 int Process32Next(void *hSnapshot, void *lppe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define TH32CS_SNAPPROCESS 0x2  /* Windows 快照标志 */
@@ -994,8 +994,8 @@ int FillConsoleOutputCharacterA(void *hConsoleOutput, char cCharacter, unsigned 
 #define BACKGROUND_ALL (BACKGROUND_BLUE|BACKGROUND_GREEN|BACKGROUND_RED|BACKGROUND_INTENSITY)
 int FlushFileBuffers(void *hFile);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 int DisconnectNamedPipe(void *hNamedPipe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
-#define CreateNamedPipeW(a,b,c,d,e,f,g,h) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateNamedPipeW undefined) */
-#define CreateThread(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateThread undefined) */
+void *CreateNamedPipeW(const void *a1, unsigned long a2, unsigned long a3, unsigned long a4, unsigned long a5, unsigned long a6, unsigned long a7, void *a8); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub */
+void *CreateThread(void *a1, unsigned long long a2, void *a3, void *a4, unsigned long a5, unsigned long *a6); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub */
 #define PIPE_ACCESS_OUTBOUND 0x00000002  /* Windows 命名管道访问 */
 #define PIPE_TYPE_BYTE 0x00000000
 #define PIPE_WAIT 0x00000000
@@ -1195,7 +1195,7 @@ void order_objects();                                 /* 同上: diffcore-order.
 #define pthread_setspecific(a,b) 0
 #define pthread_getspecific(a) 0
 #define pthread_create(a,b,c,d) 0
-#define _beginthreadex(a,b,c,d,e,f) 0  /* MSVCRT 线程创建 stub: 失败 (fix 2026-08-15: _beginthreadex undefined) */
+unsigned long long _beginthreadex(void *a1, unsigned int a2, void *a3, void *a4, unsigned int a5, unsigned int *a6); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — MSVCRT 线程创建 stub: 失败 */
 #define pthread_join(a,b) 0
 #define pthread_self() 0
 #define pthread_equal(a,b) ((a)==(b))
@@ -1670,20 +1670,20 @@ void *GetProcAddress(void *hModule, const char *lpProcName);  /* C7b (2026-09-16
 void SetLastError(unsigned long dwErrCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 unsigned long GetVersion(void);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define MAKEWORD(a,b) 0x0202  /* Windows Winsock 版本宏 stub (fix 2026-08-15: MAKEWORD undefined) */
-#define WSAStartup(a,b) 0  /* Windows Winsock stub: 失败 (fix 2026-08-15: WSAStartup undefined) */
-#define WSAGetLastError() 0  /* Windows Winsock stub (fix 2026-08-15: WSAGetLastError undefined) */
+int WSAStartup(unsigned short a1, void *a2); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows Winsock stub: 失败 */
+int WSAGetLastError(void); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows Winsock stub */
 static int WSACleanup(void) { return 0; }  /* Windows Winsock stub: atexit((void(*)(void))WSACleanup) 需要真函数 (fix 2026-08-15: WSACleanup undefined) */
 static int gethostname(char *name, int namelen) { (void)name; (void)namelen; return 0; }  /* Winsock/POSIX stub: mingw_gethostname 内部回退 (fix 2026-08-15: gethostname undefined) */
 static struct hostent *gethostbyname(const char *host) { (void)host; return 0; }  /* Winsock stub: mingw_gethostbyname 内部回退 (fix 2026-08-15: gethostbyname undefined) */
 static int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { (void)node; (void)service; (void)hints; if (res) *res = 0; return -1; }  /* Winsock stub: mingw_getaddrinfo 内部回退 (fix 2026-08-15: getaddrinfo undefined) */
 #define NI_NUMERICHOST 1
 #define NI_NUMERICSERV 2
-#define getnameinfo(a,b,c,d,e,f,g) 0
-#define freeaddrinfo(a) 0
+int getnameinfo(const void *a1, int a2, char *a3, unsigned long a4, char *a5, unsigned long a6, int a7); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) —  */
+void freeaddrinfo(void *a1); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) —  */
 #define gai_strerror(a) ((char*)0)
 #define INVALID_SOCKET (-1)  /* Winsock 无效 socket (fix 2026-08-15: INVALID_SOCKET undefined) */
 #define WSASocket(a,b,c,d,e,f) ((intptr_t)-1)  /* Winsock socket 创建 stub: 失败 (fix 2026-08-15: WSASocket undefined) */
-#define closesocket(s) 0  /* Winsock socket 关闭 stub (fix 2026-08-15: closesocket undefined) */
+int closesocket(unsigned long long s); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Winsock socket 关闭 stub */
 static int connect(int sockfd, const struct sockaddr *sa, size_t sz) { (void)sockfd; (void)sa; (void)sz; return -1; }  /* Winsock socket 连接 stub: 失败 (fix 2026-08-15: connect undefined) */
 static int bind(int sockfd, const struct sockaddr *sa, size_t sz) { (void)sockfd; (void)sa; (void)sz; return -1; }  /* Winsock socket 绑定 stub: 失败 (fix 2026-08-15: bind undefined) */
 static int setsockopt(int sockfd, int lvl, int optname, const void *optval, int optlen) { (void)sockfd; (void)lvl; (void)optname; (void)optval; (void)optlen; return -1; }  /* Winsock socket 选项 stub: 失败 (fix 2026-08-15: setsockopt undefined) */
@@ -1711,7 +1711,7 @@ int SetConsoleCtrlHandler(int (*HandlerRoutine)(unsigned long), int Add);  /* C7
 int GetFileInformationByHandleEx(void *hFile, int FileInformationClass, void *lpFileInformation, unsigned long dwBufferSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define FileRemoteProtocolInfo 13
 #define CreateEvent(a,b,c,d) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateEvent undefined) */
-#define CreateEventW(a,b,c,d) ((HANDLE)-1)
+void *CreateEventW(void *a1, int a2, int a3, const void *a4); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) —  */
 int SetEvent(void *hEvent);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 int ResetEvent(void *hEvent);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 unsigned long GetShortPathNameW(const wchar_t *lpszLongPath, wchar_t *lpszShortPath, unsigned long cchBuffer);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
@@ -1851,9 +1851,9 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define WAIT_TIMEOUT 258
 #define WAIT_FAILED 0xFFFFFFFF
 #define WNOHANG 1  /* waitpid 非阻塞选项 (fix 2026-08-15: WNOHANG undefined) */
-#define WaitForSingleObject(h, ms) ((DWORD)0xFFFFFFFF)  /* Windows API stub: 返回 WAIT_FAILED (fix 2026-08-15: WaitForSingleObject undefined) */
+unsigned long WaitForSingleObject(void *h, unsigned long ms); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 WAIT_FAILED */
 int GetExitCodeProcess(void *hProcess, unsigned long *lpExitCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
-#define WaitForMultipleObjects(a,b,c,d) ((DWORD)0xFFFFFFFF)  /* Windows API stub: 返回 WAIT_FAILED (fix 2026-08-15: WaitForMultipleObjects undefined) */
+unsigned long WaitForMultipleObjects(unsigned long a1, const void **a2, int a3, unsigned long a4); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 WAIT_FAILED */
 #define STD_INPUT_HANDLE (-10)
 #define STD_OUTPUT_HANDLE (-11)
 #define STD_ERROR_HANDLE (-12)
@@ -1874,7 +1874,7 @@ int GetExitCodeProcess(void *hProcess, unsigned long *lpExitCode);  /* C7b (2026
 #define _IOLBF 0x40 /* setvbuf 行缓冲模式 (fix 2026-08-15: _IOLBF undefined) */
 #define _IONBF 0x04  /* setvbuf 无缓冲模式 (fix 2026-08-15: _IONBF undefined) */
 #define _IOFBF 0x00  /* setvbuf 全缓冲模式 (fix 2026-08-15: _IOFBF undefined) */
-#define setvbuf(a,b,c,d) 0  /* C runtime setvbuf stub (fix 2026-08-15: setvbuf undefined) */
+int setvbuf(void *a1, char *a2, int a3, unsigned long long a4); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — C runtime setvbuf stub */
 
 /* <unistd.h> 标准文件描述符 (fix 2026-08-15: STDIN_FILENO undefined) */
 #define STDIN_FILENO 0
@@ -1930,7 +1930,7 @@ qcc_sighandler_t signal(int sig, qcc_sighandler_t handler);  /* C7: mingw.c L239
 #define LC_NUMERIC 4
 #define LC_TIME 5
 #define LC_MESSAGES 6
-#define setlocale(category, locale) ((char*)0)  /* C runtime 缺 setlocale, Git 仅探测 locale (fix 2026-08-15: setlocale undefined) */
+char *setlocale(int category, const char *locale); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — C runtime 缺 setlocale, Git 仅探测 locale */
 #define CODESET 0  /* <langinfo.h> 字符集常量 stub (fix 2026-08-15: gettext.c) */
 #define nl_langinfo(item) ""  /* <langinfo.h> stub (fix 2026-08-15: gettext.c) */
 #define bind_textdomain_codeset(a,b) ((char*)0)  /* gettext stub */
@@ -1995,7 +1995,7 @@ int _wmkdir(const wchar_t *path);  /* C7: msvcrt 真符号 (原 0-stub 使建目
 static int _wopen(const wchar_t *filename, int oflags, int pmode) { (void)filename; (void)oflags; (void)pmode; return 0; }  /* C runtime 宽字符 open stub; 函数指针赋值需要真函数 (fix 2026-08-15: _wopen undefined) */
 void *_wfopen(const wchar_t *path, const wchar_t *mode);  /* C7: msvcrt 真符号 */
 void *_wfreopen(const wchar_t *path, const wchar_t *mode, void *stream);  /* C7: msvcrt 真符号 */
-#define _open_osfhandle(a,b) 0  /* C runtime fd 包装 stub (fix 2026-08-15: _open_osfhandle undefined) */
+int _open_osfhandle(long long a, int b); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — C runtime fd 包装 stub */
 intptr_t _get_osfhandle(int fd); /* fix 2026-08-20: mingw_fstat 需要真 fd→HANDLE — 原 stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败; jyld 已加 msvcrt 导入 */
 int swprintf(wchar_t *buf, size_t len, const wchar_t *fmt, ...);  /* C7: msvcrt 真符号 */
 int wcscmp(const wchar_t *s1, const wchar_t *s2);  /* C7: msvcrt 真符号 (原 0-stub 使比较恒「相等」) */
@@ -2037,7 +2037,7 @@ wchar_t *wcschr(const wchar_t *s, wchar_t c);  /* C7: msvcrt 真符号 (原 NULL
 #define PF_INET 2
 #define SOCK_STREAM 1
 #define AF_UNIX 1
-#define socket(a,b,c) ((int)-1)  /* Winsock socket stub (fix 2026-08-15: socket undefined) */
+unsigned long long socket(int a, int b, int c); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Winsock socket stub */
 #define SOCK_DGRAM 2
 struct sockaddr_un { short sun_family; char sun_path[108]; };  /* Unix 域套接字地址类型 stub (fix 2026-08-15: unix-socket.c sockaddr_un undefined) */
 struct sockaddr { short sa_family; char sa_data[14]; };  /* A82 (2026-09-14): POSIX 通用地址类型 stub — struct addrinfo.ai_addr 字段需要; 原 未定义 (daemon.c) */
@@ -2059,8 +2059,10 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define FD_ZERO(s) ((void)0)  /* select fd_set 清零 stub (fix 2026-08-15: FD_ZERO undefined) */
 #define FD_SET(fd,s) ((void)0)  /* select fd_set 设置 stub (fix 2026-08-15: FD_SET undefined) */
 #define FD_ISSET(fd,s) 0  /* select fd_set 测试 stub (fix 2026-08-15: FD_ISSET undefined) */
-#define select(n,r,w,e,t) 0  /* Winsock select stub: 无就绪 fd (fix 2026-08-15: select undefined) */
-#define recv(a,b,c,d) 0  /* Winsock recv stub (fix 2026-08-15: recv undefined) */
+/* C18b-todo (2026-09-17): 甲言 `select` 被当「择收」多路分派关键字 (qcc_zh.jy L10933) ==> 与 C 库 select() 冲突;
+   临时保留常量宏 — 待 C18b 修好关键字判定 (要求后跟 { 才是择收) 后改真原型 */
+#define select(n,r,w,e,t) 0
+int recv(unsigned long long a, char *b, int c, int d); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Winsock recv stub */
 #define MSG_PEEK 0  /* socket peek 标志 (fix 2026-08-15: MSG_PEEK undefined) */
 #define FIONREAD 1  /* ioctl 可读字节数 (fix 2026-08-15: FIONREAD undefined) */
 #define ioctl(a,b,c) 0  /* POSIX ioctl stub (fix 2026-08-15: ioctl undefined) */
@@ -2070,9 +2072,9 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define FD_WRITE 0x2
 #define FD_CONNECT 0x10
 #define FD_OOB 0x4
-#define WSAEventSelect(a,b,c) 0  /* Winsock 事件选择 stub (fix 2026-08-15: WSAEventSelect undefined) */
-#define WSAEnumNetworkEvents(a,b,c) 0  /* Winsock 事件枚举 stub (fix 2026-08-15: WSAEnumNetworkEvents undefined) */
-#define MsgWaitForMultipleObjects(a,b,c,d,e) 0  /* Windows 消息等待 stub (fix 2026-08-15: MsgWaitForMultipleObjects undefined) */
+int WSAEventSelect(unsigned long long a, void *b, long c); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Winsock 事件选择 stub */
+int WSAEnumNetworkEvents(unsigned long long a, void *b, void *c); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Winsock 事件枚举 stub */
+unsigned long MsgWaitForMultipleObjects(unsigned long a, const void **b, int c, unsigned long d, unsigned long e); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows 消息等待 stub */
 
 /* <fcntl.h> 文件打开标志 (MSVC/MinGW 值) */
 #define O_RDONLY 0
@@ -2085,9 +2087,9 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define O_EXCL 0x0400
 #define O_BINARY 0x8000
 #define _O_BINARY 0x8000  /* MSVCRT 二进制模式 (fix 2026-08-15: _O_BINARY undefined) */
-#define _setmode(a,b) 0  /* MSVCRT 文件模式 stub (fix 2026-08-15: _setmode undefined) */
-#define _fileno(a) 0  /* MSVCRT 文件描述符 stub (fix 2026-08-15: _fileno undefined) */
-#define _flushall() 0  /* MSVCRT 全缓冲刷新 stub (fix 2026-08-15: _flushall undefined) */
+int _setmode(int a, int b); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — MSVCRT 文件模式 stub */
+int _fileno(void *a); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — MSVCRT 文件描述符 stub */
+int _flushall(void); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — MSVCRT 全缓冲刷新 stub */
 #define O_NOINHERIT 0x0080
 #define O_TEXT 0x4000
 
@@ -2106,18 +2108,18 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define SYNCHRONIZE 0x100000
 #define PROCESS_TERMINATE 0x0001
 #define PROCESS_QUERY_INFORMATION 0x0400
-#define OpenProcess(a,b,c) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: OpenProcess undefined) */
-#define GetCurrentProcess() ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: GetCurrentProcess undefined) */
-#define GetStdHandle(a) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: GetStdHandle undefined) */
+void *OpenProcess(unsigned long a1, int a2, unsigned long a3); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 INVALID_HANDLE_VALUE */
+void *GetCurrentProcess(void); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 INVALID_HANDLE_VALUE */
+void *GetStdHandle(unsigned long a1); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 INVALID_HANDLE_VALUE */
 int SetStdHandle(unsigned long nStdHandle, void *hHandle);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
-#define CreateFileW(a,b,c,d,e,f,g) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateFileW undefined) */
-#define CreateFileA(a,b,c,d,e,f,g) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateFileA undefined) */
+void *CreateFileW(const void *a1, unsigned long a2, unsigned long a3, void *a4, unsigned long a5, unsigned long a6, void *a7); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 INVALID_HANDLE_VALUE */
+void *CreateFileA(const char *a1, unsigned long a2, unsigned long a3, void *a4, unsigned long a5, unsigned long a6, void *a7); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub: 返回 INVALID_HANDLE_VALUE */
 int GetFileSizeEx(void *hFile, void *lpFileSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define PAGE_READONLY 0x02  /* Windows 内存页保护 */
 #define PAGE_WRITECOPY 0x08
 #define FILE_MAP_READ 0x0004  /* Windows 文件映射访问 */
 #define FILE_MAP_COPY 0x0001
-#define CreateFileMappingW(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateFileMappingW undefined) */
+void *CreateFileMappingW(void *a1, void *a2, unsigned long a3, unsigned long a4, unsigned long a5, const void *a6); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows API stub */
 #define CreateFileMapping(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateFileMapping undefined) */
 void *MapViewOfFileEx(void *hFileMappingObject, unsigned long dwDesiredAccess, unsigned long dwFileOffsetHigh, unsigned long dwFileOffsetLow, unsigned long long dwNumberOfBytesToMap, void *lpBaseAddress);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 int UnmapViewOfFile(const void *lpBaseAddress);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
