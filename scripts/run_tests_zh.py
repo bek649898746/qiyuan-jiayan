@@ -642,6 +642,9 @@ CORE_FEAT = [
     # C4 (2026-09-16): 函数名 与 结构体标签 同名 时 `名字(实参)->字段(...)` 被语句层 当 类型声明 吞掉
     #   ⟹ 后续 `(实参)->字段` 另起 语句, 成员 基 落成 实参 ⟹ 误报 A9001 (语料闸 — git reftable/record.c)
     'scripts/feat_c_dupname_func_tag_ok.c',
+    # C8 (2026-09-16): 条件指令行尾的跨行块注释 ==> 「跳过 directive 行」循环只跳行尾, 注释永不闭合
+    #   ==> 整个翻译单元被静默丢弃 (rc=0, 目标码 0 字节) — 9 处同族循环补块注释识别
+    'scripts/feat_zh_directive_comment_ok.c',
 ]
 
 def build_tests(args):
