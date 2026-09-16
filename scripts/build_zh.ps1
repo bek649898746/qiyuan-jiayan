@@ -10,7 +10,16 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '829F1C28'
+$expected = 'BFBA042F'
+                        # (2026-09-17) **C12 分档: 新增 `--lenient` 兼容档 —— 放宽 A9002 (双精度→整型 隐式转换) (前值 829F1C28)**
+                        #   缘起 (§28.2): `reftable/block.c` L145 `uLongf dest_cap = src_len * 1.001 + 12;` ——
+                        #     该转换是**合法 C** (C11 §6.3.1.4), 但甲言「号合.0 #74」要求显式转换 ⟹ 拒绝第三方代码。
+                        #   设计: **同一二进制, 两种档** —— 新增全局 `宽松转换` (默认 0), 由命令行 `--lenient` 置 1;
+                        #     甲言自有代码 (含自身自举) 不开该档 ⟹ 保持严格; 编译第三方项目时启用。
+                        #   改动 5 处: ① 全局开关 ② 命令行选项 ③④⑤ A9002 三处判定 (赋值/数组元素/声明初始化) 各加条件。
+                        #   验证: 严格模式仍报 A9002; `--lenient` 下 `reftable/block.c` **编译通过** (95302 字节);
+                        #     自举一步收敛 (本次 v1 = v2 = BFBA042F)。
+$expected_旧12 = '829F1C28'
                         # (2026-09-17) **C10f 根治: `qcc_rt.c` 的未定义引用 `load_library`/`get_proc_address` → 标准 API `LoadLibraryA`/`GetProcAddress` (前值 0B138C2C)**
                         #   发现路径: 链接闸推进到 `undefined symbol 'load_library'`, 反查确认唯一引用者是 `qcc_rt.o` (甲言自宿主运行时),
                         #     而 git 源码里根本没有这个名字 ⟹ 是 qcc_rt.c 自身的**既存缺陷**:
