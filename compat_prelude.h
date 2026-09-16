@@ -2004,6 +2004,13 @@ wchar_t *wcschr(const wchar_t *s, wchar_t c);  /* C7: msvcrt 真符号 (原 NULL
 #define SHUT_RD 0
 #define SHUT_WR 1
 #define SHUT_RDWR 2
+/* Winsock shutdown 方向常量 (C10 2026-09-17): compat/mingw.h L62 无条件 `#define SHUT_WR SD_SEND`
+   会覆盖上面的 SHUT_WR; SD_SEND 原无定义 ==> SHUT_WR 展开成未定义标识符
+   ==> 目标文件写未定义外部符号 SD_SEND (send-pack / transport-helper / builtin_credential-cache 三处)
+   ==> 链接期 undefined symbol 'SD_SEND'。补 Winsock 真值 (winsock2.h 定义: SD_RECEIVE=0/SD_SEND=1/SD_BOTH=2) */
+#define SD_RECEIVE 0
+#define SD_SEND 1
+#define SD_BOTH 2
 #define SOL_SOCKET 0xffff  /* socket 选项层级 */
 #define SO_KEEPALIVE 0x0008
 #define SO_REUSEADDR 0x0004

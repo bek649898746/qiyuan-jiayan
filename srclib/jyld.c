@@ -91,9 +91,62 @@ static const char *k32_names[] = {
     "UnlockFile","UnlockFileEx","UnmapViewOfFile","WaitForSingleObject",
     "WaitForSingleObjectEx","WideCharToMultiByte","AreFileApisANSI",
     "InitializeCriticalSection","DeleteCriticalSection","EnterCriticalSection","LeaveCriticalSection",
-    "InitializeConditionVariable","SleepConditionVariableCS","WakeConditionVariable","WakeAllConditionVariable"
+    "InitializeConditionVariable","SleepConditionVariableCS","WakeConditionVariable","WakeAllConditionVariable",
+    /* C10c (2026-09-17): 链接期真缺口批量补齐 — 未解析符号 - 现有白名单 - msvcrt 白名单 的差集,
+       逐符号经 kernel32.dll 导出表核实 (pe_exports.py); 与 prelude C7b/C7c 改真原型后暴露的链接需求一致 */
+    "CancelIoEx",
+    "ConnectNamedPipe",
+    "CreateHardLinkW",
+    "CreatePipe",
+    "CreateProcessW",
+    "DisconnectNamedPipe",
+    "DuplicateHandle",
+    "FillConsoleOutputCharacterA",
+    "FreeEnvironmentStringsW",
+    "GetConsoleMode",
+    "GetConsoleScreenBufferInfo",
+    "GetCurrentDirectoryW",
+    "GetDriveTypeW",
+    "GetEnvironmentStringsW",
+    "GetEnvironmentVariableW",
+    "GetExitCodeProcess",
+    "GetFileAttributesExA",
+    "GetFileInformationByHandleEx",
+    "GetFinalPathNameByHandleW",
+    "GetHandleInformation",
+    "GetLongPathNameW",
+    "GetNamedPipeInfo",
+    "GetOverlappedResult",
+    "GetProcAddress",
+    "GetShortPathNameW",
+    "GetVersion",
+    "GetVolumeInformationW",
+    "IsDebuggerPresent",
+    "LoadLibraryExA",
+    "LocalAlloc",
+    "MoveFileExW",
+    "OpenProcessToken",
+    "Process32First",
+    "Process32Next",
+    "ReadDirectoryChangesW",
+    "RegCloseKey",
+    "RegOpenKeyExA",
+    "RegQueryValueExA",
+    "ResetEvent",
+    "SetConsoleCtrlHandler",
+    "SetConsoleTextAttribute",
+    "SetEnvironmentVariableW",
+    "SetEvent",
+    "SetFileAttributesW",
+    "SetFileTime",
+    "SetLastError",
+    "SetNamedPipeHandleState",
+    "SetStdHandle",
+    "TerminateProcess",
+    "WaitNamedPipeW",
+    "WriteConsoleW"
 };
-#define K32_MAX 128
+#define K32_MAX 256  /* C10c (2026-09-17): 128 -> 256 — 本次补 51 项后 已用 127, 扩容留余量 */
 static int k32_used[K32_MAX]; /* 槽 → 名字索引 */
 static int k32_off[K32_MAX];  /* 槽 → hint/names .data 偏移 */
 static int k32_n = 0;         /* 使用槽数 */
@@ -617,9 +670,10 @@ static const char *msvcrt_names[] = {
     "_wmkdir",
     "_wfopen",
     "_wfreopen",
-    "_commit"
+    "_commit",
+    "_lseeki64"   /* C10b (2026-09-17): msvcrt 真符号 (导出表实测); 解开 11 个 .o 的 undefined '_lseeki64' */
 };
-#define MSVCRT_MAX 192
+#define MSVCRT_MAX 256  /* C10b (2026-09-17): 192 -> 256 — 补 _lseeki64 后 已用 191; 扩容留余量 (msvcrt_used/msvcrt_direct_slot 均为 jyld 自身 BSS, 不影响输出 PE 布局) */
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */
 static int msvcrt_n = 0;                  /* 使用的槽数 */
 static int msvcrt_direct_slot[MSVCRT_MAX]; /* 直接 call 的槽（需 thunk） */
