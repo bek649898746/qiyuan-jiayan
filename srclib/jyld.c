@@ -1448,8 +1448,14 @@ static void layout(void) {
            (fix 2026-08-07: 62 槽时 IAT/ILT 延伸至 ~0x3F0, desc/hint 必须后移避免被覆盖) */
         k32_ilt = 0x08 + k32_n * 8 + 8;
         kdesc_off = k32_ilt + k32_n * 8 + 8;
-        mdesc_off = kdesc_off + 20;
-        int khint = mdesc_off + 40 + 20 * extra_n; /* C10d: +附加库 desc */
+        /* C10d (2026-09-17) 修正: desc **紧凑分配** — 未使用的库不占位。
+           原固定分配 (mdesc_off = kdesc_off+20) 在 msvcrt_n==0 时留下全 0 desc ⟹ loader 视作 terminator
+           ⟹ 其后 extras 的 desc 被忽略 ⟹ IAT 未填充 ⟹ 调用崩 (0xC0000005, PE dump 实证)。 */
+        int dc10d = kdesc_off + 20;
+        mdesc_off = dc10d;
+        if (msvcrt_n > 0) dc10d += 20;
+        for (int li = 0; li < extra_n; li++) { extras[li].desc_off = dc10d; dc10d += 20; }
+        int khint = dc10d + 20; /* + terminator desc */
         for (int s = 0; s < k32_n; s++) { k32_off[s] = khint; khint += 2 + (int)strlen(k32_names[k32_used[s]]) + 1; }
         k32_dll_off = khint;
         int mhint = khint + 13; /* "kernel32.dll\0" */
@@ -1464,9 +1470,7 @@ static void layout(void) {
         msvcrt_end = (mend + 15) & ~15;
         /* C10d: 附加库区 */
         {
-            int cur = mdesc_off + 20;
-            for (int li = 0; li < extra_n; li++) { extras[li].desc_off = cur; cur += 20; }
-            int xh = mend; /* 修正: extras hint/dll 排在 msvcrt hint/dll 之后 */
+            int xh = mend; /* extras hint/dll 排在 msvcrt hint/dll 之后 (desc 已在上面紧凑分配) */
             for (int li = 0; li < extra_n; li++) {
                 ExtraLib *e = &extras[li]; e->hint_off = xh;
                 for (int s = 0; s < e->n; s++) xh += 2 + (int)strlen(e->names[e->used[s]]) + 1;
