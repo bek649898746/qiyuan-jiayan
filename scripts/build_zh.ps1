@@ -10,8 +10,23 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'F5EB2306'
-                        # (2026-09-16) **K: 宏展开 产生 畸形声明 时 甲言 不收敛 (空转) — 函数参数列表 推进守卫 (前值 922575DB)**:
+$expected = '0EFF668C'
+                        # (2026-09-16) **K2 方案A: 「未初始化检查开关」从 函数名 移到 函数体起点 (前值 F5EB2306)**:
+                        #   病灶: compat/mingw.h L618 `int main(int argc, const char **argv);` 是 **声明**
+                        #     (Windows 入口桥), 而 甲言 L18285 见 名为 main/主 的 **函数名** 即 `序集 = 1`
+                        #     (开启 #78 未初始化检查; 本意 = 「main 之后 的 用户代码才查」, 运行时库豁免).
+                        #     ⟹ 该 **声明** 使 compat/*.c 里 **所有函数** 都被纳入检查。
+                        #   触发: compat/mingw.c `mingw_fgetc`: `int ch; while (1) { ch = fgetc(stream); ... } return ch;`
+                        #     —— 循环体 第一句 就是 赋值, `return ch` 必然 已初始化 (gcc 无异议), 但 甲言 报 A4001。
+                        #   实证 (插桩): `[K2-遇main] 名=main 词位=13089` (紧接 wmain, 来自 mingw.h);
+                        #     `[K2-到达] 旧辛=1 容进0=chX` (chX 进了 未初始化读缓冲); 对照: 顺序赋值 OK / 循环体赋值 ✗。
+                        #   ⚠️ 更深 一层 (独立 缺陷, 另行 立站): `while (1)` 常量真条件 ⟹ 循环体 必然执行,
+                        #     但 甲言 对 循环体 采用 保守语义 (可能 0 次) ⟹ 循环尾 **回滚** 初始化状态 ⟹ 循环内 赋值 失效。
+                        #   修法 A: 门槛 移到 **函数体起点** (`整 主双 = 词位;` 处, 词位 指向 `{`)
+                        #     + 函数名 为 main/主 ⟹ 只有 入口的 **定义** 才 开启检查 (C 语义: 声明 只是原型)。
+                        #   回归: `main` 内 未初始化读 仍 拦 A4001 (修前修后 一致); main 之前 的 函数 行为 不变。
+                        #   本次 v1 = v2 = 0EFF668C
+$expected_旧4 = 'F5EB2306'  # (2026-09-16) **K: 宏展开 产生 畸形声明 时 甲言 不收敛 (空转) — 函数参数列表 推进守卫 (前值 922575DB)**:
                         #   病灶: `compat_prelude.h` 的 `#define fork() (-1)` × `compat/mingw.h` 的
                         #     `static inline pid_t fork(void) {...}` ⟹ 宏展开 成 `static inline pid_t (-1) {...}`。
                         #     该 畸形 声明 落到 **函数参数列表解析循环** (L18349):
