@@ -944,7 +944,8 @@ typedef unsigned long DWORD;
 #define PSID void*  /* Windows SID 指针 (fix 2026-08-15: PSID undefined) */
 #define PACL void*  /* Windows ACL 指针 */
 #define PSECURITY_DESCRIPTOR void*  /* Windows 安全描述符指针 */
-#define LPSECURITY_ATTRIBUTES void*  /* Windows 安全属性指针 (ipc-win32.c) */
+typedef struct { unsigned int nLength; void *lpSecurityDescriptor; int bInheritHandle; } SECURITY_ATTRIBUTES;  /* C7c (2026-09-16): 原 仅 `#define LPSECURITY_ATTRIBUTES void*` ⟹ ipc-win32.c `d->lpSA->nLength` 无法解析 */
+typedef SECURITY_ATTRIBUTES *LPSECURITY_ATTRIBUTES;
 #define SC_HANDLE HANDLE  /* Windows 服务句柄类型 (fix 2026-08-15: SC_HANDLE undefined) */
 #define SC_MANAGER_CONNECT 0x0001  /* Windows 服务管理权限 (fix 2026-08-15: SC_MANAGER_CONNECT undefined) */
 #define SERVICE_QUERY_STATUS 0x0004  /* Windows 服务状态查询权限 (fix 2026-08-15: SERVICE_QUERY_STATUS undefined) */
@@ -2323,3 +2324,124 @@ unsigned long GetCurrentProcessId(void);   /* 原 被 `#define swprintf(...) 0` 
                                  (((unsigned int)(x) & 0xFF0000u) >> 8) | \
                                  (((unsigned int)(x) >> 24) & 0xFFu)))
 #define htonl(x) ntohl(x)
+
+/* ============================================================================
+ * C7c (2026-09-16): Windows 基础结构补全 — 依据 git 源码实际字段访问 (非猜测)
+ * 布局按 Windows x64 (LLP64): DWORD/ULONG = unsigned int(4B); ULONG_PTR = unsigned long long(8B);
+ * LONG = int(4B)。刻意不写 `long`, 以免甲言对 long 宽度取歧义。
+ * ==========================================================================*/
+
+/* compat/fsmonitor/fsm-listen-win32.c L36 `OVERLAPPED overlapped;`
+   (只 访问 .hEvent + 整体 memset ⟹ 完整 x64 布局 32B) */
+typedef struct {
+    unsigned long long Internal;
+    unsigned long long InternalHigh;
+    unsigned int Offset;
+    unsigned int OffsetHigh;
+    void *hEvent;
+} OVERLAPPED;
+
+/* compat/win32/trace2_win32_process_info.c L19 `PROCESSENTRY32 *pe32`
+   (访问 dwSize / th32ProcessID；sizeof 参与赋值) */
+typedef struct {
+    unsigned int dwSize;
+    unsigned int cntUsage;
+    unsigned int th32ProcessID;
+    unsigned long long th32DefaultHeapID;
+    unsigned int th32ModuleID;
+    unsigned int cntThreads;
+    unsigned int th32ParentProcessID;
+    int pcPriClassBase;
+    unsigned int dwFlags;
+    wchar_t szExeFile[260];
+} PROCESSENTRY32;
+
+/* compat/fsmonitor/fsm-listen-win32.c 等使用 WCHAR (MinGW <winnt.h> 的宽字符 typedef) */
+typedef wchar_t WCHAR;
+typedef unsigned char *LPBYTE;
+
+/* ---- contrib/credential/wincred/git-credential-wincred.c ----
+   字段依据该文件实际访问: CredentialBlobSize/CredentialBlob/TargetName/UserName/Type/
+   AttributeCount/Attributes; 属性项 访问 Keyword/Value/ValueSize */
+typedef struct {
+    wchar_t *Keyword;
+    unsigned int Flags;
+    unsigned int ValueSize;
+    unsigned char *Value;
+} CREDENTIAL_ATTRIBUTEW;
+
+typedef struct {
+    unsigned int Flags;
+    unsigned int Type;
+    wchar_t *TargetName;
+    wchar_t *Comment;
+    FILETIME LastWritten;
+    unsigned int CredentialBlobSize;
+    unsigned char *CredentialBlob;
+    unsigned int Persist;
+    unsigned int AttributeCount;
+    CREDENTIAL_ATTRIBUTEW *Attributes;
+    wchar_t *TargetAlias;
+    wchar_t *UserName;
+} CREDENTIALW;
+
+int CredEnumerateW(const wchar_t *Filter, unsigned int Flags, unsigned int *Count,
+                   CREDENTIALW ***Credentials);
+int CredReadW(const wchar_t *TargetName, unsigned int Type, unsigned int Flags,
+              CREDENTIALW **Credential);
+int CredWriteW(CREDENTIALW *Credential, unsigned int Flags);
+int CredDeleteW(const wchar_t *TargetName, unsigned int Type, unsigned int Flags);
+void CredFree(void *Buffer);
+
+/* C 运行库: MSVC 安全版宽字符函数 (wincred 使用; msvcrt.dll 导出表均已核实存在) */
+wchar_t *wcstok_s(wchar_t *str, const wchar_t *delim, wchar_t **context);
+int _scwprintf(const wchar_t *format, ...);
+int _snwprintf_s(wchar_t *buffer, size_t sizeOfBuffer, size_t count, const wchar_t *format, ...);
+wchar_t *_wcsdup(const wchar_t *str);
+wchar_t *wcsncat(wchar_t *dst, const wchar_t *src, size_t n);
+int MultiByteToWideChar(unsigned int CodePage, unsigned long dwFlags, const char *lpMultiByteStr,
+                        int cbMultiByte, wchar_t *lpWideCharStr, int cchWideChar);
+
+/* ---- compat/win32/headless.c ----
+   该源文件自行 `#define UNICODE`/`_UNICODE` ⟹ CreateProcess 应映射 W 版;
+   其 startup_info 用指定初始化器 (.cb/.dwFlags/.wShowWindow) ⟹ 需完整结构。 */
+typedef struct {
+    unsigned int cb;
+    wchar_t *lpReserved;
+    wchar_t *lpDesktop;
+    wchar_t *lpTitle;
+    unsigned int dwX;
+    unsigned int dwY;
+    unsigned int dwXSize;
+    unsigned int dwYSize;
+    unsigned int dwXCountChars;
+    unsigned int dwYCountChars;
+    unsigned int dwFillAttribute;
+    unsigned int dwFlags;
+    unsigned short wShowWindow;
+    unsigned short cbReserved2;
+    unsigned char *lpReserved2;
+    void *hStdInput;
+    void *hStdOutput;
+    void *hStdError;
+} STARTUPINFO;
+
+typedef struct {
+    void *hProcess;
+    void *hThread;
+    unsigned int dwProcessId;
+    unsigned int dwThreadId;
+} PROCESS_INFORMATION;
+
+#define CreateProcess CreateProcessW
+extern wchar_t *_wpgmptr;
+
+/* SAL 注解 (Microsoft 源码注解语言): 头文件被跳过 ⟹ 此处置空 */
+#define _In_
+#define _In_opt_
+#define _Out_
+#define _Out_opt_
+#define _Inout_
+#define _Inout_opt_
+#define _Ret_maybenull_
+
