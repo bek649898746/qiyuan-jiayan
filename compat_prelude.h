@@ -1506,6 +1506,23 @@ struct tm {
 };
 
 struct timespec { time_t tv_sec; long tv_nsec; }; /* fix 2026-08-20: 提到 struct stat 前 (struct stat 现含 timespec 成员) */
+/* C7e-final (2026-09-16): __MINGW32__ 下 struct stat 与 compat/mingw.h 的 struct mingw_stat 同形。 */
+/* 理由: mingw.h 的 st_mtime/st_atime/st_ctime 宏会改写本定义里的字段名，若沿用 st_mtime 直名字段，定义出来的会是「名叫 st_mtim 的 time_t 字段」，源码 st.st_mtime 展开成 st.st_mtim.tv_sec 时报 A9001「不是结构体」。字段名 st_atim/st_mtim/st_ctim 不含 st_atime/st_mtime/st_ctime 子串，故不被改写。 */
+#ifdef __MINGW32__
+struct stat {
+    unsigned int st_dev;
+    unsigned short st_ino;
+    unsigned short st_mode;
+    short st_nlink;
+    short st_uid;
+    short st_gid;
+    unsigned int st_rdev;
+    long long st_size;
+    struct timespec st_atim;
+    struct timespec st_mtim;
+    struct timespec st_ctim;
+};
+#else
 struct stat {   /* MSVCRT/MinGW 布局 (与 gcc -D_FILE_OFFSET_BITS=64 一致, sizeof=56).
 
    fix 2026-09-15 (regress_stat_layout): 原 用 POSIX st_atim/st_mtim/st_ctim (各 16B struct timespec)
@@ -1539,6 +1556,7 @@ struct stat {   /* MSVCRT/MinGW 布局 (与 gcc -D_FILE_OFFSET_BITS=64 一致, s
     time_t st_ctime;          /* @48 (8) */
 
 };
+#endif  /* C7e-final: __MINGW32__ 分支 结束 */
 
 /* fix 2026-08-24 t35t: NO_ST_BLOCKS_IN_STRUCT_STAT - count-objects size=0 (on_disk_bytes st_blocks 字段缺失) */
 #define NO_ST_BLOCKS_IN_STRUCT_STAT 1
