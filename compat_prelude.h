@@ -950,34 +950,34 @@ typedef unsigned long DWORD;
 #define SERVICE_QUERY_STATUS 0x0004  /* Windows 服务状态查询权限 (fix 2026-08-15: SERVICE_QUERY_STATUS undefined) */
 #define SC_STATUS_PROCESS_INFO 0  /* Windows 服务状态信息级别 (fix 2026-08-15: SC_STATUS_PROCESS_INFO undefined) */
 #define SERVICE_RUNNING 0x4  /* Windows 服务运行状态 (fix 2026-08-15: SERVICE_RUNNING undefined) */
-#define OpenSCManagerA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: OpenSCManagerA undefined) */
-#define OpenServiceA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: OpenServiceA undefined) */
-#define QueryServiceStatusEx(a,b,c,d,e) 0  /* Windows API stub (fix 2026-08-15: QueryServiceStatusEx undefined) */
-#define CloseServiceHandle(a) 0  /* Windows API stub (fix 2026-08-15: CloseServiceHandle undefined) */
-#define RegisterEventSourceA(a,b) 0  /* Windows 事件日志 stub (fix 2026-08-15: RegisterEventSourceA undefined) */
+void *OpenSCManagerA(const char *lpMachineName, const char *lpDatabaseName, unsigned long dwDesiredAccess);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *OpenServiceA(void *hSCManager, const char *lpServiceName, unsigned long dwDesiredAccess);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int QueryServiceStatusEx(void *hService, int InfoLevel, unsigned char *lpBuffer, unsigned long cbBufSize, unsigned long *pcbBytesNeeded);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int CloseServiceHandle(void *hSCObject);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *RegisterEventSourceA(const char *lpUNCServerName, const char *lpSourceName);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define EVENTLOG_SUCCESS 0
 #define EVENTLOG_ERROR_TYPE 1
 #define EVENTLOG_WARNING_TYPE 2
 #define EVENTLOG_INFORMATION_TYPE 4
-#define ReportEventA(a,b,c,d,e,f,g,h,i,j) 0  /* Windows 事件日志 stub (fix 2026-08-15: ReportEventA undefined) */
-#define DeregisterEventSource(a) 0  /* Windows 事件日志 stub */
+int ReportEventA(void *hEventLog, unsigned short wType, unsigned short wCategory, unsigned long dwEventID, void *lpUserSid, unsigned short wNumStrings, unsigned long dwDataSize, const char **lpStrings, void *lpRawData);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int DeregisterEventSource(void *hEventLog);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define CreateToolhelp32Snapshot(a,b) ((HANDLE)-1)  /* Windows 进程快照 stub (fix 2026-08-15: CreateToolhelp32Snapshot undefined) */
-#define Process32First(a,b) 0  /* Windows 进程枚举 stub (fix 2026-08-15: Process32First undefined) */
-#define Process32Next(a,b) 0  /* Windows 进程枚举 stub (fix 2026-08-15: Process32Next undefined) */
+int Process32First(void *hSnapshot, void *lppe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int Process32Next(void *hSnapshot, void *lppe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define TH32CS_SNAPPROCESS 0x2  /* Windows 快照标志 */
-#define IsDebuggerPresent() 0  /* Windows API stub (fix 2026-08-15: IsDebuggerPresent undefined) */
+int IsDebuggerPresent(void);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define HKEY void*  /* Windows 注册表句柄类型 */
 #define HKEY_CURRENT_USER ((void*)0x80000001)  /* Windows 预定义注册表根 */
 #define KEY_READ 0x20019  /* Windows 注册表读取权限 */
-#define RegOpenKeyExA(a,b,c,d,e) 0  /* Windows 注册表 stub (fix 2026-08-15: RegOpenKeyExA undefined) */
-#define RegQueryValueExA(a,b,c,d,e,f) 0  /* Windows 注册表 stub (fix 2026-08-15: RegQueryValueExA undefined) */
-#define RegCloseKey(a) 0  /* Windows 注册表 stub (fix 2026-08-15: RegCloseKey undefined) */
+int RegOpenKeyExA(void *hKey, const char *lpSubKey, unsigned long ulOptions, unsigned long samDesired, void **phkResult);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int RegQueryValueExA(void *hKey, const char *lpValueName, void *lpReserved, unsigned long *lpType, unsigned char *lpData, unsigned long *lpcbData);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int RegCloseKey(void *hKey);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define TMPF_TRUETYPE 4  /* Windows 字体指标标志 (fix 2026-08-15: TMPF_TRUETYPE undefined) */
-#define WriteConsoleW(a,b,c,d,e) 0  /* Windows 控制台写 stub (fix 2026-08-15: WriteConsoleW undefined) */
-#define GetConsoleMode(a,b) 0  /* Windows 控制台模式 stub (fix 2026-08-15: GetConsoleMode undefined) */
-#define GetConsoleScreenBufferInfo(a,b) 0  /* Windows 控制台信息 stub (fix 2026-08-15: GetConsoleScreenBufferInfo undefined) */
-#define SetConsoleTextAttribute(a,b) 0  /* Windows 控制台属性 stub (fix 2026-08-15: SetConsoleTextAttribute undefined) */
-#define FillConsoleOutputCharacterA(a,b,c,d,e) 0  /* Windows 控制台填充 stub (fix 2026-08-15: FillConsoleOutputCharacterA undefined) */
+int WriteConsoleW(void *hConsoleOutput, const wchar_t *lpBuffer, unsigned long nNumberOfCharsToWrite, unsigned long *lpNumberOfCharsWritten, void *lpReserved);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetConsoleMode(void *hConsoleHandle, unsigned long *lpMode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetConsoleScreenBufferInfo(void *hConsoleOutput, void *lpConsoleScreenBufferInfo);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int SetConsoleTextAttribute(void *hConsoleOutput, unsigned short wAttributes);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int FillConsoleOutputCharacterA(void *hConsoleOutput, char cCharacter, unsigned long nLength, void *dwWriteCoord, unsigned long *lpNumberOfCharsWritten);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define FOREGROUND_BLUE 0x1
 #define FOREGROUND_GREEN 0x2
 #define FOREGROUND_RED 0x4
@@ -988,8 +988,8 @@ typedef unsigned long DWORD;
 #define BACKGROUND_RED 0x40
 #define BACKGROUND_INTENSITY 0x80
 #define BACKGROUND_ALL (BACKGROUND_BLUE|BACKGROUND_GREEN|BACKGROUND_RED|BACKGROUND_INTENSITY)
-#define FlushFileBuffers(a) 0  /* Windows API stub (fix 2026-08-15: FlushFileBuffers undefined) */
-#define DisconnectNamedPipe(a) 0  /* Windows API stub (fix 2026-08-15: DisconnectNamedPipe undefined) */
+int FlushFileBuffers(void *hFile);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int DisconnectNamedPipe(void *hNamedPipe);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define CreateNamedPipeW(a,b,c,d,e,f,g,h) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateNamedPipeW undefined) */
 #define CreateThread(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateThread undefined) */
 #define PIPE_ACCESS_OUTBOUND 0x00000002  /* Windows 命名管道访问 */
@@ -1639,11 +1639,11 @@ typedef struct {
 int GetFileInformationByHandle(void *hFile, void *lpFileInformation);
 unsigned int GetFileType(void *hFile);
 int PeekNamedPipe(void *h, void *b, unsigned int n, unsigned int *r, unsigned int *a, void *o);
-#define GetFileAttributesExA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetFileAttributesExA undefined) */
-#define LoadLibraryExA(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: LoadLibraryExA undefined) */
-#define GetProcAddress(a,b) 0  /* Windows API stub (fix 2026-08-15: GetProcAddress undefined) */
-#define SetLastError(a) ((void)0)  /* Windows API stub (fix 2026-08-15: SetLastError undefined) */
-#define GetVersion() 0  /* Windows API stub (fix 2026-08-15: GetVersion undefined) */
+int GetFileAttributesExA(const char *lpFileName, int fInfoLevelId, void *lpFileInformation);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *LoadLibraryExA(const char *lpLibFileName, void *hFile, unsigned long dwFlags);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *GetProcAddress(void *hModule, const char *lpProcName);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void SetLastError(unsigned long dwErrCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetVersion(void);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define MAKEWORD(a,b) 0x0202  /* Windows Winsock 版本宏 stub (fix 2026-08-15: MAKEWORD undefined) */
 #define WSAStartup(a,b) 0  /* Windows Winsock stub: 失败 (fix 2026-08-15: WSAStartup undefined) */
 #define WSAGetLastError() 0  /* Windows Winsock stub (fix 2026-08-15: WSAGetLastError undefined) */
@@ -1663,13 +1663,13 @@ static int connect(int sockfd, const struct sockaddr *sa, size_t sz) { (void)soc
 static int bind(int sockfd, const struct sockaddr *sa, size_t sz) { (void)sockfd; (void)sa; (void)sz; return -1; }  /* Winsock socket 绑定 stub: 失败 (fix 2026-08-15: bind undefined) */
 static int setsockopt(int sockfd, int lvl, int optname, const void *optval, int optlen) { (void)sockfd; (void)lvl; (void)optname; (void)optval; (void)optlen; return -1; }  /* Winsock socket 选项 stub: 失败 (fix 2026-08-15: setsockopt undefined) */
 static int listen(int sockfd, int backlog) { (void)sockfd; (void)backlog; return -1; }  /* Winsock socket 监听 stub: 失败 (fix 2026-08-15: listen undefined) */
-#define CreateProcessW(a,b,c,d,e,f,g,h,i,j) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: CreateProcessW undefined) */
+int CreateProcessW(const wchar_t *lpApplicationName, wchar_t *lpCommandLine, void *lpProcessAttributes, void *lpThreadAttributes, int bInheritHandles, unsigned long dwCreationFlags, void *lpEnvironment, const wchar_t *lpCurrentDirectory, void *lpStartupInfo, void *lpProcessInformation);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 static int InitializeProcThreadAttributeList(void *a, int b, int c, void *d) { (void)a; (void)b; (void)c; (void)d; return 0; }  /* Windows API stub: 长函数名 fn_macro 匹配不上, 必须真函数 (fix 2026-08-15: InitializeProcThreadAttributeList undefined) */
 static int UpdateProcThreadAttribute(void *a, int b, int c, void *d, int e, void *f, void *g) { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 0; }  /* Windows API stub (fix 2026-08-15: UpdateProcThreadAttribute undefined) */
 static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API stub (fix 2026-08-15: DeleteProcThreadAttributeList undefined) */
-#define GetHandleInformation(a,b) 0  /* Windows API stub (fix 2026-08-15: GetHandleInformation undefined) */
-#define GetNamedPipeInfo(a,b,c,d,e) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetNamedPipeInfo undefined) */
-#define CreatePipe(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: CreatePipe undefined) */
+int GetHandleInformation(void *hObject, unsigned long *lpdwFlags);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetNamedPipeInfo(void *hNamedPipe, unsigned long *lpFlags, unsigned long *lpOutBufferSize, unsigned long *lpInBufferSize, unsigned long *lpMaxInstances);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int CreatePipe(void **hReadPipe, void **hWritePipe, void *lpPipeAttributes, unsigned long nSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define FILE_TYPE_UNKNOWN 0
 #define FILE_TYPE_DISK 1
 #define FILE_TYPE_CHAR 2
@@ -1678,31 +1678,31 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 /* FindFirstFileW/FindNextFileW/FindClose — 真实现 (fix 2026-08-19): 原 stub 宏把调用展开成常量 →
    compat/win32/dirent.c 的 opendir 恒失败 → 目录扫描空转 → status/add 崩。
    jyld k32_names 已加导入, qcc 生成真调用。 */
-#define SetFileAttributesW(a,b) 0  /* Windows API stub (fix 2026-08-15: SetFileAttributesW undefined) */
-#define MoveFileExW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: MoveFileExW undefined) */
-#define CreateHardLinkW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: CreateHardLinkW undefined) */
-#define SetFileTime(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: SetFileTime undefined) */
-#define SetConsoleCtrlHandler(a,b) 0  /* Windows API stub (fix 2026-08-15: SetConsoleCtrlHandler undefined) */
-#define GetFileInformationByHandleEx(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: FileRemoteProtocolInfo undefined) */
+int SetFileAttributesW(const wchar_t *lpFileName, unsigned long dwFileAttributes);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int MoveFileExW(const wchar_t *lpExistingFileName, const wchar_t *lpNewFileName, unsigned long dwFlags);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int CreateHardLinkW(const wchar_t *lpFileName, const wchar_t *lpExistingFileName, void *lpSecurityAttributes);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int SetFileTime(void *hFile, const void *lpCreationTime, const void *lpLastAccessTime, const void *lpLastWriteTime);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int SetConsoleCtrlHandler(int (*HandlerRoutine)(unsigned long), int Add);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetFileInformationByHandleEx(void *hFile, int FileInformationClass, void *lpFileInformation, unsigned long dwBufferSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define FileRemoteProtocolInfo 13
 #define CreateEvent(a,b,c,d) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateEvent undefined) */
 #define CreateEventW(a,b,c,d) ((HANDLE)-1)
-#define SetEvent(h) 0  /* Windows API stub (fix 2026-08-15: SetEvent undefined) */
-#define ResetEvent(h) 0  /* Windows API stub (fix 2026-08-15: ResetEvent undefined) */
-#define GetShortPathNameW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetShortPathNameW undefined) */
-#define GetLongPathNameW(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetLongPathNameW undefined) */
-#define GetFinalPathNameByHandleW(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetFinalPathNameByHandleW undefined) */
-#define GetDriveTypeW(a) 0  /* Windows API stub: DRIVE_UNKNOWN (fix 2026-08-15: GetDriveTypeW undefined) */
-#define GetCurrentDirectoryW(a,b) 0  /* Windows API stub (fix 2026-08-15: GetCurrentDirectoryW undefined) */
-#define GetEnvironmentVariableW(a,b,c) 0  /* Windows API stub (fix 2026-08-15: GetEnvironmentVariableW undefined) */
-#define SetEnvironmentVariableW(a,b) 0  /* Windows API stub (fix 2026-08-15: SetEnvironmentVariableW undefined) */
+int SetEvent(void *hEvent);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int ResetEvent(void *hEvent);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetShortPathNameW(const wchar_t *lpszLongPath, wchar_t *lpszShortPath, unsigned long cchBuffer);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetLongPathNameW(const wchar_t *lpszShortPath, wchar_t *lpszLongPath, unsigned long cchBuffer);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetFinalPathNameByHandleW(void *hFile, wchar_t *lpszFilePath, unsigned long cchFilePath, unsigned long dwFlags);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned int GetDriveTypeW(const wchar_t *lpRootPathName);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetCurrentDirectoryW(unsigned long nBufferLength, wchar_t *lpBuffer);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+unsigned long GetEnvironmentVariableW(const wchar_t *lpName, wchar_t *lpBuffer, unsigned long nSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int SetEnvironmentVariableW(const wchar_t *lpName, const wchar_t *lpValue);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define GetUserNameW(a,b) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetUserNameW undefined) */
-#define GetEnvironmentStringsW() 0  /* Windows API stub (fix 2026-08-15: GetEnvironmentStringsW undefined) */
-#define FreeEnvironmentStringsW(a) 0  /* Windows API stub (fix 2026-08-15: FreeEnvironmentStringsW undefined) */
+wchar_t *GetEnvironmentStringsW(void);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int FreeEnvironmentStringsW(wchar_t *penv);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define DRIVE_REMOTE 4
-#define ReadDirectoryChangesW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: ReadDirectoryChangesW undefined) */
-#define GetOverlappedResult(a,b,c,d) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetOverlappedResult undefined) */
-#define CancelIoEx(a,b) 0  /* Windows API stub (fix 2026-08-15: CancelIoEx undefined) */
+int ReadDirectoryChangesW(void *hDirectory, void *lpBuffer, unsigned long nBufferLength, int bWatchSubtree, unsigned long dwNotifyFilter, unsigned long *lpBytesReturned, void *lpOverlapped, void *lpCompletionRoutine);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetOverlappedResult(void *hFile, void *lpOverlapped, unsigned long *lpNumberOfBytesTransferred, int bWait);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int CancelIoEx(void *hFile, void *lpOverlapped);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define OPEN_EXISTING 3
 #define CREATE_ALWAYS 2
 #define OPEN_ALWAYS 4
@@ -1763,9 +1763,9 @@ static void DeleteProcThreadAttributeList(void *a) { (void)a; }  /* Windows API 
 #define PIPE_REJECT_REMOTE_CLIENTS 0x00000008
 #define PIPE_UNLIMITED_INSTANCES 255
 #define FILE_FLAG_FIRST_PIPE_INSTANCE 0x00080000
-#define WaitNamedPipeW(a,b) 0  /* Windows 命名管道等待 stub (fix 2026-08-15: ipc-win32.c) */
-#define SetNamedPipeHandleState(a,b,c,d) 0  /* Windows 命名管道状态 stub */
-#define ConnectNamedPipe(a,b) 0  /* Windows 命名管道连接 stub */
+int WaitNamedPipeW(const wchar_t *lpNamedPipeName, unsigned long nTimeOut);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int SetNamedPipeHandleState(void *hNamedPipe, unsigned long *lpMode, unsigned long *lpMaxCollectionCount, unsigned long *lpCollectDataTimeout);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int ConnectNamedPipe(void *hNamedPipe, void *lpOverlapped);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define AllocateAndInitializeSid(a,b,c,d,e,f,g,h,i,j,k,l) 0  /* Windows SID 创建 stub */
 #define FreeSid(a) 0  /* Windows SID 释放 stub */
 #define SetEntriesInAcl(a,b,c,d) 0  /* Windows ACL 条目 stub */
@@ -1827,7 +1827,7 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define WAIT_FAILED 0xFFFFFFFF
 #define WNOHANG 1  /* waitpid 非阻塞选项 (fix 2026-08-15: WNOHANG undefined) */
 #define WaitForSingleObject(h, ms) ((DWORD)0xFFFFFFFF)  /* Windows API stub: 返回 WAIT_FAILED (fix 2026-08-15: WaitForSingleObject undefined) */
-#define GetExitCodeProcess(a,b) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetExitCodeProcess undefined) */
+int GetExitCodeProcess(void *hProcess, unsigned long *lpExitCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define WaitForMultipleObjects(a,b,c,d) ((DWORD)0xFFFFFFFF)  /* Windows API stub: 返回 WAIT_FAILED (fix 2026-08-15: WaitForMultipleObjects undefined) */
 #define STD_INPUT_HANDLE (-10)
 #define STD_OUTPUT_HANDLE (-11)
@@ -2074,27 +2074,27 @@ typedef int fd_set;  /* select fd_set 简化类型 (fix 2026-08-15: fd_set undef
 #define OpenProcess(a,b,c) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: OpenProcess undefined) */
 #define GetCurrentProcess() ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: GetCurrentProcess undefined) */
 #define GetStdHandle(a) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: GetStdHandle undefined) */
-#define SetStdHandle(a,b) 0  /* Windows API stub (fix 2026-08-15: SetStdHandle undefined) */
+int SetStdHandle(unsigned long nStdHandle, void *hHandle);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define CreateFileW(a,b,c,d,e,f,g) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateFileW undefined) */
 #define CreateFileA(a,b,c,d,e,f,g) ((HANDLE)-1)  /* Windows API stub: 返回 INVALID_HANDLE_VALUE (fix 2026-08-15: CreateFileA undefined) */
-#define GetFileSizeEx(a,b) 0  /* Windows API stub (fix 2026-08-15: GetFileSizeEx undefined) */
+int GetFileSizeEx(void *hFile, void *lpFileSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define PAGE_READONLY 0x02  /* Windows 内存页保护 */
 #define PAGE_WRITECOPY 0x08
 #define FILE_MAP_READ 0x0004  /* Windows 文件映射访问 */
 #define FILE_MAP_COPY 0x0001
 #define CreateFileMappingW(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateFileMappingW undefined) */
 #define CreateFileMapping(a,b,c,d,e,f) ((HANDLE)-1)  /* Windows API stub (fix 2026-08-15: CreateFileMapping undefined) */
-#define MapViewOfFileEx(a,b,c,d,e,f) ((void*)0)  /* Windows API stub (fix 2026-08-15: MapViewOfFileEx undefined) */
-#define UnmapViewOfFile(a) 0  /* Windows API stub (fix 2026-08-15: UnmapViewOfFile undefined) */
+void *MapViewOfFileEx(void *hFileMappingObject, unsigned long dwDesiredAccess, unsigned long dwFileOffsetHigh, unsigned long dwFileOffsetLow, unsigned long long dwNumberOfBytesToMap, void *lpBaseAddress);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int UnmapViewOfFile(const void *lpBaseAddress);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define TOKEN_QUERY 0x0008  /* Windows 进程令牌访问权限 (fix 2026-08-15: TOKEN_QUERY undefined) */
 #define DUPLICATE_SAME_ACCESS 0x0002  /* Windows 句柄复制标志 (fix 2026-08-15: DUPLICATE_SAME_ACCESS undefined) */
-#define OpenProcessToken(a,b,c) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: OpenProcessToken undefined) */
-#define DuplicateHandle(a,b,c,d,e,f,g) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: DuplicateHandle undefined) */
+int OpenProcessToken(void *ProcessHandle, unsigned long DesiredAccess, void **TokenHandle);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int DuplicateHandle(void *hSourceProcessHandle, void *hSourceHandle, void *hTargetProcessHandle, void **lpTargetHandle, unsigned long dwDesiredAccess, int bInheritHandle, unsigned long dwOptions);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define TokenUser 1  /* Windows 令牌信息类别 (fix 2026-08-15: TokenUser undefined) */
 #define GetTokenInformation(a,b,c,d,e) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetTokenInformation undefined) */
 #define GetLengthSid(a) 0  /* Windows SID 长度 stub (fix 2026-08-15: GetLengthSid undefined) */
 #define CopySid(a,b,c) 0  /* Windows SID 复制 stub (fix 2026-08-15: CopySid undefined) */
-#define CloseHandle(a) 0  /* Windows API stub (fix 2026-08-15: CloseHandle undefined) */
+int CloseHandle(void *hObject);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 unsigned long GetLastError(void); /* fix 2026-08-19: 原宏 =0 掩盖真实错误 (FindNextFileW 失败 err=0 假象) — jyld k32_names 已导入, 真调用 */
 #define LookupAccountSidA(a,b,c,d,e,f,g) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: LookupAccountSidA undefined) */
 #define GetNamedSecurityInfoW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: ERROR_SUCCESS (fix 2026-08-15: GetNamedSecurityInfoW undefined) */
@@ -2107,11 +2107,11 @@ unsigned long GetLastError(void); /* fix 2026-08-19: 原宏 =0 掩盖真实错�
 #define IsWellKnownSid(a,b) 0  /* Windows SID 检查 stub (fix 2026-08-15: IsWellKnownSid undefined) */
 #define CheckTokenMembership(a,b,c) 0  /* Windows 令牌成员检查 stub (fix 2026-08-15: CheckTokenMembership undefined) */
 #define ConvertSidToStringSidA(a,b) 0  /* Windows SID 转字符串 stub (fix 2026-08-15: ConvertSidToStringSidA undefined) */
-#define LocalAlloc(a,b) ((void*)0)  /* Windows 本地堆分配 stub (fix 2026-08-15: ipc-win32.c) */
-#define LocalFree(a) 0  /* Windows 内存释放 stub (fix 2026-08-15: LocalFree undefined) */
-#define GetVolumeInformationW(a,b,c,d,e,f,g,h) 0  /* Windows API stub: 失败路径已处理 (fix 2026-08-15: GetVolumeInformationW undefined) */
+void *LocalAlloc(unsigned int uFlags, unsigned long long uBytes);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *LocalFree(void *hMem);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+int GetVolumeInformationW(const wchar_t *lpRootPathName, wchar_t *lpVolumeNameBuffer, unsigned long nVolumeNameSize, unsigned long *lpVolumeSerialNumber, unsigned long *lpMaximumComponentLength, unsigned long *lpFileSystemFlags, wchar_t *lpFileSystemNameBuffer, unsigned long nFileSystemNameSize);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 #define FILE_PERSISTENT_ACLS 0x00000008  /* Windows 卷信息标志 (fix 2026-08-15: FILE_PERSISTENT_ACLS undefined) */
-#define TerminateProcess(a,b) 0  /* Windows API stub (fix 2026-08-15: TerminateProcess undefined) */
+int TerminateProcess(void *hProcess, unsigned int uExitCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 /* msvcrt _vsnprintf: 非空缓冲 + count=0 返回 -1 (违反 C99 长度探测语义).
    strbuf_vinsertf 依赖 vsnprintf(buf,0,...) 返回所需长度 → 每次必死
    "unable to format message" (fix 2026-08-18: git init get_common_dir_noenv).
