@@ -10,7 +10,43 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'C25DFE80'
+$expected = '0B138C2C'
+                        # (2026-09-17) **C17b 二次收口: 「撤销静态标记」从 登记处 移到 函数体确认处 (前值 95B52574)**
+                        #   回归 (C17 自引入): 链接闸 duplicate 0 -> 1 (`gettimeofday` in abspath.o + add-interactive.o)。
+                        #   根因: C17 的 P7 在 L18330 无条件 `否 隔凶` — 该处 **尚未区分 声明/定义**;
+                        #     非 static **声明** (`int gettimeofday(struct timeval*, void*);`) 撤销了 prelude static 桩 的 标记
+                        #     ==> 每个 含 prelude 的 .o 都 把 桩 的函数体 发成 **外部符号** ==> duplicate。
+                        #   实证: abspath.o / add-interactive.o 的 gettimeofday 由 sc=3 变 sc=2; 红测试 R4 (桩 + 仅声明) 同现。
+                        #   与 K2 方案A (2026-09-16) **同款坑**: mingw.h 的 `int main(...)` 声明 曾 误触发 未初始化检查开关 —
+                        #     同 修在 L18539 `若 (词型表[词位] == 左花)` (确认有函数体)。
+                        #   修法 2 处: Q1 登记处 只加不减 (去 `否 隔凶`); Q2 函数体确认处 `若 (!值优 && !函数是否私有(k2体名)) 隔凶(k2体名);`。
+                        #   验证: 红测试 5 变体全绿 (R1 定义 => sc=2 外部 / R4 仅声明 => sc=3 保留桩); 6 函数 仍 全 外部;
+                        #     自举一步收敛 (本次 v1 = v2 = 0B138C2C)。
+$expected_旧10 = '95B52574'
+                        # (2026-09-17) **C17 根治: 「私有」标记 与 static 共用同一集合 ==>`prelude` 的 static 桩定义 让 后续 非 static 真定义 被 永久 标 static ==> .o 出 scl=3 ==> 链接期 缺 外部符号 (前值 C25DFE80)**:
+                        #   症状: compat/mingw.c 的 waitpid 在 .o 里**不是丢失**, 而是以 sc=3 (局部符号) 存在
+                        #     ==> 链接期 其他目标文件引用 waitpid 时 报 undefined symbol;
+                        #     同族 另有 pipe / gettimeofday (compat/mingw.c) · git_SHA1_Update_Chunked (compat/sha1-chunked.c)
+                        #     · openlog / syslog (compat/win32/syslog.c) —— 共 3 文件 6 函数。
+                        #   根因 (代码定位):
+                        #     ① 「私有 名;」标记 (阶段C-1 #197, L16256) 调 **函数静态标()** 入集合 净深一;
+                        #     ② 函数定义处 (L18330) `若 (值优 || 函数是否静态(名)) 函数静态标(名); 否 隔凶(名);`
+                        #        —— 「本次定义无 static 关键字」时 无法 撤销 已有 标记 (2026-08-15 的覆盖修复 被 #197 改坏);
+                        #     ③ prelude 里 `static int waitpid(...) { ... }` 桩 先 入集合 ==> mingw.c 真定义 `pid_t waitpid(...)`
+                        #        见 函数是否静态()==1 ==> 仍 标 static ==> 符号 scl=3。
+                        #   修法 (拆分正交概念): 新增独立集合 净私一[1024][64] + 帧肆 + 3 函数 (函数私有标/函数是否私有/函数私有除);
+                        #     「私有」标记 改入 净私一; 函数定义处 判据 改 `值优 || 函数是否私有` ==> 非 static 定义 得以 撤销 静态标记;
+                        #     符号 scl 判定 两处 (段丑 L2907 + 符号写出 L25810) 改 函数是否静态 || 函数是否私有;
+                        #     变量 前置私有 判定 6 处 改 函数是否私有; 重入复位 (L26382) 同步 帧肆 = 0 (防跨编译累积)。
+                        #   红测试 (最小复现, 4 变体):
+                        #     prelude `static int zzdup(int)` + 源 `int zzdup(int) { ... }`  ==> 修前 sc=3, 修后 sc=2 外部
+                        #     (对照: 无 prelude => sc=2; 两边都 static => sc=3; 只 prelude 桩 => sc=3 桩生效 —— 三个对照组 均 合理)。
+                        #   实证: 3 文件 6 函数 **全部** sc=3 -> sc=2 外部符号; waitpid 符号 指向 mingw.c 真实现
+                        #     (其未定义符号表 含 GetExitCodeProcess —— 只 出现在 waitpid 函数体内)。
+                        #   ⚠️ 独立缺陷 (另站): prelude 的 `#define OpenProcess(a,b,c) ((HANDLE)-1)` /
+                        #     `#define WaitForSingleObject(h,ms) ((DWORD)0xFFFFFFFF)` 仍是 常量型 stub 宏 ==> waitpid 真实现体 内 这两处 语义 错
+                        #     (C7b 已根治 同族 多例, 此二例 漏网)。
+$expected_旧9 = 'C25DFE80'
                         # (2026-09-17) **C14 根治: `typedef 结构体 S *T;` 被登记为「构造类型」⟹ 函数返回类型误判「按值返回结构体」⟹ 三目 A9001 误报 (前值 03FE8E58)**:
                         #   由来: C13 修好「静默丢弃」后 compat/nedmalloc/nedmalloc.c 不再被吞, 暴露出真实 A9001:
                         #     `结构体值 三目: 两分支必须同一结构体类型 (左 非构值 / 右 malloc_segment)`。
