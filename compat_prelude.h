@@ -1125,6 +1125,9 @@ static const char *ERR_error_string(unsigned long e, char *buf) { (void)e; (void
    mkdir/getpid/unlink/fdopen/umask/dup2/localtime_r/lseek/dup。
    (git 的 compat/mingw.h 在甲言侧未展开, 这些 POSIX 名没有原型 → -c 模式 A1001。) */
 int mkdir(const char *path, int mode);
+#define getpid _getpid  /* C11a (2026-09-17): 对齐 MinGW <unistd.h> —— GCC 同口径下 winansi.c/column.c
+                            无未定义 getpid 而甲言有, 差异即在此宏缺失; msvcrt 真符号 _getpid (导出表实测)。
+                            下面一行原型经本宏展开为 `int _getpid(void);` */
 int getpid(void);
 int unlink(const char *path);
 void *fdopen(int fd, const char *mode);
