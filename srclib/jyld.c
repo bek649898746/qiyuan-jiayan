@@ -712,6 +712,382 @@ static int k32_thunk_idx(int slot) {
 static int msvcrt_direct_n = 0;
 static int msvcrt_end = 0x140;            /* 导入区结束（bss/OUT_DATA 起点，对齐16） */
 static int msvcrt_iat_off = 0x140;
+/* ===== C10d (2026-09-17): 附加多库导入 (ws2_32 / advapi32 / user32) =====
+   背景: C18a 把 prelude 常量型 stub 改真原型后真实 API 调用浮出, 链接闸卡在 ws2_32 的 WSAStartup。
+   机制与 msvcrt 同源: 每库一份 IMAge_IMPORT_DESCRIPTOR (desc 必须连续, 末尾一个全 0 terminator)
+   + 各自 hint/name 表 + dll 名 + IAT/ILT; 直接调用走 thunk (jmp [IAT])。 */
+#define EXTRA_MAX 4
+typedef struct {
+    const char *dll; const char **names; int n_names;
+    int used[256]; int n;
+    int direct_slot[256]; int direct_n;
+    int desc_off, hint_off, dll_off, iat_off, ilt_off;
+} ExtraLib;
+static const char *ws2_32_names[] = {
+    "FreeAddrInfoEx", "FreeAddrInfoExW", "FreeAddrInfoW", "GetAddrInfoExA", "GetAddrInfoExCancel", "GetAddrInfoExOverlappedResult",
+    "GetAddrInfoExW", "GetAddrInfoW", "GetHostNameW", "GetNameInfoW", "InetNtopW", "InetPtonW",
+    "SetAddrInfoExA", "SetAddrInfoExW", "WEP", "WPUCompleteOverlappedRequest", "WPUGetProviderPathEx", "WSAAccept",
+    "WSAAddressToStringA", "WSAAddressToStringW", "WSAAdvertiseProvider", "WSAAsyncGetHostByAddr", "WSAAsyncGetHostByName", "WSAAsyncGetProtoByName",
+    "WSAAsyncGetProtoByNumber", "WSAAsyncGetServByName", "WSAAsyncGetServByPort", "WSAAsyncSelect", "WSACancelAsyncRequest", "WSACancelBlockingCall",
+    "WSACleanup", "WSACloseEvent", "WSAConnect", "WSAConnectByList", "WSAConnectByNameA", "WSAConnectByNameW",
+    "WSACreateEvent", "WSADuplicateSocketA", "WSADuplicateSocketW", "WSAEnumNameSpaceProvidersA", "WSAEnumNameSpaceProvidersExA", "WSAEnumNameSpaceProvidersExW",
+    "WSAEnumNameSpaceProvidersW", "WSAEnumNetworkEvents", "WSAEnumProtocolsA", "WSAEnumProtocolsW", "WSAEventSelect", "WSAGetLastError",
+    "WSAGetOverlappedResult", "WSAGetQOSByName", "WSAGetServiceClassInfoA", "WSAGetServiceClassInfoW", "WSAGetServiceClassNameByClassIdA", "WSAGetServiceClassNameByClassIdW",
+    "WSAHtonl", "WSAHtons", "WSAInstallServiceClassA", "WSAInstallServiceClassW", "WSAIoctl", "WSAIsBlocking",
+    "WSAJoinLeaf", "WSALookupServiceBeginA", "WSALookupServiceBeginW", "WSALookupServiceEnd", "WSALookupServiceNextA", "WSALookupServiceNextW",
+    "WSANSPIoctl", "WSANtohl", "WSANtohs", "WSAPoll", "WSAProviderCompleteAsyncCall", "WSAProviderConfigChange",
+    "WSARecv", "WSARecvDisconnect", "WSARecvFrom", "WSARemoveServiceClass", "WSAResetEvent", "WSASend",
+    "WSASendDisconnect", "WSASendMsg", "WSASendTo", "WSASetBlockingHook", "WSASetEvent", "WSASetLastError",
+    "WSASetServiceA", "WSASetServiceW", "WSASocketA", "WSASocketW", "WSAStartup", "WSAStringToAddressA",
+    "WSAStringToAddressW", "WSAUnadvertiseProvider", "WSAUnhookBlockingHook", "WSAWaitForMultipleEvents", "WSApSetPostRoutine", "WSCDeinstallProvider",
+    "WSCDeinstallProvider32", "WSCDeinstallProviderEx", "WSCEnableNSProvider", "WSCEnableNSProvider32", "WSCEnumNameSpaceProviders32", "WSCEnumNameSpaceProvidersEx32",
+    "WSCEnumProtocols", "WSCEnumProtocols32", "WSCEnumProtocolsEx", "WSCGetApplicationCategory", "WSCGetApplicationCategoryEx", "WSCGetProviderInfo",
+    "WSCGetProviderInfo32", "WSCGetProviderPath", "WSCGetProviderPath32", "WSCInstallNameSpace", "WSCInstallNameSpace32", "WSCInstallNameSpaceEx",
+    "WSCInstallNameSpaceEx2", "WSCInstallNameSpaceEx32", "WSCInstallProvider", "WSCInstallProvider64_32", "WSCInstallProviderAndChains64_32", "WSCInstallProviderEx",
+    "WSCSetApplicationCategory", "WSCSetApplicationCategoryEx", "WSCSetProviderInfo", "WSCSetProviderInfo32", "WSCUnInstallNameSpace", "WSCUnInstallNameSpace32",
+    "WSCUnInstallNameSpaceEx2", "WSCUpdateProvider", "WSCUpdateProvider32", "WSCUpdateProviderEx", "WSCWriteNameSpaceOrder", "WSCWriteNameSpaceOrder32",
+    "WSCWriteProviderOrder", "WSCWriteProviderOrder32", "WSCWriteProviderOrderEx", "WahCloseApcHelper", "WahCloseHandleHelper", "WahCloseNotificationHandleHelper",
+    "WahCloseSocketHandle", "WahCloseThread", "WahCompleteRequest", "WahCreateHandleContextTable", "WahCreateNotificationHandle", "WahCreateSocketHandle",
+    "WahDestroyHandleContextTable", "WahDisableNonIFSHandleSupport", "WahEnableNonIFSHandleSupport", "WahEnumerateHandleContexts", "WahInsertHandleContext", "WahNotifyAllProcesses",
+    "WahOpenApcHelper", "WahOpenCurrentThread", "WahOpenHandleHelper", "WahOpenNotificationHandleHelper", "WahQueueUserApc", "WahReferenceContextByHandle",
+    "WahRemoveHandleContext", "WahWaitForNotification", "WahWriteLSPEvent", "__WSAFDIsSet", "accept", "bind",
+    "closesocket", "connect", "freeaddrinfo", "getaddrinfo", "gethostbyaddr", "gethostbyname",
+    "gethostname", "getnameinfo", "getpeername", "getprotobyname", "getprotobynumber", "getservbyname",
+    "getservbyport", "getsockname", "getsockopt", "htonl", "htons", "inet_addr",
+    "inet_ntoa", "inet_ntop", "inet_pton", "ioctlsocket", "listen", "ntohl",
+    "ntohs", "recv", "recvfrom", "select", "send", "sendto",
+    "setsockopt", "shutdown", "socket"
+
+};
+static const char *advapi32_names[] = {
+    "A_SHAFinal", "A_SHAInit", "A_SHAUpdate", "AbortSystemShutdownA", "AbortSystemShutdownW", "AccessCheck",
+    "AccessCheckAndAuditAlarmA", "AccessCheckAndAuditAlarmW", "AccessCheckByType", "AccessCheckByTypeAndAuditAlarmA", "AccessCheckByTypeAndAuditAlarmW", "AccessCheckByTypeResultList",
+    "AccessCheckByTypeResultListAndAuditAlarmA", "AccessCheckByTypeResultListAndAuditAlarmByHandleA", "AccessCheckByTypeResultListAndAuditAlarmByHandleW", "AccessCheckByTypeResultListAndAuditAlarmW", "AddAccessAllowedAce", "AddAccessAllowedAceEx",
+    "AddAccessAllowedObjectAce", "AddAccessDeniedAce", "AddAccessDeniedAceEx", "AddAccessDeniedObjectAce", "AddAce", "AddAuditAccessAce",
+    "AddAuditAccessAceEx", "AddAuditAccessObjectAce", "AddConditionalAce", "AddMandatoryAce", "AddUsersToEncryptedFile", "AddUsersToEncryptedFileEx",
+    "AdjustTokenGroups", "AdjustTokenPrivileges", "AllocateAndInitializeSid", "AllocateLocallyUniqueId", "AreAllAccessesGranted", "AreAnyAccessesGranted",
+    "AuditComputeEffectivePolicyBySid", "AuditComputeEffectivePolicyByToken", "AuditEnumerateCategories", "AuditEnumeratePerUserPolicy", "AuditEnumerateSubCategories", "AuditFree",
+    "AuditLookupCategoryGuidFromCategoryId", "AuditLookupCategoryIdFromCategoryGuid", "AuditLookupCategoryNameA", "AuditLookupCategoryNameW", "AuditLookupSubCategoryNameA", "AuditLookupSubCategoryNameW",
+    "AuditQueryGlobalSaclA", "AuditQueryGlobalSaclW", "AuditQueryPerUserPolicy", "AuditQuerySecurity", "AuditQuerySystemPolicy", "AuditSetGlobalSaclA",
+    "AuditSetGlobalSaclW", "AuditSetPerUserPolicy", "AuditSetSecurity", "AuditSetSystemPolicy", "BackupEventLogA", "BackupEventLogW",
+    "BaseRegCloseKey", "BaseRegCreateKey", "BaseRegDeleteKeyEx", "BaseRegDeleteValue", "BaseRegFlushKey", "BaseRegGetVersion",
+    "BaseRegLoadKey", "BaseRegOpenKey", "BaseRegRestoreKey", "BaseRegSaveKeyEx", "BaseRegSetKeySecurity", "BaseRegSetValue",
+    "BaseRegUnLoadKey", "BuildExplicitAccessWithNameA", "BuildExplicitAccessWithNameW", "BuildImpersonateExplicitAccessWithNameA", "BuildImpersonateExplicitAccessWithNameW", "BuildImpersonateTrusteeA",
+    "BuildImpersonateTrusteeW", "BuildSecurityDescriptorA", "BuildSecurityDescriptorW", "BuildTrusteeWithNameA", "BuildTrusteeWithNameW", "BuildTrusteeWithObjectsAndNameA",
+    "BuildTrusteeWithObjectsAndNameW", "BuildTrusteeWithObjectsAndSidA", "BuildTrusteeWithObjectsAndSidW", "BuildTrusteeWithSidA", "BuildTrusteeWithSidW", "CancelOverlappedAccess",
+    "ChangeServiceConfig2A", "ChangeServiceConfig2W", "ChangeServiceConfigA", "ChangeServiceConfigW", "CheckForHiberboot", "CheckTokenMembership",
+    "ClearEventLogA", "ClearEventLogW", "CloseCodeAuthzLevel", "CloseEncryptedFileRaw", "CloseEventLog", "CloseServiceHandle",
+    "CloseThreadWaitChainSession", "CloseTrace", "CommandLineFromMsiDescriptor", "ComputeAccessTokenFromCodeAuthzLevel", "ControlService", "ControlServiceExA",
+    "ControlServiceExW", "ControlTraceA", "ControlTraceW", "ConvertAccessToSecurityDescriptorA", "ConvertAccessToSecurityDescriptorW", "ConvertSDToStringSDDomainW",
+    "ConvertSDToStringSDRootDomainA", "ConvertSDToStringSDRootDomainW", "ConvertSecurityDescriptorToAccessA", "ConvertSecurityDescriptorToAccessNamedA", "ConvertSecurityDescriptorToAccessNamedW", "ConvertSecurityDescriptorToAccessW",
+    "ConvertSecurityDescriptorToStringSecurityDescriptorA", "ConvertSecurityDescriptorToStringSecurityDescriptorW", "ConvertSidToStringSidA", "ConvertSidToStringSidW", "ConvertStringSDToSDDomainA", "ConvertStringSDToSDDomainW",
+    "ConvertStringSDToSDRootDomainA", "ConvertStringSDToSDRootDomainW", "ConvertStringSecurityDescriptorToSecurityDescriptorA", "ConvertStringSecurityDescriptorToSecurityDescriptorW", "ConvertStringSidToSidA", "ConvertStringSidToSidW",
+    "ConvertToAutoInheritPrivateObjectSecurity", "CopySid", "CreateCodeAuthzLevel", "CreatePrivateObjectSecurity", "CreatePrivateObjectSecurityEx", "CreatePrivateObjectSecurityWithMultipleInheritance",
+    "CreateProcessAsUserA", "CreateProcessAsUserW", "CreateProcessWithLogonW", "CreateProcessWithTokenW", "CreateRestrictedToken", "CreateServiceA",
+    "CreateServiceEx", "CreateServiceW", "CreateTraceInstanceId", "CreateWellKnownSid", "CredBackupCredentials", "CredDeleteA",
+    "CredDeleteW", "CredEncryptAndMarshalBinaryBlob", "CredEnumerateA", "CredEnumerateW", "CredFindBestCredentialA", "CredFindBestCredentialW",
+    "CredFree", "CredGetSessionTypes", "CredGetTargetInfoA", "CredGetTargetInfoW", "CredIsMarshaledCredentialA", "CredIsMarshaledCredentialW",
+    "CredIsProtectedA", "CredIsProtectedW", "CredMarshalCredentialA", "CredMarshalCredentialW", "CredProfileLoaded", "CredProfileLoadedEx",
+    "CredProfileUnloaded", "CredProtectA", "CredProtectW", "CredReadA", "CredReadByTokenHandle", "CredReadDomainCredentialsA",
+    "CredReadDomainCredentialsW", "CredReadW", "CredRenameA", "CredRenameW", "CredRestoreCredentials", "CredUnmarshalCredentialA",
+    "CredUnmarshalCredentialW", "CredUnprotectA", "CredUnprotectW", "CredWriteA", "CredWriteDomainCredentialsA", "CredWriteDomainCredentialsW",
+    "CredWriteW", "CredpConvertCredential", "CredpConvertOneCredentialSize", "CredpConvertTargetInfo", "CredpDecodeCredential", "CredpEncodeCredential",
+    "CredpEncodeSecret", "CryptAcquireContextA", "CryptAcquireContextW", "CryptContextAddRef", "CryptCreateHash", "CryptDecrypt",
+    "CryptDeriveKey", "CryptDestroyHash", "CryptDestroyKey", "CryptDuplicateHash", "CryptDuplicateKey", "CryptEncrypt",
+    "CryptEnumProviderTypesA", "CryptEnumProviderTypesW", "CryptEnumProvidersA", "CryptEnumProvidersW", "CryptExportKey", "CryptGenKey",
+    "CryptGenRandom", "CryptGetDefaultProviderA", "CryptGetDefaultProviderW", "CryptGetHashParam", "CryptGetKeyParam", "CryptGetProvParam",
+    "CryptGetUserKey", "CryptHashData", "CryptHashSessionKey", "CryptImportKey", "CryptReleaseContext", "CryptSetHashParam",
+    "CryptSetKeyParam", "CryptSetProvParam", "CryptSetProviderA", "CryptSetProviderExA", "CryptSetProviderExW", "CryptSetProviderW",
+    "CryptSignHashA", "CryptSignHashW", "CryptVerifySignatureA", "CryptVerifySignatureW", "CveEventWrite", "DecryptFileA",
+    "DecryptFileW", "DeleteAce", "DeleteService", "DeregisterEventSource", "DestroyPrivateObjectSecurity", "DuplicateEncryptionInfoFile",
+    "DuplicateToken", "DuplicateTokenEx", "ElfBackupEventLogFileA", "ElfBackupEventLogFileW", "ElfChangeNotify", "ElfClearEventLogFileA",
+    "ElfClearEventLogFileW", "ElfCloseEventLog", "ElfDeregisterEventSource", "ElfFlushEventLog", "ElfNumberOfRecords", "ElfOldestRecord",
+    "ElfOpenBackupEventLogA", "ElfOpenBackupEventLogW", "ElfOpenEventLogA", "ElfOpenEventLogW", "ElfReadEventLogA", "ElfReadEventLogW",
+    "ElfRegisterEventSourceA", "ElfRegisterEventSourceW", "ElfReportEventA", "ElfReportEventAndSourceW", "ElfReportEventW", "EnableTrace",
+    "EnableTraceEx", "EnableTraceEx2", "EncryptFileA", "EncryptFileW", "EncryptedFileKeyInfo", "EncryptionDisable",
+    "EnumDependentServicesA", "EnumDependentServicesW", "EnumDynamicTimeZoneInformation", "EnumServiceGroupW", "EnumServicesStatusA", "EnumServicesStatusExA",
+    "EnumServicesStatusExW", "EnumServicesStatusW", "EnumerateTraceGuids", "EnumerateTraceGuidsEx", "EqualDomainSid", "EqualPrefixSid",
+    "EqualSid", "EventAccessControl", "EventAccessQuery", "EventAccessRemove", "EventActivityIdControl", "EventEnabled",
+    "EventProviderEnabled", "EventRegister", "EventSetInformation", "EventUnregister", "EventWrite", "EventWriteEndScenario",
+    "EventWriteEx", "EventWriteStartScenario", "EventWriteString", "EventWriteTransfer", "FileEncryptionStatusA", "FileEncryptionStatusW",
+    "FindFirstFreeAce", "FlushEfsCache", "FlushTraceA", "FlushTraceW", "FreeEncryptedFileKeyInfo", "FreeEncryptedFileMetadata",
+    "FreeEncryptionCertificateHashList", "FreeInheritedFromArray", "FreeSid", "GetAccessPermissionsForObjectA", "GetAccessPermissionsForObjectW", "GetAce",
+    "GetAclInformation", "GetAuditedPermissionsFromAclA", "GetAuditedPermissionsFromAclW", "GetCurrentHwProfileA", "GetCurrentHwProfileW", "GetDynamicTimeZoneInformationEffectiveYears",
+    "GetEffectiveRightsFromAclA", "GetEffectiveRightsFromAclW", "GetEncryptedFileMetadata", "GetEventLogInformation", "GetExplicitEntriesFromAclA", "GetExplicitEntriesFromAclW",
+    "GetFileSecurityA", "GetFileSecurityW", "GetInformationCodeAuthzLevelW", "GetInformationCodeAuthzPolicyW", "GetInheritanceSourceA", "GetInheritanceSourceW",
+    "GetKernelObjectSecurity", "GetLengthSid", "GetLocalManagedApplicationData", "GetLocalManagedApplications", "GetManagedApplicationCategories", "GetManagedApplications",
+    "GetMultipleTrusteeA", "GetMultipleTrusteeOperationA", "GetMultipleTrusteeOperationW", "GetMultipleTrusteeW", "GetNamedSecurityInfoA", "GetNamedSecurityInfoExA",
+    "GetNamedSecurityInfoExW", "GetNamedSecurityInfoW", "GetNumberOfEventLogRecords", "GetOldestEventLogRecord", "GetOverlappedAccessResults", "GetPrivateObjectSecurity",
+    "GetSecurityDescriptorControl", "GetSecurityDescriptorDacl", "GetSecurityDescriptorGroup", "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner", "GetSecurityDescriptorRMControl",
+    "GetSecurityDescriptorSacl", "GetSecurityInfo", "GetSecurityInfoExA", "GetSecurityInfoExW", "GetServiceDisplayNameA", "GetServiceDisplayNameW",
+    "GetServiceKeyNameA", "GetServiceKeyNameW", "GetSidIdentifierAuthority", "GetSidLengthRequired", "GetSidSubAuthority", "GetSidSubAuthorityCount",
+    "GetStringConditionFromBinary", "GetThreadWaitChain", "GetTokenInformation", "GetTraceEnableFlags", "GetTraceEnableLevel", "GetTraceLoggerHandle",
+    "GetTrusteeFormA", "GetTrusteeFormW", "GetTrusteeNameA", "GetTrusteeNameW", "GetTrusteeTypeA", "GetTrusteeTypeW",
+    "GetUserNameA", "GetUserNameW", "GetWindowsAccountDomainSid", "I_QueryTagInformation", "I_ScGetCurrentGroupStateW", "I_ScIsSecurityProcess",
+    "I_ScPnPGetServiceName", "I_ScQueryServiceConfig", "I_ScRegisterPreshutdownRestart", "I_ScReparseServiceDatabase", "I_ScSendPnPMessage", "I_ScSendTSMessage",
+    "I_ScSetServiceBitsA", "I_ScSetServiceBitsW", "I_ScValidatePnPService", "IdentifyCodeAuthzLevelW", "ImpersonateAnonymousToken", "ImpersonateLoggedOnUser",
+    "ImpersonateNamedPipeClient", "ImpersonateSelf", "InitializeAcl", "InitializeSecurityDescriptor", "InitializeSid", "InitiateShutdownA",
+    "InitiateShutdownW", "InitiateSystemShutdownA", "InitiateSystemShutdownExA", "InitiateSystemShutdownExW", "InitiateSystemShutdownW", "InstallApplication",
+    "IsTextUnicode", "IsTokenRestricted", "IsTokenUntrusted", "IsValidAcl", "IsValidRelativeSecurityDescriptor", "IsValidSecurityDescriptor",
+    "IsValidSid", "IsWellKnownSid", "LockServiceDatabase", "LogonUserA", "LogonUserExA", "LogonUserExExW",
+    "LogonUserExW", "LogonUserW", "LookupAccountNameA", "LookupAccountNameW", "LookupAccountSidA", "LookupAccountSidW",
+    "LookupPrivilegeDisplayNameA", "LookupPrivilegeDisplayNameW", "LookupPrivilegeNameA", "LookupPrivilegeNameW", "LookupPrivilegeValueA", "LookupPrivilegeValueW",
+    "LookupSecurityDescriptorPartsA", "LookupSecurityDescriptorPartsW", "LsaAddAccountRights", "LsaAddPrivilegesToAccount", "LsaClearAuditLog", "LsaClose",
+    "LsaCreateAccount", "LsaCreateSecret", "LsaCreateTrustedDomain", "LsaCreateTrustedDomainEx", "LsaDelete", "LsaDeleteTrustedDomain",
+    "LsaEnumerateAccountRights", "LsaEnumerateAccounts", "LsaEnumerateAccountsWithUserRight", "LsaEnumeratePrivileges", "LsaEnumeratePrivilegesOfAccount", "LsaEnumerateTrustedDomains",
+    "LsaEnumerateTrustedDomainsEx", "LsaFreeMemory", "LsaGetAppliedCAPIDs", "LsaGetQuotasForAccount", "LsaGetRemoteUserName", "LsaGetSystemAccessAccount",
+    "LsaGetUserName", "LsaICLookupNames", "LsaICLookupNamesWithCreds", "LsaICLookupSids", "LsaICLookupSidsWithCreds", "LsaInvokeTrustScanner",
+    "LsaLookupNames", "LsaLookupNames2", "LsaLookupPrivilegeDisplayName", "LsaLookupPrivilegeName", "LsaLookupPrivilegeValue", "LsaLookupSids",
+    "LsaLookupSids2", "LsaManageSidNameMapping", "LsaNtStatusToWinError", "LsaOpenAccount", "LsaOpenPolicy", "LsaOpenPolicySce",
+    "LsaOpenSecret", "LsaOpenTrustedDomain", "LsaOpenTrustedDomainByName", "LsaQueryCAPs", "LsaQueryDomainInformationPolicy", "LsaQueryForestTrustInformation",
+    "LsaQueryForestTrustInformation2", "LsaQueryInfoTrustedDomain", "LsaQueryInformationPolicy", "LsaQuerySecret", "LsaQuerySecurityObject", "LsaQueryTrustedDomainInfo",
+    "LsaQueryTrustedDomainInfoByName", "LsaRemoveAccountRights", "LsaRemovePrivilegesFromAccount", "LsaRetrievePrivateData", "LsaSetCAPs", "LsaSetDomainInformationPolicy",
+    "LsaSetForestTrustInformation", "LsaSetForestTrustInformation2", "LsaSetInformationPolicy", "LsaSetInformationTrustedDomain", "LsaSetQuotasForAccount", "LsaSetSecret",
+    "LsaSetSecurityObject", "LsaSetSystemAccessAccount", "LsaSetTrustedDomainInfoByName", "LsaSetTrustedDomainInformation", "LsaStorePrivateData", "MD4Final",
+    "MD4Init", "MD4Update", "MD5Final", "MD5Init", "MD5Update", "MIDL_user_free_Ext",
+    "MSChapSrvChangePassword", "MSChapSrvChangePassword2", "MakeAbsoluteSD", "MakeAbsoluteSD2", "MakeSelfRelativeSD", "MapGenericMask",
+    "NotifyBootConfigStatus", "NotifyChangeEventLog", "NotifyServiceStatusChange", "NotifyServiceStatusChangeA", "NotifyServiceStatusChangeW", "NpGetUserName",
+    "ObjectCloseAuditAlarmA", "ObjectCloseAuditAlarmW", "ObjectDeleteAuditAlarmA", "ObjectDeleteAuditAlarmW", "ObjectOpenAuditAlarmA", "ObjectOpenAuditAlarmW",
+    "ObjectPrivilegeAuditAlarmA", "ObjectPrivilegeAuditAlarmW", "OpenBackupEventLogA", "OpenBackupEventLogW", "OpenEncryptedFileRawA", "OpenEncryptedFileRawW",
+    "OpenEventLogA", "OpenEventLogW", "OpenProcessToken", "OpenSCManagerA", "OpenSCManagerW", "OpenServiceA",
+    "OpenServiceW", "OpenThreadToken", "OpenThreadWaitChainSession", "OpenTraceA", "OpenTraceW", "OperationEnd",
+    "OperationStart", "PerfAddCounters", "PerfCloseQueryHandle", "PerfCreateInstance", "PerfDecrementULongCounterValue", "PerfDecrementULongLongCounterValue",
+    "PerfDeleteCounters", "PerfDeleteInstance", "PerfEnumerateCounterSet", "PerfEnumerateCounterSetInstances", "PerfIncrementULongCounterValue", "PerfIncrementULongLongCounterValue",
+    "PerfOpenQueryHandle", "PerfQueryCounterData", "PerfQueryCounterInfo", "PerfQueryCounterSetRegistrationInfo", "PerfQueryInstance", "PerfRegCloseKey",
+    "PerfRegEnumKey", "PerfRegEnumValue", "PerfRegQueryInfoKey", "PerfRegQueryValue", "PerfRegSetValue", "PerfSetCounterRefValue",
+    "PerfSetCounterSetInfo", "PerfSetULongCounterValue", "PerfSetULongLongCounterValue", "PerfStartProvider", "PerfStartProviderEx", "PerfStopProvider",
+    "PrivilegeCheck", "PrivilegedServiceAuditAlarmA", "PrivilegedServiceAuditAlarmW", "ProcessIdleTasks", "ProcessIdleTasksW", "ProcessTrace",
+    "QueryAllTracesA", "QueryAllTracesW", "QueryLocalUserServiceName", "QueryRecoveryAgentsOnEncryptedFile", "QuerySecurityAccessMask", "QueryServiceConfig2A",
+    "QueryServiceConfig2W", "QueryServiceConfigA", "QueryServiceConfigW", "QueryServiceDynamicInformation", "QueryServiceLockStatusA", "QueryServiceLockStatusW",
+    "QueryServiceObjectSecurity", "QueryServiceStatus", "QueryServiceStatusEx", "QueryTraceA", "QueryTraceProcessingHandle", "QueryTraceW",
+    "QueryUserServiceName", "QueryUserServiceNameForContext", "QueryUsersOnEncryptedFile", "ReadEncryptedFileRaw", "ReadEventLogA", "ReadEventLogW",
+    "RegCloseKey", "RegConnectRegistryA", "RegConnectRegistryExA", "RegConnectRegistryExW", "RegConnectRegistryW", "RegCopyTreeA",
+    "RegCopyTreeW", "RegCreateKeyA", "RegCreateKeyExA", "RegCreateKeyExW", "RegCreateKeyTransactedA", "RegCreateKeyTransactedW",
+    "RegCreateKeyW", "RegDeleteKeyA", "RegDeleteKeyExA", "RegDeleteKeyExW", "RegDeleteKeyTransactedA", "RegDeleteKeyTransactedW",
+    "RegDeleteKeyValueA", "RegDeleteKeyValueW", "RegDeleteKeyW", "RegDeleteTreeA", "RegDeleteTreeW", "RegDeleteValueA",
+    "RegDeleteValueW", "RegDisablePredefinedCache", "RegDisablePredefinedCacheEx", "RegDisableReflectionKey", "RegEnableReflectionKey", "RegEnumKeyA",
+    "RegEnumKeyExA", "RegEnumKeyExW", "RegEnumKeyW", "RegEnumValueA", "RegEnumValueW", "RegFlushKey",
+    "RegGetKeySecurity", "RegGetValueA", "RegGetValueW", "RegLoadAppKeyA", "RegLoadAppKeyW", "RegLoadKeyA",
+    "RegLoadKeyW", "RegLoadMUIStringA", "RegLoadMUIStringW", "RegNotifyChangeKeyValue", "RegOpenCurrentUser", "RegOpenKeyA",
+    "RegOpenKeyExA", "RegOpenKeyExW", "RegOpenKeyTransactedA", "RegOpenKeyTransactedW", "RegOpenKeyW", "RegOpenUserClassesRoot",
+    "RegOverridePredefKey", "RegQueryInfoKeyA", "RegQueryInfoKeyW", "RegQueryMultipleValuesA", "RegQueryMultipleValuesW", "RegQueryReflectionKey",
+    "RegQueryValueA", "RegQueryValueExA", "RegQueryValueExW", "RegQueryValueW", "RegRenameKey", "RegReplaceKeyA",
+    "RegReplaceKeyW", "RegRestoreKeyA", "RegRestoreKeyW", "RegSaveKeyA", "RegSaveKeyExA", "RegSaveKeyExW",
+    "RegSaveKeyW", "RegSetKeySecurity", "RegSetKeyValueA", "RegSetKeyValueW", "RegSetValueA", "RegSetValueExA",
+    "RegSetValueExW", "RegSetValueW", "RegUnLoadKeyA", "RegUnLoadKeyW", "RegisterEventSourceA", "RegisterEventSourceW",
+    "RegisterIdleTask", "RegisterServiceCtrlHandlerA", "RegisterServiceCtrlHandlerExA", "RegisterServiceCtrlHandlerExW", "RegisterServiceCtrlHandlerW", "RegisterTraceGuidsA",
+    "RegisterTraceGuidsW", "RegisterWaitChainCOMCallback", "RemoteRegEnumKeyWrapper", "RemoteRegEnumValueWrapper", "RemoteRegQueryInfoKeyWrapper", "RemoteRegQueryMultipleValues2Wrapper",
+    "RemoteRegQueryMultipleValuesWrapper", "RemoteRegQueryValueWrapper", "RemoveTraceCallback", "RemoveUsersFromEncryptedFile", "ReportEventA", "ReportEventW",
+    "RevertToSelf", "SafeBaseRegGetKeySecurity", "SaferCloseLevel", "SaferComputeTokenFromLevel", "SaferCreateLevel", "SaferGetLevelInformation",
+    "SaferGetPolicyInformation", "SaferIdentifyLevel", "SaferRecordEventLogEntry", "SaferSetLevelInformation", "SaferSetPolicyInformation", "SaferiChangeRegistryScope",
+    "SaferiCompareTokenLevels", "SaferiIsDllAllowed", "SaferiIsExecutableFileType", "SaferiPopulateDefaultsInRegistry", "SaferiRecordEventLogEntry", "SaferiSearchMatchingHashRules",
+    "SetAclInformation", "SetEncryptedFileMetadata", "SetEntriesInAccessListA", "SetEntriesInAccessListW", "SetEntriesInAclA", "SetEntriesInAclW",
+    "SetEntriesInAuditListA", "SetEntriesInAuditListW", "SetFileSecurityA", "SetFileSecurityW", "SetInformationCodeAuthzLevelW", "SetInformationCodeAuthzPolicyW",
+    "SetKernelObjectSecurity", "SetNamedSecurityInfoA", "SetNamedSecurityInfoExA", "SetNamedSecurityInfoExW", "SetNamedSecurityInfoW", "SetPrivateObjectSecurity",
+    "SetPrivateObjectSecurityEx", "SetSecurityAccessMask", "SetSecurityDescriptorControl", "SetSecurityDescriptorDacl", "SetSecurityDescriptorGroup", "SetSecurityDescriptorOwner",
+    "SetSecurityDescriptorRMControl", "SetSecurityDescriptorSacl", "SetSecurityInfo", "SetSecurityInfoExA", "SetSecurityInfoExW", "SetServiceBits",
+    "SetServiceObjectSecurity", "SetServiceStatus", "SetThreadToken", "SetTokenInformation", "SetTraceCallback", "SetUserFileEncryptionKey",
+    "SetUserFileEncryptionKeyEx", "StartServiceA", "StartServiceCtrlDispatcherA", "StartServiceCtrlDispatcherW", "StartServiceW", "StartTraceA",
+    "StartTraceW", "StopTraceA", "StopTraceW", "SystemFunction001", "SystemFunction002", "SystemFunction003",
+    "SystemFunction004", "SystemFunction005", "SystemFunction006", "SystemFunction007", "SystemFunction008", "SystemFunction009",
+    "SystemFunction010", "SystemFunction011", "SystemFunction012", "SystemFunction013", "SystemFunction014", "SystemFunction015",
+    "SystemFunction016", "SystemFunction017", "SystemFunction018", "SystemFunction019", "SystemFunction020", "SystemFunction021",
+    "SystemFunction022", "SystemFunction023", "SystemFunction024", "SystemFunction025", "SystemFunction026", "SystemFunction027",
+    "SystemFunction028", "SystemFunction029", "SystemFunction030", "SystemFunction031", "SystemFunction032", "SystemFunction033",
+    "SystemFunction034", "SystemFunction035", "SystemFunction036", "SystemFunction040", "SystemFunction041", "TraceEvent",
+    "TraceEventInstance", "TraceMessage", "TraceMessageVa", "TraceQueryInformation", "TraceSetInformation", "TreeResetNamedSecurityInfoA",
+    "TreeResetNamedSecurityInfoW", "TreeSetNamedSecurityInfoA", "TreeSetNamedSecurityInfoW", "TrusteeAccessToObjectA", "TrusteeAccessToObjectW", "UninstallApplication",
+    "UnlockServiceDatabase", "UnregisterIdleTask", "UnregisterTraceGuids", "UpdateTraceA", "UpdateTraceW", "UsePinForEncryptedFilesA",
+    "UsePinForEncryptedFilesW", "WaitServiceState", "WmiCloseBlock", "WmiDevInstToInstanceNameA", "WmiDevInstToInstanceNameW", "WmiEnumerateGuids",
+    "WmiExecuteMethodA", "WmiExecuteMethodW", "WmiFileHandleToInstanceNameA", "WmiFileHandleToInstanceNameW", "WmiFreeBuffer", "WmiMofEnumerateResourcesA",
+    "WmiMofEnumerateResourcesW", "WmiNotificationRegistrationA", "WmiNotificationRegistrationW", "WmiOpenBlock", "WmiQueryAllDataA", "WmiQueryAllDataMultipleA",
+    "WmiQueryAllDataMultipleW", "WmiQueryAllDataW", "WmiQueryGuidInformation", "WmiQuerySingleInstanceA", "WmiQuerySingleInstanceMultipleA", "WmiQuerySingleInstanceMultipleW",
+    "WmiQuerySingleInstanceW", "WmiReceiveNotificationsA", "WmiReceiveNotificationsW", "WmiSetSingleInstanceA", "WmiSetSingleInstanceW", "WmiSetSingleItemA",
+    "WmiSetSingleItemW", "WriteEncryptedFileRaw"
+};
+static const char *user32_names[] = {
+    "ActivateKeyboardLayout", "AddClipboardFormatListener", "AddVisualIdentifier", "AdjustWindowRect", "AdjustWindowRectEx", "AdjustWindowRectExForDpi",
+    "AlignRects", "AllowForegroundActivation", "AllowSetForegroundWindow", "AnimateWindow", "AnyPopup", "AppendMenuA",
+    "AppendMenuW", "AreDpiAwarenessContextsEqual", "ArrangeIconicWindows", "AttachThreadInput", "BeginDeferWindowPos", "BeginPaint",
+    "BlockInput", "BringWindowToTop", "BroadcastSystemMessage", "BroadcastSystemMessageA", "BroadcastSystemMessageExA", "BroadcastSystemMessageExW",
+    "BroadcastSystemMessageW", "BuildReasonArray", "CalcMenuBar", "CalculatePopupWindowPosition", "CallMsgFilter", "CallMsgFilterA",
+    "CallMsgFilterW", "CallNextHookEx", "CallWindowProcA", "CallWindowProcW", "CancelShutdown", "CascadeChildWindows",
+    "CascadeWindows", "ChangeClipboardChain", "ChangeDisplaySettingsA", "ChangeDisplaySettingsExA", "ChangeDisplaySettingsExW", "ChangeDisplaySettingsW",
+    "ChangeMenuA", "ChangeMenuW", "ChangeWindowMessageFilter", "ChangeWindowMessageFilterEx", "CharLowerA", "CharLowerBuffA",
+    "CharLowerBuffW", "CharLowerW", "CharNextA", "CharNextExA", "CharNextW", "CharPrevA",
+    "CharPrevExA", "CharPrevW", "CharToOemA", "CharToOemBuffA", "CharToOemBuffW", "CharToOemW",
+    "CharUpperA", "CharUpperBuffA", "CharUpperBuffW", "CharUpperW", "CheckBannedOneCoreTransformApi", "CheckDBCSEnabledExt",
+    "CheckDlgButton", "CheckMenuItem", "CheckMenuRadioItem", "CheckProcessForClipboardAccess", "CheckProcessSession", "CheckRadioButton",
+    "CheckWindowThreadDesktop", "ChildWindowFromPoint", "ChildWindowFromPointEx", "CliImmSetHotKey", "ClientThreadSetup", "ClientToScreen",
+    "ClipCursor", "CloseClipboard", "CloseDesktop", "CloseGestureInfoHandle", "CloseTouchInputHandle", "CloseWindow",
+    "CloseWindowStation", "ConsoleControl", "ControlMagnification", "CopyAcceleratorTableA", "CopyAcceleratorTableW", "CopyIcon",
+    "CopyImage", "CopyRect", "CountClipboardFormats", "CreateAcceleratorTableA", "CreateAcceleratorTableW", "CreateCaret",
+    "CreateCursor", "CreateDCompositionHwndTarget", "CreateDesktopA", "CreateDesktopExA", "CreateDesktopExW", "CreateDesktopW",
+    "CreateDialogIndirectParamA", "CreateDialogIndirectParamAorW", "CreateDialogIndirectParamW", "CreateDialogParamA", "CreateDialogParamW", "CreateIcon",
+    "CreateIconFromResource", "CreateIconFromResourceEx", "CreateIconIndirect", "CreateMDIWindowA", "CreateMDIWindowW", "CreateMenu",
+    "CreatePopupMenu", "CreateSyntheticPointerDevice", "CreateSystemThreads", "CreateWindowExA", "CreateWindowExW", "CreateWindowInBand",
+    "CreateWindowInBandEx", "CreateWindowIndirect", "CreateWindowStationA", "CreateWindowStationW", "CsrBroadcastSystemMessageExW", "CtxInitUser32",
+    "DdeAbandonTransaction", "DdeAccessData", "DdeAddData", "DdeClientTransaction", "DdeCmpStringHandles", "DdeConnect",
+    "DdeConnectList", "DdeCreateDataHandle", "DdeCreateStringHandleA", "DdeCreateStringHandleW", "DdeDisconnect", "DdeDisconnectList",
+    "DdeEnableCallback", "DdeFreeDataHandle", "DdeFreeStringHandle", "DdeGetData", "DdeGetLastError", "DdeGetQualityOfService",
+    "DdeImpersonateClient", "DdeInitializeA", "DdeInitializeW", "DdeKeepStringHandle", "DdeNameService", "DdePostAdvise",
+    "DdeQueryConvInfo", "DdeQueryNextServer", "DdeQueryStringA", "DdeQueryStringW", "DdeReconnect", "DdeSetQualityOfService",
+    "DdeSetUserHandle", "DdeUnaccessData", "DdeUninitialize", "DefDlgProcA", "DefDlgProcW", "DefFrameProcA",
+    "DefFrameProcW", "DefMDIChildProcA", "DefMDIChildProcW", "DefRawInputProc", "DefWindowProcA", "DefWindowProcW",
+    "DeferWindowPos", "DeferWindowPosAndBand", "DelegateInput", "DeleteMenu", "DeregisterShellHookWindow", "DestroyAcceleratorTable",
+    "DestroyCaret", "DestroyCursor", "DestroyDCompositionHwndTarget", "DestroyIcon", "DestroyMenu", "DestroyReasons",
+    "DestroySyntheticPointerDevice", "DestroyWindow", "DialogBoxIndirectParamA", "DialogBoxIndirectParamAorW", "DialogBoxIndirectParamW", "DialogBoxParamA",
+    "DialogBoxParamW", "DisableProcessWindowsGhosting", "DispatchMessageA", "DispatchMessageW", "DisplayConfigGetDeviceInfo", "DisplayConfigSetDeviceInfo",
+    "DisplayExitWindowsWarnings", "DlgDirListA", "DlgDirListComboBoxA", "DlgDirListComboBoxW", "DlgDirListW", "DlgDirSelectComboBoxExA",
+    "DlgDirSelectComboBoxExW", "DlgDirSelectExA", "DlgDirSelectExW", "DoSoundConnect", "DoSoundDisconnect", "DragDetect",
+    "DragObject", "DrawAnimatedRects", "DrawCaption", "DrawCaptionTempA", "DrawCaptionTempW", "DrawEdge",
+    "DrawFocusRect", "DrawFrame", "DrawFrameControl", "DrawIcon", "DrawIconEx", "DrawMenuBar",
+    "DrawMenuBarTemp", "DrawStateA", "DrawStateW", "DrawTextA", "DrawTextExA", "DrawTextExW",
+    "DrawTextW", "DwmGetDxRgn", "DwmGetDxSharedSurface", "DwmGetRemoteSessionOcclusionEvent", "DwmGetRemoteSessionOcclusionState", "DwmKernelShutdown",
+    "DwmKernelStartup", "DwmLockScreenUpdates", "DwmValidateWindow", "EditWndProc", "EmptyClipboard", "EnableMenuItem",
+    "EnableMouseInPointer", "EnableNonClientDpiScaling", "EnableOneCoreTransformMode", "EnableScrollBar", "EnableSessionForMMCSS", "EnableWindow",
+    "EndDeferWindowPos", "EndDeferWindowPosEx", "EndDialog", "EndMenu", "EndPaint", "EndTask",
+    "EnterReaderModeHelper", "EnumChildWindows", "EnumClipboardFormats", "EnumDesktopWindows", "EnumDesktopsA", "EnumDesktopsW",
+    "EnumDisplayDevicesA", "EnumDisplayDevicesW", "EnumDisplayMonitors", "EnumDisplaySettingsA", "EnumDisplaySettingsExA", "EnumDisplaySettingsExW",
+    "EnumDisplaySettingsW", "EnumPropsA", "EnumPropsExA", "EnumPropsExW", "EnumPropsW", "EnumThreadWindows",
+    "EnumWindowStationsA", "EnumWindowStationsW", "EnumWindows", "EqualRect", "EvaluateProximityToPolygon", "EvaluateProximityToRect",
+    "ExcludeUpdateRgn", "ExitWindowsEx", "FillRect", "FindWindowA", "FindWindowExA", "FindWindowExW",
+    "FindWindowW", "FlashWindow", "FlashWindowEx", "FrameRect", "FreeDDElParam", "FrostCrashedWindow",
+    "GetActiveWindow", "GetAltTabInfo", "GetAltTabInfoA", "GetAltTabInfoW", "GetAncestor", "GetAppCompatFlags",
+    "GetAppCompatFlags2", "GetAsyncKeyState", "GetAutoRotationState", "GetAwarenessFromDpiAwarenessContext", "GetCIMSSM", "GetCapture",
+    "GetCaretBlinkTime", "GetCaretPos", "GetClassInfoA", "GetClassInfoExA", "GetClassInfoExW", "GetClassInfoW",
+    "GetClassLongA", "GetClassLongPtrA", "GetClassLongPtrW", "GetClassLongW", "GetClassNameA", "GetClassNameW",
+    "GetClassWord", "GetClientRect", "GetClipCursor", "GetClipboardAccessToken", "GetClipboardData", "GetClipboardFormatNameA",
+    "GetClipboardFormatNameW", "GetClipboardOwner", "GetClipboardSequenceNumber", "GetClipboardViewer", "GetComboBoxInfo", "GetCurrentInputMessageSource",
+    "GetCursor", "GetCursorFrameInfo", "GetCursorInfo", "GetCursorPos", "GetDC", "GetDCEx",
+    "GetDesktopID", "GetDesktopWindow", "GetDialogBaseUnits", "GetDialogControlDpiChangeBehavior", "GetDialogDpiChangeBehavior", "GetDisplayAutoRotationPreferences",
+    "GetDisplayConfigBufferSizes", "GetDlgCtrlID", "GetDlgItem", "GetDlgItemInt", "GetDlgItemTextA", "GetDlgItemTextW",
+    "GetDoubleClickTime", "GetDpiAwarenessContextForProcess", "GetDpiForMonitorInternal", "GetDpiForSystem", "GetDpiForWindow", "GetDpiFromDpiAwarenessContext",
+    "GetExtendedPointerDeviceProperty", "GetFocus", "GetForegroundWindow", "GetGUIThreadInfo", "GetGestureConfig", "GetGestureExtraArgs",
+    "GetGestureInfo", "GetGuiResources", "GetIconInfo", "GetIconInfoExA", "GetIconInfoExW", "GetInputDesktop",
+    "GetInputLocaleInfo", "GetInputState", "GetInternalWindowPos", "GetKBCodePage", "GetKeyNameTextA", "GetKeyNameTextW",
+    "GetKeyState", "GetKeyboardLayout", "GetKeyboardLayoutList", "GetKeyboardLayoutNameA", "GetKeyboardLayoutNameW", "GetKeyboardState",
+    "GetKeyboardType", "GetLastActivePopup", "GetLastInputInfo", "GetLayeredWindowAttributes", "GetListBoxInfo", "GetMagnificationDesktopColorEffect",
+    "GetMagnificationDesktopMagnification", "GetMagnificationDesktopSamplingMode", "GetMagnificationLensCtxInformation", "GetMenu", "GetMenuBarInfo", "GetMenuCheckMarkDimensions",
+    "GetMenuContextHelpId", "GetMenuDefaultItem", "GetMenuInfo", "GetMenuItemCount", "GetMenuItemID", "GetMenuItemInfoA",
+    "GetMenuItemInfoW", "GetMenuItemRect", "GetMenuState", "GetMenuStringA", "GetMenuStringW", "GetMessageA",
+    "GetMessageExtraInfo", "GetMessagePos", "GetMessageTime", "GetMessageW", "GetMonitorInfoA", "GetMonitorInfoW",
+    "GetMouseMovePointsEx", "GetNextDlgGroupItem", "GetNextDlgTabItem", "GetOpenClipboardWindow", "GetParent", "GetPhysicalCursorPos",
+    "GetPointerCursorId", "GetPointerDevice", "GetPointerDeviceCursors", "GetPointerDeviceInputSpace", "GetPointerDeviceOrientation", "GetPointerDeviceProperties",
+    "GetPointerDeviceRects", "GetPointerDevices", "GetPointerFrameArrivalTimes", "GetPointerFrameInfo", "GetPointerFrameInfoHistory", "GetPointerFramePenInfo",
+    "GetPointerFramePenInfoHistory", "GetPointerFrameTimes", "GetPointerFrameTouchInfo", "GetPointerFrameTouchInfoHistory", "GetPointerInfo", "GetPointerInfoHistory",
+    "GetPointerInputTransform", "GetPointerPenInfo", "GetPointerPenInfoHistory", "GetPointerTouchInfo", "GetPointerTouchInfoHistory", "GetPointerType",
+    "GetPriorityClipboardFormat", "GetProcessDefaultLayout", "GetProcessDpiAwarenessInternal", "GetProcessUIContextInformation", "GetProcessWindowStation", "GetProgmanWindow",
+    "GetPropA", "GetPropW", "GetQueueStatus", "GetRawInputBuffer", "GetRawInputData", "GetRawInputDeviceInfoA",
+    "GetRawInputDeviceInfoW", "GetRawInputDeviceList", "GetRawPointerDeviceData", "GetReasonTitleFromReasonCode", "GetRegisteredRawInputDevices", "GetScrollBarInfo",
+    "GetScrollInfo", "GetScrollPos", "GetScrollRange", "GetSendMessageReceiver", "GetShellChangeNotifyWindow", "GetShellWindow",
+    "GetSubMenu", "GetSysColor", "GetSysColorBrush", "GetSystemDpiForProcess", "GetSystemMenu", "GetSystemMetrics",
+    "GetSystemMetricsForDpi", "GetTabbedTextExtentA", "GetTabbedTextExtentW", "GetTaskmanWindow", "GetThreadDesktop", "GetThreadDpiAwarenessContext",
+    "GetThreadDpiHostingBehavior", "GetTitleBarInfo", "GetTopLevelWindow", "GetTopWindow", "GetTouchInputInfo", "GetUnpredictedMessagePos",
+    "GetUpdateRect", "GetUpdateRgn", "GetUpdatedClipboardFormats", "GetUserObjectInformationA", "GetUserObjectInformationW", "GetUserObjectSecurity",
+    "GetWinStationInfo", "GetWindow", "GetWindowBand", "GetWindowCompositionAttribute", "GetWindowCompositionInfo", "GetWindowContextHelpId",
+    "GetWindowDC", "GetWindowDisplayAffinity", "GetWindowDpiAwarenessContext", "GetWindowDpiHostingBehavior", "GetWindowFeedbackSetting", "GetWindowInfo",
+    "GetWindowLongA", "GetWindowLongPtrA", "GetWindowLongPtrW", "GetWindowLongW", "GetWindowMinimizeRect", "GetWindowModuleFileName",
+    "GetWindowModuleFileNameA", "GetWindowModuleFileNameW", "GetWindowPlacement", "GetWindowProcessHandle", "GetWindowRect", "GetWindowRgn",
+    "GetWindowRgnBox", "GetWindowRgnEx", "GetWindowTextA", "GetWindowTextLengthA", "GetWindowTextLengthW", "GetWindowTextW",
+    "GetWindowThreadProcessId", "GetWindowWord", "GhostWindowFromHungWindow", "GrayStringA", "GrayStringW", "HandleDelegatedInput",
+    "HideCaret", "HiliteMenuItem", "HungWindowFromGhostWindow", "IMPGetIMEA", "IMPGetIMEW", "IMPQueryIMEA",
+    "IMPQueryIMEW", "IMPSetIMEA", "IMPSetIMEW", "ImpersonateDdeClientWindow", "InSendMessage", "InSendMessageEx",
+    "InflateRect", "InheritWindowMonitor", "InitDManipHook", "InitializeGenericHidInjection", "InitializeInputDeviceInjection", "InitializeLpkHooks",
+    "InitializePointerDeviceInjection", "InitializePointerDeviceInjectionEx", "InitializeTouchInjection", "InjectDeviceInput", "InjectGenericHidInput", "InjectKeyboardInput",
+    "InjectMouseInput", "InjectPointerInput", "InjectSyntheticPointerInput", "InjectTouchInput", "InputSpaceRegionFromPoint", "InsertMenuA",
+    "InsertMenuItemA", "InsertMenuItemW", "InsertMenuW", "InternalGetWindowIcon", "InternalGetWindowText", "IntersectRect",
+    "InvalidateRect", "InvalidateRgn", "InvertRect", "IsCharAlphaA", "IsCharAlphaNumericA", "IsCharAlphaNumericW",
+    "IsCharAlphaW", "IsCharLowerA", "IsCharLowerW", "IsCharUpperA", "IsCharUpperW", "IsChild",
+    "IsClipboardFormatAvailable", "IsDialogMessage", "IsDialogMessageA", "IsDialogMessageW", "IsDlgButtonChecked", "IsGUIThread",
+    "IsHungAppWindow", "IsIconic", "IsImmersiveProcess", "IsInDesktopWindowBand", "IsMenu", "IsMouseInPointerEnabled",
+    "IsOneCoreTransformMode", "IsProcessDPIAware", "IsQueueAttached", "IsRectEmpty", "IsSETEnabled", "IsServerSideWindow",
+    "IsThreadDesktopComposited", "IsThreadMessageQueueAttached", "IsThreadTSFEventAware", "IsTopLevelWindow", "IsTouchWindow", "IsValidDpiAwarenessContext",
+    "IsWinEventHookInstalled", "IsWindow", "IsWindowArranged", "IsWindowEnabled", "IsWindowInDestroy", "IsWindowRedirectedForPrint",
+    "IsWindowUnicode", "IsWindowVisible", "IsWow64Message", "IsZoomed", "KillTimer", "LoadAcceleratorsA",
+    "LoadAcceleratorsW", "LoadBitmapA", "LoadBitmapW", "LoadCursorA", "LoadCursorFromFileA", "LoadCursorFromFileW",
+    "LoadCursorW", "LoadIconA", "LoadIconW", "LoadImageA", "LoadImageW", "LoadKeyboardLayoutA",
+    "LoadKeyboardLayoutEx", "LoadKeyboardLayoutW", "LoadLocalFonts", "LoadMenuA", "LoadMenuIndirectA", "LoadMenuIndirectW",
+    "LoadMenuW", "LoadRemoteFonts", "LoadStringA", "LoadStringW", "LockSetForegroundWindow", "LockWindowStation",
+    "LockWindowUpdate", "LockWorkStation", "LogicalToPhysicalPoint", "LogicalToPhysicalPointForPerMonitorDPI", "LookupIconIdFromDirectory", "LookupIconIdFromDirectoryEx",
+    "MBToWCSEx", "MBToWCSExt", "MB_GetString", "MITGetCursorUpdateHandle", "MITSetForegroundRoutingInfo", "MITSetInputDelegationMode",
+    "MITSetLastInputRecipient", "MITSynthesizeTouchInput", "MakeThreadTSFEventAware", "MapDialogRect", "MapPointsByVisualIdentifier", "MapVirtualKeyA",
+    "MapVirtualKeyExA", "MapVirtualKeyExW", "MapVirtualKeyW", "MapVisualRelativePoints", "MapWindowPoints", "MenuItemFromPoint",
+    "MenuWindowProcA", "MenuWindowProcW", "MessageBeep", "MessageBoxA", "MessageBoxExA", "MessageBoxExW",
+    "MessageBoxIndirectA", "MessageBoxIndirectW", "MessageBoxTimeoutA", "MessageBoxTimeoutW", "MessageBoxW", "ModifyMenuA",
+    "ModifyMenuW", "MonitorFromPoint", "MonitorFromRect", "MonitorFromWindow", "MoveWindow", "MsgWaitForMultipleObjects",
+    "MsgWaitForMultipleObjectsEx", "NotifyOverlayWindow", "NotifyWinEvent", "OemKeyScan", "OemToCharA", "OemToCharBuffA",
+    "OemToCharBuffW", "OemToCharW", "OffsetRect", "OpenClipboard", "OpenDesktopA", "OpenDesktopW",
+    "OpenIcon", "OpenInputDesktop", "OpenThreadDesktop", "OpenWindowStationA", "OpenWindowStationW", "PackDDElParam",
+    "PackTouchHitTestingProximityEvaluation", "PaintDesktop", "PaintMenuBar", "PaintMonitor", "PeekMessageA", "PeekMessageW",
+    "PhysicalToLogicalPoint", "PhysicalToLogicalPointForPerMonitorDPI", "PostMessageA", "PostMessageW", "PostQuitMessage", "PostThreadMessageA",
+    "PostThreadMessageW", "PrintWindow", "PrivateExtractIconExA", "PrivateExtractIconExW", "PrivateExtractIconsA", "PrivateExtractIconsW",
+    "PrivateRegisterICSProc", "PtInRect", "QueryBSDRWindow", "QueryDisplayConfig", "QuerySendMessage", "RIMAddInputObserver",
+    "RIMAreSiblingDevices", "RIMDeviceIoControl", "RIMEnableMonitorMappingForDevice", "RIMFreeInputBuffer", "RIMGetDevicePreparsedData", "RIMGetDevicePreparsedDataLockfree",
+    "RIMGetDeviceProperties", "RIMGetDevicePropertiesLockfree", "RIMGetPhysicalDeviceRect", "RIMGetSourceProcessId", "RIMObserveNextInput", "RIMOnPnpNotification",
+    "RIMOnTimerNotification", "RIMQueryDevicePath", "RIMReadInput", "RIMRegisterForInput", "RIMRemoveInputObserver", "RIMSetExtendedDeviceProperty",
+    "RIMSetTestModeStatus", "RIMUnregisterForInput", "RIMUpdateInputObserverRegistration", "RealChildWindowFromPoint", "RealGetWindowClass", "RealGetWindowClassA",
+    "RealGetWindowClassW", "ReasonCodeNeedsBugID", "ReasonCodeNeedsComment", "RecordShutdownReason", "RedrawWindow", "RegisterBSDRWindow",
+    "RegisterClassA", "RegisterClassExA", "RegisterClassExW", "RegisterClassW", "RegisterClipboardFormatA", "RegisterClipboardFormatW",
+    "RegisterDManipHook", "RegisterDeviceNotificationA", "RegisterDeviceNotificationW", "RegisterErrorReportingDialog", "RegisterFrostWindow", "RegisterGhostWindow",
+    "RegisterHotKey", "RegisterLogonProcess", "RegisterMessagePumpHook", "RegisterPointerDeviceNotifications", "RegisterPointerInputTarget", "RegisterPointerInputTargetEx",
+    "RegisterPowerSettingNotification", "RegisterRawInputDevices", "RegisterServicesProcess", "RegisterSessionPort", "RegisterShellHookWindow", "RegisterSuspendResumeNotification",
+    "RegisterSystemThread", "RegisterTasklist", "RegisterTouchHitTestingWindow", "RegisterTouchWindow", "RegisterUserApiHook", "RegisterWindowMessageA",
+    "RegisterWindowMessageW", "ReleaseCapture", "ReleaseDC", "ReleaseDwmHitTestWaiters", "RemoveClipboardFormatListener", "RemoveInjectionDevice",
+    "RemoveMenu", "RemovePropA", "RemovePropW", "RemoveThreadTSFEventAwareness", "RemoveVisualIdentifier", "ReplyMessage",
+    "ReportInertia", "ResolveDesktopForWOW", "ReuseDDElParam", "ScreenToClient", "ScrollChildren", "ScrollDC",
+    "ScrollWindow", "ScrollWindowEx", "SendDlgItemMessageA", "SendDlgItemMessageW", "SendIMEMessageExA", "SendIMEMessageExW",
+    "SendInput", "SendMessageA", "SendMessageCallbackA", "SendMessageCallbackW", "SendMessageTimeoutA", "SendMessageTimeoutW",
+    "SendMessageW", "SendNotifyMessageA", "SendNotifyMessageW", "SetActiveWindow", "SetCapture", "SetCaretBlinkTime",
+    "SetCaretPos", "SetClassLongA", "SetClassLongPtrA", "SetClassLongPtrW", "SetClassLongW", "SetClassWord",
+    "SetClipboardData", "SetClipboardViewer", "SetCoalescableTimer", "SetCoreWindow", "SetCursor", "SetCursorContents",
+    "SetCursorPos", "SetDebugErrorLevel", "SetDeskWallpaper", "SetDesktopColorTransform", "SetDialogControlDpiChangeBehavior", "SetDialogDpiChangeBehavior",
+    "SetDisplayAutoRotationPreferences", "SetDisplayConfig", "SetDlgItemInt", "SetDlgItemTextA", "SetDlgItemTextW", "SetDoubleClickTime",
+    "SetFeatureReportResponse", "SetFocus", "SetForegroundWindow", "SetFullscreenMagnifierOffsetsDWMUpdated", "SetGestureConfig", "SetInternalWindowPos",
+    "SetKeyboardState", "SetLastErrorEx", "SetLayeredWindowAttributes", "SetMagnificationDesktopColorEffect", "SetMagnificationDesktopMagnification", "SetMagnificationDesktopMagnifierOffsetsDWMUpdated",
+    "SetMagnificationDesktopSamplingMode", "SetMagnificationLensCtxInformation", "SetMenu", "SetMenuContextHelpId", "SetMenuDefaultItem", "SetMenuInfo",
+    "SetMenuItemBitmaps", "SetMenuItemInfoA", "SetMenuItemInfoW", "SetMessageExtraInfo", "SetMessageQueue", "SetMirrorRendering",
+    "SetParent", "SetPhysicalCursorPos", "SetPointerDeviceInputSpace", "SetProcessDPIAware", "SetProcessDefaultLayout", "SetProcessDpiAwarenessContext",
+    "SetProcessDpiAwarenessInternal", "SetProcessRestrictionExemption", "SetProcessWindowStation", "SetProgmanWindow", "SetPropA", "SetPropW",
+    "SetRect", "SetRectEmpty", "SetScrollInfo", "SetScrollPos", "SetScrollRange", "SetShellChangeNotifyWindow",
+    "SetShellWindow", "SetShellWindowEx", "SetSysColors", "SetSysColorsTemp", "SetSystemCursor", "SetSystemMenu",
+    "SetTaskmanWindow", "SetThreadDesktop", "SetThreadDpiAwarenessContext", "SetThreadDpiHostingBehavior", "SetThreadInputBlocked", "SetTimer",
+    "SetUserObjectInformationA", "SetUserObjectInformationW", "SetUserObjectSecurity", "SetWinEventHook", "SetWindowBand", "SetWindowCompositionAttribute",
+    "SetWindowCompositionTransition", "SetWindowContextHelpId", "SetWindowDisplayAffinity", "SetWindowFeedbackSetting", "SetWindowLongA", "SetWindowLongPtrA",
+    "SetWindowLongPtrW", "SetWindowLongW", "SetWindowPlacement", "SetWindowPos", "SetWindowRgn", "SetWindowRgnEx",
+    "SetWindowStationUser", "SetWindowTextA", "SetWindowTextW", "SetWindowWord", "SetWindowsHookA", "SetWindowsHookExA",
+    "SetWindowsHookExAW", "SetWindowsHookExW", "SetWindowsHookW", "ShowCaret", "ShowCursor", "ShowOwnedPopups",
+    "ShowScrollBar", "ShowStartGlass", "ShowSystemCursor", "ShowWindow", "ShowWindowAsync", "ShutdownBlockReasonCreate",
+    "ShutdownBlockReasonDestroy", "ShutdownBlockReasonQuery", "SignalRedirectionStartComplete", "SkipPointerFrameMessages", "SoftModalMessageBox", "SoundSentry",
+    "SubtractRect", "SwapMouseButton", "SwitchDesktop", "SwitchDesktopWithFade", "SwitchToThisWindow", "SystemParametersInfoA",
+    "SystemParametersInfoForDpi", "SystemParametersInfoW", "TabbedTextOutA", "TabbedTextOutW", "TileChildWindows", "TileWindows",
+    "ToAscii", "ToAsciiEx", "ToUnicode", "ToUnicodeEx", "TrackMouseEvent", "TrackPopupMenu",
+    "TrackPopupMenuEx", "TranslateAccelerator", "TranslateAcceleratorA", "TranslateAcceleratorW", "TranslateMDISysAccel", "TranslateMessage",
+    "TranslateMessageEx", "UndelegateInput", "UnhookWinEvent", "UnhookWindowsHook", "UnhookWindowsHookEx", "UnionRect",
+    "UnloadKeyboardLayout", "UnlockWindowStation", "UnpackDDElParam", "UnregisterClassA", "UnregisterClassW", "UnregisterDeviceNotification",
+    "UnregisterHotKey", "UnregisterMessagePumpHook", "UnregisterPointerInputTarget", "UnregisterPointerInputTargetEx", "UnregisterPowerSettingNotification", "UnregisterSessionPort",
+    "UnregisterSuspendResumeNotification", "UnregisterTouchWindow", "UnregisterUserApiHook", "UpdateDefaultDesktopThumbnail", "UpdateLayeredWindow", "UpdateLayeredWindowIndirect",
+    "UpdatePerUserSystemParameters", "UpdateWindow", "UpdateWindowInputSinkHints", "User32InitializeImmEntryTable", "UserClientDllInitialize", "UserHandleGrantAccess",
+    "UserLpkPSMTextOut", "UserLpkTabbedTextOut", "UserRealizePalette", "UserRegisterWowHandlers", "VRipOutput", "VTagOutput",
+    "ValidateRect", "ValidateRgn", "VkKeyScanA", "VkKeyScanExA", "VkKeyScanExW", "VkKeyScanW",
+    "WCSToMBEx", "WINNLSEnableIME", "WINNLSGetEnableStatus", "WINNLSGetIMEHotkey", "WaitForInputIdle", "WaitForRedirectionStartComplete",
+    "WaitMessage", "WinHelpA", "WinHelpW", "WindowFromDC", "WindowFromPhysicalPoint", "WindowFromPoint",
+    "_UserTestTokenForInteractive", "gSharedInfo", "gapfnScSendMessage", "keybd_event", "mouse_event", "wsprintfA",
+    "wsprintfW", "wvsprintfA", "wvsprintfW"
+};
+static ExtraLib extras[EXTRA_MAX];
+static int extra_n = 0;
+static int extra_direct_total = 0;
+static int extra_end = 0;
+static int extra_find_slot(ExtraLib *e, int mi) {
+    for (int s = 0; s < e->n; s++) if (e->used[s] == mi) return s;
+    if (e->n >= 256) return -1;
+    e->used[e->n] = mi; return e->n++;
+}
+static int extra_is_direct_slot(ExtraLib *e, int slot) {
+    for (int d = 0; d < e->direct_n; d++) if (e->direct_slot[d] == slot) return d;
+    return -1;
+}
 static int g_text_total = 0; /* text 总大小 (layout 计算, write_pe 使用, fix 2026-08-07: 原 write 误含 OUT_DATA → .text 虚拟区与 .data 重叠 → ERROR_BAD_EXE_FORMAT) */         /* msvcrt IAT 起点（.data 内偏移） */
 
 static int msvcrt_find_slot(int mi) {
@@ -804,6 +1180,22 @@ static int resolve_one(GSym *g) {
             return 0;
         }
     }
+    /* ---- C10d: 附加库 ---- */
+    for (int li = 0; li < extra_n; li++) {
+        ExtraLib *e = &extras[li];
+        const char *xn = g->name;
+        int is_imp2 = 0;
+        if (xn[0]=='_'&&xn[1]=='_'&&xn[2]=='i'&&xn[3]=='m'&&xn[4]=='p'&&xn[5]=='_') { is_imp2 = 1; xn += 6; }
+        int xi = -1;
+        for (int k = 0; k < e->n_names; k++) if (!strcmp(e->names[k], xn)) { xi = k; break; }
+        if (xi >= 0) {
+            int slot = extra_find_slot(e, xi);
+            if (slot < 0) { fprintf(stderr, "jyld: %s slot overflow\n", e->dll); return -1; }
+            if (!is_imp2 && extra_is_direct_slot(e, slot) < 0) e->direct_slot[e->direct_n++] = slot;
+            g->obj = -(4 + li); g->sym = slot; g->defined = 1;
+            return 0;
+        }
+    }
     if (arch_sym_n > 0) {
         int m = arch_find_member(g->name);
         if (getenv("JYLD_DEBUG"))
@@ -830,7 +1222,24 @@ static int resolve_one(GSym *g) {
     return -1;
 }
 
+static void extra_init(void) { /* C10d */
+    if (extra_n) return;
+    extras[extra_n].dll = "ws2_32.dll";
+    extras[extra_n].names = ws2_32_names;
+    extras[extra_n].n_names = (int)(sizeof(ws2_32_names)/sizeof(ws2_32_names[0]));
+    extra_n++;
+    extras[extra_n].dll = "advapi32.dll";           /* C10d-2 */
+    extras[extra_n].names = advapi32_names;
+    extras[extra_n].n_names = (int)(sizeof(advapi32_names)/sizeof(advapi32_names[0]));
+    extra_n++;
+    extras[extra_n].dll = "user32.dll";
+    extras[extra_n].names = user32_names;
+    extras[extra_n].n_names = (int)(sizeof(user32_names)/sizeof(user32_names[0]));
+    extra_n++;
+}
+
 static int resolve_all(void) {
+    extra_init(); /* C10d */
     collect_defs();
     /* fix 2026-08-07 Gate-1: qcc CRT stub 硬编码 call *[data+8+8*i] 引用前 8 个 kernel32 槽
        (不产生符号引用) — 必须在布局前无条件预注册, 否则 IAT 为空 → call 0 崩 */
@@ -1004,6 +1413,7 @@ static void layout(void) {
     out_len[OUT_TEXT] += crt_reserve;
     /* msvcrt thunk 预留（每个直接调用的 libc 函数一个 jmp [IAT] = 6 字节） */
     out_len[OUT_TEXT] += msvcrt_direct_n * 6;
+    for (int li = 0; li < extra_n; li++) out_len[OUT_TEXT] += extras[li].direct_n * 6; /* C10d */
     /* kernel32 thunk 预留 (fix 2026-08-07: gcc 地址引用/直接 call 需 jmp [IAT]) */
     out_len[OUT_TEXT] += k32_thunk_n * 6;
 
@@ -1039,7 +1449,7 @@ static void layout(void) {
         k32_ilt = 0x08 + k32_n * 8 + 8;
         kdesc_off = k32_ilt + k32_n * 8 + 8;
         mdesc_off = kdesc_off + 20;
-        int khint = mdesc_off + 40; /* terminator(20) + kernel32 hint 起点 */
+        int khint = mdesc_off + 40 + 20 * extra_n; /* C10d: +附加库 desc */
         for (int s = 0; s < k32_n; s++) { k32_off[s] = khint; khint += 2 + (int)strlen(k32_names[k32_used[s]]) + 1; }
         k32_dll_off = khint;
         int mhint = khint + 13; /* "kernel32.dll\0" */
@@ -1052,6 +1462,27 @@ static void layout(void) {
         int mend = milt + msvcrt_n * 8 + 8; /* +8: ILT 终止 0 槽 */
         msvcrt_iat_off = miat;
         msvcrt_end = (mend + 15) & ~15;
+        /* C10d: 附加库区 */
+        {
+            int cur = mdesc_off + 20;
+            for (int li = 0; li < extra_n; li++) { extras[li].desc_off = cur; cur += 20; }
+            int xh = mend; /* 修正: extras hint/dll 排在 msvcrt hint/dll 之后 */
+            for (int li = 0; li < extra_n; li++) {
+                ExtraLib *e = &extras[li]; e->hint_off = xh;
+                for (int s = 0; s < e->n; s++) xh += 2 + (int)strlen(e->names[e->used[s]]) + 1;
+            }
+            for (int li = 0; li < extra_n; li++) {
+                ExtraLib *e = &extras[li]; e->dll_off = xh; xh += (int)strlen(e->dll) + 1;
+            }
+            extra_direct_total = 0;
+            for (int li = 0; li < extra_n; li++) {
+                ExtraLib *e = &extras[li];
+                int xi2 = (xh + 7) & ~7; e->iat_off = xi2; e->ilt_off = xi2 + e->n * 8 + 8;
+                xh = e->ilt_off + e->n * 8 + 8;
+                extra_direct_total += e->direct_n;
+            }
+            extra_end = (xh + 15) & ~15;
+        }
     }
 
     int out_base[NUM_OUT];
@@ -1059,6 +1490,7 @@ static void layout(void) {
     out_base[OUT_STR] = 0x1000 + sec_start[OUT_STR];
     out_base[OUT_DBL] = 0x1000 + sec_start[OUT_DBL];
     out_base[OUT_RDAT] = 0x1000 + sec_start[OUT_RDAT];
+    if (extra_end > msvcrt_end) msvcrt_end = extra_end; /* C10d */
     out_base[OUT_DATA] = data_rva_base + msvcrt_end;
     { int abss = max_align[OUT_BSS] < 16 ? 16 : max_align[OUT_BSS]; /* fix 2026-08-07: .bss 128 对齐（COFF 位 0x8） */
       out_base[OUT_BSS] = (data_rva_base + msvcrt_end + out_len[OUT_DATA] + abss - 1) & ~(abss - 1); }
@@ -1126,6 +1558,9 @@ static void layout(void) {
                 } else if (g->defined && g->obj == -2) {
                     k32_thunk_idx(g->sym); /* fix 2026-08-07: 记录需要 thunk 的 kernel32 槽 */
                     s->resolved_va = 0x400000LL + data_rva_base + 8 + 8LL * g->sym;
+                } else if (g->defined && g->obj <= -4) {
+                    ExtraLib *e = &extras[-4 - g->obj]; /* C10d */
+                    s->resolved_va = 0x400000LL + data_rva_base + e->iat_off + 8LL * g->sym;
                 } else if (g->defined && g->obj == -3) {
                     /* msvcrt: __imp_X → IAT 槽；X → thunk（jmp [IAT]） */
                     int slot = g->sym;
@@ -1172,15 +1607,33 @@ static void apply_relocs(void) {
                 if (!is_imp_ref && target >= 0x400000LL + data_rva_base + 8 && target < 0x400000LL + data_rva_base + 8 + 8LL * k32_n) {
                     int slot = (int)((target - (0x400000LL + data_rva_base + 8)) / 8);
                     int tk = k32_thunk_idx(slot);
-                    int th_off = (out_len[OUT_TEXT] - k32_thunk_n * 6) + tk * 6;
+                    int th_off = (out_len[OUT_TEXT] - k32_thunk_n * 6 - extra_direct_total * 6) + tk * 6; /* C10d */
                     target = 0x400000LL + 0x1000 + th_off;
                 } else if (!is_imp_ref && target >= 0x400000LL + data_rva_base + msvcrt_iat_off &&
                            target < 0x400000LL + data_rva_base + msvcrt_iat_off + 8LL * msvcrt_n) {
                     int slot = (int)((target - (0x400000LL + data_rva_base + msvcrt_iat_off)) / 8);
                     int d = msvcrt_is_direct_slot(slot);
                     if (d >= 0) { /* 直接调用的 libc 函数 → thunk */
-                        int th_off = (out_len[OUT_TEXT] - msvcrt_direct_n * 6 - k32_thunk_n * 6) + d * 6;
+                        int th_off = (out_len[OUT_TEXT] - msvcrt_direct_n * 6 - k32_thunk_n * 6 - extra_direct_total * 6) + d * 6; /* C10d */
                         target = 0x400000LL + 0x1000 + th_off;
+                    }
+                }
+                else if (!is_imp_ref && extra_n > 0) { /* C10d: 附加库 thunk */
+                    int acc = 0;
+                    for (int li = 0; li < extra_n; li++) {
+                        ExtraLib *e = &extras[li];
+                        long long biat = 0x400000LL + data_rva_base + e->iat_off;
+                        if (target >= biat && target < biat + 8LL * e->n) {
+                            int slot = (int)((target - biat) / 8);
+                            int d = extra_is_direct_slot(e, slot);
+                            if (d >= 0) {
+                                int th_off = (out_len[OUT_TEXT] - msvcrt_direct_n * 6 - k32_thunk_n * 6
+                                              - extra_direct_total * 6) + (acc + d) * 6;
+                                target = 0x400000LL + 0x1000 + th_off;
+                            }
+                            break;
+                        }
+                        acc += e->direct_n;
                     }
                 }
                 if (getenv("JYLD_DEBUG"))
@@ -1501,7 +1954,7 @@ static void write_pe(FILE *f, int entry_rva) {
         w4(f, 0); w4(f, 0);
         w4(f, data_rva_base + mdll); /* Name = "msvcrt.dll" RVA */
         w4(f, data_rva_base + miat); /* FirstThunk = IAT RVA */
-        w4(f, 0); w4(f, 0); w4(f, 0); w4(f, 0); w4(f, 0); /* terminator descriptor */
+        /* C10d: terminator 移到所有附加库 desc 之后 */
         /* msvcrt hint/names (紧跟 kernel32, fix 2026-08-07) */
         int hoff = k32_dll_off + 13;
         for (int s = 0; s < msvcrt_n; s++) {
@@ -1531,6 +1984,36 @@ static void write_pe(FILE *f, int entry_rva) {
         }
         fseek(f, data_foff + milt + msvcrt_n * 8, SEEK_SET);
         w8(f, 0); /* ILT 终止 0 (fix 2026-08-22 t48) */
+    }
+    /* ===== C10d: 附加库 desc/hint/dll/IAT/ILT ===== */
+    for (int li = 0; li < extra_n; li++) {
+        ExtraLib *e = &extras[li];
+        fseek(f, data_foff + e->desc_off, SEEK_SET);
+        w4(f, data_rva_base + e->ilt_off);
+        w4(f, 0); w4(f, 0);
+        w4(f, data_rva_base + e->dll_off);
+        w4(f, data_rva_base + e->iat_off);
+        if (li == extra_n - 1) { for (int z = 0; z < 5; z++) w4(f, 0); }
+        int ho = e->hint_off;
+        for (int s = 0; s < e->n; s++) {
+            fseek(f, data_foff + ho, SEEK_SET);
+            w2(f, 0);
+            fputs(e->names[e->used[s]], f);
+            fputc(0, f);
+            ho += 2 + (int)strlen(e->names[e->used[s]]) + 1;
+        }
+        fseek(f, data_foff + e->dll_off, SEEK_SET);
+        fputs(e->dll, f); fputc(0, f);
+        ho = e->hint_off;
+        for (int s = 0; s < e->n; s++) {
+            fseek(f, data_foff + e->iat_off + s * 8, SEEK_SET);
+            w8(f, (long long)(data_rva_base + ho));
+            fseek(f, data_foff + e->ilt_off + s * 8, SEEK_SET);
+            w8(f, (long long)(data_rva_base + ho));
+            ho += 2 + (int)strlen(e->names[e->used[s]]) + 1;
+        }
+        fseek(f, data_foff + e->iat_off + e->n * 8, SEEK_SET); w8(f, 0);
+        fseek(f, data_foff + e->ilt_off + e->n * 8, SEEK_SET); w8(f, 0);
     }
     /* 可写 .data 初始化内容（导入区之后） */
     if (out_len[OUT_DATA]) {
@@ -1599,7 +2082,7 @@ int main(int argc, char **argv) {
     }
     if (main_va < 0) { fprintf(stderr, "jyld: no main() defined\n"); return 1; }
     /* 生成真 CRT（main_va/data_rva_base/stc_n 已定），写入预留位置 */
-    int crt_off = out_len[OUT_TEXT] - crt_reserve - msvcrt_direct_n * 6 - k32_thunk_n * 6;
+    int crt_off = out_len[OUT_TEXT] - crt_reserve - msvcrt_direct_n * 6 - k32_thunk_n * 6 - extra_direct_total * 6; /* C10d */
     uint8_t *stub = (uint8_t*)malloc(4096);
     int stub_len = gen_crt(stub, crt_off, (int)main_va);
     if (stub_len != crt_reserve) {
@@ -1630,6 +2113,21 @@ int main(int argc, char **argv) {
             int iat_va = 0x400000 + data_rva_base + 8 + 8 * slot;
             int disp = iat_va - (0x400000 + 0x1000 + off + 6);
             w4_at(at + 2, disp);
+        }
+        /* C10d: 附加库 thunk */
+        int ethunk_start = kthunk_start + k32_thunk_n * 6;
+        int eacc = 0;
+        for (int li = 0; li < extra_n; li++) {
+            ExtraLib *e = &extras[li];
+            for (int d = 0; d < e->direct_n; d++) {
+                int slot = e->direct_slot[d];
+                int off = ethunk_start + (eacc + d) * 6;
+                uint8_t *at = out_data[OUT_TEXT] + off;
+                at[0] = 0xFF; at[1] = 0x25;
+                int iat_va = 0x400000 + data_rva_base + e->iat_off + 8 * slot;
+                w4_at(at + 2, iat_va - (0x400000 + 0x1000 + off + 6));
+            }
+            eacc += e->direct_n;
         }
     }
     int entry_rva = 0x1000 + crt_off;

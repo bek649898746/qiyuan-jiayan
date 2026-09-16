@@ -2351,6 +2351,8 @@ void GetSystemInfo(void *lpSystemInfo);
 void *GetProcessHeap(void);
 unsigned long GetCurrentProcessId(void);   /* 原 被 `#define swprintf(...) 0` 掩盖: 实参从未被解析 ⟹ 报错从未出现, 而运行时 `swprintf(...) < 0` 恒为假 (winansi 管道名进程号恒 0) */
 unsigned long TlsAlloc(void);     /* C13 配套 (2026-09-17): 修好「静默丢弃」后 compat/win32/pthread.c 不再被吞, 暴露真实 A1001 */
+#define TLS_OUT_OF_INDEXES ((unsigned long)0xFFFFFFFF)  /* C10d (2026-09-17): 链接闸缺口 — 原缺此常量 ⟹ 甲言把它当标识符 ⟹ .o 写未定义外部符号 (同 C10a Winsock 常量族) */
+#define TLS_MINIMUM_AVAILABLE 64  /* C10d: 同族 (Windows 保证的最小 TLS 槽数) */
 unsigned long GetCurrentThreadId(void);  /* C13 配套 (2026-09-17): 自动抓取 (pthread.c) — kernel32 导出表核实 */
 int TlsFree(unsigned long dwTlsIndex);
 void *TlsGetValue(unsigned long dwTlsIndex);
