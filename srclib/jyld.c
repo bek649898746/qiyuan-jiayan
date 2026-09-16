@@ -151,6 +151,9 @@ static const char *k32_names[] = {
     "TlsGetValue",
     "TlsSetValue",
     "GetCurrentThreadId"   /* C13 配套 (2026-09-17) */,
+    "ConvertThreadToFiber",
+    "CreateFiber",
+    "SwitchToFiber",
     /* C18a (2026-09-17): prelude 常量型 stub 改真原型后暴露的真链接需求 (kernel32 导出表核实) */
     "GetCurrentProcess",
     "OpenProcess",
@@ -481,6 +484,94 @@ static void add_builtin_heap_counter(void) {
     if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
     obj_n++;
     g_heap_obj = obj_n - 1;
+}
+
+/* ---------- C10g (2026-09-17): __qcc_div_check64 stub ---------- */
+static GSym *gsym_add(const char *name); /* fwd */
+/* 编译器 (F2 运行时除零检查) **自动注入** 对它的调用, 但只有链接模式才带上 qcc_rt.c 的声明/定义;
+   -c 模式的产物 ⟹ jyld 链接时缺定义。stub 语义: "未除零, 通过" (mov eax,1; ret)。
+   ⚠️ 真除零检测 (除数为 0 时终止) 未实现 —— 记入台账待办。 */
+static void add_builtin_divcheck(void) {
+    static const char *dns[] = { "__qcc_div_check64", "__qcc_div_check", "__qcc_div_check32" };
+    int nd = (int)(sizeof(dns)/sizeof(dns[0]));
+    for (int k = 0; k < nd; k++) {
+        const char *dn = dns[k];
+        GSym *g = gsym_add(dn);
+        if (g->defined) continue;
+        if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+        JObj *o = &objs[obj_n];
+        memset(o, 0, sizeof(*o));
+        o->filename = "<builtin-divcheck>";
+        o->nsec = 1;
+        o->secs[0].data = (uint8_t*)calloc(6, 1);
+        o->secs[0].data[0] = 0xB8; /* mov eax, 1 */
+        o->secs[0].data[1] = 1;
+        o->secs[0].data[5] = 0xC3; /* ret */
+        o->secs[0].size = 6;
+        o->secs[0].align = 16;
+        memcpy(o->secs[0].name, ".text", 5);
+        o->nsym = 1;
+        o->syms = (JSym*)calloc(1, sizeof(JSym));
+        strcpy(o->syms[0].name, dn);
+        o->syms[0].value = 0; o->syms[0].sec = 1; o->syms[0].sc = 2;
+        o->nrel = (int*)calloc(1, sizeof(int));
+        o->rel_off = (int*)calloc(1, sizeof(int));
+        o->nrel[0] = 0;
+        obj_n++;
+        g->obj = obj_n - 1; g->sym = 0; g->defined = 1;
+    }
+}
+
+/* ---------- C10e (2026-09-17): 编译器内建函数 _bump_top / _bump_set ---------- */
+static GSym *gsym_add(const char *name); /* fwd */
+/* qcc -c 把 bump 分配器的 _bump_top() 生成为「读共享堆计数器」并登记为未定义外部符号
+   (qcc_zh.jy 内建列表) ⟹ 链接 .o 集合时 jyld 需提供实现。
+   语义: _bump_top() 返回计数器, _bump_set(v) 设置之 (与 __qcc_heap_counter 同源)。
+   机器码: 8B 04 25 <disp32> C3 (mov eax,[disp32]; ret) / 89 0C 25 <disp32> C3 (mov [disp32],ecx; ret)
+   重定位: ADDR32 (0x0002) 指向 __qcc_heap_counter。 */
+static void add_builtin_bump(void) {
+    static const char *bnames[] = { "_bump_top", "_bump_set" };
+    int inc[2]; int inc_n = 0;
+    for (int i = 0; i < 2; i++) { GSym *g = gsym_add(bnames[i]); if (!g->defined) inc[inc_n++] = i; }
+    if (inc_n == 0) return;
+    if (obj_n >= MAX_OBJS) { fprintf(stderr, "jyld: too many object files (%d)\n", obj_n); exit(1); }
+    JObj *o = &objs[obj_n];
+    memset(o, 0, sizeof(*o));
+    o->filename = "<builtin-bump>";
+    o->nsec = 1;
+    o->secs[0].data = (uint8_t*)calloc(inc_n * 9, 1);
+    o->secs[0].size = inc_n * 9;
+    o->secs[0].align = 16;
+    memcpy(o->secs[0].name, ".text", 5);
+    for (int j = 0; j < inc_n; j++) {
+        uint8_t *p = o->secs[0].data + j * 9;
+        int is_top = !strcmp(bnames[inc[j]], "_bump_top");
+        p[0] = (uint8_t)(is_top ? 0x8B : 0x89);
+        p[1] = 0x04; p[2] = 0x25;
+        p[8] = 0xC3;   /* ret */
+    }
+    o->nsym = inc_n + 1;
+    o->syms = (JSym*)calloc(o->nsym, sizeof(JSym));
+    for (int j = 0; j < inc_n; j++) {
+        strcpy(o->syms[j].name, bnames[inc[j]]);
+        o->syms[j].value = j * 9; o->syms[j].sec = 1; o->syms[j].sc = 2;
+    }
+    strcpy(o->syms[inc_n].name, "__qcc_heap_counter");
+    o->syms[inc_n].sec = 0; o->syms[inc_n].sc = 2;
+    o->nrel = (int*)calloc(1, sizeof(int));
+    o->rel_off = (int*)calloc(1, sizeof(int));
+    o->rels = (JRel*)calloc(inc_n, sizeof(JRel));
+    o->nrel[0] = inc_n; o->rel_off[0] = 0;
+    for (int j = 0; j < inc_n; j++) {
+        o->rels[j].va = j * 9 + 3;
+        o->rels[j].sym = inc_n;    /* __qcc_heap_counter */
+        o->rels[j].type = 0x0002;  /* IMAGE_REL_AMD64_ADDR32 */
+    }
+    obj_n++;
+    for (int j = 0; j < inc_n; j++) {
+        GSym *g = gsym_add(bnames[inc[j]]);
+        g->obj = obj_n - 1; g->sym = j; g->defined = 1;
+    }
 }
 
 /* ---------- 内置 regex stub：compat/regex/regex.c 在 qcc -c 下超时，提供 0 返回值 stub 满足链接 ---------- */
@@ -1274,6 +1365,8 @@ static int resolve_all(void) {
             gh->defined = 1;
         }
     }
+    add_builtin_bump(); /* C10e: _bump_top / _bump_set */
+    add_builtin_divcheck(); /* C10g: __qcc_div_check64 */
     /* simple-ipc stubs: compat/simple-ipc/ 下的 win32.c 被 _git_all_objects.py 跳过, 链接缺 ipc_server_* 定义 (fix 2026-08-15) */
     add_builtin_ipc_stubs();
     add_builtin_regex_stubs();

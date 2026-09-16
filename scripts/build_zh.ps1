@@ -10,7 +10,15 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '0B138C2C'
+$expected = '829F1C28'
+                        # (2026-09-17) **C10f 根治: `qcc_rt.c` 的未定义引用 `load_library`/`get_proc_address` → 标准 API `LoadLibraryA`/`GetProcAddress` (前值 0B138C2C)**
+                        #   发现路径: 链接闸推进到 `undefined symbol 'load_library'`, 反查确认唯一引用者是 `qcc_rt.o` (甲言自宿主运行时),
+                        #     而 git 源码里根本没有这个名字 ⟹ 是 qcc_rt.c 自身的**既存缺陷**:
+                        #     `__qcc_map_create`/`__qcc_map_close` (#89 mmap 特性) 用了这两个辅助函数, 却**从未定义**。
+                        #   为何此前不暴露: 编译器自身由甲言的**链接模式**生成, 未定义符号被容忍; 只有 jyld 链接 .o 集合时才报。
+                        #   修法: 两副本 (srclib/ + seed/) 同步替换; prelude 补 `LoadLibraryA` 原型 (原来只有 LoadLibraryExA)。
+                        #   验证: 自举一步收敛 (本次 v1 = v2 = 829F1C28); 语料闸见台账。
+$expected_旧11 = '0B138C2C'
                         # (2026-09-17) **C17b 二次收口: 「撤销静态标记」从 登记处 移到 函数体确认处 (前值 95B52574)**
                         #   回归 (C17 自引入): 链接闸 duplicate 0 -> 1 (`gettimeofday` in abspath.o + add-interactive.o)。
                         #   根因: C17 的 P7 在 L18330 无条件 `否 隔凶` — 该处 **尚未区分 声明/定义**;

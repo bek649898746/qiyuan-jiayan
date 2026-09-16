@@ -1665,6 +1665,7 @@ int GetFileInformationByHandle(void *hFile, void *lpFileInformation);
 unsigned int GetFileType(void *hFile);
 int PeekNamedPipe(void *h, void *b, unsigned int n, unsigned int *r, unsigned int *a, void *o);
 int GetFileAttributesExA(const char *lpFileName, int fInfoLevelId, void *lpFileInformation);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
+void *LoadLibraryA(const char *lpLibFileName);  /* C10f (2026-09-17): qcc_rt.c 的 `load_library` 未定义引用根治 */
 void *LoadLibraryExA(const char *lpLibFileName, void *hFile, unsigned long dwFlags);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 void *GetProcAddress(void *hModule, const char *lpProcName);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 void SetLastError(unsigned long dwErrCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */

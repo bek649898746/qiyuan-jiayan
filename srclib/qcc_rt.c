@@ -722,11 +722,11 @@ static void *__mm_base[16];
 static int __mm_cnt = 0;
 
 void *__qcc_map_create(const char *path, int sz) {
-    void *k32 = load_library("kernel32.dll");
+    void *k32 = LoadLibraryA("kernel32.dll");
     if (!k32) return 0;
-    void *(*CreateFileA)(const char *, int, int, void *, int, int, void *) = get_proc_address(k32, "CreateFileA");
-    void *(*CreateFileMappingA)(void *, void *, int, int, int, void *) = get_proc_address(k32, "CreateFileMappingA");
-    void *(*MapViewOfFile)(void *, int, int, int, int) = get_proc_address(k32, "MapViewOfFile");
+    void *(*CreateFileA)(const char *, int, int, void *, int, int, void *) = GetProcAddress(k32, "CreateFileA");
+    void *(*CreateFileMappingA)(void *, void *, int, int, int, void *) = GetProcAddress(k32, "CreateFileMappingA");
+    void *(*MapViewOfFile)(void *, int, int, int, int) = GetProcAddress(k32, "MapViewOfFile");
     if (!CreateFileA || !CreateFileMappingA || !MapViewOfFile) return 0;
     void *hf = CreateFileA(path, 0xC0000000, 7, 0, 4, 0x80, 0); /* 读写 + OPEN_ALWAYS (保留数据) */
     if (hf == (void *)-1 || !hf) return 0;
@@ -740,9 +740,9 @@ void *__qcc_map_create(const char *path, int sz) {
 
 void __qcc_map_close(void *p) {
     if (!p) return;
-    void *k32 = load_library("kernel32.dll");
-    void (*UnmapViewOfFile)(void *) = get_proc_address(k32, "UnmapViewOfFile");
-    void (*CloseHandle)(void *) = get_proc_address(k32, "CloseHandle");
+    void *k32 = LoadLibraryA("kernel32.dll");
+    void (*UnmapViewOfFile)(void *) = GetProcAddress(k32, "UnmapViewOfFile");
+    void (*CloseHandle)(void *) = GetProcAddress(k32, "CloseHandle");
     for (int i = 0; i < __mm_cnt; i++) {
         if (__mm_base[i] == p) {
             if (UnmapViewOfFile) UnmapViewOfFile(p);
