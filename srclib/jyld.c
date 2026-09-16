@@ -593,7 +593,31 @@ static const char *msvcrt_names[] = {
     "feof","ferror","clearerr","ungetc","freopen","setbuf","setvbuf","tmpfile","tmpnam",
     "signal","raise","setjmp","longjmp","div","mktime","localtime","gmtime","difftime","strftime",
     "_mktime64","_localtime64","_gmtime64","_difftime64",
-    "_gmtime64_s","_localtime64_s" /* fix 2026-08-22: gmtime_s/localtime_s 映射到 msvcrt 真函数 (原 compat_prelude stub 返回 0 不填充 tm) */
+    "_gmtime64_s","_localtime64_s" /* fix 2026-08-22: gmtime_s/localtime_s 映射到 msvcrt 真函数 (原 compat_prelude stub 返回 0 不填充 tm) */,
+    /* C7 (2026-09-16): 宽字符族 + _commit — 原 compat_prelude 以 0-stub 顶替,
+       致 compat/mingw.c `wpath[wcslen(wpath)-4]` 常量折叠成 `wpath[-4]` (A2001 误报越界);
+       prelude 已改真原型 ⟹ 此处补导入槽。名字均以本机 msvcrt.dll 导出表实测为准。 */
+    "wcslen",
+    "wcscpy",
+    "wcscmp",
+    "wcscat",
+    "wcschr",
+    "wcsncpy",
+    "wcsncmp",
+    "_wcsicmp",
+    "_wcsnicmp",
+    "swprintf",
+    "_wchmod",
+    "_wunlink",
+    "_wrename",
+    "_waccess",
+    "_wchdir",
+    "_wmktemp",
+    "_wrmdir",
+    "_wmkdir",
+    "_wfopen",
+    "_wfreopen",
+    "_commit"
 };
 #define MSVCRT_MAX 192
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */
