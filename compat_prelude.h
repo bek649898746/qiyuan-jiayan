@@ -2286,3 +2286,9 @@ wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle);
 
 /* C 运行库: 安全 宽字符 拷贝 (contrib/credential/wincred/git-credential-wincred.c) */
 int wcsncpy_s(wchar_t *dest, size_t destsz, const wchar_t *src, size_t count);
+
+/* git 自身 的 stat 家族 (定义在 compat/stat.c; prelude 上方 只 有 `#define stat(...) git_stat(...)` 宏,
+   但 缺 原型) — compat/prelude_mmap.c 调用 git_fstat ⟹ A1001 */
+int git_stat(const char *path, struct stat *buf);
+int git_fstat(int fd, struct stat *buf);
+int git_lstat(const char *path, struct stat *buf);
