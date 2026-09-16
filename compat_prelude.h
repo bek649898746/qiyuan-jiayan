@@ -1206,8 +1206,12 @@ static int geteuid(void) { return 0; }
 static int getuid(void) { return 1; }
 int _access(const char *path, int mode);
 static int access(const char *path, int mode) { int rc = _access(path, mode); if (rc != 0) errno = 2; return rc; } /* qcc 的 extern errno 与 msvcrt _errno() 不同步; _access 失败时补 errno=ENOENT(2), 否则 access_or_die 报 "No error" (fix 2026-08-15) */
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define tcgetpgrp(a) (-1)  /* POSIX 终端前台进程组 stub (fix 2026-08-15: progress.c tcgetpgrp undefined) */
+#endif
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define getpgid(a) 0  /* POSIX 进程组 stub (fix 2026-08-15: progress.c getpgid undefined) */
+#endif
 #define execvp(a,b) (-1)  /* POSIX exec stub (fix 2026-08-15: run-command.c execvp undefined) */
 #define _exit(a) exit(a)  /* POSIX 立即退出 — 复用 msvcrt exit (fix 2026-08-15: run-command.c _exit undefined) */
 static inline int git_has_dir_sep(const char *path) { return !!strchr(path, '/'); }  /* git-compat-util.h 静态 inline 兜底 (fix 2026-08-15: run-command.c git_has_dir_sep undefined) */
@@ -1223,7 +1227,9 @@ static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* P
 #define WTERMSIG(s) 0
 #define WEXITSTATUS(s) 0
 #define WIFEXITED(s) 1
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define fork() (-1)  /* POSIX fork stub */
+#endif
 #define NSIG 65  /* POSIX 信号数量 stub */
 #define execve(a,b,c) (-1)  /* POSIX execve stub */
 #define setsid() (-1)  /* POSIX setsid stub */
@@ -1232,7 +1238,9 @@ static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* P
 #define GIT_VERSION "2.45.2"  /* version.c git_version_string[] (fix 2026-08-15: GIT_VERSION undefined) */
 #define GIT_BUILT_FROM_COMMIT ""  /* version.c git_built_from_commit_string[] (fix 2026-08-15: GIT_BUILT_FROM_COMMIT undefined) */
 struct passwd { char *pw_name; char *pw_gecos; char *pw_dir; unsigned int pw_uid; unsigned int pw_gid; };  /* A85 (2026-09-14): 补 pw_uid/pw_gid (git daemon.c L1199/1213 用; 末尾追加 不改既有偏移, 零回归) */  /* POSIX pwd 字段子集 (fix 2026-08-15: getpwnam/path.c) */
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define getpwnam(a) ((struct passwd*)0)  /* POSIX getpwnam stub */
+#endif
 #define getpwuid(a) ((struct passwd*)0)  /* POSIX getpwuid stub */
 #define LOG_PID 0x01  /* A86 (2026-09-14): syslog 选项 (git daemon.c L1409) */
 #define LOG_DAEMON (3 << 3)  /* A86: syslog facility (git daemon.c L1409) */
@@ -1882,8 +1890,12 @@ struct timezone { int tz_minuteswest; int tz_dsttime; };
 #define signal(a,b) 0  /* POSIX signal stub */
 #define SA_RESTART 0 /* sigaction 标志 (fix 2026-08-15: SA_RESTART undefined) */
 #define sigemptyset(x) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigemptyset undefined) */
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define sigaddset(set, signum) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigaddset undefined) */
+#endif
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define sigprocmask(how, set, oldset) ((void)0) /* compat/mingw.h 映射 (fix 2026-08-15: sigprocmask undefined) */
+#endif
 #define LC_ALL 0      /* <locale.h> 常量 (fix 2026-08-15: LC_CTYPE undefined) */
 #define LC_COLLATE 1
 #define LC_CTYPE 2
@@ -1939,8 +1951,12 @@ typedef struct {
     wchar_t cFileName[260];
     wchar_t cAlternateFileName[14];
 } WIN32_FIND_DATAW;
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define convert_slashes(a) ((void)0)  /* compat/mingw.h 路径斜杠转换 stub (fix 2026-08-15: convert_slashes undefined) */
+#endif
+#ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
 #define xutftowcs(a, b, c) 0  /* compat/mingw.h UTF-8→wchar_t 转换 stub (fix 2026-08-15: xutftowcs undefined) */
+#endif
 #define _wchmod(a, b) 0  /* C runtime 宽字符 chmod stub (fix 2026-08-15: _wchmod undefined) */
 #define _wunlink(a) 0  /* C runtime 宽字符 unlink stub (fix 2026-08-15: _wunlink undefined) */
 #define _wrename(a, b) 0  /* C runtime 宽字符 rename stub (fix 2026-08-15: _wrename undefined) */
