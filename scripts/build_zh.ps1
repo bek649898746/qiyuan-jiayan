@@ -10,7 +10,36 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '05275D50'
+$expected = '0D4BD439'
+# (2026-09-17) **C21 根治: 属性语法识别 补 `__attribute`(单下划线) — 函数定义头 属性 未吞 → 形参登记 错乱 (前值 05275D50)**
+#   症状: `compat/regex/regex.c` 报 A9001「类型 're_token_t' 无字段 'token'」@ regcomp.c L3843 `free_token (&node->token)`
+#     (`free_tree (void *extra, bin_tree_t *node)` 的 node 被误判 re_token_t*)。
+#   根因 (三层, 插桩 QCC_DBG_C20 实证):
+#     ① 触发源: 函数定义头 出现「未识别 标识符 + 括号组」(如 `__attribute ((always_inline))`) 时, 解析器
+#        (L18296 `词变量 + 左括` 判 函数名) 把 `__attribute` 当 **函数名**, `(always_inline)` 当 **形参表**
+#        ==> `变参("always_inline", 槽=0)` 被调用 (插桩直读: 变量表[0] 名=always_inline 素三=1);
+#     ② 后续 `helper_fn (...) {}` 与 `free_token (re_token_t *node)` 的 token 被 整体 错位解析:
+#        变量表 = [0]always_inline(形参) [1]free_token(素三=0 = 当变量) [2]node(型序 = re_token_t) …
+#        (解析基 = 0 未设, 佐证 函数头 解析 未 正常进入);
+#     ③ `free_tree` 体 内 `node->token` 查表 命中 错位的 node ==> A9001。
+#   为何 regex 会撞: `regex_internal.h` L158-162 `#define __attribute(arg) __attribute__ (arg)` 是 **函数式宏**,
+#     而 甲言 的 函数式宏展开 **不覆盖 函数定义头** (对象式宏可以: `#define A __attribute__((x))` 用 A 正常;
+#     `#define A(x) __attribute__((x))` 用 `A(x)` 不展开) ==> `__attribute` 原样 进 函数头 ==> ①。
+#   修法: 5 处 属性判定 由 只认 `"__attribute__"` 扩为 同时认 `"__attribute"`
+#     (L5848 声明位置 / L18261 顶层 / L18278 函数头前置 / L18291 函数头后置 / L18503 声明尾),
+#     与 既有 `__declspec` 同款、零 新机制; GCC 亦 接受 `__attribute` 拼写。
+#   验证:
+#     · 最小复现 12 行 (types + `static inline void __attribute ((always_inline)) helper (char*,int,int) {}`
+#       + `free_token (re_token_t *node)` + `free_tree (void*, bin_tree_t *node) { … node->token … }`)
+#       修前 A9001 / 修后 rc=0; 由 ddmin (块级删除) 从 3892 行 regcomp.c 收敛到 3 块;
+#     · 变体矩阵 22 例: 原先 HIT 的 `__attribute` 形态 全部 转绿; 负例 (改形参名/改类型/换位置) 保持 不触发;
+#     · `compat/regex/regex.c` A9001 消失;
+#     · **口径校准** (git Makefile L2796-2799 `ifdef NO_REGEX` → regex.o `-DGAWK -DNO_MBSUPPORT`):
+#       补宏后 regex.c **编译通过**; `nm -g` 符号集 与 gcc (同口径) **完全一致** (15 == 15, 双向零差);
+#     · 自举 一步 收敛 (本次 v1 = v2 = 0D4BD439)。
+#   ⚠️ 未覆盖 (台账 挂账): 函数定义头 的 **函数式宏 不展开** (通用族 —— 任意 未识别 标识符+括号组 仍走 ①);
+#     根治方向 = 让 函数头 也走 宏展开, 或 让 异常 函数头 不留 污染。
+$expected_旧15 = '05275D50'
 # (2026-09-17) **C10f 回退: `qcc_rt.c` 的 `LoadLibraryA`/`GetProcAddress` 文本替换 撤销 -> 恢复 编译期内建 `load_library`/`get_proc_address` (前值 D9BB190C)**
 #   缘起: 审计岗判决 HEAD `100f4d7` **不通过** —— `feat_zh_mmap89.c` 运行期回归, 归因 C10f.
 #   事实: 旧种子 `95637E42` 该锚 rc=0 出 `#89 mmap PASS`; 新 `BFBA042F` **产物字节完全相同 (203712)** 却 rc=1
