@@ -639,6 +639,9 @@ CORE_FEAT = [
     'scripts/feat_c_cast_member_base_ok.c',
     # A1005 (2026-09-16): 内置/导入表 豁免表 缺 clearerr (语料闸 — git pack-objects; builtin 10/11 -> 11/11)
     'scripts/feat_c_clearerr_ok.c',
+    # C4 (2026-09-16): 函数名 与 结构体标签 同名 时 `名字(实参)->字段(...)` 被语句层 当 类型声明 吞掉
+    #   ⟹ 后续 `(实参)->字段` 另起 语句, 成员 基 落成 实参 ⟹ 误报 A9001 (语料闸 — git reftable/record.c)
+    'scripts/feat_c_dupname_func_tag_ok.c',
 ]
 
 def build_tests(args):
