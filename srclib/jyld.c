@@ -74,6 +74,7 @@ static int gsym_n = 0;
 /* kernel32 IAT 动态槽（qcc write_pe 同源 + Gate-1 sqlite3 扩展 60+ 函数, fix 2026-08-07） */
 static const char *k32_names[] = {
     "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile",
+    "LoadLibraryA", /* C10f 回退 (2026-09-17): 编译器内建符号 load_library 的落点 —— 见 resolve_one 别名表 */
     "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA",
     "CloseHandle","CreateFileMappingW","CreateFileW","CreateMutexW",
     "DeleteFileA","DeleteFileW","FlushFileBuffers","FlushViewOfFile",
@@ -1213,7 +1214,15 @@ static void collect_defs(void) {
 
 static int resolve_one(GSym *g) {
     if (g->defined) return 0;
-    int iat = k32_slot(g->name);
+    /* C10f 回退 (2026-09-17): `load_library` / `get_proc_address` 是甲言的**编译期内建**
+       (qcc_zh.jy 内建名单; 链接模式 下 展开 成 真 LoadLibraryA/GetProcAddress 调用),
+       `qcc -c` 下 则 落成 对 这两个 名字 的 未定义 外部符号 ⟹ 与 `_bump_top`/`_bump_set`
+       (C10e) **同款**: 由 jyld 提供。此处 用 **名字别名** 指向 kernel32 真导出,
+       直接 复用 jyld 既有 的 导入表 + 直接调用 thunk 机制 (无需 自建 机器码)。 */
+    const char *rn = g->name;
+    if (!strcmp(rn, "load_library")) rn = "LoadLibraryA";
+    else if (!strcmp(rn, "get_proc_address")) rn = "GetProcAddress";
+    int iat = k32_slot(rn);
     if (iat >= 0) { g->obj = -2; g->sym = iat; g->defined = 1; return 0; }
     /* msvcrt: __imp_X → IAT 槽；X（直接 call）→ thunk */
     {

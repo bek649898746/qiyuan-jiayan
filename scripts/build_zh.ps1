@@ -10,7 +10,28 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'D9BB190C'
+$expected = '05275D50'
+# (2026-09-17) **C10f 回退: `qcc_rt.c` 的 `LoadLibraryA`/`GetProcAddress` 文本替换 撤销 -> 恢复 编译期内建 `load_library`/`get_proc_address` (前值 D9BB190C)**
+#   缘起: 审计岗判决 HEAD `100f4d7` **不通过** —— `feat_zh_mmap89.c` 运行期回归, 归因 C10f.
+#   事实: 旧种子 `95637E42` 该锚 rc=0 出 `#89 mmap PASS`; 新 `BFBA042F` **产物字节完全相同 (203712)** 却 rc=1
+#     ==> **不是编译问题, 是运行时链路断了**. 锚内 rc=1 对应 `内存映射` 返回 NULL.
+#   根因: `load_library`/`get_proc_address` 是甲言**编译期内建** (qcc_zh.jy 内建名单; 链接模式下展开成真
+#     LoadLibraryA/GetProcAddress 调用). C10f 把它们换成**普通调用**, 而普通调用形式**新旧编译器下都返回 0**
+#     (审计岗探针实证) ==> 为修 `.o` 集合 (jyld) 场景的 `undefined load_library`, 把 `qcc -o exe` 场景的 mmap 拆了.
+#   修法 两步:
+#     ① 回退 `qcc_rt.c` 两副本 (srclib/ + seed/) 到 `2f43550` (4 处 LoadLibraryA + 6 处 GetProcAddress);
+#     ② jyld 按 **C10e 同款模式** 提供内建符号: `k32_names` 补 `LoadLibraryA`; `resolve_one` 加**名字别名**
+#        (`load_library` -> `LoadLibraryA`, `get_proc_address` -> `GetProcAddress`) ==> 复用既有 白名单+导入表+thunk 通路,
+#        语义 与 编译器「链接模式」下 生成的内建调用 一致, 零新机制.
+#   验证:
+#     · 双向对照 (锚): C10f 版 FAIL (exit=1, 输出空) / 回退版 **PASS**;
+#     · jyld 场景: 回退版 `qcc_rt.o` 里 `load_library`/`get_proc_address` 为 **sec=0 未定义外部符号** (正是递刀所指),
+#       放入 .o 集合跑链接闸 ==> undefined 只剩 `localtime_r`, **无 load_library** ==> 别名解析成功;
+#     · 自举一步收敛 (本次 v1 = v2 = 05275D50).
+#   ⚠️ 教训: 修 A 场景前必须在 B 场景上做对照 (C10f 只跑链接闸就提交 ==> 拆东墙补西墙).
+#   ⚠️ 挂账 (递刀附带): `LoadLibraryA` **普通调用返回 0** (新老皆然) —— 「prelude 有声明 + jyld 有白名单 != 调用可用」,
+#     与 C18a「假成功」/ C7「实参掩盖」同族, **建议单独立站**.
+$expected_旧14 = 'D9BB190C'
 # (2026-09-17) **C16 根治: `原级()` 的 sizeof 专门分支 **越界消费 `)`** ==> 后续 token 错位, 函数定义 成片 静默 丢失 (rc=0 假成功) (前值 BFBA042F)**
 #   症状: `trace2/tr2_dst.c` 编译 rc=0, 但 4 个 非 static 函数 **只导出 1 个** (tr2_dst_get_trace_fd / tr2_dst_trace_want 等 从 .o 消失);
 #     链接闸 因此 停 在 `tr2_dst_trace_want`.
