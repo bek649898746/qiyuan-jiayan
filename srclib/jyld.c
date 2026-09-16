@@ -144,7 +144,13 @@ static const char *k32_names[] = {
     "SetStdHandle",
     "TerminateProcess",
     "WaitNamedPipeW",
-    "WriteConsoleW"
+    "WriteConsoleW",
+    /* C13 配套 (2026-09-17): Tls 系列 (pthread.c 暴露) — kernel32 导出表核实 */
+    "TlsAlloc",
+    "TlsFree",
+    "TlsGetValue",
+    "TlsSetValue",
+    "GetCurrentThreadId"   /* C13 配套 (2026-09-17) */
 };
 #define K32_MAX 256  /* C10c (2026-09-17): 128 -> 256 — 本次补 51 项后 已用 127, 扩容留余量 */
 static int k32_used[K32_MAX]; /* 槽 → 名字索引 */

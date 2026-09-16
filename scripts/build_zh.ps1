@@ -10,7 +10,26 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '95637E42'
+$expected = '03FE8E58'
+                        # (2026-09-17) **C13 根治: 顶层解析循环 兜底 `否 { 断; }` ==> 未识别顶层 token 直接终止整个 TU ==> 后续函数静默丢弃 + rc=0 假成功 (前值 95637E42)**:
+                        #   症状: 两个文件的目标文件里后续顶层函数全部消失, 而语料闸判 rc=0 (假成功):
+                        #     compat/nedmalloc/nedmalloc.c (13 个非 static 函数全丢) / trace2/tr2_dst.c (3 个丢);
+                        #     GCC 同口径正常 ==> 甲言独有缺陷 (GCC 对照过滤掉 14 个候选里的 12 个)。
+                        #   最小复现 (6 行, 可重复):
+                        #     #ifndef G / #define G / AA void *f0(void); / #undef X / #endif / int bb(void){return 1;}
+                        #     ==> bb 被吞且 rc=0。
+                        #   规律: 声明类型部分出现 >=2 个未识别 token (如未定义类型名 + 指针返回) 即触发;
+                        #     `extern` 是关键字走正常路径, 故 `extern AA f0(void);` 不触发。
+                        #   机制 (v17 插桩实证): 顶层解析循环 (L16234) 对未匹配任何分支的 token 落到兜底 `否 { 断; }`
+                        #     (L18623, 全文件唯一) ==> 循环退出 ==> 其后整个 TU 从未被访问 (无 prelude 裸测: 全文件只打印 1 条 [TL])。
+                        #   修法: 兜底改为「跳到分号并 续」—— 词位必前进 (分号处 ++ / 词终处循环条件自然失败), 无死循环风险。
+                        #   验证: 最小复现 bb 由丢失 -> OK; 配套修 prelude 补 Tls 系列 + GetCurrentThreadId
+                        #     (修复后 compat/win32/pthread.c 不再被吞, 暴露真实 A1001, 自动抓取法补齐);
+                        #     语料闸 553 -> 550, 3 个新增失败均为「假成功 -> 真失败」的暴露 (regex/regcomp 需 gawk 生成头,
+                        #     contrib/libsecret 需 glib, nedmalloc 本身报 A9001 三目) — 已定性;
+                        #     自举一步收敛仍成立。
+                        #   本次 v1 = v2 = 03FE8E58
+$expected_旧7 = '95637E42'
                         # (2026-09-17) **free_fn 族根治: 查函数 get-or-create 新条目 未清 返回型序表 ==> sret 误判 ==> 函数指针调用 被发成 直接调用 ==> .o 写 未定义外部符号 (前值 68597149)**:
                         #   症状: git bloom.c 在 -D__MINGW32__ 口径下, 目标文件出现 **源码中不存在为函数** 的
                         #     未定义外部符号 `free_fn` (commit-slab 宏展开出的 函数指针 形参名) ==> 链接期

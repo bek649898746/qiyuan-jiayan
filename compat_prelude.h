@@ -2348,6 +2348,11 @@ int HeapFree(void *hHeap, unsigned int dwFlags, void *lpMem);
 void GetSystemInfo(void *lpSystemInfo);
 void *GetProcessHeap(void);
 unsigned long GetCurrentProcessId(void);   /* 原 被 `#define swprintf(...) 0` 掩盖: 实参从未被解析 ⟹ 报错从未出现, 而运行时 `swprintf(...) < 0` 恒为假 (winansi 管道名进程号恒 0) */
+unsigned long TlsAlloc(void);     /* C13 配套 (2026-09-17): 修好「静默丢弃」后 compat/win32/pthread.c 不再被吞, 暴露真实 A1001 */
+unsigned long GetCurrentThreadId(void);  /* C13 配套 (2026-09-17): 自动抓取 (pthread.c) — kernel32 导出表核实 */
+int TlsFree(unsigned long dwTlsIndex);
+void *TlsGetValue(unsigned long dwTlsIndex);
+int TlsSetValue(unsigned long dwTlsIndex, void *lpTlsValue);
 
 /* --- 无真符号者: 给出**语义正确**的实现, 而非「返回 0 的伪 stub** ---
  * ntohl/htonl: msvcrt/kernel32 均无导出; git 的 bswap.h 虽有 __x86_64__ 分支,
