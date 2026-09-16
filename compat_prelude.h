@@ -394,9 +394,13 @@ int lstat(const char *path, void *buf);
 #define NO_STRCASESTR 1
 #define getpass(a) ((char*)0)  /* POSIX getpass stub (fix 2026-08-15: getpass undefined) */
 #define NO_MEMMEM 1
-#define NO_SETENV 1
+#ifndef __MINGW32__
+#define NO_SETENV 1  /* (C2 2026-09-16) __MINGW32__ 下 由 compat/mingw.h 提供 setenv */
+#endif
 extern int putenv(const char *name);  /* POSIX putenv -> msvcrt _putenv (fix 2026-08-23 t49e: was 0-stub, gitsetenv() putenv() silently returned 0 -> GIT_CONFIG_PARAMETERS never written -> git -c ignored; real decl + jyld alias _putenv, same msvcrt env block as getenv) */
-#define NO_UNSETENV 1
+#ifndef __MINGW32__
+#define NO_UNSETENV 1  /* (C2 2026-09-16) __MINGW32__ 下 compat/mingw.h 的 #error 检查 禁止 此宏 */
+#endif
 #define NO_MKDTEMP 1
 #define mktemp(a) (a)  /* POSIX mktemp stub: 返回模板本身 (fix 2026-08-15: mktemp undefined) */
 #define NO_STRTOUMAX 1
@@ -2203,3 +2207,66 @@ enum file_rename_relevance {
 struct diff_queue_struct;
 extern struct diff_queue_struct diff_queued_diff;
 
+
+/* ===== C5 (2026-09-16): 语料闸 (git 全量 563) 缺声明 补齐 =====
+   这些函数 的 声明 本应 来自 被 跳过 的 系统头 (<windows.h> / <wchar.h> / MSVCRT 运行库),
+   qcc 不 生成 隐式声明 ⟹ 调用点 报 A1001「未声明函数 'x' — 调用前需定义或声明原型」。
+   签名 照 MinGW / MSVCRT 官方 API (与 git 调用点 逐参 对齐) — 本块 纯 声明, 无 实现。 */
+
+/* mingw.c 的 Windows 实现 三件套 (compat/stat.c 实现 git_stat/git_fstat/git_lstat 时 调用;
+   定义 由 compat_mingw.o 提供) — 缺此声明 ⟹ compat/stat.c 编不过 ⟹ 链接 缺 git_lstat */
+int mingw_stat(const char *file_name, struct stat *buf);
+int mingw_fstat(int fd, struct stat *buf);
+int mingw_lstat(const char *file_name, struct stat *buf);
+
+/* MSVCRT 64 位 整数 解析 (compat/strtoimax.c / compat/strtoumax.c / t/helper/test-progress.c):
+   prelude 已 有 `#define strtoll(a,b,c) _strtoi64(a,b,c)` 但 未 给 _strtoi64 原型 */
+long long _strtoi64(const char *nptr, char **endptr, int base);
+unsigned long long _strtoui64(const char *nptr, char **endptr, int base);
+
+/* Windows API: 取 全路径 (compat/fsmonitor/fsm-path-utils-win32.c) */
+unsigned int GetFullPathNameW(const wchar_t *lpFileName, unsigned int nBufferLength,
+                              wchar_t *lpBuffer, wchar_t **lpFilePart);
+
+/* Windows API: 宽字符 → 多字节 (compat/win32/*, contrib/credential/wincred) */
+int WideCharToMultiByte(unsigned int CodePage, unsigned long dwFlags,
+                        const wchar_t *lpWideCharStr, int cchWideChar,
+                        char *lpMultiByteStr, int cbMultiByte,
+                        const char *lpDefaultChar, int *lpUsedDefaultChar);
+
+/* git 自身 宽字符 助手 (compat/win32/dirent.c 的 xwcstoutf; compat/winansi.c 的 xutftowcsn) */
+size_t xwcstoutf(char *utf, const wchar_t *wcs, size_t wcslen);
+size_t xutftowcsn(wchar_t *wcs, const char *utf, size_t wcslen, size_t maxlen);
+
+/* C 运行库: 安全 宽字符 格式化 (compat/win32/headless.c) — 变参, 签名 与 MSVCRT 一致 */
+int swprintf_s(wchar_t *buffer, size_t sizeOfBuffer, const wchar_t *format, ...);
+
+/* ===== C6 (2026-09-16): MSVCRT 基础 typedef — mingw.h `struct mingw_stat` 字段类型 =====
+   compat/mingw.h L375-387 定义:
+       struct mingw_stat { _dev_t st_dev; _ino_t st_ino; _mode_t st_mode; short st_nlink;
+                           short st_uid; short st_gid; _dev_t st_rdev; off64_t st_size;
+                           struct timespec st_atim; struct timespec st_mtim; struct timespec st_ctim; };
+   这些 类型 本 来自 <sys/types.h> (被 跳过) ⟹ 缺失 使 struct mingw_stat 注册不全
+   ⟹ compat/mingw.c `&(buf->st_atim)` 查字段失败 (A9001 类型 'stat' 无字段 'st_atim')。
+   取值 与 MSVCRT/MinGW 一致: _dev_t=unsigned int, _ino_t=unsigned short,
+   _mode_t=unsigned short, off64_t=long long */
+typedef unsigned int _dev_t;
+typedef unsigned short _ino_t;
+typedef unsigned short _mode_t;
+typedef long long off64_t;
+
+/* ===== C5/C6 第二批 (2026-09-16) ===== */
+/* FindFirstFileW/FindNextFileW/FindClose — prelude 上方 注释 早已 声明 「真实现」(2026-08-19),
+   但 原型 始终 未补 ⟹ compat/win32/dirent.c 报 A1001 (未声明函数). 参数/返回 用 void* (HANDLE). */
+void *FindFirstFileW(const wchar_t *lpFileName, void *lpFindFileData);
+int FindNextFileW(void *hFindFile, void *lpFindFileData);
+int FindClose(void *hFindFile);
+/* git 自身: compat/mingw.c L39 `int err_win_to_posix(DWORD winerr)` (DWORD = unsigned long) */
+int err_win_to_posix(unsigned long winerr);
+/* C 运行库: 宽字符 子串查找 (contrib/credential/wincred) */
+wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle);
+/* Windows headless (compat/win32/headless.c): 结构体 + CreateProcessA.
+   headless 只 用 cb / 取 hProcess 关句柄, 字段 布局 按 Win32 官方 (仅 需 正确 大小/偏移 到 用到的字段)。 */
+
+/* C 运行库: 安全 宽字符 拷贝 (contrib/credential/wincred/git-credential-wincred.c) */
+int wcsncpy_s(wchar_t *dest, size_t destsz, const wchar_t *src, size_t count);
