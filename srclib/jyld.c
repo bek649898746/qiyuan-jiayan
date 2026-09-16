@@ -671,7 +671,11 @@ static const char *msvcrt_names[] = {
     "_wfopen",
     "_wfreopen",
     "_commit",
-    "_lseeki64"   /* C10b (2026-09-17): msvcrt 真符号 (导出表实测); 解开 11 个 .o 的 undefined '_lseeki64' */
+    "_lseeki64"   /* C10b (2026-09-17): msvcrt 真符号 (导出表实测); 解开 11 个 .o 的 undefined '_lseeki64' */,
+    /* C10e (2026-09-17): msvcrt 真缺口补全 (导出表核实);
+       注: prelude 中 extern 写作 _wpgmprt 疑似拼写有误, msvcrt 真名为 _wpgmptr */
+    "_wpgmptr",
+    "swprintf_s"
 };
 #define MSVCRT_MAX 256  /* C10b (2026-09-17): 192 -> 256 — 补 _lseeki64 后 已用 191; 扩容留余量 (msvcrt_used/msvcrt_direct_slot 均为 jyld 自身 BSS, 不影响输出 PE 布局) */
 static int msvcrt_used[MSVCRT_MAX];       /* 槽 → msvcrt_names 索引(-1=未用) */

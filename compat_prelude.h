@@ -935,6 +935,9 @@ typedef struct _RTL_CRITICAL_SECTION {
 } CRITICAL_SECTION;               /* 40 bytes */
 typedef int CONDITION_VARIABLE;
 typedef unsigned long DWORD;
+typedef void *LPVOID;  /* C12 (2026-09-17): Windows 通用指针类型 — 真缺口清单中「未命中任何导出表」项;
+                          compat/winansi.c 用作形参类型与强制转换 ((LPVOID) &fontFamily) */
+typedef const void *LPCVOID;  /* C12: Windows 常量指针类型 (配套) */
 #define LPDWORD DWORD*  /* Windows 指针类型宏 (fix 2026-08-15: LPDWORD undefined) */
 #define LPSTR char*  /* Windows ANSI 字符串指针 (fix 2026-08-15: LPSTR undefined) */
 #define LPCSTR const char*  /* Windows ANSI 常量字符串指针 */
@@ -1907,6 +1910,9 @@ int GetExitCodeProcess(void *hProcess, unsigned long *lpExitCode);  /* C7b (2026
 #define SIG_DFL 0
 #define SIG_IGN 1
 #define SIG_ERR ((void*)-1)
+#define SIG_BLOCK 0    /* C12 (2026-09-17): POSIX sigprocmask「how」三常量 — run-command.c 用 SIG_SETMASK */
+#define SIG_UNBLOCK 1
+#define SIG_SETMASK 2
 typedef void (*qcc_sighandler_t)(int);
 qcc_sighandler_t signal(int sig, qcc_sighandler_t handler);  /* C7: mingw.c L2394 `#undef signal` 后 调用真 POSIX signal (sysv_signal 的 default 分支), 原 stub 宏被 undef 后一无所有; msvcrt 有真符号 */
 #define SA_RESTART 0 /* sigaction 标志 (fix 2026-08-15: SA_RESTART undefined) */
