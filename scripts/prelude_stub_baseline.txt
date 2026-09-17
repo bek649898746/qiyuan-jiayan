@@ -1,0 +1,92 @@
+# 闸① 基线 —— 预置头 里「全吞实参 的 函数式宏」名单
+# 规则: 见 scripts/check_prelude_stubs.py 头部。
+# **只允许 减少**: 新增 名字 ⟹ 闸变红；修好一个就从这里删一行。
+# 本文件由 `python scripts/check_prelude_stubs.py --write` 生成。
+
+AllocateAndInitializeSid           (a,b,c,d,e,f,g,h,i,j,k,l) -> 0
+CheckTokenMembership               (a,b,c) -> 0
+ConvertSidToStringSidA             (a,b) -> 0
+CopySid                            (a,b,c) -> 0
+CreateEvent                        (a,b,c,d) -> ((HANDLE)-1)
+CreateFileMapping                  (a,b,c,d,e,f) -> ((HANDLE)-1)
+EqualSid                           (a,b) -> 0
+FD_ISSET                           (fd,s) -> 0
+FD_SET                             (fd,s) -> ((void)0)
+FD_ZERO                            (s) -> ((void)0)
+FreeSid                            (a) -> 0
+GetLengthSid                       (a) -> 0
+GetNamedSecurityInfoW              (a,b,c,d,e,f,g,h) -> 0
+GetTokenInformation                (a,b,c,d,e) -> 0
+GetUserNameW                       (a,b) -> 0
+InitializeSecurityDescriptor       (a,b) -> 0
+IsValidSid                         (a) -> 0
+IsWellKnownSid                     (a,b) -> 0
+LookupAccountSidA                  (a,b,c,d,e,f,g) -> 0
+MAKEWORD                           (a,b) -> 0x0202
+STACK_OF                           (x) -> void
+SetEntriesInAcl                    (a,b,c,d) -> 0
+SetSecurityDescriptorDacl          (a,b,c,d) -> 0
+WEXITSTATUS                        (s) -> 0
+WIFEXITED                          (s) -> 1
+WIFSIGNALED                        (s) -> 0
+WSASocket                          (a,b,c,d,e,f) -> ((intptr_t)-1)
+WTERMSIG                           (s) -> 0
+__attribute__                      (x) -> 
+assert                             (x) -> ((void)0)
+bind_textdomain_codeset            (a,b) -> ((char*)0)
+bindtextdomain                     (a,b) -> ((char*)0)
+convert_slashes                    (a) -> ((void)0)
+curl_easy_cleanup                  (a) -> ((void)0)
+curl_easy_duphandle                (a) -> ((void*)0)
+curl_easy_getinfo                  (a,b,c) -> 0
+curl_easy_setopt                   (a,b,c) -> 0
+curl_easy_strerror                 (a) -> ""
+curl_global_init                   (a) -> 0
+curl_global_sslset                 (a,b,c) -> 0
+curl_multi_add_handle              (a,b) -> 0
+curl_multi_cleanup                 (a) -> ((void)0)
+curl_multi_fdset                   (a,b,c,d,e) -> 0
+curl_multi_info_read               (a,b) -> ((void*)0)
+curl_multi_perform                 (a,b) -> 0
+curl_multi_remove_handle           (a,b) -> 0
+curl_multi_strerror                (a) -> ""
+curl_multi_timeout                 (a,b) -> 0
+curl_slist_append                  (a,b) -> ((void*)0)
+curl_slist_free_all                (a) -> ((void)0)
+execve                             (a,b,c) -> (-1)
+execvp                             (a,b) -> (-1)
+ftello                             (a) -> 0
+ftruncate                          (a,b) -> 0
+gai_strerror                       (a) -> ((char*)0)
+getpass                            (a) -> ((char*)0)
+getpgid                            (a) -> 0
+getpwnam                           (a) -> ((struct passwd*)0)
+getpwuid                           (a) -> ((struct passwd*)0)
+iconv                              (cd,a,b,c,d) -> 0
+iconv_close                        (cd) -> 0
+iconv_open                         (a,b) -> ((void*)0)
+ioctl                              (a,b,c) -> 0
+nl_langinfo                        (item) -> ""
+pthread_cond_destroy               (a) -> 0
+pthread_create                     (a,b,c,d) -> 0
+pthread_exit                       (a) -> 0
+pthread_getspecific                (a) -> 0
+pthread_join                       (a,b) -> 0
+pthread_key_delete                 (a) -> 0
+pthread_mutexattr_destroy          (a) -> 0
+pthread_mutexattr_settype          (a,t) -> 0
+pthread_setcancelstate             (a,b) -> 0
+pthread_setspecific                (a,b) -> 0
+pthread_sigmask                    (a,b,c) -> 0
+select                             (n,r,w,e,t) -> 0
+sigaction                          (a,b,c) -> 0
+sigaddset                          (set, signum) -> ((void)0)
+sigemptyset                        (x) -> ((void)0)
+sigfillset                         (a) -> 0
+sigprocmask                        (how, set, oldset) -> ((void)0)
+statvfs                            (a,b) -> 0
+sysconf                            (a) -> 0
+tcgetpgrp                          (a) -> (-1)
+textdomain                         (a) -> ((char*)0)
+va_end                             (ap) -> ((void)0)
+xutftowcs                          (a, b, c) -> 0

@@ -652,6 +652,33 @@ CORE_FEAT = [
     'scripts/feat_zh_directive_comment_ok.c',
 ]
 
+# ==== 第 84 站 战线 1 补闸 (2026-09-17): C266 / C292+C295 / C299 三站 **零锚提交** 的补账 ====
+#   造锚 过程 里 抓出 4 个 新缺陷 (见 台账 §85/§86)，并 修正 两个 认识:
+#     · `甲言模式` 判据 = 中文**关键字**（不是中文标识符）—— 只有中文标识符的 C 文件
+#       根本 走不到 所有权检查 ⟹ 拿它当锚 会 永远绿 (假锚)
+#     · gcc oracle **对甲言保留字是盲的**（`长`/`整`/`空` 作标识符 gcc 照常编过）
+#   入闸 前 过 三关: ① gcc 逐值对照 ② 「没修」的编译器上 必须 变红 (锚灵敏度)
+#   ③ 静默兜底 槽计数 = 0 (本类缺陷 的 签名就是静默兜底) —— 靠新增的 `@EXPECTED silent:N` 指令
+CORE_FEAT += [
+    # C266: 结构体 逗号续行 的 类型序 —— 11 形态矩阵 (gcc 逐值对照通过)
+    'scripts/feat_zh_struct_comma_continuation_ok.c',
+    # C292+C295: `typedef T *TP;` 别名指针 8 形态 (形参/局部/全局/二级/const/一体写法)
+    'scripts/feat_zh_typedef_ptr_alias_ok.c',
+    # C299: 所有权「默认移动」的 指针豁免 —— 甲言关键字语法 + 孪生 C 版
+    #   (scripts/oracle/feat_zh_own_ptr_exempt_ok_oracle.c 供 gcc 逐值对照)
+    'scripts/feat_zh_own_ptr_exempt_ok.c',
+    # 闸② 实参必须被解析 (底线: 直调真函数 的 实参 未声明 ⟹ 必报 A1001)
+    'scripts/feat_zh_undeclared_arg_neg.c',
+    # C332: 中文类型别名(站C) —— **修 C292+C295 的回归** (型定加 少传 2 个实参 ⟹ 取垃圾
+    #   ⟹ 别名被当指针别名 ⟹ `字节型 b = 200;` 报 A2001)。含 宽度 钉死 + 别名套别名。
+    #   本锚 就是 那个回归 的 网: HEAD(有回归) 上 变红, C332 后 变绿。
+    #   (孪生 C 版: scripts/oracle/feat_zh_type_alias_width_ok_oracle.c)
+    'scripts/feat_zh_type_alias_width_ok.c',
+    # 回归 的 原始 受害者 (启元 09-13 加的 站C 语法锚) —— 它 挂红 两天 无人发现,
+    #   因为 C292/C299 两站 都 没 跑 `--zh-feat` 闸 ⟹ 本批 起 每次改源码必须跑 本闸
+    'scripts/feat_zh_syntax_c.c',
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
@@ -691,6 +718,10 @@ def run_one_test(name):
         src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     expected_err = None
+    expected_silent = None   # 闸 (2026-09-17 第 84 站): `@EXPECTED silent:N` —— 静默兜底 槽计数 断言.
+                             #   C266/C292/C299 这一类缺陷 的 **签名就是静默兜底**, rc=0 不等于没缺陷;
+                             #   声明了才查 (未声明的不受影响, 零回归风险).
+                             #   ⚠️ 只在 编译成功 时 可断言 (编译器 的 汇总行 在 成功收尾处 才打印).
     dep = False; multi = False
     arg_extra = []          # @ARG <编译器选项> (2026-09-14 P0-3): 闸 原 只 能 传 固定 [qcc, src, -o, out],
                             #   命令行 -D 宏 类 特性 完全 无法 覆盖 — 补 此 指令 (与 F5 闸盲区 同族: 闸 够不着 即 盲区)
@@ -707,6 +738,8 @@ def run_one_test(name):
         if m: expected_err = m.group(1).strip()              #   运行时诊断 (如 [LEAK]/[ERR]) 走 stderr, stdout 断言 覆盖 不到
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
+        m = re.search(r'//\s*@EXPECTED\s+silent:\s*(\d+)', line)   # 第 84 站: 静默兜底 槽计数 断言
+        if m: expected_silent = int(m.group(1))
         if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
         if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
         if '@MULTI' in line: multi = True      # 显式声明: 需 -c + jyld 跨 .o 链接 → 单文件无主/外链失败 = 许可 skip
@@ -720,7 +753,19 @@ def run_one_test(name):
     except OSError:
         pass
     r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
-                       encoding='utf-8', errors='replace')
+                       encoding='utf-8', errors='replace',
+                       env=(dict(os.environ, QCC_DBG_SILENT='1') if expected_silent is not None else None))
+
+    # 静默兜底 槽计数 断言 (第 84 站): 只在 编译成功 时 判定 (汇总行 在 成功收尾 才打印)
+    if expected_silent is not None and r.returncode == 0:
+        allout = (r.stdout or '') + (r.stderr or '')
+        ms = re.search(r'本编译 共 (\d+) 次', allout)
+        silent_n = int(ms.group(1)) if ms else 0
+        if silent_n != expected_silent:
+            return (name, False, '静默兜底 %d ≠ 期望 %d (%s)' % (
+                silent_n, expected_silent,
+                ' '.join(re.findall(r'槽\d: [^\n]*', allout))[:120]))
+
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
             # 闸盲区修补 (2026-09-14): 原 直接 return PASS —— 连 "编译器 优雅 报错" 与 "编译器 自身 崩溃"
@@ -793,6 +838,32 @@ def main():
     ap.add_argument('--parallel', type=int, default=0, help='并行 worker 数 (0=串行)')
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
+
+    # 闸① (2026-09-17 第 84 站 · 战线 1 补闸): 预置头「假实现(全吞实参的函数式宏)」上限锁.
+    #   只降不升; 名单级 (改名 也 绕不过). 详见 scripts/check_prelude_stubs.py.
+    #   活证据: 度量一旦 无人自动跑, 就会 空转 (原 `_debt_count.py` 输出 0/0 且不报错 就是 前车之鉴).
+    try:
+        import importlib.util as _ilu
+        _sp = os.path.join(root, 'scripts', 'check_prelude_stubs.py')
+        _spec = _ilu.spec_from_file_location('_chk_stub', _sp)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _hits = _mod.scan(_mod.PRE)
+        _base = _mod.load_base()
+        if _base is not None:
+            _added = sorted(set(_hits) - _base)
+            if _added:
+                print('[闸① 预置头假实现上限锁] ❌ 新增 %d 个 (不允许): %s' % (len(_added), ' '.join(_added)))
+                print('    处置: 删掉新增的假实现, 或 (确有必要时) 在台账记明理由并 --write 更新基线.')
+                sys.exit(1)
+            _removed = sorted(_base - set(_hits))
+            print('[闸① 预置头假实现上限锁] ✅ 无新增 (当前 %d / 基线 %d%s)' % (
+                len(_hits), len(_base),
+                (', 已减少 %d: %s' % (len(_removed), ' '.join(_removed))) if _removed else ''))
+    except SystemExit:
+        raise
+    except Exception as _e:
+        print('[闸①] 检查器 异常 (不计红, 但请查): %s' % _e)
 
     # 确保编译器
     qcc = find_qcc()
