@@ -2358,6 +2358,34 @@ unsigned long GetCurrentThreadId(void);  /* C13 配套 (2026-09-17): 自动抓�
 int TlsFree(unsigned long dwTlsIndex);
 void *TlsGetValue(unsigned long dwTlsIndex);
 int TlsSetValue(unsigned long dwTlsIndex, void *lpTlsValue);
+/* Win32 内存 API + 基础类型 (C69 配套口径, 2026-09-17)
+   缘由: C69 修好「条件编译 #else 跳过态泄漏」后, compat/nedmalloc/malloc.c.h 的
+   Win32 段 (WIN32 分支及 _M_AMD64 等) **正确进入编译流**, 暴露缺声明。
+   真实构建里这些来自 <windows.h>; -c 口径 (仅 -D _WIN32=1) 需手工补。
+   MEMORY_BASIC_INFORMATION 布局按 Win64: 8+8+4(+4pad)+8+4+4+4(+4pad) = 48 字节。
+   LONG 按 LLP64 = int(4B) (项目惯例: 刻意不写 long 以免宽度歧义)。 */
+typedef int LONG;
+typedef unsigned int DWORD;
+typedef unsigned int ULONG;
+#define __cdecl
+#define WINAPI
+typedef struct {
+    void *BaseAddress;
+    void *AllocationBase;
+    unsigned long AllocationProtect;
+    unsigned long long RegionSize;
+    unsigned long State;
+    unsigned long Protect;
+    unsigned long Type;
+} MEMORY_BASIC_INFORMATION;
+void *VirtualAlloc(void *p1, unsigned long long s2, unsigned long f3, unsigned long f4);
+int VirtualFree(void *p1, unsigned long long s2, unsigned long f3);
+int VirtualQuery(void *p1, void *p2, unsigned long long l3);
+#define MEM_RESERVE  0x00002000
+#define MEM_COMMIT   0x00001000
+#define MEM_RELEASE  0x00008000
+#define MEM_TOP_DOWN 0x00100000
+#define PAGE_READWRITE 0x04
 
 /* --- 无真符号者: 给出**语义正确**的实现, 而非「返回 0 的伪 stub** ---
  * ntohl/htonl: msvcrt/kernel32 均无导出; git 的 bswap.h 虽有 __x86_64__ 分支,
@@ -2488,4 +2516,18 @@ extern wchar_t *_wpgmptr;
 #define _Inout_
 #define _Inout_opt_
 #define _Ret_maybenull_
-
+/* Win32 API 补声明 (C69 配套口径, 2026-09-17)
+   缘由: C69 修好「条件编译 #else 跳过态泄漏」后, compat/nedmalloc/malloc.c.h 的
+   Win32 段**正确进入编译流**, 连带 nedmalloc.c 也不再被静默跳过, 暴露下列缺声明。
+   真实构建里这些由 <windows.h> 提供; -c 口径 (仅 -D _WIN32=1) 需手工补。 */
+void SleepEx(unsigned long dwMilliseconds, int bAlertable);
+unsigned long GetTickCount(void);
+#define FALSE 0
+/* ⚠️ 下面两个**不是口径缺口, 是编译器能力缺口** (记台账):
+   · alloca      — 甲言**有**内建 (L11242 阶段C-1 #83 栈分配), 但只在**语句层**识别;
+     nedmalloc.c L940 `size_t *p = (size_t *) alloca(...)` 用在**初始化式表达式**里
+     → 未命中 → A1001。
+   · __builtin_clz — 甲言**无**此内建 (nedmalloc.c L208 用其算前导零)。
+   此处临时桩只为让 -c 编译跑完, **运行期语义不保证** (返回 8 字节槽)。 */
+long alloca();
+long __builtin_clz();
