@@ -2522,6 +2522,20 @@ extern wchar_t *_wpgmptr;
    真实构建里这些由 <windows.h> 提供; -c 口径 (仅 -D _WIN32=1) 需手工补。 */
 void SleepEx(unsigned long dwMilliseconds, int bAlertable);
 unsigned long GetTickCount(void);
+/* ---- 控制台结构体 (C61 槽1 下钻口径, 2026-09-17) ----
+   compat/winansi.c 用 `CONSOLE_SCREEN_BUFFER_INFO sbi;` 并访问 sbi.dwSize / sbi.dwCursorPosition /
+   sbi.wAttributes; 该类型原先 prelude 未定义 ⟹ sbi 类型未知 ⟹ 成员访问落「内存地址.成员.基类型序=-1」
+   静默兜底 (槽1 ×2)。真实构建里由 <windows.h> 提供。布局按 Win64:
+   COORD{short,short}=4 · SMALL_RECT{4×short}=8 · CONSOLE_SCREEN_BUFFER_INFO=4+4+2(+2pad)+8+4=24 */
+typedef struct { short X; short Y; } COORD;
+typedef struct { short Left; short Top; short Right; short Bottom; } SMALL_RECT;
+typedef struct {
+    COORD dwSize;
+    COORD dwCursorPosition;
+    unsigned short wAttributes;
+    SMALL_RECT srWindow;
+    COORD dwMaximumWindowSize;
+} CONSOLE_SCREEN_BUFFER_INFO;
 #define FALSE 0
 #define __CHAR_BIT__ 8   /* GCC 内建: 每字节位数 (nedmalloc.c L208 用于算 topbit) */
 /* __builtin_clz: GCC 内建「前导零个数」—— 语义可用纯 C 表达, 故走**口径层**实现,
