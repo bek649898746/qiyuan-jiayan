@@ -10,7 +10,35 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '0D4BD439'
+$expected = 'C62F8E03'
+# (2026-09-17) **C23 根治: `__inline`/`__inline__`/`__forceinline` 未识别为型词 ⟹ 函数定义头 错位 (前值 0D4BD439)**
+#   缘起: C15 (`compat/nedmalloc/nedmalloc.c` 报 A1001「结构体 'win32_mlock_t' 未定义或不完整」)。
+#   收敛路径 (第 47-48 站, 零猜测, 全探针):
+#     ① 词法层 排除: dump `win32_mlock_t` 前后词元, BAD(原样) 与 FIXED(插 `;`) **词元流结构相同** (只差一个 `;`)
+#        ⟹ 问题在解析层;
+#     ② 类型登记探针: BAD 版登记链断在 `malloc_params` 之后 (少登 `threadcacheblk_t`/`threadcache_t`),
+#        `win32_mlock_t` **名字登记了但体没解析** ⟹ 后随 `nedpool_t` 的 `MLOCK_T mutex;` 需尺寸 ⟹ A1001;
+#     ③ 顶层循环探针 (`解析()` 主循环, 窗位 14000-14700): BAD 版在**词位 14391 那一轮消费 8 个词元**
+#        (FIXED 同轮只消费 2) ⟹ 该轮 =「消费到 `;` 为止」, 只是 `;` 位置不同
+#        ⟹ **插 `;` 是掩盖不是修复**;
+#     ④ 标定 TU 偏移 2740 ⟹ 14391 = `malloc.c.h` L1583 = **`win32munmap` 的结束 `}`**
+#        (顶层序列里还能看到它函数体内的 `if`/`cptr`/`size` ⟹ **该函数头没被识别成函数定义**);
+#     ⑤ **最小复现 (13 行)**: `static __inline int f(void* p, size_t s) { return 0; }` **直接坏**;
+#        `static inline int …` 正常; `#define FI __inline` + 用它也坏; `#define FI inline` 正常;
+#        `__inline__`/`__forceinline` 同样坏 ⟹ **`inline` 被认成型词 (词型判定 L5329), 三个扩展拼写没认**;
+#   完整因果链:
+#     函数头用 `__inline` (由 `#define FORCEINLINE __inline` 展开而来) 未识别 ⟹ 落 词变量 ⟹ 函数定义头 错位
+#       ⟹ 该函数被当「变量声明」⟹ 函数体 `{}` 被当「初始化列表」⟹ 一直扫到下一个 `;`
+#       ⟹ 吞掉其后 `struct win32_mlock_t { volatile long l;` ⟹ 类型残缺 ⟹ A1001。
+#   修法: 词型判定处 `inline` 一行之后, 补认 `__inline` / `__inline__` / `__forceinline` 三个拼写 (1 行, 零新机制)。
+#   验证:
+#     · 最小复现矩阵 9 例: 修前 FAIL 的 k7/k8/k11/k14 (__inline / __inline__ / __forceinline / 宏) **全部转绿**;
+#       修前 OK 的 k9/k10/k12/k13/k15 (inline / 空宏 / static / 不用宏) **保持 OK**;
+#     · `compat/nedmalloc/nedmalloc.c` **推进**: A1001(win32_mlock_t 不完整) ⟹ **A9001 (`nedpool_t` 无字段 `head`)** (下一层缺陷, 另记);
+#     · 自举 **一步收敛** (本次 v1 = v2 = C62F8E03)。
+#   ⚠️ 同族未覆盖 (台账): 其余 `__` 扩展拼写 (`__restrict`/`__const`/`__volatile__`/`__signed__` 等) 未一并补 —
+#     本次按最小改动只补 inline 族, 其余待有实测载体再加。
+$expected_旧16 = '0D4BD439'
 # (2026-09-17) **C21 根治: 属性语法识别 补 `__attribute`(单下划线) — 函数定义头 属性 未吞 → 形参登记 错乱 (前值 05275D50)**
 #   症状: `compat/regex/regex.c` 报 A9001「类型 're_token_t' 无字段 'token'」@ regcomp.c L3843 `free_token (&node->token)`
 #     (`free_tree (void *extra, bin_tree_t *node)` 的 node 被误判 re_token_t*)。
