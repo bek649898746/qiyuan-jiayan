@@ -686,6 +686,14 @@ CORE_FEAT += [
     #   ⚠️ 匿名体 typedef (`typedef union { … } X;`) 的 字段循环 **无 typedef 分支** ⟹ 同一形态仍错,
     #      根治法 = 并到 `体注册` helper (S5 里程碑 B), 不在本锚覆盖范围。
     'scripts/feat_zh_field_ptr_typedef_ok.c',
+    # ==== 第 95 站 R2「嵌套内联体」四形态 —— 标记码 定位 出来的 4 个 解析块 ====
+    #   ① `typedef union N1 { struct NK1 { V key_val; … } u; } N1;`  → δ 块 (L17544)
+    #   ② `typedef union N2 { struct { V key_val; … } u; } N2;`        → γ 块 (L17508)
+    #   ③ `struct N3 { struct NK3 { V key_val; … } u; };` (非 typedef) → 16798 块
+    #   ④ ①+ 箭头链 (`p->u.key_val.i`)
+    #   病根: 字段 只被 `字段尺寸递归` 建出、`字段类型`(唯一写 毛利 者) 从未调用 ⟹ 毛利 恒 -1 ⟹ A9001。
+    #   锚灵敏度: HEAD (qcc_zh_seed) 上 报 A9001 变红 ✓; gcc 逐值对照 PASS ✓ (纯 C 锚, 同源直接跑 gcc)。
+    'scripts/feat_zh_nested_inline_struct_ok.c',
 ]
 
 def build_tests(args):
