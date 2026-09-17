@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
+﻿﻿﻿﻿﻿﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
 #
 # 流程:
 #   1. python scripts/sinicize.py   # 按 scripts/zh_map.txt 把 qcc_work.jy 生成 qcc_zh.jy
@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'F668D25D'
+$expected = '3FACDEA3'
 # (2026-09-17) **C299: 所有权「默认移动」的 **指针豁免** (前值 8BA00823)**
 #   —— 第 83 站: 打磨第 82 站挂账的 A3101「变量 'st' 已移动」家族 (三例同形: `TP 常 p` / `(TP)p` 转型 / 联合字段)。
 #   **根因** (c298 探针链实证): `甲言模式` 开启时 (源文件含**中文类型关键字** —— `常`/`空`/`联合`/`整` 等),
