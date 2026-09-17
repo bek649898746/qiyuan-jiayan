@@ -10,7 +10,25 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '6C074F35'
+$expected = '9E44C409'
+# (2026-09-17) **C72: numeric 宏表注册 无查重 ⟹ #undef 对同名重复 #定义 不彻底 (前值 6C074F35)**
+#   —— 这是 §51.4 记下的「副产缺陷」, 本轮根治。
+#   最小复现 (a2/undefprobe2.py d1):
+#        #define FOO 1 / #define FOO 0 / #undef FOO / #ifdef FOO / zzz_canary(); / #endif
+#        ⟹ 修复前 该块**仍被编译** (对照 d3/d4 单次定义 + undef = 正确剔除)。
+#   根因 (`#ifdef` 判定走 邻细, 它查三张表; `#undef` 走 半从, 每张表只删第一个匹配):
+#        对象宏表 满八  ← 符又一(L264)   有查重 ✓
+#        顺序定义表 单肆 ← 首丙一(L422)   有查重 ✓
+#        **numeric 宏表 终复 ← 外零(L222) 无查重 ✗**  ⟹ 同名重复 #定义 留两条
+#        ⟹ #未定义 只删一条 ⟹ 邻细 仍返 1 ⟹ #若定义 判真。
+#   修法 (1 处): 外零 开头加「同名则覆盖 值/长属/邻辰/余贰 四字段并返」, 与 符又一 同款。
+#     C 规定重复 #定义 以最后一次为准 ⟹ 覆盖即正确语义。
+#   验证:
+#     · undefprobe2 d1/d2 **转绿**; d3-d10 无回归;
+#     · 6 个锚全绿; nedmalloc.c 仍 rc=0;
+#     · **语料闸名单级对照** (561 件): C71 版 551/10 与 C72 版 551/10 **逐项完全一致** ⟹ 零回归;
+#     · 自举 **一步收敛** (t9 = t10 = 9E44C409)。
+$expected_旧21 = '6C074F35'
 # (2026-09-17) **C71: 函数声明启发式 增加「宏调用后文」判据 (前值 1CCBFDB0)**
 #   —— C70 修掉「跨行」误判后, 同一行前有类型关键字的形态仍不展开:
 #        #define A(x) __attribute__((x))   +   int A(always_inline) f(void) { }   (c84 b2/b3/b5, c91 e9)
