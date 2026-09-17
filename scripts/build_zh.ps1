@@ -1722,6 +1722,13 @@ if (-not $converged) {
 if ($convDepth -lt 0) { $convDepth = $hs.Count }
 Write-Host "[通过 PASS] 中文自举链不动点 $expected 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
 if (-not $NoSeed) {
+    # C136 (2026-09-17): seed 精确文件名可能被某进程独占持有 (改名允许/写删被拒);
+    #   改为「先改名旧 seed 再复制」—— 语义等价, 且不受锁影响 (第 64 站诊断, 见台账 §64)
+     if (Test-Path qcc_zh_seed.exe) {
+        $stamp = "qcc_zh_seed.exe.hold"
+        Remove-Item $stamp -Force -ErrorAction SilentlyContinue
+        try { Rename-Item qcc_zh_seed.exe $stamp -ErrorAction Stop } catch {}
+    }
     Copy-Item $finalExe qcc_zh_seed.exe -Force
     $seedH = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash.Substring(0,8)
     if ($seedH -ne $expected) {
