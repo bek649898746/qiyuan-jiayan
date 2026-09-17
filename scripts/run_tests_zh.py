@@ -36,6 +36,7 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
 CORE_FEAT = [
     'scripts/feat_zh_prelude_regmatch_ok.c',   # C66 (2026-09-17 第 66 站): 口径回归锚 — 兼容层**不得用对象宏做类型别名**; 注回 `#define regmatch_t int` 即变红 (台账 §66)
     'scripts/feat_zh_paren_ptr_array_ok.c',    # C72 (2026-09-17 第 72 站): `结构体 T *(名[N]);` 括号指针数组声明 — 漏设 型序标 ⟹ 成员访问整段不发射; 真实载体 pack-objects.c L1695 (台账 §72)
+    'scripts/feat_zh_paren_ptr_array_local_ok.c',  # C74 (2026-09-17 第 74 站): **局部** 括号指针数组 — 漏设 指元素尺寸 ⟹ 元素赋值走结构体深拷贝 ⟹ 崩 0xC0000005 (仅 8 字节结构体触发); 真实载体 builtin/diff.c L175 / grep.c L707 (台账 §74)
     'scripts/feat_zh_field_layout_matrix_ok.c',
     'scripts/feat_zh_ret_scalar_loop_ok.c',
     'scripts/feat_zh_nullable_decl_bind_ok.c',
