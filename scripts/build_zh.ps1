@@ -10,7 +10,40 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'AED01CC6'
+$expected = '14FC6404'
+# (2026-09-17) **C69 根治: 条件编译 `#else` 跳过态被嵌套 `#endif` 误解除 (前值 AED01CC6)**
+#   缘起: C54 修好后 nedmalloc.c 从 A9001 推进到 A1001「未声明函数 `_ReadWriteBarrier`」—
+#     该宏定义在 malloc.c.h L1387-1402, 调用点在 L1407。
+#   侦察 (先排除三个错误方向):
+#     · `#undef` + 函数宏不展开? `a2/c62mini.py` 12 例全正常 ⟹ 排除;
+#     · `#define` 缩进敏感? `a2/c65.py` 10 例全正常 ⟹ 排除;
+#     · 嵌套 `#if` 内 `#define`? `a2/c64.py` 15 例正常 ⟹ 排除。
+#   转机 = **`#error` 当 canary** (`a2/c66.py`): L1386(外层块内)/L1388/L1387/L1401 **均未触发**,
+#     而 **L1407 触发** ⟹ 同一 `#if` 块内「前段被跳过、后段却被编译」。
+#   最小复现 (8 行, `a2/c68.py` u2):
+#       #if 1 / int a; / #else / #if 0 / int b; / #endif / int f(void){...} / #endif
+#       int main(void){ return f(); }   ⟹ 修复前 rc=0 (f 泄漏), 应报「未声明 f」。
+#     矩阵: u2/u3/u4/u5/u6/u8 (else 内有嵌套) **全部泄漏**; u1(无嵌套)/u7(真分支) 正确。
+#     ⟹ 触发 = 「本层已走过真分支 ⟹ 进入 `#else` 跳过态」+ 「`#else` 体内有嵌套 `#if...#endif`」。
+#   根因 (条件栈三件套 后排[]/下劣[]/顺一):
+#     `#else` 落入跳过分支时只置 `顺一 = 1`, **未把 `下劣[条件计数-1]` 置 0**;
+#     而 `#endif` 的恢复式是 `顺一 = !下劣[层-1]` ⟹ 弹栈时按「该层条件为真 = 编译」恢复
+#     ⟹ `#else` 体内那个嵌套 `#endif` 一弹栈, 后续代码全部泄漏回编译流。
+#   修法 (2 处, 零新机制): `#else` 的「跳过」分支补 `下劣[条件计数-1] = 0;`
+#     · 主扫描 `行申` L5593 · 预处求值 `预处求值` L1819
+#   ⚠️ 弯路 (重要教训): 初版连 `#elif`/`#elifdef` 一起改 (5 处) — u2-u6 转绿、nedmalloc 也推进,
+#     但 `a2/c71b.py` 的 `#elif` 链判重矩阵暴露 5 例回归 (e1/e2/e8/e10/e11):
+#     `下劣[]` 同时承担「本层是否编译」与「是否已走过分支」两种语义, 在 `#elif` 跳过分支清 0
+#     ⟹ 后续 `#elif` 被重新求值、`#else` 体被误编译。**#else 场景安全 (其后不可能再有 #elif)**。
+#     另一教训: 第一版 c71.py 用 `return` 写用例, 前一个 return 掩盖后续泄漏 ⟹ 矩阵假绿 7/7;
+#     改**变量累加** (c71b.py) 才暴露。
+#   验证:
+#     · u2-u6/u8 由「泄漏」转「正确跳过」; u1/u7/t 系列零回归;
+#     · `#elif` 链判重 11 例: 10/11 (e5 原有缺陷) ⟹ **11/11**;
+#     · `nedmalloc.c` 推进: A1001 `_ReadWriteBarrier` ⟹ A1001 `VirtualQuery`;
+#     · 新锚 `scripts/feat_zh_cond_else_nested.c` (5 面) 绿 + C54/G4-1 锚绿;
+#     · 自举 **一步收敛** (t3 = t4 = 14FC6404)。
+$expected_旧18 = 'AED01CC6'
 # (2026-09-17) **C54 根治: typedef 指针别名 丢类型 ⟹「同名遮蔽」静默复用形参条目 (前值 C62F8E03)**
 #   缘起: C15 家族下一层 —— `compat/nedmalloc/nedmalloc.c` threadcache_free 报 A9001
 #     「类型 'nedpool_t' 无字段 'head'」(L480 `mchunkptr p = mem2chunk(mem);`,
