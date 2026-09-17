@@ -2523,11 +2523,19 @@ extern wchar_t *_wpgmptr;
 void SleepEx(unsigned long dwMilliseconds, int bAlertable);
 unsigned long GetTickCount(void);
 #define FALSE 0
-/* ⚠️ 下面两个**不是口径缺口, 是编译器能力缺口** (记台账):
-   · alloca      — 甲言**有**内建 (L11242 阶段C-1 #83 栈分配), 但只在**语句层**识别;
-     nedmalloc.c L940 `size_t *p = (size_t *) alloca(...)` 用在**初始化式表达式**里
-     → 未命中 → A1001。
-   · __builtin_clz — 甲言**无**此内建 (nedmalloc.c L208 用其算前导零)。
-   此处临时桩只为让 -c 编译跑完, **运行期语义不保证** (返回 8 字节槽)。 */
+#define __CHAR_BIT__ 8   /* GCC 内建: 每字节位数 (nedmalloc.c L208 用于算 topbit) */
+/* __builtin_clz: GCC 内建「前导零个数」—— 语义可用纯 C 表达, 故走**口径层**实现,
+   无需改编译器 (返回 int; x==0 时 GCC 未定义, 此处取 32)。 */
+static inline int __qcc_builtin_clz(unsigned int x) {
+    int n = 0;
+    if (x == 0) return 32;
+    while (!(x & 0x80000000u)) { x <<= 1; n++; }
+    return n;
+}
+#define __builtin_clz(x) __qcc_builtin_clz((unsigned int)(x))
+/* ⚠️ alloca: **设计差异, 非位置问题** (记台账 §53.3)。
+   甲言的内建是**声明式**: `alloca 名, 大小;` (L11242 阶段C-1 #83) —— 声明一个栈缓冲区变量;
+   而 GCC 是**表达式**: `size_t *p = (size_t *) alloca(n);` (返回值当指针用)。
+   nedmalloc.c L940 用的是 GCC 形态, 甲言不支持 ⟹ 需编译器新增「表达式形态栈分配」。
+   此处桩只为让 -c 编译跑完, **运行期语义不保证**。 */
 long alloca();
-long __builtin_clz();
