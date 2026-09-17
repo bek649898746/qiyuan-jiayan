@@ -1270,8 +1270,16 @@ static int execlp(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return
 static int __builtin_ctzll(unsigned long long x) { int n = 0; while (x && !(x & 1)) { n++; x >>= 1; } return n; } /* GCC builtin (fix 2026-08-15: __builtin_ctzll undefined) */
 #define __builtin_expect(exp, c) (exp)  /* GCC 分支预测内置 (fix 2026-08-15: __builtin_expect undefined) */
 static int proc_type_GetCurrentConsoleFontEx;  /* qcc ## 长标识符合成截断, 补符号满足链接 (fix 2026-08-15: proc_type_GetCurrentConsoleFont undefined) */
-#define regex_t void*  /* regex.h typedef 指针/结构别名 */
-#define regmatch_t int
+/* C66 (2026-09-17 第 66 站): 原 `#define regex_t void*` 与 `#define regmatch_t int` 两行**对象宏已删除**。
+   它们是**文本替换**, 会同时破坏两侧:
+     ① git 自带 compat/regex/regex.h L433 `typedef struct re_pattern_buffer regex_t;` /
+        L462-466 `typedef struct { regoff_t rm_so; regoff_t rm_eo; } regmatch_t;` 被替换成语法垃圾;
+     ② 用户侧 `regmatch_t pmatch[]` → `int pmatch[]` ⟹ `pmatch[0].rm_so = …` 变成「int 上取成员」⟹ 地址/偏移全错。
+   后果: 这是**静默兜底槽5/槽7 的主因** —— 全量 1926 次 / 442 文件 中约 96% 由它造成
+   (§62 分布 vs 第 66 站实测: 槽7 889→5, 槽5 888→4, 槽4 37→11, 槽6 42→16; 槽1/槽3 不变)。
+   删除后: 全量静默 1926→106 次 (442→22 文件); `scratch_gl/c19/c19_run.c` 运行 rc 由 2 转 0 (赋值不再被丢);
+   语料闸 551/10 **名单级逐项一致** (零回归)。
+   依据: 类型定义本就来自 git 的 regex.h (兼容层无需再近似), 近似由下方 L1313 `typedef int regex_t;` 承担。 */
 static int execv(void *a, void *b) { (void)a; (void)b; return -1; } /* POSIX execv (A75 2026-09-14): shell.c L221 — 顶层 内联 结构体 数组 `cmd_list[]` 原 被 解析错位, 该调用 在 旧编译器 上 从未 被 解析 (假 OK); 修复后 正确 解析 → 需 声明 */
 static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
 static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */

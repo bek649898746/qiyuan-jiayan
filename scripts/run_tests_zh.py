@@ -34,6 +34,7 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
 
 # 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
 CORE_FEAT = [
+    'scripts/feat_zh_prelude_regmatch_ok.c',   # C66 (2026-09-17 第 66 站): 口径回归锚 — 兼容层**不得用对象宏做类型别名**; 注回 `#define regmatch_t int` 即变红 (台账 §66)
     'scripts/feat_zh_field_layout_matrix_ok.c',
     'scripts/feat_zh_ret_scalar_loop_ok.c',
     'scripts/feat_zh_nullable_decl_bind_ok.c',
