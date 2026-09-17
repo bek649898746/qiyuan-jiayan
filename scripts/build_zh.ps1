@@ -10,7 +10,46 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'C62F8E03'
+$expected = 'AED01CC6'
+# (2026-09-17) **C54 根治: typedef 指针别名 丢类型 ⟹「同名遮蔽」静默复用形参条目 (前值 C62F8E03)**
+#   缘起: C15 家族下一层 —— `compat/nedmalloc/nedmalloc.c` threadcache_free 报 A9001
+#     「类型 'nedpool_t' 无字段 'head'」(L480 `mchunkptr p = mem2chunk(mem);`,
+#      经 get_mstate_for(p) 宏展开的 (p)->head)。
+#   根因 (第 54 站, 零猜测):
+#     ① 真实文件定点变异 (`a2/c54.py` 19 组): 删该块 / 局部 p→pq / 形参 p→zzq /
+#        类型换 void*/struct malloc_chunk*/int* / `#ifdef` 换永假名 ⟹ 报错**全消**;
+#        而 `{` 与注释分行 / 块内加声明 / 块外先声明同名 ⟹ **仍报**
+#        ⟹ 报错确来自该块, 需「名字 == p」**且**「类型 == typedef 指针」同时成立。
+#       (基线确定性: base×6 与 m2×6 各自恒定; 一次「不稳定」实为我并行跑同一 workdir 互污。)
+#     ② 最小复现 (12 行) 拿下:
+#          typedef struct S *SP; struct S { int a; };
+#          typedef struct T *TP; struct T { int b; };
+#          int f(TP *p) { { SP p = 0; return p->a; } }   ⟹ A9001 类型 'T' 无字段 'a'
+#        判别矩阵 21 例 (用「访问两边都不存在的字段 zz」当探针): 改名 / 显式 struct S*/
+#        void*/int* ⟹ 全过; **裸块无关** (无裸块同样复现) ⟹ 与 `#ifdef DEBUG` 裸块无关。
+#     ③ 登记入口探针 (第 14 代插桩 `a2/c15instr14.py`, 8 锚点, 只对 名字=="p" 打点):
+#        报错处**未走指针入口 变偏指**, 走的是 **8 字节整数入口 余乙**,
+#        且最后一次调用**命中 余乙 的复用分支** (计=1498 = 函数形参 p, 型序=43=nedpool_t)。
+#     ④ 代码级三处:
+#          a. `型定表` 有「是否函数指」却**没有「是否指针」**(L2230);
+#          b. typedef 注册处 `定指` 只用于选分支, **不入表** (L17613-17628)
+#             ⟹ `typedef struct S *SP;` 与 `typedef struct S SP;` 登记**完全相同**;
+#          c. 声明按**尺寸**分流 (L9507: 尺寸==8 ⟹ 是否长标=1) ⟹ typedef 指针被当 8 字节整数。
+#   修法 (15 处, 零新机制):
+#     ① 型定表 加 2 字段 `是否指针标` / `指元素尺寸`; ② 型定加 加末参 `指针元素`;
+#     ③ 8 个调用点补 0, typedef 指针别名处传 目标结构体尺寸;
+#     ④ 声明处 识别 typedef 指针别名 ⟹ 是否指标=1 / 指深一=1 / 清 是否长标 / 记 元素尺寸;
+#     ⑤ 「尺寸==8 ⟹ 是否长标」两处加守卫 `!是否指针标`;
+#     ⑥ 局部指针注册: 元素尺寸优先取 型定指元素。
+#   验证:
+#     · 最小复现矩阵: 修复前红 3 例 (n1/n5/n10) **全部转绿**; 原先绿 11 例 **零回归**;
+#       显式指针路径 (p9) **仍正确报字段错** ⟹ 类型检查未被削弱;
+#     · `nedmalloc.c` 推进: A9001 ⟹ A1001 (`_ReadWriteBarrier` 未声明, 下一层);
+#     · 新锚 `scripts/feat_zh_typedef_ptr_alias.c` (同名遮蔽 / 改名 / 出块恢复 三面) 绿;
+#     · 自举 **一步收敛** (t1 = t2 = AED01CC6)。
+#   ⚠️ 已知残留 (记台账): typedef 指针别名**仍不写 型序标** ⟹ 成员访问**不检查**
+#     (「指向构序」未记录; 只有显式指针路径有)。本轮只修「走错入口 + 复用错条目」。
+$expected_旧17 = 'C62F8E03'
 # (2026-09-17) **C23 根治: `__inline`/`__inline__`/`__forceinline` 未识别为型词 ⟹ 函数定义头 错位 (前值 0D4BD439)**
 #   缘起: C15 (`compat/nedmalloc/nedmalloc.c` 报 A1001「结构体 'win32_mlock_t' 未定义或不完整」)。
 #   收敛路径 (第 47-48 站, 零猜测, 全探针):
