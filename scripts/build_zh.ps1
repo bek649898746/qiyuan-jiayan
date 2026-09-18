@@ -10,7 +10,21 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'F19EBB9D'  # (2026-09-18) C114 第 107 站: 后聚[] 按 全量 5812 件名单 补齐 **最后一批 33 项** 系统 API / 编译器内建 / C 标准库
+$expected = '79E07905'  # (2026-09-19) C115 第 110 站: **R20 闭环** —— 文件级 `typedef struct {...} X;`（匿名体）字段循环里, 字段类型序候选 `实肆` 的**声明写在循环体内** ⟹ 每轮重置 ⟹ 逗号续行的非首字段 (`Complex alpha, beta;` 的 beta) 拿不到类型序 ⟹ 毛利 恒 -1 ⟹ A9001「字段 不是 结构体/联合」
+#   根因 (第 108 站 已定位, 本轮换判据修复): 与 D2 那份 (**带标签** typedef 定义体, L17648) 当年的修法**同构** ——
+#     D2 的注释原文即写「移出循环 — 逗号续行 xdfile_t xdf1, xdf2; 的 xdf2 原在迭代重置 🞂 尺寸错」。**同一个坑, D2 填过、D1 漏了**。
+#   修法 (2 处, 零新机制): ① `整 实肆 = -1;` **移出循环** (声明跨轮保留); ② 循环体首行 `若 (词位 <= 0 || 词型表[词位 - 1] != 逗号) 实肆 = -1;`
+#     —— 判据 = **输入流位置** (本轮开始时 `词位-1` 必为上一轮消费的最后一个词元: 逗号 ⟹ 续行继承, 否则 ⟹ 重置),
+#     **与 控制流 无关** ⟹ 对本循环体内所有 `续;` (continue) 分支同样成立。
+#   为何前四次修法各自带副作用 (本轮机理澄清): r21a 仅「移出循环」⟹ 非逗号起的新字段 (`int x;`) 不重置, 实肆 串味 (srclib 2 处假阳,
+#     `RRSched.quantum` 被误判为 `Task`); r21c 「循环末尾按逗号重置」⟹ 被 **`续;` 路径绕过** (函数指字段 / 结构体标签 / 匿名体注册 三个分支)
+#     ⟹ 重置永不执行 ⟹ Lua 5 件回归 (`LClosure.upvals`/`Proto.source`/`ConsControl.t`/`Table.lastfree`); r18j/r23a 独立变量 = 无效。
+#   判据 (七闸齐, 零回归): R20 矩阵 12 例 **与 gcc 逐值一致 12/12** (C114 上 5 红 a/c/d/f/j) · 锚三关 (gcc PASS · 新编译器 PASS · 旧编译器 F19EBB9D 上 A9001 **必红**) ·
+#     zh-feat **705/705** (新锚 feat_zh_comma_typedef_field_ok.c 入闸) · 闸① 83 无新增 · Lua **33/33** · zlib **15/15** · git quick **40/11/0** (逐件与基线一致) ·
+#     srclib 1500 件 **真失败 87 -> 71, A9001 归零** (-16; 余 41 缺头文件 / 26 坏文件 / 2 A4001 / 2 A1001 utf8proc_iterate 刻意保留) · 自举 v1==v2 (前值 F19EBB9D)
+#   📌 顺带发现 (新挂账, 既有缺陷非本轮引入): 具名 `typedef struct Cx {...} X;` 的**浮点字段标记**丢失 ⟹ 字段 `double` 被当整型,
+#     写 双精度 值报 `A9002 双精度 值赋给整型字段` (C114 同样复现)。
+$expected_旧35 = 'F19EBB9D'  # (2026-09-18) C114 第 107 站: 后聚[] 按 全量 5812 件名单 补齐 最后一批 33 项 系统 API / 编译器内建 / C 标准库
 #   (Windows/WinSock · CRT strtok_s/HIBYTE · GCC 内建 typeof/__builtin_unreachable/atomic_init ·
 #    math 单精度复数 isnan/roundf/fmodf/log10f/log2f/atanf/atanh/cimag/carg/csqrt · POSIX syscall/capget/sethostname)
 #   **仍不补** utf8proc_iterate / ntk_rope / bsearch_ / mat_new / markov_step / p_cu*(CUDA) / ray_sphere / sqlite3_open /
