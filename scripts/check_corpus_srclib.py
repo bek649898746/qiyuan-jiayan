@@ -52,6 +52,7 @@ def main():
     os.makedirs(tmp, exist_ok=True)
     ok = bad = real_fail = 0
     fails = []
+    detail = []
     for p in sample:
         r = subprocess.run([qcc] + D + ['-c', p, '-o', os.path.join(tmp, '_t.o'),
                                         '-I', PRE, '-I', os.path.dirname(p)],
@@ -61,7 +62,9 @@ def main():
             continue
         msg = ((r.stdout or '') + (r.stderr or '')).replace('\r', '')
         err = [l for l in msg.split('\n') if '[ERR]' in l]
-        line = '%-56s %s' % (os.path.relpath(p, SRCLIB), (err[0][:90] if err else '(no ERR)'))
+        e0 = err[0][:120] if err else '(no ERR)'
+        line = '%-56s %s' % (os.path.relpath(p, SRCLIB), e0)
+        detail.append(line)
         if os.path.basename(p) in KNOWN_BAD:
             bad += 1
         else:
@@ -70,6 +73,31 @@ def main():
     print('样本 %d: ok=%d 已知坏文件=%d 真失败=%d' % (len(sample), ok, bad, real_fail))
     for x in fails[:25]:
         print('  ' + x)
+    # 分类汇总 + 落盘明细 (供后续逐类闭环)
+    import collections
+    def kind(e):
+        if '找不到文件' in e:
+            return '缺头文件'
+        if '缺右括号' in e or '多余右括号' in e:
+            return '坏文件(括号)'
+        if '未声明函数' in e:
+            return '未声明函数'
+        if '未声明标识符' in e:
+            return '未声明标识符'
+        if 'A4001' in e:
+            return 'A4001 未初始化读'
+        if 'A9001' in e:
+            return 'A9001 成员/字段'
+        if 'A9002' in e:
+            return 'A9002 隐式转换'
+        return '其它'
+    cnt = collections.Counter(kind(l) for l in fails)
+    print('  -- 分类 --')
+    for k, v in cnt.most_common():
+        print('    %-18s %d' % (k, v))
+    outf = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_srclib_fails.txt')
+    io.open(outf, 'w', encoding='utf-8').write('\n'.join(detail))
+    print('  明细 -> %s (%d 条)' % (outf, len(detail)))
     return 1 if real_fail else 0
 
 
