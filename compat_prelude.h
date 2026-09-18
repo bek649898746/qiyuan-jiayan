@@ -1678,7 +1678,7 @@ void *LoadLibraryExA(const char *lpLibFileName, void *hFile, unsigned long dwFla
 void *GetProcAddress(void *hModule, const char *lpProcName);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 void SetLastError(unsigned long dwErrCode);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
 unsigned long GetVersion(void);  /* C7b (2026-09-16): 原「常量型 stub 宏」→ kernel32 真原型 (导出表实测); 根治「假返回」与「实参掩盖」 */
-#define MAKEWORD(a,b) 0x0202  /* Windows Winsock 版本宏 stub (fix 2026-08-15: MAKEWORD undefined) */
+#define MAKEWORD(a,b) ((unsigned short)(((b) << 8) | ((a) & 0xFF)))  /* Windows Winsock 版本宏 stub (fix 2026-08-15: MAKEWORD undefined) */
 int WSAStartup(unsigned short a1, void *a2); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows Winsock stub: 失败 */
 int WSAGetLastError(void); /* C18a (2026-09-17): 真原型 (原 stub: 常量型宏) — Windows Winsock stub */
 static int WSACleanup(void) { return 0; }  /* Windows Winsock stub: atexit((void(*)(void))WSACleanup) 需要真函数 (fix 2026-08-15: WSACleanup undefined) */
