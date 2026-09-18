@@ -716,6 +716,15 @@ CORE_FEAT += [
 #   ⚠️ 本锚**必须保持最小**: 同文件里再加任何 `x->vd.字段` 的**变量基**访问, 旧编译器会因
 #     「全表扫描兜底恰好命中」而**变绿** (上下文脆弱性, 详见锚文件注释).
 'scripts/feat_zh_call_ret_ptr_field_ok.c',
+#   ⏸️ C113/R20 (2026-09-18 第 106~108 站): 结构体逗号声明中 typedef 构体类型 的非首字段 类型序.
+#   已定位根因 (`实肆` 声明写在循环体内 ⟹ 每轮重置 ⟹ 逗号续行继承失效), 且**修法有效**
+#     (R20 矩阵 9/9 全绿, 含 5 个原先必红的用例);
+#   但三次修法尝试各带副作用: ① 仅移出循环 ⟹ srclib 1500 件出 2 处「三目」假阳
+#     (`RRSched.quantum` 继承 `Task`); ② 加「非逗号则重置」⟹ **Lua 5 件回归**
+#     (`LClosure.upvals`/`Proto.source`/`ConsControl.t`/`Table.lastfree` 全被误判非构体).
+#   ⟹ 按「零回归」纪律 **回退**, 主源保持 F19EBB9D。**锚文件保留**待 R20 真闭环后再入闸
+#     —— 现在注册会红 (无修复的编译器上编译失败)。
+# 'scripts/feat_zh_comma_typedef_field_ok.c',
 ]
 
 def build_tests(args):
