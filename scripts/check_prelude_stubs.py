@@ -31,6 +31,17 @@ def strip_lit(s):
     return s
 
 
+# 第 101 站 (2026-09-18) 口径修正: 「本 就 该 是 空 宏」的 标准 允许形态 —— 它们 吞参 不是
+# 债务 而是 **正确语义**, 计入 会 让 债务 数字 虚高、掩盖 真正 该 归真 的 项。
+# 注意: 只 排除 **标准/规范 明确 允许为空** 的; 近似实现 (如 WIFEXITED->1)、
+#       转义 stub (如 curl_*/pthread_*) 一律 **仍然 计入** —— 不得 用来 藏账。
+LEGIT_EMPTY = {
+    'assert':      'C 标准: NDEBUG 下 assert 展开为空 (6.3.2.2 允许); 吞参 是 定义 而非 缺陷',
+    '__attribute__': 'GCC 扩展: 非 GCC 编译器 应 忽略 attribute (吞参 即 忽略), 语义正确',
+    'va_end':      'C 标准: va_end 允许多种实现, 空操作 是 常见合法实现 (7.16.1.3)',
+}
+
+
 def scan(path):
     d = io.open(path, encoding='utf-8', errors='replace').read()
     d = re.sub(r'/\*.*?\*/', ' ', d, flags=re.S)      # 块注释
@@ -42,6 +53,8 @@ def scan(path):
         if not m:
             continue
         name, ps, body = m.group(1), m.group(2), m.group(3)
+        if name in LEGIT_EMPTY:
+            continue
         params = [q.strip() for q in ps.split(',') if q.strip()]
         if not params:
             continue

@@ -30,8 +30,6 @@ WIFEXITED                          (s) -> 1
 WIFSIGNALED                        (s) -> 0
 WSASocket                          (a,b,c,d,e,f) -> ((intptr_t)-1)
 WTERMSIG                           (s) -> 0
-__attribute__                      (x) -> 
-assert                             (x) -> ((void)0)
 bind_textdomain_codeset            (a,b) -> ((char*)0)
 bindtextdomain                     (a,b) -> ((char*)0)
 convert_slashes                    (a) -> ((void)0)
@@ -87,5 +85,4 @@ statvfs                            (a,b) -> 0
 sysconf                            (a) -> 0
 tcgetpgrp                          (a) -> (-1)
 textdomain                         (a) -> ((char*)0)
-va_end                             (ap) -> ((void)0)
 xutftowcs                          (a, b, c) -> 0
