@@ -10,7 +10,9 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'A7EF973C'  # (2026-09-18) S4 第 102 站: 战线2「S4 收口」—— 隔排/末午 之后的 类型信息补齐 **单点收口**: 新增 `定类型(型序, 元尺寸, 深, 内)` helper(哨兵约定: <0/<=0 表示不改; **不额外设 构尺寸**, 与原手补点严格等价), 把 12 处 各自手补 `变量表[…].型序标 = …` 收敛为一次调用 —— C72/C74/C75/C76 四次缺陷都是「忘了手补」, 此收口消除该故障模式。判据: 手补点 **12 → 0**(扫描剩余 2 为 L18111 注释误报) · zh-feat 702/702 · Lua 33/33 · zlib 15/15 · git quick 40/11/0 · 自举 v1==v2 (前值 8B16AF4D)
+$expected = '4FFF672C'  # (2026-09-18) C110 第 103 站: 后聚[] 豁免表 按类补齐 71 项 —— 新语料 `grok-build/srclib`(启元引擎集群, 3379 个 .c) 全量跑出 470 处「未声明函数」(83 种), 分类后只补四类 (Windows API / GCC 内建 __sync+__builtin+__rdtsc / POSIX-msvcrt / math 单精度复数特殊函数), **不补业务函数**(Bio/add/cached/cuDeviceGet/markov_step/sqlite3_open 等 —— 那些是缺头文件的真实症状, 补豁免=掩盖)。 判据 (同一 1500 件样本 改前改后对照): 真失败 **136 -> 88**(ok 1348 -> 1396) · zh-feat 702/702 · Lua 33/33 · zlib 15/15 · git quick 40/11/0 · 自举 v1==v2 (前值 A7EF973C)
+$expected_旧31 = 'A7EF973C'  # (2026-09-18) S4 第 102 站: 战线2 S4 收口 (详见历史块)
+$expected_旧30 = '8B16AF4D'  # (2026-09-18) C104+C105+C106 第 101 站: 函数内带体 typedef (详见历史块)
 $expected_旧30 = '8B16AF4D'  # (2026-09-18) C104+C105+C106 第 101 站: 函数内带体 typedef (详见历史块)
 $expected_旧29 = '212EBC5E'  # (2026-09-18) C103 第 100 站: `#if` 条件表达式 行尾敏感 根治 (CRLF 静默判假) — 详见历史块
 $expected_旧28 = '171CE64C'  # (2026-09-18) C99 第 99 站: R2「c13 全局匿名外层 + 内联具名体」全闭环 (C100/C101/C102) — 详见历史块

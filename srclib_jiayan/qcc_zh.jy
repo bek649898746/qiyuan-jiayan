@@ -4173,6 +4173,26 @@ __attribute__((原粗))
     "_stat64","_fstat64","_strtoui64","_strtoi64","_atoi64","_itoa","_i64toa","_ui64toa","_ultoa",
     "_ltoa","_snprintf","_snwprintf","_scprintf","_ftime64","_time64","_ctime64","_localtime64",
     "_gmtime64","_mktime64","_findfirst64","_findnext64","_findclose","_strdup","_stricmp","_strnicmp",
+    /* C110 (2026-09-18 第 102 站 · 第五套闸驱动): 新增语料 `grok-build/srclib` (启元引擎集群,
+       3379 个 .c) 全量跑出 470 处「未声明函数」(83 种) —— 按类同族一次补齐:
+       ① Windows API  ② GCC 内建  ③ POSIX/msvcrt  ④ math 单精度/复数/特殊函数。
+       **不补业务函数** (`Bio`/`add`/`cached`/`cuDeviceGet`/`markov_step`/`mat_new`/`p_cuInit`/
+       `ray_sphere`/`sqlite3_open`/`utf8proc_iterate`/`bsearch_`/`clone` ...) —— 那些是
+       「缺头文件」的真实症状, 补豁免 = 掩盖, 非收口。 */
+    "CreateDirectoryA","CreateDirectoryW","CreateProcessA","FindFirstFile","FindFirstFileA",
+    "GetDiskFreeSpaceExA","GetEnvironmentVariableA","GetFileAttributes","GetFileAttributesA",
+    "GetFileSize","GetLocalTime","GetTempPathA","GetTickCount64","GetWindowTextLength",
+    "InterlockedCompareExchange","InterlockedCompareExchangePointer","InterlockedExchange",
+    "InterlockedExchangePointer","LoadLibrary","MemoryBarrier","QueryPerformanceFrequency",
+    "RegOpenKeyEx","SetConsoleOutputCP","SetHandleInformation","WSACreateEvent",
+    "WinHttpQueryDataAvailable","LOBYTE",
+    "__builtin_clzll","__builtin_ctz","__builtin_popcountll","__rdtsc","__sync_add_and_fetch",
+    "__sync_fetch_and_add","__sync_lock_test_and_set","__sync_synchronize",
+    "__sync_val_compare_and_swap",
+    "_findfirst","_sleep","_stat","popen","inet_addr","send","ioctlsocket","strtok_r",
+    "acosf","cabs","cbrt","cexp","clog","conj","cosf","cpow","creal","erf","erfc","expf",
+    "fabsf","fmax","fmaxf","fmin","isfinite","log2","logf","powf","round","sinf","sqrtf",
+    "tanf","tanhf","tgamma",
 };
 静 整 度卯(常 字 *数) {
     遍 (整 计 = 0; 计 < (整)(大小(后聚) / 大小(后聚[0])); 计++)
