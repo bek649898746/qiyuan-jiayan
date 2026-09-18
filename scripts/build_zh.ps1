@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
+﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
 #
 # 流程:
 #   1. python scripts/sinicize.py   # 按 scripts/zh_map.txt 把 qcc_work.jy 生成 qcc_zh.jy
