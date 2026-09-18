@@ -41,6 +41,10 @@ GIT_QUICK = [
  'fsmonitor--daemon.c', 'builtin/pack-objects.c', 'diffcore-rename.c',
 ]
 GIT_EXTRA = ['--lenient', '-D', '__GNUC__=5']
+# C113 (2026-09-18 第 106 站): 环境变量 BASELINE_GIT_ALL=1 ⟹ 收录 **git 树全部 .c** (561 件, ~13 min),
+# 而不是 20 件 quick 子集。动机: 产物基线已证明是「rc 全绿而机器码已错」的唯一可见通道
+#   (第 104 站实测: C110 编 lua/lparser.c 时 L270 赋值右侧整段不发射, 而 rc=0)—— 覆盖面越广越好。
+GIT_ALL = os.environ.get('BASELINE_GIT_ALL') == '1'
 
 
 def build(qcc):
@@ -65,8 +69,17 @@ def build(qcc):
             b = io.open(o, 'rb').read()
             out[key] = '%d:%s' % (len(b), hashlib.sha256(b).hexdigest()[:16])
             os.remove(o)
-    # git quick 子集
-    for rel in GIT_QUICK:
+    # git 子集 (quick 20 件) 或 全量 (.c 递归, BASELINE_GIT_ALL=1)
+    if GIT_ALL:
+        todo = []
+        for dp, dn, fns in os.walk(GIT):
+            for f in fns:
+                if f.endswith('.c'):
+                    todo.append(os.path.relpath(os.path.join(dp, f), GIT).replace(os.sep, '/'))
+        todo.sort()
+    else:
+        todo = GIT_QUICK
+    for rel in todo:
         src = os.path.join(GIT, rel.replace('/', os.sep))
         if not os.path.exists(src):
             continue
