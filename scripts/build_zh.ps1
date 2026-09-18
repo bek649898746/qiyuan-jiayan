@@ -10,7 +10,7 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '6D7FF6EF'
+$expected = '05D7A21A'  # (2026-09-18) C97 第 97 站: ①函数指针 typedef 的 lookahead 未跳过基类型后的 `*` ⟹ lua_Alloc/lua_Reader 未登记为类型 ⟹ lapi.c `LUA_API lua_Alloc lua_getallocf (...)` 被当变量声明跳分号 ⟹ 顶层解析漏入函数体 ⟹ getupvalref… 全部丢登记 (A1001); ②豁免表 后聚[] 补齐 60 项 (Lua 25→33 全绿 · zlib 14→15 全绿 · git quick 39/12/0 零回归) (前值 6D7FF6EF)
 # (2026-09-18) **第 96 站 C96: 预处理器 宏收集器 调用顺序 —— 先建对象宏表 (原从) 再收集函数宏 (行申) (前值 189C321B)**
 #   最小载体 (甲言红 / gcc 绿): #define B 1 / #define A B / #if A > 0 / #define M(x) (x+1) / M(2)
 #     ⟹ 甲言 A1001 未声明函数 'M' —— 别名宏条件恒假 ⟹ 假分支里的函数宏永不被收集。

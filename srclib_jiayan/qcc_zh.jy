@@ -4133,6 +4133,33 @@ __attribute__((原粗))
        ctype (iscntrl/isgraph/isprint/ispunct), 字符串 (strnlen)。清单 已 由 探针 比对 生成。 */
     "asin","acos","sinh","cosh","tanh","log10","hypot","copysign",
     "iscntrl","isgraph","isprint","ispunct","strnlen",
+    /* C97b (2026-09-18 第 97 站): 差分 通道 抓 (Lua 5.4 语料 5 件 同时 卡在这里, 最小载体 复现):
+       tmpnam (stdio, 返回 char*) · _pclose (stdio) · _isatty (io.h) · longjmp (setjmp.h) ·
+       FormatMessageA (winbase, 返回 DWORD) —— 与 上面 各组 同族: 甲言 跳过 <...> 系统头 ⟹
+       其 声明 不 进 函数表 ⟹ 调用 直接 A1001 (能力 缺口, 非 解析 bug: 同头文件 的 printf/malloc
+       靠 本表 同一机制 放行). 清单 由 lua_run.py 33 件 基线 + r5b_probe.py 双重 确认. */
+    "tmpnam","_pclose","_isatty","longjmp","FormatMessageA",
+    /* C97c (2026-09-18 第 97 站, 续): C97b 修好后 逐层 暴露 的 下一批 (Lua 30/33 → ?):
+       setjmp (ldo.c 经 LUAI_TRY 宏; mingw setjmp.h 的 #define setjmp(Buf) _setjmp(Buf)
+       甲言 跳过系统头 ⟹ 宏未展开 ⟹ 直呼 setjmp 名字) · _popen (liolib.c) ·
+       FreeLibrary (loadlib.c, 与 已收录 LoadLibraryA/GetProcAddress 同族) */
+    "setjmp","_setjmp","_popen","FreeLibrary","LoadLibraryW","GetModuleHandleA","GetCurrentProcess",
+    /* C97d (2026-09-18 第 97 站, 续): 宽字符 / 宽 IO 族 —— zlib gzlib.c 卡在 wcstombs,
+       同族一次补齐 (<wchar.h>/<stdlib.h>/<wctype.h> 的常用成员; 与 上面 各组 同一 豁免机制) */
+    "wcstombs","mbstowcs","wcslen","wcscpy","wcsncpy","wcscat","wcsncat","wcscmp","wcsncmp",
+    "wcschr","wcsrchr","wcsstr","wcsstr","wmemset","wmemcpy","wmemmove","wmemcmp","wmemchr",
+    "wcstol","wcstoul","wcstoll","wcstoull","wcstod","wcstof","wcstold",
+    "swprintf","vswprintf","wprintf","fwprintf","vfwprintf","wscanf","fgetws","fputws",
+    "towupper","towlower","iswalpha","iswdigit","iswspace","iswupper","iswlower","iswprint",
+    "iswpunct","iswcntrl","iswgraph","iswxdigit","iswblank","wcwidth",
+    /* C97e (2026-09-18 第 97 站, 续): msvcrt `_` 前缀族 (zlib gzlib.c 卡在 _lseeki64;
+       同族 一次补齐, 与 已有 _write/_close/_unlink/_getpos/_setpos 同一 豁免机制) */
+    "_lseeki64","_fseeki64","_ftelli64","_telli64","_lseek","_fileno","_fdopen","_open","_read",
+    "_commit","_chsize","_chsize_s","_get_osfhandle","_open_osfhandle","_dup","_dup2","_access",
+    "_chmod","_mkdir","_rmdir","_getcwd","_chdir","_fullpath","_tempnam","_putenv","_searchenv",
+    "_stat64","_fstat64","_strtoui64","_strtoi64","_atoi64","_itoa","_i64toa","_ui64toa","_ultoa",
+    "_ltoa","_snprintf","_snwprintf","_scprintf","_ftime64","_time64","_ctime64","_localtime64",
+    "_gmtime64","_mktime64","_findfirst64","_findnext64","_findclose","_strdup","_stricmp","_strnicmp",
 };
 静 整 度卯(常 字 *数) {
     遍 (整 计 = 0; 计 < (整)(大小(后聚) / 大小(后聚[0])); 计++)
@@ -17272,6 +17299,7 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; } 荷栽�
                 若 (词型表[位型标] == 枚词) { 位型标++; 若 (词型表[位型标] == 词变量) 位型标++; } /* t35k: 类型定义 枚举 E (*函)(...) 函数指 类型定义 — 原 枚词 未消费 → 函数指 识别失败 → 是否函数指=0 → 合并.选择 函数指针调用缺失 → show-见/分支/标签 死循环 */
                 若 (词型表[位型标] == 词变量 && 型定判断(词名表[位型标])) 位型标++; /* 修复 2026-08-14: 类型定义 类型名作基类型 — 类型定义 布尔 (SEC_ENTRY *函)(...) 的 布尔 是 词变量 类型定义, 原只消费 型词 → lookahead 失败 → 布尔 被当 结构体 标签 */
                 若 (词型表[位型标] == 结构词) { 位型标++; 若 (词型表[位型标] == 词变量) 位型标++; }
+                循环 (词型表[位型标] == 乘 || (词型表[位型标] == 型词 && ((!比较字符串(词名表[位型标], "const") || !比较字符串(词名表[位型标], "常")) || (!比较字符串(词名表[位型标], "volatile") || !比较字符串(词名表[位型标], "易失"))))) 位型标++; /* C97 (2026-09-18 第 97 站): 基类型 是 指针 (`void *`/`const char *`/`字符 **`) 时 lookahead 未跳 `*`(及散落 const/易失) ⟹ 位型标 停在 `*` ⟹ `左括 && 乘` 不成立 ⟹ 函数指 类型定义 识别失败 (实证: `typedef void * (*q1)(void *p); sizeof(q1)` 报未声明, 而 `typedef int (*q3)(void *p);` 正常) ⟹ lua.h 的 lua_Alloc/lua_Reader 未登记 ⟹ lapi.c `LUA_API lua_Alloc lua_getallocf (...)` 被当 变量声明 跳分号 ⟹ 顶层解析 漏入函数体 ⟹ getupvalref 等 后续函数 全部 丢登记 (A1001). */
                 若 (词型表[位型标] == 左括 && 词型表[位型标 + 1] == 乘) { /* 函数指 类型定义 confirmed */
                     词位 = 位型标; 词位++; 词位++; /* 跳过 ( * */
                     若 (词型表[词位] == 词变量) {
