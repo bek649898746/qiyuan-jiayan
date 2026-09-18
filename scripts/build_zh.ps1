@@ -10,7 +10,14 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = '966E9AF8'  # (2026-09-18) C112 第 105 站: 后聚[] 豁免表 按类**补全** 12 项 (C110 同族漏项) + 调用实参 的 A9002 站点 接 `宽松转换`(--lenient) 门控 (4 个站点里唯一漏的一个)。
+$expected = 'F19EBB9D'  # (2026-09-18) C114 第 107 站: 后聚[] 按 全量 5812 件名单 补齐 **最后一批 33 项** 系统 API / 编译器内建 / C 标准库
+#   (Windows/WinSock · CRT strtok_s/HIBYTE · GCC 内建 typeof/__builtin_unreachable/atomic_init ·
+#    math 单精度复数 isnan/roundf/fmodf/log10f/log2f/atanf/atanh/cimag/carg/csqrt · POSIX syscall/capget/sethostname)
+#   **仍不补** utf8proc_iterate / ntk_rope / bsearch_ / mat_new / markov_step / p_cu*(CUDA) / ray_sphere / sqlite3_open /
+#    cached / add / llm_load_weights / clone / Bio / QIYUAN_ENTRY —— 外部库/业务, 缺头文件的真实症状。
+#   判据 (同一 1500 件样本): 失败明细 **90 -> 87** · A1001 **5 -> 2** (余 2 处 全是 utf8proc_iterate, 刻意保留);
+#     c294 m1~m6 6/6 · zh-feat 704/704 · Lua 33/33 · zlib 15/15 · git quick 40/11/0 · 闸① 83 · 自举 v1==v2 (前值 966E9AF8)
+$expected_旧34 = '966E9AF8'  # (2026-09-18) C112 第 105 站: 后聚[] 补 12 项 + A9002 调实参接 --lenient (详见历史块)
 #   判据 (同一 1500 件 srclib 样本 改前改后对照): 失败文件 **104 -> 90** (A1001 17->5, A9002 2->0), 括号配对 42 / 缺头文件 41 / A4001 2 不变 (非甲言缺陷 / 保守边界);
 #     c294 m1~m6 6/6 · zh-feat 703/703 (新锚 feat_zh_call_ret_ptr_chain_ok.c 入闸) · Lua 33/33 · zlib 15/15 · git quick 40/11/0 · 闸① 83 · 自举 v1==v2 (前值 C87A67B7)
 $expected_旧33 = 'C87A67B7'  # (2026-09-18) C111 第 104 站: 战线3 m3/m6 表达式基类型 (详见历史块)

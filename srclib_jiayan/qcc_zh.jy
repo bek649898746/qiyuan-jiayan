@@ -4217,6 +4217,24 @@ __attribute__((原粗))
     "__sync_fetch_and_sub","__sync_sub_and_fetch","__sync_bool_compare_and_swap",
     "__sync_lock_release","__builtin_popcount",
     "pclose","atoll","fminf",
+    /* C114 (2026-09-18 第 107 站 · 全量 5812 件驱动): 同族**最后一批** 33 项 ——
+       ① Windows/WinSock: QueryPerformanceCounter · FindNextFile · _findnext · DeleteFileA ·
+          GetEnvironmentVariable · GetModuleFileNameW · GetModuleFileName · InterlockedIncrement ·
+          WinHttpReadData · MapViewOfFile · CommandLineToArgvW · _wfindfirst · ZeroMemory ·
+          WSACloseEvent · inet_ntoa
+       ② CRT/Win 宏: strtok_s · HIBYTE · ZeroMemory(上列) · _wfindfirst(上列)
+       ③ GCC/编译器内建: typeof · __builtin_unreachable · atomic_init
+       ④ math 单精度/复数: isnan · roundf · fmodf · log10f · log2f · atanf · atanh · cimag · carg · csqrt
+       ⑤ POSIX: syscall · capget · sethostname
+       **仍不补**（外部库/业务，缺头文件的真实症状）: utf8proc_iterate · ntk_rope · bsearch_ · mat_new ·
+       markov_step · p_cuInit/p_cuMemcpyHtoD/cuDeviceGet(CUDA) · ray_sphere · sqlite3_open · cached ·
+       check_memory · add · llm_load_weights · clone · Bio · QIYUAN_ENTRY。 */
+    "QueryPerformanceCounter","FindNextFile","_findnext","DeleteFileA","GetEnvironmentVariable",
+    "GetModuleFileNameW","GetModuleFileName","InterlockedIncrement","WinHttpReadData","MapViewOfFile",
+    "CommandLineToArgvW","_wfindfirst","ZeroMemory","WSACloseEvent","inet_ntoa","strtok_s","HIBYTE",
+    "typeof","__builtin_unreachable","atomic_init",
+    "isnan","roundf","fmodf","log10f","log2f","atanf","atanh","cimag","carg","csqrt",
+    "syscall","capget","sethostname",
 };
 静 整 度卯(常 字 *数) {
     遍 (整 计 = 0; 计 < (整)(大小(后聚) / 大小(后聚[0])); 计++)
