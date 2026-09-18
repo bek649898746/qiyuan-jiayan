@@ -31,6 +31,17 @@ TREES = {
           r'\libz-sys-1.1.22\src\zlib', []),
 }
 
+# git quick 子集 (与 git563.py --quick 同口径): 基线里最有价值的一块 —— 真实世界代码
+GIT = r'C:\Users\Administrator\Desktop\git-2.45.2'
+GIT_QUICK = [
+ 'builtin/commit.c', 'builtin/diff.c', 'builtin/add.c', 'diff.c', 'commit.c',
+ 'reflog-walk.c', 'trace2/tr2_dst.c', 'compat/regex/regcomp.c', 'compat/mingw.c',
+ 'compat/nedmalloc/nedmalloc.c', 'xdiff/xpatience.c', 'sha1dc/sha1.c',
+ 'reftable/block.c', 'grep.c', 'read-cache.c', 'preload-index.c', 'dir.c',
+ 'fsmonitor--daemon.c', 'builtin/pack-objects.c', 'diffcore-rename.c',
+]
+GIT_EXTRA = ['--lenient', '-D', '__GNUC__=5']
+
 
 def build(qcc):
     tag = hashlib.sha256(io.open(qcc, 'rb').read()).hexdigest()[:8].upper()
@@ -54,6 +65,21 @@ def build(qcc):
             b = io.open(o, 'rb').read()
             out[key] = '%d:%s' % (len(b), hashlib.sha256(b).hexdigest()[:16])
             os.remove(o)
+    # git quick 子集
+    for rel in GIT_QUICK:
+        src = os.path.join(GIT, rel.replace('/', os.sep))
+        if not os.path.exists(src):
+            continue
+        o = os.path.join(tmp, 'git_%s.o' % rel.replace('/', '_')[:-2])
+        r = subprocess.run([qcc] + D + GIT_EXTRA + ['-c', src, '-o', o, '-I', PRE, '-I', GIT],
+                           capture_output=True, timeout=900)
+        key = 'git/%s' % rel
+        if r.returncode != 0 or not os.path.exists(o):
+            out[key] = 'FAIL'
+            continue
+        b = io.open(o, 'rb').read()
+        out[key] = '%d:%s' % (len(b), hashlib.sha256(b).hexdigest()[:16])
+        os.remove(o)
     return tag, out
 
 
