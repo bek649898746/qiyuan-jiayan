@@ -694,6 +694,10 @@ CORE_FEAT += [
     #   病根: 字段 只被 `字段尺寸递归` 建出、`字段类型`(唯一写 毛利 者) 从未调用 ⟹ 毛利 恒 -1 ⟹ A9001。
     #   锚灵敏度: HEAD (qcc_zh_seed) 上 报 A9001 变红 ✓; gcc 逐值对照 PASS ✓ (纯 C 锚, 同源直接跑 gcc)。
     'scripts/feat_zh_nested_inline_struct_ok.c',
+#   C99 (2026-09-18 第 99 站): **全局匿名外层 + 内联具名体** (c13) —— 「R2 嵌套体」第 5 形态.
+#   本锚 钉死 三处 (C100 结构词分支吞定义体 / C101 内联体缺 typedef 分支 / C102 字段类型链) 缺一必红;
+#   锚灵敏度 已验: 在 F1E23049 (C99 之前) 上 编译过 但 运行 0xC0000005 (段错误).
+'scripts/feat_zh_anon_global_inline_ok.c',
 ]
 
 def build_tests(args):
