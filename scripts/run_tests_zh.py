@@ -698,6 +698,10 @@ CORE_FEAT += [
 #   本锚 钉死 三处 (C100 结构词分支吞定义体 / C101 内联体缺 typedef 分支 / C102 字段类型链) 缺一必红;
 #   锚灵敏度 已验: 在 F1E23049 (C99 之前) 上 编译过 但 运行 0xC0000005 (段错误).
 'scripts/feat_zh_anon_global_inline_ok.c',
+#   C104+C105+C106 (2026-09-18 第 101 站): 函数内 `typedef struct/union { ... } 别名;` (带体).
+#   缺陷: 兜底「跳到首个分号」停在内层字段分号 ⟹ 其后语句被**静默吞掉** (printf 全丢, rc 仍 0).
+#   灵敏度: 在 C103 版上 stdout 为空 ⟹ @EXPECTED out: 不符 ⟹ 必红.
+'scripts/feat_zh_local_typedef_body_ok.c',
 ]
 
 def build_tests(args):
