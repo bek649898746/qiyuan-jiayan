@@ -932,6 +932,13 @@ CORE_FEAT += [
 #     ⟹ 静默 32 位 截断 (均值 2500000000000 -> 329033728; 反转/排序 丢 高 32; 纯 C 侧 `p = q[1]` -> -1454759936).
 #   判据: 旧编译器 (5D9B7CFA) 上 **必红** (fail2 329033728 = 均值 低 32 位); 新编译器 PASS, 与 gcc 逐值一致.
 'scripts/feat_zh_sugar_long_ok.c',
+# ===== 第 136 站 (C146): 变量名 撞 保留类型词 ⟹ 响亮报错 (722 → 724) =====
+#   由来: 第 134 站探针 A6 (`long long 长 = a[1], ...`) 表面 是 「逗号 多声明」, 第 136 站 分型 排除 逗号,
+#     定位 真因 = 变量名 `长` 撞了 保留类型词 ⟹ 型词 循环 贪婪 消费 ⟹ 变量 未 登记 ⟹ **静默 0**.
+#   两锚: neg 用 **compile_fail** (项目既有机制, 70 个锚在用) —— 修复前 编译 成功 ⟹ 违反断言 ⟹ 天然必红;
+#         ok 锁 合法组合 不 误报 (long / long long / unsigned long long / 无 长 长 / 长 长 / 无 long long).
+'scripts/feat_zh_reserved_typeword_var_neg.c',
+'scripts/feat_zh_long_combo_ok.c',
 ]
 
 def build_tests(args):
