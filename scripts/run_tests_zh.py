@@ -946,6 +946,14 @@ CORE_FEAT += [
 #   判据: 26 例 与 gcc 逐值一致; 本锚 不 具「旧编译器 必红」区分度 (是 覆盖补充 而非 缺陷修复),
 #     判据 口径 = 锚自身正确 + 全闸零回归 (同 第 133 站).
 'scripts/feat_zh_compound_assign_ok.c',
+# ===== 第 141 站 (C141): 转义序列补齐 + 零覆盖形态锚 (725 → 727) =====
+#   由来: 第 141 站 扩展覆盖统计 (九 维度, 767 个 锚): `\xNN` / `\0` / `\a\b\f\v` 零覆盖;
+#     `do { } while` / `void **` / `void *arr[]` / `register` 零覆盖。
+#   探针 实测: 转义 是 **真缺陷** (`"\x41\x42\x43"` -> `x41x42x43`; `'\a'` -> 97); 其余 六 形态 行为 正确。
+#   判据: escape 锚 **旧编译器 2F19096A 必红** (f1); do-while/voidptr 锚 是 覆盖补充型 (无 必红 区分度,
+#     判据 口径 = 锚自身正确 + 全闸零回归)。
+'scripts/feat_zh_escape_ok.c',
+'scripts/feat_zh_do_while_voidptr_ok.c',
 ]
 
 def build_tests(args):

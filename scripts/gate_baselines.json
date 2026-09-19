@@ -1,9 +1,9 @@
 {
- "fixed": "2F19096A",
- "time": "2026-09-20 02:54:38",
+ "fixed": "ADD459BA",
+ "time": "2026-09-20 03:37:39",
  "gates": {
   "zh_feat": {
-   "anchor_count": 725,
+   "anchor_count": 727,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
@@ -22,7 +22,7 @@
    "source": "scratch_gl/git563_quick_C129e.txt"
   },
   "srclib": {
-   "detail_lines": 58,
+   "detail_lines": 13,
    "real_fail": 71,
    "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
   }
