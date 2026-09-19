@@ -17,13 +17,14 @@ sys.stdout.reconfigure(encoding='utf-8')
 REP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REP, 'srclib_jiayan', 'qcc_zh.jy')
 
-# 白名单: 行号 -> 理由 (判据不是「变量浮性」而是别的来源, 属另一类, 逐条登记)
+# 白名单: 被标记的 **节点/变量名** -> 理由 (判据不是「变量浮性」而是别的来源, 属另一类, 逐条登记)
+# ⚠️ 用「名」而非「行号」—— 行号 会 随 任何 编辑 漂移 (第 134 站 实测: 在 L7270 插入 2 行 ⟹ 14242 变 14244 ⟹ 误报 7 条).
 WHITELIST = {
-    14242: '载荷字段糖: 判据是 变载[].类型序 (结构体字段类型), 非 变量是否浮/指浮',
+    '载荷访问': '载荷字段糖: 判据是 变载[].类型序 (结构体字段类型), 非 变量是否浮/指浮',
 }
 
 RE_SUGAR = re.compile(r'!比较字符串\(词名表\[词位\],\s*"([^"]+)"\)')
-RE_MARK = re.compile(r'节浮标\[[^\]]*\]\s*=\s*1')
+RE_MARK = re.compile(r'节浮标\[([^\]]*)\]\s*=\s*1')
 RE_HELPER = re.compile(r'静 空 糖后标\(')
 RE_CALL = re.compile(r'糖后标\(块,\s*0\);')
 
@@ -51,10 +52,11 @@ def main():
         if call < 0:
             continue
         for j in range(i, call + 1):
-            if RE_MARK.search(lines[j]) and not RE_HELPER.search(lines[j]):
+            mk = RE_MARK.search(lines[j])
+            if mk and not RE_HELPER.search(lines[j]):
                 if hstart >= 0 and hstart <= j <= hend:
                     continue  # helper 自身
-                if (j + 1) in WHITELIST:
+                if mk.group(1).strip() in WHITELIST:
                     continue
                 bad.append((j + 1, sugar, lines[j].strip()[:120]))
 

@@ -927,6 +927,11 @@ CORE_FEAT += [
 #     新编译器 `SPF 99.50 1.50 7.25 7 8 0` rc=0, 且与 gcc 逐值一致。
 'scripts/feat_zh_struct_field_ptr_subscript_ok.c',
 'scripts/feat_zh_global_float_ptr_subscript_ok.c',
+# ===== 第 134 站 (C144): 语法糖 的 **8 字节整数 (long long) 数组** 形态 (721 → 722) =====
+#   由来: 原 糖锚 只 覆盖 整 (4B) 与 双精度 (8B 浮), 长整 数组 三 载体 齐 缺 (槽宽 / 糖后标 元素读 / 解析期 下标 长标记)
+#     ⟹ 静默 32 位 截断 (均值 2500000000000 -> 329033728; 反转/排序 丢 高 32; 纯 C 侧 `p = q[1]` -> -1454759936).
+#   判据: 旧编译器 (5D9B7CFA) 上 **必红** (fail2 329033728 = 均值 低 32 位); 新编译器 PASS, 与 gcc 逐值一致.
+'scripts/feat_zh_sugar_long_ok.c',
 ]
 
 def build_tests(args):
