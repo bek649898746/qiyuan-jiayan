@@ -858,6 +858,18 @@ CORE_FEAT += [
 #   ⚠️ 不含 `(double)(char)v` / `(double)(short)v` / `(double)(unsigned)v` —— 同族**另一根因**
 #     (节点27 的 codegen 假定输入已在 eax、缺 `cvttsd2si`; `(unsigned)` 根本不建截断节点), 已挂账。
 'scripts/feat_zh_nested_cast_ok.c',
+#   ✅ C128/C128b (2026-09-19 第 123 站): **窄截断 / 无符号转型 的浮点源** (第 122 站挂账的同族根因).
+#   症状: `double v=300.7; (double)(char)v` ⟹ 旧编译器 `0.00`; `(double)(short)w` ⟹ `0.00`;
+#     `(double)(unsigned)x` ⟹ `3.50` (没截断)。
+#   根因: ① `例 节点_窄转型` (L23446) 只做 `码生成(子0)` 然后**直接掩码 eax** (`and $0xff`/`and $0xffff`),
+#     而浮点源的结果在 **xmm0** ⟹ eax 是垃圾 (反汇编: `movsd v→xmm0` → `and $0xff,%eax` → 从未从 xmm0 转换);
+#     ② `(无符号)v` (浮点源) 在 L8599 不命中 (`(整数)` 截断分支只认 int/整) ⟹ 不建截断节点。
+#   修法: ① 加浮点源分支 `码生成浮(子0); 若 (节长标) 长对(); 否 { 中发(宽二); }` (复用 例 节点_转型 写法);
+#     ② L8599 条件补 `unsigned/无/无整`, **并排除后续跟 long/长** (那 64 位由下行 long 分支负责)。
+#   ⚠️ **锚刻意用「范围内」值** —— 浮点→窄整 的**超范围**转换是 C 的**实现定义行为**
+#     (实测 gcc 对 `(char)300.7` 给 `127` = CHAR_MAX, 走**饱和**; 甲言走截断) ⟹ 超范围用例无法做 gcc 逐值对照。
+#   灵敏度: 旧编译器 (qcc_zh_seed.exe = 7D5AD2ED) 上 `NCF 44 0.00 4464 0.00 3.50` 必红; 新编译器 `NCF 44 44.00 4464 4464.00 3.00` rc=0。
+'scripts/feat_zh_narrow_cast_float_ok.c',
 ]
 
 def build_tests(args):
