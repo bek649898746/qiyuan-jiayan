@@ -3616,6 +3616,8 @@ typedef 构 { 字 句名[64]; 字 函名[64]; 字 捕实[8][64]; 整 捕数; 整
    返回: 0=整数/指针(堆九 8B) 1=邻辰(堆九 64B) 2=双精度(xmm0)
    槽位 33-41 对应 栈降[25..33] (64 位变体映射标准名: 时间→_time64 等) */
 静 常 字 *隔高[35] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs","islower","isupper","iscntrl","isgraph","isprint","ispunct","labs","atof","strcoll","strxfrm","strncat","strncpy","strtod","getenv" }; /* isblank/strcasecmp/strtoll 等不在传统 msvcrt.dll 导出, 勿入表 */ /* A30 (2026-09-11): +getenv — 原 只 在 后聚[] 白名单 (隐式声明 放行) 却 无 导入 槽 → 静默 走 「未登记 回退 返 0」 桩 → 取环境/getenv 恒 空 (编译器 自身 所有 取环境 门控 是 死代码) */
+静 常 字 *核名[17] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle", "CreateFiber", "SwitchToFiber", "DeleteFiber", "ConvertThreadToFiber", "LoadLibraryA", "GetProcAddress" }; /* C139 (2026-09-20 第 139 站): 内核库 17 个 API 的 「名 -> 导入槽」表 (槽号 = 索引, 与 左己[] 前 17 项 及 写导入表的 主亥[17] 同序). 原 只有 math (终陆) 与 msvcrt (帧退) 的 查询, **内核库 无查询** ⟹ 用户代码 调用 任何 Win32 API 都 落 「未登记回退」桩 ⟹ 恒 返 0 (实测 `GetStdHandle(-11)` 与 `GetCommandLineA()` 均 0; 编译器自身 用 直接槽号 调导入(0) 故 不受影响, 长期 未被发现). */
+静 整 核退(常 字 *数) { 遍 (整 计 = 0; 计 < 17; 计++) 若 (!比较字符串(核名[计], 数)) 返 计; 返 -1; }
 静 整 帧退(常 字 *数) {
     遍 (整 计 = 0; 计 < 35; 计++) 若 (!比较字符串(隔高[计], 数)) 返 42 + 计; /* 2026-08-28 阶段一 #246: msvcrt 槽 40→42 起 (内核库 +2); A30: getenv 槽 76 */
     返 -1;
@@ -23072,10 +23074,12 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; } 荷栽�
                     加栈即(总计数);
                     元子 = 1;
                 }
-            } 否 若 (帧退(串升) >= 0) {
+            } 否 若 (帧退(串升) >= 0 || 核退(串升) >= 0) {
                 /* 外部库函数 (修复 2026-08-25 步五 时间 全系): 参数全 整数/指针 → 六十四位窗口 标丁 (rcx/rdx/r8/r9) 传参,
-                   导入表 调用; 返回 整数/指针=堆九, 邻辰=堆九 64 (节长标 标记), 双精度=xmm0 (节浮标 标记) */
-                整 新二一 = 帧退(串升);
+                   导入表 调用; 返回 整数/指针=堆九, 邻辰=堆九 64 (节长标 标记), 双精度=xmm0 (节浮标 标记)
+                   C139 (2026-09-20 第 139 站): **内核库** (GetStdHandle/WriteFile/... 17 个) 也 走 本 分支 —— 其 参数/返回
+                   与 msvcrt 同款 (全 整数/指针 + 8 字节 返回), 故 复用 同一 传参序列, 只 槽号 来源 不同 (核退). */
+                整 新二一 = (帧退(串升) >= 0) ? 帧退(串升) : 核退(串升);
                 若 (参数个数 >= 1) { 移寄存器栈64(0, 参基 + 总计数 - 槽高[0] - 8); 移64(1, 0); }
                 若 (参数个数 >= 2) { 移寄存器栈64(0, 参基 + 总计数 - 槽高[1] - 8); 移64(2, 0); }
                 若 (参数个数 >= 3) { 移寄存器栈64(0, 参基 + 总计数 - 槽高[2] - 8); 移64(8, 0); }
