@@ -939,6 +939,13 @@ CORE_FEAT += [
 #         ok 锁 合法组合 不 误报 (long / long long / unsigned long long / 无 长 长 / 长 长 / 无 long long).
 'scripts/feat_zh_reserved_typeword_var_neg.c',
 'scripts/feat_zh_long_combo_ok.c',
+# ===== 第 140 站 (C140): 复合赋值 全矩阵 —— 补齐 覆盖盲区 (724 → 725) =====
+#   由来: 第 140 站 覆盖统计 (766 个 锚): `+=` 66 文件 / `-=` `*=` `&=` `^=` 各 1 / **`/=` `%=` `<<=` `>>=` 零覆盖**
+#     —— 整个 复合赋值族 里 一半 运算符 从未 被 任何 锚 测过. 复合赋值 走 「读-改-写」三 步,
+#     位宽/符号/浮性 任一 环 错 即 静默 错值; 其中 `/=` 与 第 137 站「变量除法」同族.
+#   判据: 26 例 与 gcc 逐值一致; 本锚 不 具「旧编译器 必红」区分度 (是 覆盖补充 而非 缺陷修复),
+#     判据 口径 = 锚自身正确 + 全闸零回归 (同 第 133 站).
+'scripts/feat_zh_compound_assign_ok.c',
 ]
 
 def build_tests(args):
