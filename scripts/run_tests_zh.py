@@ -954,6 +954,16 @@ CORE_FEAT += [
 #     判据 口径 = 锚自身正确 + 全闸零回归)。
 'scripts/feat_zh_escape_ok.c',
 'scripts/feat_zh_do_while_voidptr_ok.c',
+# ===== 第 143 站 (C148): 预定义宏 __LINE__ / __FILE__ / __func__ 修复 + register 补锚 (727 → 729) =====
+#   由来: 第 143 站 第三批 覆盖统计 (预处理/位域/属性周边/复杂声明符 四维度, 769 个 锚):
+#     `__LINE__` / `__FILE__` / `__func__` / `#pragma` / `#line` / `register` / `extern inline` /
+#     `_Noreturn` / `__declspec` / 函数指针数组 / 复合字面量 等 13 形态 **零覆盖 = 缺陷温床**。
+#   探针 实测 三个 预定义标识符 是 **真缺陷**: __LINE__ 恒 0 (gcc 4/5) · __FILE__ 恒 "?" (gcc 源路径) ·
+#     __func__ 未实现 (A1001 未声明标识符) —— 与 gcc 逐值对照坐实。其余 形态 本站 只 补锚 不 改 代码。
+#   判据: predef 锚 **旧编译器 EE6BA87A 必红** (行差 0 / 文件名 "?" / __func__ 编译失败);
+#     register 锚 是 覆盖补充型 (无 必红 区分度, 判据 = 锚自身正确 + 全闸零回归)。
+'scripts/feat_zh_predef_macro_ok.c',
+'scripts/feat_zh_register_ok.c',
 ]
 
 def build_tests(args):
