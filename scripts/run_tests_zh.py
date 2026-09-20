@@ -1044,6 +1044,28 @@ CORE_FEAT += [
     'scripts/feat_zh_range_type101.c',
     'scripts/feat_zh_iface_inherit115.c',
     'scripts/feat_zh_impl_trait116.c',
+    # ===== 第 156 站: 并发/异步/线程族 —— 中段 (有实现无锚) 补锚 (740 -> 744 唯一) =====
+    #   由来: 同「15 族一致化」⟹ 并发族 30 项 (v3.0 #41-#70) 三段表:
+    #     顶 13 (闸内已有锚) · 中 4 (有实现无锚) · 底 4 (无实现: 无锁/线程池/工作窃取/SIMD) · 待核 9。
+    #   ⚠️ 本族特征: 实现 = **语法糖脱糖成运行时函数调用** (如 `送 ch, v` → chan_send), 非编译器内建并发;
+    #     唯 `原子 加/交换/CAS` 是真 `lock xadd/xchg/cmpxchg` 指令 (见 feat_atomic_*)。
+    #   中段 4 项 (读主源实现点核实, 全部在 L11739-L11855 一带):
+    #     · #50 条件变量: `条件变量 cv;` 声明 + `唤醒 cv;`/`唤醒全部 cv;` 通知
+    #       (另有 `等条件 cv[, m];` → __qcc_cv_wait 释放锁+忙等+重取锁)
+    #     · #51 读写锁:   `读写锁 rw;` 声明 + `读锁/写锁/放锁 rw;` → __qcc_rwlock_rd/wr/un
+    #     · #56 信号量:   `信号量 sem, n;` 声明 + `获取 sem;`/`放行 sem;` → __qcc_sem_wait/post
+    #       (原「#56 有锚」是 sem↔semantics 假阳性: feat_zh_copy_semantics9.c 与信号量无关)
+    #     · #58 屏障:     `栅栏 bar, n;` 声明 + `汇合 bar;` → __qcc_barrier_wait
+    #       (与 #49 内存屏障区分: `屏障();` → __qcc_mfence, 已有锚 feat_zh_fence21.c)
+    #   🔬 重要实测: **n=3 的 `汇合` 在单线程下真忙等 ⟹ 测试进程挂起 (15s 超时被 kill)**
+    #     —— 这反证 __qcc_barrier_wait 是**真实现** (真计到达数 + 真自旋), 不是空壳。
+    #     故 #58/#50 两锚用「可单线程通过」的降级面 (n=1 汇合 / 只测通知不测等条件), 挂起路径不覆盖。
+    #   判据: 四锚语义正确 · **无旧编译器必红区分度** (覆盖补齐型, 同 133/140/141/149/153/155 站口径)。
+    #   📋 本族剩余: 底段 4 项 (无锁/线程池/工作窃取/SIMD, 均 0 处源码) + 待核 9 项 (结构化并发/fork-join/取消/Send-Sync/纤程 等)。
+    'scripts/feat_zh_condvar50.c',
+    'scripts/feat_zh_rwlock51.c',
+    'scripts/feat_zh_sem56.c',
+    'scripts/feat_zh_barrier58.c',
 ]
 
 def build_tests(args):
