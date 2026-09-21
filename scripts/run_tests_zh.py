@@ -41,6 +41,7 @@ CORE_FEAT = [
     'scripts/feat_zh_nested_field_type_ok.c',  # C77 (2026-09-17 第 77 站): **结构体字段 类型序(毛利)** — 嵌套结构体路径 漏登记 + 逗号续行漏继承; 真实载体 xdiff/xpatience.c L49 (台账 §76)
     'scripts/feat_zh_anon_struct_ptrfield_ok.c',  # R231 (2026-09-21 第 231 站): **文件级/全局 匿名结构体的指针字段读取** — 「静态 结构体 成员读」的 8 字节判据用「字段类型尺寸」**间接猜**指针性, 未用权威标记 `字段是否指` ⟹ 指向的结构体恰 8 字节时判据为假 ⟹ 读成**字段地址** (&S+8) 静默错值; 同族判据 4 份副本仅此份漏 (台账 §231)
     'scripts/feat_zh_ptrfield_read_paths_ok.c',  # R232 (2026-09-22 第 232 站): **成员读「五路径」× 指针字段（所指结构体恰 8 字节）** — 同族判据的另两份副本（箭头 `变量型序(基)>=0` 与箭头兜底猜类型）同病: 用「字段类型序指向的结构体尺寸」**间接猜**指针性, 未用权威标记 `字段是否指` ⟹ 箭头读 (NPS->p / APS->p / NPL->p / APL->p) 读出 &宿主+8 字段地址; 点成员/数组元素/局部点成员四条路径本就正确 (台账 §232)
+    'scripts/feat_zh_ptr_meta_registration_ok.c',  # R233 (2026-09-22 第 233 站): **指针变量的类型元数据登记（七形态矩阵）** — 「局部变量声明」的 static 与非 static 两条分支**各写一遍**同一套 指元素尺寸/指深/指内/型序标 ⟹ 第 82 站给非 static 补了「typedef 别名 指向构序」而 static 没跟上 ⟹ 函数内 `static` + typedef 结构体指针别名的 型序标 恒 -1 ⟹ 箭头读落「按字段名搜遍全部类型」兜底分支 ⟹ 猜错宿主 ⟹ 静默错值; 收口 = 「尺寸怎么算」「元数据怎么补」各单一出处（指针元尺寸/指针元补），两分支只调不改 (台账 §233)
     'scripts/feat_zh_field_layout_matrix_ok.c',
     'scripts/feat_zh_ret_scalar_loop_ok.c',
     'scripts/feat_zh_nullable_decl_bind_ok.c',
