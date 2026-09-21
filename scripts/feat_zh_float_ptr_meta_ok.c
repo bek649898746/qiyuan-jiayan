@@ -40,12 +40,11 @@ static int 局部单指针(void) {          /* ③ 对照（局部 float* 走浮
     return 0;
 }
 
-static int 静态二级指针(void) {        /* ④ ⚠️ 已知未修，见下（不纳入断言，仅保留形态以免误判已修） */
-    static double **dpp;
-    double *p = 双缓;
-    double **q = &p;
-    dpp = q;
-    if ((*dpp)[1] != 2.5) return 0;    /* 不 return 6 —— 该形态当前仍错，另记挂账 */
+static int 静态单指针(void) {          /* ④ ← R236 修：型词循环缺 float ⟹ 单丙 恒 0 ⟹ 落通用分支（读出 0.0） */
+    static float *fp;
+    fp = 单缓;
+    if (fp[0] != 1.5f) return 3;
+    if (fp[2] != 3.5f) return 7;
     return 0;
 }
 
@@ -57,6 +56,7 @@ int main(void) {
     r = 局部双指针();   if (r) { printf("FAIL 局部双指针 rc=%d\n", r); return r; }
     r = 局部单指针();   if (r) { printf("FAIL 局部单指针 rc=%d\n", r); return r; }
     r = 静态双指针();   if (r) { printf("FAIL 静态双指针 rc=%d\n", r); return r; }
+    r = 静态单指针();   if (r) { printf("FAIL 静态单指针 rc=%d\n", r); return r; }
 
     printf("PASS\n");
     return 0;
