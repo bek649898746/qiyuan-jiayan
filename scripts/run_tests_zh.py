@@ -1480,6 +1480,11 @@ CORE_FEAT += [
     #     写表循环/段偏移/**导入目录 RVA**）· 内置豁免表 后聚[] 补 47 名（两张表必须同登）.
     #   灵敏度: 上一代 (E03D7572) 上 本锚 **A1001 未声明函数 GetCurrentProcessId** ⟹ 必红.
     'scripts/feat_zh_kernel32_slots_ok.c',
+    # 第 227 站 (2026-09-21) **R9-d**: 指针转型 ⟹ 64 位「长性」标记.
+    #   病史: `void* 字段 ← (void*)LoadLibraryA(...)` 高 32 位被符号扩展 (0xFFFFFFFFC01A0000) ⟹ 间接调用崩.
+    #   修法: ① 查返回名指() 加 Win32 返指名 fallback · ② 转型表达式出口按 深己>=1 (指针) 设长标.
+    #   灵敏度: 上一代 (8E214055) 上 本锚 FAIL 2 (字段值 ffffffffc01a0000) ⟹ 必红.
+    'scripts/feat_zh_ptr_cast_longval_ok.c',
 ]
 
 def build_tests(args):
