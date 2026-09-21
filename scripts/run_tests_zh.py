@@ -1408,6 +1408,13 @@ CORE_FEAT += [
     #   零回归: 现有锚 child1 恒为常量 1 ⟹ 逐字等价.
     #   灵敏度: 旧编译器 (F8B77A09) 上 本锚 编译通过、**运行 exit=1** (8B 行 t != 2) ⟹ 必红.
     'scripts/feat_zh_err_nullable_payload_empty_ok.c',
+    # 第 218 站 (2026-09-21) **C2 定案落地 · 步 2 余项（传播侧）**: `尝试` 传播的 tag 保真 (8B / 双精度 / 大结构体).
+    #   链条: 216 站 判据改「非 0 即传播」(int 路径保真) → 217 站 码生成 3 处判据放宽 (构造侧 保真)
+    #     → 本刀 补上「child1 = 变量」的码生成处理 (3 处) + 解析侧 child1 改用捕获的真实 tag (2 处).
+    #   各载荷类通道: 32 类 值走 sret (rdx=错码, rax=tag) · 16 类 值在 xmm0 (rdx=tag) · 8 类 **值占 rax**
+    #     ⟹ 8 类必须 **先**求 tag 压栈 再求值 最后弹栈到 rdx (唯一需注意求值顺序处).
+    #   灵敏度: 上一代编译器 (36085967) 上 本锚 编译通过、**运行 exit=1** (8B 行 t != 2, 得 1 = 降级为「错」) ⟹ 必红.
+    'scripts/feat_zh_err_nullable_try_propagate_payload_ok.c',
 ]
 
 def build_tests(args):
