@@ -1,6 +1,6 @@
 {
- "fixed": "9135C82F",
- "time": "2026-09-22 04:55:20",
+ "fixed": "EED2DF40",
+ "time": "2026-09-22 05:19:10",
  "gates": {
   "zh_feat": {
    "anchor_count": 798,
@@ -19,7 +19,7 @@
    "ok": 40,
    "fail": 11,
    "crash": 0,
-   "source": "scratch_gl/git563_quick_C129e.txt"
+   "source": "scratch_gl/git563_quick_r238v.txt"
   },
   "srclib": {
    "detail_lines": 13,
