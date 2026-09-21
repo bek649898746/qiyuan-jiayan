@@ -1319,6 +1319,16 @@ typedef int regex_t; /* regex_t 不透明类型近似 — static regex_t *stamp 
 #define regexec git_regexec
 #define regfree git_regfree
 #define regcomp git_regcomp
+/* 第 228 站 (2026-09-21 · git 口径): 补 `git_reg*` 四函数**原型**。
+   背景: 上方宏映射 `#define regexec git_regexec` 只把**调用名**换掉, 却从未给原型的声明;
+     而 git 自带 `compat/regex/regex.h` 的原型因该头未被包含 ⟹ 调用点落 `A1001 未声明函数`。
+   实测: `compat/mingw.c` + `-D __MINGW32__` 卡在此 ⟹ 整个 compat 层编不过。
+   原型照抄 git `compat/regex/regex.h` L567-579 (宏展开后即 git_* 版本);
+   `regmatch_t[]` 此处以 `void *` 承接 —— 只解「未声明」, 不引入 regmatch_t 布局风险。 */
+int git_regcomp(regex_t *, const char *, int);
+int git_regexec(const regex_t *, const char *, size_t, void *, int);
+size_t git_regerror(int, const regex_t *, char *, size_t);
+void git_regfree(regex_t *);
 #define regerror git_regerror
 
 /* POSIX regcomp/regexec cflags/eflags 常量 (qcc 未展开 compat/regex/regex.h 宏 → undefined symbol) (fix 2026-08-15: REG_EXTENDED) */
