@@ -39,6 +39,7 @@ CORE_FEAT = [
     'scripts/feat_zh_paren_ptr_array_local_ok.c',  # C74 (2026-09-17 第 74 站): **局部** 括号指针数组 — 漏设 指元素尺寸 ⟹ 元素赋值走结构体深拷贝 ⟹ 崩 0xC0000005 (仅 8 字节结构体触发); 真实载体 builtin/diff.c L175 / grep.c L707 (台账 §74)
     'scripts/feat_zh_paren_ptr_array_local_typedef_ok.c',  # C75+C76 (2026-09-17 第 75/76 站): **typedef 形态** 指针数组 — 括号 漏 型序标 (静默 槽4/槽6) + 无括号 1D 漏 指元素尺寸 (崩); 一族四条路径对齐 (台账 §75)
     'scripts/feat_zh_nested_field_type_ok.c',  # C77 (2026-09-17 第 77 站): **结构体字段 类型序(毛利)** — 嵌套结构体路径 漏登记 + 逗号续行漏继承; 真实载体 xdiff/xpatience.c L49 (台账 §76)
+    'scripts/feat_zh_anon_struct_ptrfield_ok.c',  # R231 (2026-09-21 第 231 站): **文件级/全局 匿名结构体的指针字段读取** — 「静态 结构体 成员读」的 8 字节判据用「字段类型尺寸」**间接猜**指针性, 未用权威标记 `字段是否指` ⟹ 指向的结构体恰 8 字节时判据为假 ⟹ 读成**字段地址** (&S+8) 静默错值; 同族判据 4 份副本仅此份漏 (台账 §231)
     'scripts/feat_zh_field_layout_matrix_ok.c',
     'scripts/feat_zh_ret_scalar_loop_ok.c',
     'scripts/feat_zh_nullable_decl_bind_ok.c',
