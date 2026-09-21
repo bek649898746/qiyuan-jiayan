@@ -1474,6 +1474,12 @@ CORE_FEAT += [
     #   本锚挡: 普通调用 LoadLibraryA/GetProcAddress + 函数指针间接调用 全链 (与内建 加载库/取函数 路径独立).
     #   灵敏度: 修复前编译器 (09-17 95637E42 重建) 上 本锚 FAIL 1: k32=0 ⟹ 必红.
     'scripts/feat_zh_dynload_plain_call_ok.c',
+    # 第 226 站 (2026-09-21) **R9-新 扩容**: 内核库 IAT 17 → 64 槽（+47 个 git 适配层高频 API）.
+    #   背景: 调用生成的三路「名→槽」查询只覆盖 msvcrt 35 / 内核库 17 / math 24; 表外落静默桩「返 0」.
+    #   本刀: 名聚 0x900→0x1100 · 首厚一 0x1000→0x2000 · 槽位编码重排（栈轮/终陆/帧退/左己[124]/主亥/
+    #     写表循环/段偏移/**导入目录 RVA**）· 内置豁免表 后聚[] 补 47 名（两张表必须同登）.
+    #   灵敏度: 上一代 (E03D7572) 上 本锚 **A1001 未声明函数 GetCurrentProcessId** ⟹ 必红.
+    'scripts/feat_zh_kernel32_slots_ok.c',
 ]
 
 def build_tests(args):

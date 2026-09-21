@@ -41,8 +41,8 @@
 /* BSS 分离 (修复 2026-08-25): .数据 文件只需写导入表+堆 计数器 (~0x2B0), 
    堆/栈/未初始化 静态 全由 加载器 按 虚拟尺寸 清零 (BSS 语义) — 可执行 从 454兆字节→3.2兆字节.
    原始数据尺寸 固定一页 (0x1000) 覆盖导入表; 虚拟尺寸 不变 (兼容所有虚拟地址). */
-#define 首厚一 0x1000
-#define 名聚 0x900 /* 静态 起点后移：给扩展导入区（导入表 128+ILT 128+主回+名 至 ~0x810）让位（2026-08-28 类型-根-15 #41: 0x800→0x900 — 内核库 15 槽 名 区 0x80B 溢出 11B 压 静态 → DLL_NOT_FOUND; 修复 2026-08-06 缺陷-1; 2026-08-25 math21 0x300→0x400; 步五 0x400→0x600; 步九 0x600→0x800） */
+#define 首厚一 0x2000
+#define 名聚 0x1100 /* 静态 起点后移：给扩展导入区（导入表 128+ILT 128+主回+名 至 ~0x810）让位（2026-08-28 类型-根-15 #41: 0x800→0x900 — 内核库 15 槽 名 区 0x80B 溢出 11B 压 静态 → DLL_NOT_FOUND; 修复 2026-08-06 缺陷-1; 2026-08-25 math21 0x300→0x400; 步五 0x400→0x600; 步九 0x600→0x800） */
 #define 半九 0x300000
 #define 码缓容量 0x2000000
 #include <单繁一.首一>
@@ -3588,18 +3588,167 @@ typedef 构 { 字 句名[64]; 字 函名[64]; 字 捕实[8][64]; 整 捕数; 整
 静 字 汇编名[512]; /* -S 模式 汇编 文件名 (最终代越界重稳定时截断重开用, 修复 2026-08-06) */
 静 整 主升(整 序标) { 返 (数据基址 + 名聚 + 4 * 序标) - (0x1000 + 码位 + 6); }
 /* 导入表 入口 (内核库): 槽位 0=GetStdHandle 于 .数据+8, 1=WriteFile 于 .数据+0x10 */
-静 整 栈轮(整 尾柒, 整 槽) { 整 总午 = 槽 < 17 ? (8 + 8 * 槽) : (0x98 + 8 * (槽 - 17)); 返 (数据基址 + 总午) - (0x1000 + 尾柒 + 6); } /* 双四@+0x08 内核库(17) / 总升@+0x98 msvcrt (2026-08-28 阶段一 #246: 内核库 15→17, 总升 0x88→0x98) */ /* 双四@+0x08 内核库(15) / 总升@+0x88 msvcrt (2026-08-28 类型-根-15 #41: 内核库 11→15 槽) */
+静 整 栈轮(整 尾柒, 整 槽) { 整 总午 = 槽 < 64 ? (8 + 8 * 槽) : (0x210 + 8 * (槽 - 64)); 返 (数据基址 + 总午) - (0x1000 + 尾柒 + 6); } /* 双四@+0x08 内核库(17) / 总升@+0x98 msvcrt (2026-08-28 阶段一 #246: 内核库 15→17, 总升 0x88→0x98) */ /* 双四@+0x08 内核库(15) / 总升@+0x88 msvcrt (2026-08-28 类型-根-15 #41: 内核库 11→15 槽) */
 静 空 调导入(整 槽) {
     汇发("    调系统 %d\n", (字*)(长 长)(槽), (字*)(长 长)0, (字*)(长 长)0);
     整 尾柒 = 码位; /* 指令 开始 (半十 15 + 三十二位位移 = 6 字节) */
     发字节(0xFF); 发字节(0x15);
     若 (链接模式) {
-        静 常 字 *左己[34] = { "__imp_GetStdHandle", "__imp_WriteFile", "__imp_CreateFileA",
-            "__imp_ReadFile", "__imp_VirtualAlloc", "__imp_SetFilePointer", "__imp_ExitProcess", "__imp_GetCommandLineA",
-            "__imp_CreateThread", "__imp_WaitForSingleObject", "__imp_CloseHandle", "__imp_CreateFiber", "__imp_SwitchToFiber", "__imp_DeleteFiber", "__imp_ConvertThreadToFiber", "__imp_LoadLibraryA", "__imp_GetProcAddress", /* 2026-08-28 阶段一 #246: +LoadLibraryA/GetProcAddress (内核库 15→17) */
-            "__imp_pow", "__imp_atan2", "__imp_fmod", "__imp_remainder", "__imp_sqrt", "__imp_cbrt", "__imp_cos", "__imp_sin",
-            "__imp_tan", "__imp_acos", "__imp_asin", "__imp_atan", "__imp_log", "__imp_log10", "__imp_exp", "__imp_floor",
-            "__imp__write" };
+                静 常 字 *左己[124] = { 
+"__imp_GetStdHandle", 
+"__imp_WriteFile", 
+"__imp_CreateFileA", 
+"__imp_ReadFile",
+            
+"__imp_VirtualAlloc", 
+"__imp_SetFilePointer", 
+"__imp_ExitProcess", 
+"__imp_GetCommandLineA",
+            
+"__imp_CreateThread", 
+"__imp_WaitForSingleObject", 
+"__imp_CloseHandle", 
+"__imp_CreateFiber",
+            
+"__imp_SwitchToFiber", 
+"__imp_DeleteFiber", 
+"__imp_ConvertThreadToFiber", 
+"__imp_LoadLibraryA",
+            
+"__imp_GetProcAddress", 
+"__imp_GetLastError", 
+"__imp_SetLastError", 
+"__imp_GetModuleHandleA",
+            
+"__imp_GetModuleFileNameA", 
+"__imp_GetModuleFileNameW", 
+"__imp_FreeLibrary", 
+"__imp_LoadLibraryW",
+            
+"__imp_LoadLibraryExA", 
+"__imp_FormatMessageA", 
+"__imp_WideCharToMultiByte", 
+"__imp_MultiByteToWideChar",
+            
+"__imp_GetFileAttributesA", 
+"__imp_GetFileAttributesW", 
+"__imp_GetFileAttributesExA", 
+"__imp_GetFileAttributesExW",
+            
+"__imp_SetFileAttributesW", 
+"__imp_CreateFileW", 
+"__imp_DeleteFileW", 
+"__imp_FindFirstFileW",
+            
+"__imp_FindNextFileW", 
+"__imp_FindClose", 
+"__imp_GetFileType", 
+"__imp_GetFileInformationByHandle",
+            
+"__imp_SetFileTime", 
+"__imp_GetLongPathNameW", 
+"__imp_GetFullPathNameW", 
+"__imp_GetFinalPathNameByHandleW",
+            
+"__imp_GetEnvironmentStringsW", 
+"__imp_FreeEnvironmentStringsW", 
+"__imp_GetEnvironmentVariableW", 
+"__imp_SetEnvironmentVariableW",
+            
+"__imp_Sleep", 
+"__imp_GetSystemTimeAsFileTime", 
+"__imp_GetProcessHeap", 
+"__imp_HeapAlloc",
+            
+"__imp_HeapFree", 
+"__imp_CreateProcessW", 
+"__imp_OpenProcess", 
+"__imp_TerminateProcess",
+            
+"__imp_GetCurrentProcessId", 
+"__imp_GetVersion", 
+"__imp_SetConsoleCtrlHandler", 
+"__imp_GetHandleInformation",
+            
+"__imp_CreatePipe", 
+"__imp_PeekNamedPipe", 
+"__imp_GetNamedPipeInfo", 
+"__imp_InitializeProcThreadAttributeList",
+            
+"__imp_pow", 
+"__imp_atan2", 
+"__imp_fmod", 
+"__imp_sqrt",
+            
+"__imp_cos", 
+"__imp_sin", 
+"__imp_tan", 
+"__imp_acos",
+            
+"__imp_asin", 
+"__imp_atan", 
+"__imp_log", 
+"__imp_log10",
+            
+"__imp_exp", 
+"__imp_floor", 
+"__imp_ceil", 
+"__imp_fabs",
+            
+"__imp_cosh", 
+"__imp_sinh", 
+"__imp_tanh", 
+"__imp__copysign",
+            
+"__imp__hypot", 
+"__imp_frexp", 
+"__imp_ldexp", 
+"__imp_modf",
+            
+"__imp__write", 
+"__imp__time64", 
+"__imp_difftime", 
+"__imp__localtime64",
+            
+"__imp__gmtime64", 
+"__imp__mktime64", 
+"__imp_strftime", 
+"__imp_clock",
+            
+"__imp_asctime", 
+"__imp_ctime", 
+"__imp_strtok", 
+"__imp_strrchr",
+            
+"__imp_strnlen", 
+"__imp_strpbrk", 
+"__imp_memcmp", 
+"__imp_toupper",
+            
+"__imp_isalnum", 
+"__imp_isxdigit", 
+"__imp_isspace", 
+"__imp_rand",
+            
+"__imp_srand", 
+"__imp_abs", 
+"__imp_islower", 
+"__imp_isupper",
+            
+"__imp_iscntrl", 
+"__imp_isgraph", 
+"__imp_isprint", 
+"__imp_ispunct",
+            
+"__imp_labs", 
+"__imp_atof", 
+"__imp_strcoll", 
+"__imp_strxfrm",
+            
+"__imp_strncat", 
+"__imp_strncpy", 
+"__imp_strtod", 
+"__imp_getenv" };
         发四(0);
         缺亥(尾柒 + 2, 0x0004, 新又(左己[槽]), 0);
         返;
@@ -3609,7 +3758,7 @@ typedef 构 { 字 句名[64]; 字 函名[64]; 字 捕实[8][64]; 整 捕数; 整
 /* 外部数学函数 → 导入表 槽位 8-31（非 目标文件 模式；修复 2026-08-06 缺陷-1; 2026-08-25 math24: 16→24, frexp/ldexp/modf 走混合 应用二进制接口 专用分支） */
 静 整 终陆(常 字 *数) {
     静 常 字 *虚伍一[24] = { "pow","atan2","fmod","sqrt","cos","sin","tan","acos","asin","atan","log","log10","exp","floor","ceil","fabs","cosh","sinh","tanh","copysign","hypot","frexp","ldexp","modf" };
-    遍 (整 计 = 0; 计 < 24; 计++) 若 (!比较字符串(虚伍一[计], 数)) 返 17 + 计; /* 2026-08-28 阶段一 #246: 内核库 15→17 槽 → msvcrt 槽 17 起 */
+    遍 (整 计 = 0; 计 < 24; 计++) 若 (!比较字符串(虚伍一[计], 数)) 返 64 + 计; /* 2026-08-28 阶段一 #246: 内核库 15→17 槽 → msvcrt 槽 17 起 */
     返 -1;
 }
 /* 外部库函数注册表 (修复 2026-08-25 步五 时间 全系): 非 内置 非 math 的 msvcrt 导入表 函数,
@@ -3617,10 +3766,81 @@ typedef 构 { 字 句名[64]; 字 函名[64]; 字 捕实[8][64]; 整 捕数; 整
    返回: 0=整数/指针(堆九 8B) 1=邻辰(堆九 64B) 2=双精度(xmm0)
    槽位 33-41 对应 栈降[25..33] (64 位变体映射标准名: 时间→_time64 等) */
 静 常 字 *隔高[35] = { "time","difftime","localtime","gmtime","mktime","strftime","clock","asctime","ctime","strtok","strrchr","strnlen","strpbrk","memcmp","toupper","isalnum","isxdigit","isspace","rand","srand","abs","islower","isupper","iscntrl","isgraph","isprint","ispunct","labs","atof","strcoll","strxfrm","strncat","strncpy","strtod","getenv" }; /* isblank/strcasecmp/strtoll 等不在传统 msvcrt.dll 导出, 勿入表 */ /* A30 (2026-09-11): +getenv — 原 只 在 后聚[] 白名单 (隐式声明 放行) 却 无 导入 槽 → 静默 走 「未登记 回退 返 0」 桩 → 取环境/getenv 恒 空 (编译器 自身 所有 取环境 门控 是 死代码) */
-静 常 字 *核名[17] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle", "CreateFiber", "SwitchToFiber", "DeleteFiber", "ConvertThreadToFiber", "LoadLibraryA", "GetProcAddress" }; /* C139 (2026-09-20 第 139 站): 内核库 17 个 API 的 「名 -> 导入槽」表 (槽号 = 索引, 与 左己[] 前 17 项 及 写导入表的 主亥[17] 同序). 原 只有 math (终陆) 与 msvcrt (帧退) 的 查询, **内核库 无查询** ⟹ 用户代码 调用 任何 Win32 API 都 落 「未登记回退」桩 ⟹ 恒 返 0 (实测 `GetStdHandle(-11)` 与 `GetCommandLineA()` 均 0; 编译器自身 用 直接槽号 调导入(0) 故 不受影响, 长期 未被发现). */
-静 整 核退(常 字 *数) { 遍 (整 计 = 0; 计 < 17; 计++) 若 (!比较字符串(核名[计], 数)) 返 计; 返 -1; }
+静 常 字 *核名[64] = { 
+"GetStdHandle", 
+"WriteFile", 
+"CreateFileA", 
+"ReadFile", 
+"VirtualAlloc", 
+"SetFilePointer", 
+"ExitProcess", 
+"GetCommandLineA",
+
+"CreateThread", 
+"WaitForSingleObject", 
+"CloseHandle", 
+"CreateFiber", 
+"SwitchToFiber", 
+"DeleteFiber", 
+"ConvertThreadToFiber", 
+"LoadLibraryA",
+
+"GetProcAddress", 
+"GetLastError", 
+"SetLastError", 
+"GetModuleHandleA", 
+"GetModuleFileNameA", 
+"GetModuleFileNameW", 
+"FreeLibrary", 
+"LoadLibraryW",
+
+"LoadLibraryExA", 
+"FormatMessageA", 
+"WideCharToMultiByte", 
+"MultiByteToWideChar", 
+"GetFileAttributesA", 
+"GetFileAttributesW", 
+"GetFileAttributesExA", 
+"GetFileAttributesExW",
+
+"SetFileAttributesW", 
+"CreateFileW", 
+"DeleteFileW", 
+"FindFirstFileW", 
+"FindNextFileW", 
+"FindClose", 
+"GetFileType", 
+"GetFileInformationByHandle",
+
+"SetFileTime", 
+"GetLongPathNameW", 
+"GetFullPathNameW", 
+"GetFinalPathNameByHandleW", 
+"GetEnvironmentStringsW", 
+"FreeEnvironmentStringsW", 
+"GetEnvironmentVariableW", 
+"SetEnvironmentVariableW",
+
+"Sleep", 
+"GetSystemTimeAsFileTime", 
+"GetProcessHeap", 
+"HeapAlloc", 
+"HeapFree", 
+"CreateProcessW", 
+"OpenProcess", 
+"TerminateProcess",
+
+"GetCurrentProcessId", 
+"GetVersion", 
+"SetConsoleCtrlHandler", 
+"GetHandleInformation", 
+"CreatePipe", 
+"PeekNamedPipe", 
+"GetNamedPipeInfo", 
+"InitializeProcThreadAttributeList" }; /* C139 (2026-09-20 第 139 站): 内核库 17 个 API 的 「名 -> 导入槽」表 (槽号 = 索引, 与 左己[] 前 17 项 及 写导入表的 主亥[17] 同序). 原 只有 math (终陆) 与 msvcrt (帧退) 的 查询, **内核库 无查询** ⟹ 用户代码 调用 任何 Win32 API 都 落 「未登记回退」桩 ⟹ 恒 返 0 (实测 `GetStdHandle(-11)` 与 `GetCommandLineA()` 均 0; 编译器自身 用 直接槽号 调导入(0) 故 不受影响, 长期 未被发现). */
+静 整 核退(常 字 *数) { 遍 (整 计 = 0; 计 < 64; 计++) 若 (!比较字符串(核名[计], 数)) 返 计; 返 -1; }
 静 整 帧退(常 字 *数) {
-    遍 (整 计 = 0; 计 < 35; 计++) 若 (!比较字符串(隔高[计], 数)) 返 42 + 计; /* 2026-08-28 阶段一 #246: msvcrt 槽 40→42 起 (内核库 +2); A30: getenv 槽 76 */
+    遍 (整 计 = 0; 计 < 35; 计++) 若 (!比较字符串(隔高[计], 数)) 返 89 + 计; /* 2026-08-28 阶段一 #246: msvcrt 槽 40→42 起 (内核库 +2); A30: getenv 槽 76 */
     返 -1;
 }
 静 整 序贰(常 字 *数) {
@@ -4287,6 +4507,54 @@ __attribute__((原粗))
     "typeof","__builtin_unreachable","atomic_init",
     "isnan","roundf","fmodf","log10f","log2f","atanf","atanh","cimag","carg","csqrt",
     "syscall","capget","sethostname",
+
+    "GetLastError",
+    "SetLastError",
+    "GetModuleHandleA",
+    "GetModuleFileNameA",
+    "GetModuleFileNameW",
+    "FreeLibrary",
+    "LoadLibraryW",
+    "LoadLibraryExA",
+    "FormatMessageA",
+    "WideCharToMultiByte",
+    "MultiByteToWideChar",
+    "GetFileAttributesA",
+    "GetFileAttributesW",
+    "GetFileAttributesExA",
+    "GetFileAttributesExW",
+    "SetFileAttributesW",
+    "CreateFileW",
+    "DeleteFileW",
+    "FindFirstFileW",
+    "FindNextFileW",
+    "FindClose",
+    "GetFileType",
+    "GetFileInformationByHandle",
+    "SetFileTime",
+    "GetLongPathNameW",
+    "GetFullPathNameW",
+    "GetFinalPathNameByHandleW",
+    "GetEnvironmentStringsW",
+    "FreeEnvironmentStringsW",
+    "GetEnvironmentVariableW",
+    "SetEnvironmentVariableW",
+    "Sleep",
+    "GetSystemTimeAsFileTime",
+    "GetProcessHeap",
+    "HeapAlloc",
+    "HeapFree",
+    "CreateProcessW",
+    "OpenProcess",
+    "TerminateProcess",
+    "GetCurrentProcessId",
+    "GetVersion",
+    "SetConsoleCtrlHandler",
+    "GetHandleInformation",
+    "CreatePipe",
+    "PeekNamedPipe",
+    "GetNamedPipeInfo",
+    "InitializeProcThreadAttributeList",
 };
 静 整 度卯(常 字 *数) {
     遍 (整 计 = 0; 计 < (整)(大小(后聚) / 大小(后聚[0])); 计++)
@@ -19822,7 +20090,7 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; 整 载�
             发字节(0xE8); 发四(0); /* 调用 三十二位相对 - 链接器 解析 _write -> msvcrt 导入 */
             缺亥(码位 - 4, 0x0004, 新又("_write"), 0);
         } 否 {
-            调导入(41); /* _write 导入表 槽位 (msvcrt, 2026-08-28 阶段一 #246: 内核库 15→17 → _write 39→41) */
+            调导入(88); /* _write 导入表 槽位 (msvcrt, 2026-08-28 阶段一 #246: 内核库 15→17 → _write 39→41) */
         }
         加栈即(32);
         相对跳转(-1); 补标号(码位 - 4, 存次, 2);
@@ -19904,7 +20172,7 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; 整 载�
     移64(1, 10); /* rcx = fd */
     移64(2, 14); /* rdx = 缓 */
     若 (链接模式) { 发字节(0xE8); 发四(0); 缺亥(码位 - 4, 0x0004, 新又("_write"), 0); }
-    否 调导入(41); /* _write (2026-08-28 阶段一 #246: 39→41) */
+    否 调导入(88); /* _write (2026-08-28 阶段一 #246: 39→41) */
     加栈即(32);
     相对跳转(-1); 补标号(码位 - 4, 存次, 2);
     设标号(邻失);
@@ -26011,7 +26279,7 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; 整 载�
     /* 数据 目录 0: 导出 (none) */
     写四(文件, 0); 写四(文件, 0);
     /* 数据 目录 1: 导入 表 (内核库) */
-    写四(文件, 数据基址 + 0x4F8); 写四(文件, 60); /* 首重 的 导入 descriptors + 尺寸 (2026-08-28 阶段一 #246: 主回@+0x4E8 内核库 17 槽; A30: msvcrt 59→60 槽 → 源六 0x4E8→0x4F8) */
+    写四(文件, 数据基址 + 0x7E8); 写四(文件, 60); /* 首重 的 导入 descriptors + 尺寸 (2026-08-28 阶段一 #246: 主回@+0x4E8 内核库 17 槽; A30: msvcrt 59→60 槽 → 源六 0x4E8→0x4F8) */
     /* 数据 directories 2-15: none */
     遍 (整 丁序 = 2; 丁序 < 16; 丁序++) { 写四(文件, 0); 写四(文件, 0); }
 
@@ -26079,35 +26347,106 @@ typedef 构 { 整 变体; 整 类型序; 整 域偏; 整 载荷尺寸; 整 载�
     实低 = (实低 + 7) & ~7; /* 修复 2026-08-12 阻塞-3: 提升 堆 基 8-字节 已对齐 — 布局变化 (数据基址/__pad0 尺寸) 不得影响堆对齐 (词长表[词位] 错位读 → 伪 节长标=1 → 2-周期) */
     写四(文件, 实低); /* 堆 计数器 已初始化 */
     写四(文件, 0);          /* 填充 */
-    静 常 字 *主亥[17] = { "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile", "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA", "CreateThread", "WaitForSingleObject", "CloseHandle", "CreateFiber", "SwitchToFiber", "DeleteFiber", "ConvertThreadToFiber", "LoadLibraryA", "GetProcAddress" }; /* 2026-08-28 类型-根-15 #41: +CreateFiber/切换纤程/DeleteFiber/ConvertThreadToFiber; 2026-08-28 阶段一 #246: +LoadLibraryA/GetProcAddress (动态库加载, 15→17 槽) */
+        静 常 字 *主亥[64] = { 
+"GetStdHandle", 
+"WriteFile", 
+"CreateFileA", 
+"ReadFile", 
+"VirtualAlloc", 
+"SetFilePointer", 
+"ExitProcess", 
+"GetCommandLineA",
+        
+"CreateThread", 
+"WaitForSingleObject", 
+"CloseHandle", 
+"CreateFiber", 
+"SwitchToFiber", 
+"DeleteFiber", 
+"ConvertThreadToFiber", 
+"LoadLibraryA",
+        
+"GetProcAddress", 
+"GetLastError", 
+"SetLastError", 
+"GetModuleHandleA", 
+"GetModuleFileNameA", 
+"GetModuleFileNameW", 
+"FreeLibrary", 
+"LoadLibraryW",
+        
+"LoadLibraryExA", 
+"FormatMessageA", 
+"WideCharToMultiByte", 
+"MultiByteToWideChar", 
+"GetFileAttributesA", 
+"GetFileAttributesW", 
+"GetFileAttributesExA", 
+"GetFileAttributesExW",
+        
+"SetFileAttributesW", 
+"CreateFileW", 
+"DeleteFileW", 
+"FindFirstFileW", 
+"FindNextFileW", 
+"FindClose", 
+"GetFileType", 
+"GetFileInformationByHandle",
+        
+"SetFileTime", 
+"GetLongPathNameW", 
+"GetFullPathNameW", 
+"GetFinalPathNameByHandleW", 
+"GetEnvironmentStringsW", 
+"FreeEnvironmentStringsW", 
+"GetEnvironmentVariableW", 
+"SetEnvironmentVariableW",
+        
+"Sleep", 
+"GetSystemTimeAsFileTime", 
+"GetProcessHeap", 
+"HeapAlloc", 
+"HeapFree", 
+"CreateProcessW", 
+"OpenProcess", 
+"TerminateProcess",
+        
+"GetCurrentProcessId", 
+"GetVersion", 
+"SetConsoleCtrlHandler", 
+"GetHandleInformation", 
+"CreatePipe", 
+"PeekNamedPipe", 
+"GetNamedPipeInfo", 
+"InitializeProcThreadAttributeList" }; /* 2026-08-28 类型-根-15 #41: +CreateFiber/切换纤程/DeleteFiber/ConvertThreadToFiber; 2026-08-28 阶段一 #246: +LoadLibraryA/GetProcAddress (动态库加载, 15→17 槽) */
     静 常 字 *栈降[60] = { "pow", "atan2", "fmod", "sqrt", "cos", "sin", "tan", "acos", "asin", "atan", "log", "log10", "exp", "floor", "ceil", "fabs", "cosh", "sinh", "tanh", "_copysign", "_hypot", "frexp", "ldexp", "modf", "_write", "_time64", "difftime", "_localtime64", "_gmtime64", "_mktime64", "strftime", "clock", "asctime", "ctime", "strtok", "strrchr", "strnlen", "strpbrk", "memcmp", "toupper", "isalnum", "isxdigit", "isspace", "rand", "srand", "abs", "islower", "isupper", "iscntrl", "isgraph", "isprint", "ispunct", "labs", "atof", "strcoll", "strxfrm", "strncat", "strncpy", "strtod", "getenv" }; /* A30 (2026-09-11): +getenv (msvcrt 槽 76 = 栈降[59]) */
-    整 双四 = 0x08, 总升 = 0x98, 长伍 = 0x280, 号吉 = 0x310, 源六 = 0x4F8, 名偏 = 0x534; /* 2026-08-28 阶段一 #246: 内核库 15→17 槽 (18*8=144=0x90); A30: msvcrt 59→60 槽 — 双四@0x08(144B→0x98), 总升@0x98(488B→0x280), 长伍@0x280(144B→0x310), 号吉@0x310(488B→0x4F8), 主回@0x4F8(60B→0x534), 名@0x534 (至 ~0x8E7 < 名聚 0x900) */
-    整 数偏[77];
+    整 双四 = 0x08, 总升 = 0x210, 长伍 = 0x3F8, 号吉 = 0x600, 源六 = 0x7E8, 名偏 = 0x824; /* 2026-08-28 阶段一 #246: 内核库 15→17 槽 (18*8=144=0x90); A30: msvcrt 59→60 槽 — 双四@0x08(144B→0x98), 总升@0x98(488B→0x280), 长伍@0x280(144B→0x310), 号吉@0x310(488B→0x4F8), 主回@0x4F8(60B→0x534), 名@0x534 (至 ~0x8E7 < 名聚 0x900) */
+    整 数偏[124];
     /* 导入表/ILT 占位 */
-    定位文件(文件, 元丙 + 双四, 号汇); 遍 (整 计 = 0; 计 < 18; 计++) 串丙(文件, 0);
+    定位文件(文件, 元丙 + 双四, 号汇); 遍 (整 计 = 0; 计 < 65; 计++) 串丙(文件, 0);
     定位文件(文件, 元丙 + 总升, 号汇); 遍 (整 计 = 0; 计 < 61; 计++) 串丙(文件, 0);
-    定位文件(文件, 元丙 + 长伍, 号汇); 遍 (整 计 = 0; 计 < 18; 计++) 串丙(文件, 0);
+    定位文件(文件, 元丙 + 长伍, 号汇); 遍 (整 计 = 0; 计 < 65; 计++) 串丙(文件, 0);
     定位文件(文件, 元丙 + 号吉, 号汇); 遍 (整 计 = 0; 计 < 61; 计++) 串丙(文件, 0);
     /* 名（提示 2B + 名 + \0） */
     定位文件(文件, 元丙 + 名偏, 号汇);
-    遍 (整 计 = 0; 计 < 17; 计++) { 数偏[计] = (整)取文件位置(文件) - 元丙; 下布(文件, 0); 写行(主亥[计], 文件); 写字符(0, 文件); }
-    遍 (整 计 = 0; 计 < 60; 计++) { 数偏[17 + 计] = (整)取文件位置(文件) - 元丙; 下布(文件, 0); 写行(栈降[计], 文件); 写字符(0, 文件); }
+    遍 (整 计 = 0; 计 < 64; 计++) { 数偏[计] = (整)取文件位置(文件) - 元丙; 下布(文件, 0); 写行(主亥[计], 文件); 写字符(0, 文件); }
+    遍 (整 计 = 0; 计 < 60; 计++) { 数偏[64 + 计] = (整)取文件位置(文件) - 元丙; 下布(文件, 0); 写行(栈降[计], 文件); 写字符(0, 文件); }
     整 短甲 = (整)取文件位置(文件) - 元丙; 写行("kernel32.dll", 文件); 写字符(0, 文件);
     整 深辛 = (整)取文件位置(文件) - 元丙; 写行("msvcrt.dll", 文件); 写字符(0, 文件);
     /* 回填 双四（17 + term） */
     定位文件(文件, 元丙 + 双四, 号汇);
-    遍 (整 计 = 0; 计 < 17; 计++) 串丙(文件, 数据基址 + 数偏[计]);
+    遍 (整 计 = 0; 计 < 64; 计++) 串丙(文件, 数据基址 + 数偏[计]);
     串丙(文件, 0);
     /* 回填 总升（60 + term） */
     定位文件(文件, 元丙 + 总升, 号汇);
-    遍 (整 计 = 0; 计 < 60; 计++) 串丙(文件, 数据基址 + 数偏[17 + 计]);
+    遍 (整 计 = 0; 计 < 60; 计++) 串丙(文件, 数据基址 + 数偏[64 + 计]);
     串丙(文件, 0);
     /* 回填 长伍/号吉 */
     定位文件(文件, 元丙 + 长伍, 号汇);
-    遍 (整 计 = 0; 计 < 17; 计++) 串丙(文件, 数据基址 + 数偏[计]);
+    遍 (整 计 = 0; 计 < 64; 计++) 串丙(文件, 数据基址 + 数偏[计]);
     串丙(文件, 0);
     定位文件(文件, 元丙 + 号吉, 号汇);
-    遍 (整 计 = 0; 计 < 60; 计++) 串丙(文件, 数据基址 + 数偏[17 + 计]);
+    遍 (整 计 = 0; 计 < 60; 计++) 串丙(文件, 数据基址 + 数偏[64 + 计]);
     串丙(文件, 0);
     /* 导入 descriptors: 内核库 (双四/长伍), msvcrt (总升/号吉) */
     定位文件(文件, 元丙 + 源六, 号汇);
