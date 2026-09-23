@@ -1561,6 +1561,14 @@ CORE_FEAT += [
     #   ⟹ **全部与 gcc 逐字一致** ⟹ A5 定性「不可复现」(疑已被后续刀连带修复).
     #   本锚作为该族的回归哨兵固化.
     'scripts/feat_zh_union_staticarray_ok.c',
+    # C6 根治 (2026-09-24 启元 · 第 268 站): **函数内 static 指针数组 补 指内**.
+    #   病灶: 例 节点_下标 static 数组分支 (L10744) 只设 指元素尺寸, 漏设 指内;
+    #     非 static 局部数组由 L10769 (R255 刀5) 设了 ⟹ 两分支不对称.
+    #   QCC_DUMP=vars 铁证: 全局 static int *gp[2] 指内=4 / 函数内 static int *parr[2] 指内=0.
+    #   修: 镜像 L10769 判据 + 补 当丙 分派 (double *p[2] 得 8).
+    #   灵敏度: FCB5B056 上 parr[1][1] 得 0 (应 4) 必红.
+    #   ⚠️ 不含 double *dp[2] 的二级索引 dp[1][0] —— 独立缺陷 C7, 另立挂账.
+    'scripts/feat_zh_static_ptrarr_ok.c',
     # A10 刀 (2026-09-23 启元): **成员指针字段作数组基 的 写** `bx.p[1] = v`.
     #   病灶: 字节级铁证 —— 成员基 `mov ,%r9d; imul` + `movsd`(8 字节存) 而 箭头基
     #     `mov ,%r9d; imul` + `cvtsd2ss`+`movss`(4 字节存) ==> 写 落 fbuf[2] 非 fbuf[1].
