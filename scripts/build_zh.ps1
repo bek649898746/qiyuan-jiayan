@@ -2969,10 +2969,10 @@ if (-not $NoSeed) {
 #   实测代价: 该缺陷潜伏 170+ 站, 直到启元建 jylib (甲言第一个库) 才现形 (0xC0000005)。
 if (-not $NoSeed) {
     Write-Host "== 闸外检查: gcc 链接 (甲言 .obj + gcc driver) ==" -ForegroundColor Cyan
-    python scripts\check_gcc_link.py
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_gcc_link.ps1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[失败 FAIL] 闸外检查 gcc 链接 未通过 —— 甲言 .obj 被 gcc 链接后不能正常运行" -ForegroundColor Red
-        Write-Host "         (见 scripts\check_gcc_link.py 输出; 典型签名 = 内联库函数指针 32 位截断)" -ForegroundColor Red
+        Write-Host "         (见 scripts\check_gcc_link.ps1 输出; 典型签名 = 内联库函数指针 32 位截断)" -ForegroundColor Red
         exit 1
     }
 }
