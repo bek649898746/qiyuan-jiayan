@@ -2960,4 +2960,19 @@ if (-not $NoSeed) {
     }
     Write-Host "  [种子 seed] qcc_zh_seed.exe <- $finalExe (哈希校验 $seedH 通过; -NoSeed 可跳过)"
 }
+
+# ═══ 闸外检查 (第 262 站 ③ 根治后加入): 甲言 .obj 经 **gcc 链接** 后必须正常运行 ═══
+#   为什么必须在链尾自动跑: 闸 (run_tests_zh.py) 只做「单文件 → 甲言编译 → 运行」;
+#   而「内联库函数用 32 位寄存器承载 64 位指针」这类缺陷**只在 gcc/ld 链接时暴露** ——
+#   甲言自己链自己基址低 (0x400000 量级), 32 位截断后恰好仍合法 ⟹ **闸永远测不出来**。
+#   实测代价: 该缺陷潜伏 170+ 站, 直到启元建 jylib (甲言第一个库) 才现形 (0xC0000005)。
+if (-not $NoSeed) {
+    Write-Host "== 闸外检查: gcc 链接 (甲言 .obj + gcc driver) ==" -ForegroundColor Cyan
+    python scripts\check_gcc_link.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[失败 FAIL] 闸外检查 gcc 链接 未通过 —— 甲言 .obj 被 gcc 链接后不能正常运行" -ForegroundColor Red
+        Write-Host "         (见 scripts\check_gcc_link.py 输出; 典型签名 = 内联库函数指针 32 位截断)" -ForegroundColor Red
+        exit 1
+    }
+}
 exit 0
