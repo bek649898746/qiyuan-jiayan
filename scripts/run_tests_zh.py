@@ -1503,6 +1503,20 @@ CORE_FEAT += [
     #   修法: ① 查返回名指() 加 Win32 返指名 fallback · ② 转型表达式出口按 深己>=1 (指针) 设长标.
     #   灵敏度: 上一代 (8E214055) 上 本锚 FAIL 2 (字段值 ffffffffc01a0000) ⟹ 必红.
     'scripts/feat_zh_ptr_cast_longval_ok.c',
+    # A7 (2026-09-23 第 259 站 · 启元 R17 盖片 2): **顶层 函数名 撞 非基本 保留类型词**
+    #   —— R245 第三道 补 `(` 形态 (R245 注释 里 写明 却 未 实现 的 那一格).
+    #   病史: `static int 长(int x) {...}` (长=long, 非基本位 ⟹ 第一道 拦不住)
+    #     型词 贪婪 吃掉 函数名 ⟹ 词位 落 `(` ⟹ 第二道 只 查 `=`/`;`/`[` ⟹ 漏
+    #     ⟹ 整条 函数定义 被 当 变量声明 吞掉 ⟹ 顶层 下一轮 又 吞掉 `int main(void) {`
+    #     ⟹ main 未登记 ⟹ 报 **误导性**「未找到 主 入口」(旧编译器 实测).
+    #   4 个 负例 = static/无static × 长/短/长(long) 形态; 断言 `err:实为 标识符`
+    #     ⟹ 旧编译器 (2828E389) 上 必红 (它 只 报「未找到 主 入口」).
+    #   1 个 正例 = 合法「类型词 后 直接 `(`」(函数指针 ×4 形态) 不误报, 与 负例 成对.
+    'scripts/feat_zh_typeword_fnname_neg.c',
+    'scripts/feat_zh_typeword_fnname2_neg.c',
+    'scripts/feat_zh_typeword_fnname3_neg.c',
+    'scripts/feat_zh_typeword_fnname4_neg.c',
+    'scripts/feat_zh_typeword_paren_ok.c',
 ]
 
 def build_tests(args):
