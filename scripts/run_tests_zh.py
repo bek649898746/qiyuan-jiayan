@@ -1517,6 +1517,14 @@ CORE_FEAT += [
     'scripts/feat_zh_typeword_fnname3_neg.c',
     'scripts/feat_zh_typeword_fnname4_neg.c',
     'scripts/feat_zh_typeword_paren_ok.c',
+    # A8 (2026-09-23 第 260 站): **括号声明符 `( 名 )` 必须与裸声明符等价** —— 词法器层归约.
+    #   病灶: `int (x)=5` / `long (y)=7` / `static long (z)=7` / `int (f3)=5`(局部)
+    #     ⟹ 编译过 + **静默错值**; `int (arr)[3]` ⟹ **维度丢失**(当「大小 1」⟹ arr[1] 报 A2001);
+    #     `int (f2)(int x){…}` ⟹ 解析中断(误导性「未找到 主 入口」).
+    #   修: 词法器 遇 `(` 且 ①前一个已发射词元是型词 ②前瞻到 `标识符 )` ⟹ 不发射 这对括号.
+    #   灵敏度: 旧编译器 (981C7E6E) 上 本锚 必红 (报「未找到 主 入口」).
+    #   ⚠️ 本刀 **不覆盖** `typedef int T; T (t1) = 3;` (词法阶段 型定表 尚空) —— 已挂账.
+    'scripts/feat_zh_paren_declarator_ok.c',
 ]
 
 def build_tests(args):
