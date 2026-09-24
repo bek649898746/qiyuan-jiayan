@@ -84,11 +84,21 @@ else {
 }
 
 # ---- 5 新锚 入闸 -------------------------------------------------------------
-$rt = Get-Content 'scripts/run_tests_zh.py' -Raw -Encoding utf8
-$i = $rt.IndexOf('CORE_FEAT = [')
-$j = $rt.IndexOf(']', $i)
-$gate = [regex]::Matches($rt.Substring($i, $j - $i), "'scripts/([^']+)'") |
-        ForEach-Object { $_.Groups[1].Value }
+# 修正 (启元 2026-09-25 审计): 原 `$j = IndexOf(']', `$i)` 取「第一个 ]」判段界 —— CORE_FEAT = [ 段第 3 行注释即含 ] ⟹ 仅提取到 2 个锚 (真实 833) ⟹ 该检查形同虚设且持续误报; 且完全不解析 CORE_FEAT += [ 追加段。
+# 现改为逐行扫描: 段起点 = `CORE_FEAT [+]= [` 独占行, 段终点 = 单独一行 `]`, 合并全部段。
+$gate = @()
+$inFeat = $false
+foreach ($line in (Get-Content 'scripts/run_tests_zh.py' -Encoding utf8)) {
+    $t2 = $line.Trim()
+    if ($t2 -match '^CORE_FEAT\s*\+?=\s*\[$') { $inFeat = $true; continue }
+    if ($inFeat -and $t2 -eq ']') { $inFeat = $false; continue }
+    if ($inFeat) {
+        $gate += [regex]::Matches($line, "'scripts/([^']+)'") | ForEach-Object { $_.Groups[1].Value }
+    }
+}
+$gate = @($gate | Sort-Object -Unique)
+# 入闸闸自检: 锚数应 >= 800 (低于此值 = 解析失效, 响亮报错)
+if ($gate.Count -lt 200) { Bad ("CORE_FEAT 解析仅得 {0} 个锚 (应 >=800) — check_closure 自身解析失效, 本项结果不可信" -f $gate.Count) }
 
 if (-not $LogFile) {
     $dir = 'memory/construction'
