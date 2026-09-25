@@ -3128,4 +3128,20 @@ if (-not $NoSeed) {
         exit 1
     }
 }
+# ===== 入口刷新钩子（2026-09-25 虾米 · 审计岗建议 L3）=====
+# 每站收尾自动刷新 _ATLAS_ENTRY.md + 14 表 ⟹ 「入口数字永远新鲜」。
+# 只读统计、不改源码；失败不影响本脚本退出码。
+try {
+    $genEntry = Join-Path $PSScriptRoot '..\memory\atlas\tools\gen_entry.py'
+    if (Test-Path $genEntry) {
+        Write-Host '[入口刷新] python memory\atlas\tools\gen_entry.py' -ForegroundColor Cyan
+        python $genEntry 2>&1 | Select-Object -Last 3
+    } else {
+        Write-Host '[入口刷新] 跳过（未找到 gen_entry.py）'
+    }
+} catch {
+    Write-Host "[入口刷新] 失败（不影响验收）: $_"
+}
+
 exit 0
+
