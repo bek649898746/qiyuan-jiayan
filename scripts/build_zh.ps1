@@ -3088,7 +3088,18 @@ if (-not $NoSeed) {
      if (Test-Path qcc_zh_seed.exe) {
         $stamp = "qcc_zh_seed.exe.hold"
         Remove-Item $stamp -Force -ErrorAction SilentlyContinue
-        try { Rename-Item qcc_zh_seed.exe $stamp -ErrorAction Stop } catch {}
+        # R355 (2026-09-25 虾米 · 审计岗递刀): **本 catch 原为空 —— 静默吞异常**。
+        #   审计岗坐实: seed 曾「静默落后」三次（旧 seed 25D59B37 顶班）⟹ 之后所有以 seed 为链起点的
+        #   验证都在验**旧编译器**, PASS 有假绿嫌疑（属 C18a「静默兜底」同型坑的复发）。
+        #   现改为**响亮失败提示**但**不改控制流** —— 因为真正的兜底是紧随其后的「种子哈希校验」
+        #   （`$seedH -ne $expected ⟹ FAIL exit 1`）: 改名失败 ⟹ Copy-Item 必失败或拷到旧物 ⟹ 校验必红。
+        #   之所以不在此处直接 exit: C136 的现场是「改名允许 / 写删被拒」, 单一路径失败不足以断定全局失败,
+        #   让校验做终裁可避免误杀「改名失败但 Copy 恰好成功」的合法情形。
+        try { Rename-Item qcc_zh_seed.exe $stamp -ErrorAction Stop }
+        catch {
+            Write-Host "[警告 WARN] 旧 seed 改名失败（疑被进程独占）: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "            ⟹ 后续 seed 同步很可能失败; 若最终报「种子同步校验失败」, 请先结束占用 qcc_zh_seed.exe 的进程 (残留的 qcc_zh_*.exe 子编译器最常见)" -ForegroundColor Yellow
+        }
     }
     Copy-Item $finalExe qcc_zh_seed.exe -Force
     $seedH = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash.Substring(0,8)
