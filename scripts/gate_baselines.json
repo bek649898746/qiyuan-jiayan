@@ -1,9 +1,9 @@
 {
- "fixed": "BBDDA240",
- "time": "2026-09-25 22:33:31",
+ "fixed": "964C70EA",
+ "time": "2026-09-25 23:02:17",
  "gates": {
   "zh_feat": {
-   "anchor_count": 835,
+   "anchor_count": 836,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
