@@ -2025,6 +2025,7 @@ typedef 构 { 字 正辰[64]; 整 正聚; 整 现捌; 整 域行数; 整 毛利;
     上薄[1] = 元素;                /* 第二维 (列) 缩放 */
     标拾 = (行二 > 元素) ? 2 : 1; /* 2D 字段: 第二维后才 解引用; 1D: 第一维后 */
     码生成内存浮 = 终捌(构序, 函) ? 1 : 0;
+    码生成内存单 = (码生成内存浮 && 构域元素(构序, 函) == 4) ? 1 : 0; /* R5 dao3 (2026-09-25 Qiyuan, station 363): 4-byte single-precision member ARRAY field must load with movss+cvtss2sd, not movsd. This unified member-field entry only ever set 码生成内存浮, while the array-variable paths set BOTH (L26357/L26421) ==> consumer L26336 fell into the else branch ==> 8-byte movsd ==> gfm.a[0] read 8.00 (= 1.5f spliced with 2.5f) and gf.a[0] read 0.00 (= 1.5f spliced with zero padding); all double member arrays were correct because movsd is right for them. Element width via 构域元素 (L2011), so float[1] and float[N] are both covered. NOTE: 终捌单 would NOT work here -- it tests 现捌 == 4, i.e. TOTAL array bytes, so float[N>1] always fails (separate defect D2, reported not fixed). Guarded by 码生成内存浮 and only turning 1 when element width == 4 ==> double and non-float member arrays keep the previous value 0 byte-for-byte, zero regression. */
     /* 2026-09-04 虾米 (挂账1 修复): 成员数组元素符号 — 例14 嵌套基 deref (21593/21595) 用 虚叁/右亥
        决定 i8/i16 符号扩展; 变量数组 由 例14 分支设 (L21607/21659), 成员数组基 全经 剩未 统一设:
        i8 元素 → 虚叁=1 (movsx), i16 有符号 → 虚叁=2 (movsxw), u8/u16/u32/u64 → 右亥=无符号 (节无符号)
