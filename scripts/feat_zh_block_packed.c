@@ -41,7 +41,11 @@ int main(void) {
     if (ts.sc != -1) { printf("TS sc=%d\n", ts.sc); return 14; }
     if (ts.ss != -2) { printf("TS ss=%d\n", ts.ss); return 15; }
     /* ③f signed 泄漏防回归 (2026-09-09: signed short 后 单又 残留 → char 误有符号) */
-    struct TL { signed short ss2; char c3; };
+    /* R357 (2026-09-25): 本用例 原用 **裸 `char`** 断言 255 (= 无符号) —— 但 x86-64 ABI 上 char 是 **signed**
+   (gcc 复验: `char c3 = -1` 读回 -1), 该断言 依赖 实现定义 且 与 gcc 相反 ⟹ 探针自身缺陷.
+   改用 `unsigned char` —— **更精确地测 本用例 的原意「signed 前缀 泄漏到 下一字段」**:
+   若 `单又` 泄漏, unsigned char 会被 movsx 读成 -1 ⟹ 断言 仍会红 (非弱化). */
+struct TL { signed short ss2; unsigned char c3; };
     struct TL tl; tl.ss2 = -2; tl.c3 = -1;
     if (tl.c3 != 255) { printf("TL 泄漏 c3=%d 应255\n", tl.c3); return 16; }
     /* ③g 函数内 typedef 引用 (R1a 2026-09-09: 原整行跳过零注册 → 块级字段 A9001 非结构体) */
