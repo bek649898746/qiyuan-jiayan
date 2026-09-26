@@ -1683,6 +1683,17 @@ CORE_FEAT += [
     #   锚三关: gcc 逐值 ✓ (scripts/oracle/feat_zh_typedef_arrdim_ok_oracle.c)
     #           · 新 8D7F3BB7 逐字同 ✓ · 旧 21959869 必红 ✓ (exit=3 `FAIL D3 8`)
     'scripts/feat_zh_typedef_arrdim_ok.c',
+    # R260 (2026-09-26 启元 · 第 364 站 round 3): **匿名体作【字段】时缺 联合 概念**
+    #   病灶: 全局匿名结构体 (④ 块) 的嵌套字段分支 原**无条件** 建 `构加("")` + 走 `字段登记` (结构体累加),
+    #     **完全没有 union 概念** (尽管该行注释早已写「匿名 结构体/联合」)
+    #     ⟹ `构 { 联 { 整 i; 字 c[4]; } u; } gA;` 内层 `联` 被当结构体: 4+4 = 8 (应 4).
+    #   ★ 关键对照 (顶层有、作字段没有): 顶层裸匿名联 `联 {...} gU;` = 4 ✓ (L18981 的 D2/D8 修复只覆盖顶层).
+    #   ★ 同族实证: `匿构序 = 构加("")` 在源码出现 **3 次**, 其中 ①(L4732 段)·②(L18481 段) **有** union 判据,
+    #     ③(L18635 段)·④(L19006 段) **都缺** ⟹ 本轮 **两处一并补齐** (点修必被绕过).
+    #   修法 (镜像 L18498/L18592): 插 `若 (匿联丙一) 类型表[匿构序].是否联 = 1;` + 字段登记改 union 分支.
+    #   锚三关: gcc 逐值 ✓ (scripts/oracle/feat_zh_anon_union_field_ok_oracle.c)
+    #           · 新 180A5F0F 逐字同 ✓ · 旧 8D7F3BB7 必红 ✓ (exit=1 `FAIL gA 8`)
+    'scripts/feat_zh_anon_union_field_ok.c',
 ]
 
 def build_tests(args):
