@@ -302,6 +302,24 @@ CORE_FEAT = [
     #     链: **一步收敛** v1 = v2 = BP待填。
     'scripts/feat_zh_struct_arg_mismatch_neg.c',
     'scripts/feat_zh_struct_arg_same_ok.c',
+    #   ★ R311 (2026-09-26 启元 · 第 364 站 round 41): **聚合值 成员赋值 类型兼容性检查**（挂账 H‴ 落地）。
+    #     H′/H″ 的**同族第三条路径**（round 40 探针 m40d）: `c.内 = y;`（目标字段与源类型不同）静默放行。
+    #     同族全景: 赋值 `x = y;` → A9002（`构初校验` L4953，早已有）· 声明初始化 → A9002 ·
+    #       **实参 → A2006**（R310）· **返回 → A2005**（R309）· **成员赋值 → A2007**（本轮）。
+    #     判据: C11 **6.5.16.1**（赋值两侧须兼容类型）。
+    #     修法（主源 **L9424** `赋值()` 成员写路径）: `序集`（用户代码门控，同既有 A9002/A9001/A4001
+    #       ⟹ **纯 C 语料天然豁免**）&& 目标是**一层成员**（`节点_成员` 且 `子0[数]` 是 `节点_变量`）
+    #       && 源是变量 ⟹ `变量型序(宿主)` → `字段类型序直(宿序, 字段名)`（**L2115**）得目标字段类型序，
+    #       与源 `型序标` 比较，**两者皆 >= 0 且不等** ⟹ `A2007`（A2 类型族，与 A2005/A2006 并列同族）。
+    #     ★ **无需结构性改动** —— `字段类型序直(构序, 字段名)` 早已存在（round 40 评估误以为要给
+    #       `字段录` 加列 × 1024 字段 × 4096 类型 ⟹ BSS 膨胀风险）。**评估要先查既有设施**。
+    #     ★ 本轮**以自举链本身作最硬普查**（省一轮插桩构建，工艺第 26 条）: 链 **一步收敛**
+    #       v1 = v2 = 2717D733 ⟹ 第 2 代由**含新检查的 v1** 编译自身 28911 行成功 ⟹ **零误报**已证。
+    #     三态: 应拒 = `_member_mismatch_neg`（类型序不同 → A2007）· 应允 = `_member_same_ok`
+    #       （同类型成员赋值 / 标量成员 / 多层宿主）· 运行值 = 后者 out/exit 断言。
+    #     锚三关: 旧编译器必红 —— `8820CDED` 下 `_member_mismatch_neg` 编译成功（out=0）。
+    'scripts/feat_zh_struct_member_mismatch_neg.c',
+    'scripts/feat_zh_struct_member_same_ok.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
