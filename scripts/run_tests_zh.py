@@ -337,6 +337,7 @@ CORE_FEAT = [
     'scripts/feat_zh_struct_arr_elem_same_ok.c',
     'scripts/feat_zh_alias_same_ok.c',
     'scripts/feat_zh_arr_elem_size_ok.c',
+    'scripts/feat_zh_ret_size_ok.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
