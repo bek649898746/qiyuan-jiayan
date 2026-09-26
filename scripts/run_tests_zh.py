@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -1191,6 +1191,23 @@ CORE_FEAT += [
     'scripts/feat_zh_err_class90.c',
     'scripts/feat_zh_partial_move17.c',
     'scripts/feat_zh_partial_move17_neg.c',
+    #   ★ R306 (2026-09-26 启元 · 第 364 站 round 36): **Copy 语义 × 部分移动 的一致性补齐**。
+    #     病灶: 登记端「简单变量分支」(**L12434**) 有 `!类型可复制` 门控 (#9 Copy 类型豁免源失效),
+    #       而「字段分支」(**L12439 本体**) 与「下标分支」(**L12460**) **没有** ⟹ 同族路径不对称 ⟹
+    #       同一个「全标量构 (自动 Copy)」变量: 整体移动后读源 **放行**, 而字段移动后读该字段却 **报 A3101**。
+    #     判据来源 (既有锚 · 权威): `feat_zh_copy_semantics9.c` 头注释「#9 拷贝语义 Copy: 移入 目标,
+    #       源 对 Copy 类型不失效源 (Rust Copy trait; C 按位复制默认)」+
+    #       `feat_zh_copy_semantics9_neg.c` 注释「自动派生 #16 后 全标量构 自动 Copy」。
+    #     修法: helper `根节点可复制(根节)` (**L7603**) + L12450 / L12462 两条件各补 `&& !根节点可复制(...)`
+    #       ⟹ 整个体 (守卫检查 A3106 + 登记 + 域标记) 一并跳过。
+    #     三态: 应允 = 本锚 (Copy 类型 字段移动后 该字段仍可读) ·
+    #           应拒 = `feat_zh_partial_move17_neg.c` (**由 @KNOWN-GAP 转正 + 类型修正**: 旧写法用
+    #             POD 类型 ⟹ 该形态永远不该报错, 不是漏拦; 改用含指针的**非 Copy** 类型 ⟹ 真报 A3102) ·
+    #           运行值 = 本锚 out 断言。
+    #     非 Copy 行为不变 (实测 m36b/m36d/m36g 两态一致): `feat_zh_partial_field_move_ok.c` 两态 PASS。
+    #     锚三关: 旧编译器必红 —— `02C713C0` 下 本锚 报 A3101 (即 转正前的 @KNOWN-GAP 态)。
+    #     链: **一步收敛** v1 = v2 = E3B69B55。
+    'scripts/feat_zh_copy_partial_field_ok.c',
     'scripts/feat_zh_ct_assert176.c',
     'scripts/feat_zh_proc_macro172.c',
     # 第 175 站 (#97 真接入): 判别类型 **字符族载荷** —— 原 被主源 显式拦截
