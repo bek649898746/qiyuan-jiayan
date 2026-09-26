@@ -1661,6 +1661,16 @@ CORE_FEAT += [
     #       (`and eax,0xFF/0xFFFF`, 有符再补 `movsx eax,al/ax`); **只在 宽 ∈ {1,2} 生效**, 4/8 一律不动.
     #   灵敏度: B5D9FB2C (357 站) 上 C 格 4294967261 必红 ✓ (2026-09-25 实测).
     'scripts/feat_zh_ret_narrow_ok.c',
+    # R256 (2026-09-26 启元 · 第 364 站 round 1): **连写 `长长` 词法层展开为 `长 长`**
+    #   病灶: 词法层从未注册连写 `长长`, 而全编译器 63 处 long 判据一律写 `"long"||"长"||"长整"` (双词判据)
+    #     ⟹ 连写 `长长` 一处都不命中 ⟹ 落标识符分支 ⟹ **声明里凭空多出一个以 `长长` 命名的 4 字节字段**,
+    #     后续标识符全落默认 4 字节 (静默错值). 铁证 (QCC_DBG_NS 插桩): `构 gz3 { 长长 a, b; }` 登记
+    #     [FLD] 三条 fld='长长' fsz=4 / fld='a' fsz=4 / fld='b' fsz=4 = 12 (应 16); 分写 `长 长 a, b` = 16 正确.
+    #   ⚠️ 假阳性防线: `长长 a; 长长 b;` 曾得 16 (4×4 恰等于 8+8) ⟹ 旧账该形态"正确"的结论全部作废;
+    #     本锚因此必须同时钉 单字段结构体 (16) 与标量 (8) 两个位置.
+    #   锚三关: gcc 逐值 ✓ (scripts/oracle/feat_zh_ll_contracted_ok_oracle.c)
+    #           · 新 21959869 逐字同 ✓ · 旧 ABE51852 必红 ✓ (exit=1 `FAIL box 12`)
+    'scripts/feat_zh_ll_contracted_ok.c',
 ]
 
 def build_tests(args):
