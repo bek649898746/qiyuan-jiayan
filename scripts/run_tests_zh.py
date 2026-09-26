@@ -320,6 +320,21 @@ CORE_FEAT = [
     #     锚三关: 旧编译器必红 —— `8820CDED` 下 `_member_mismatch_neg` 编译成功（out=0）。
     'scripts/feat_zh_struct_member_mismatch_neg.c',
     'scripts/feat_zh_struct_member_same_ok.c',
+    #   ★ R314 (2026-09-26 启元 · 第 364 站 round 44): **补锚轮** —— R312 / R313 两轮**只以探针作判据、
+    #     锚面未增**(仍 863), 本轮回补四个锚 (锚 863 -> **867**), 把两形态**固化**:
+    #     · **多层成员链**(R312 · 主源 L9424 用 循环+子0[] 收集链 再 从根到叶 逐层 字段类型序直 L2115):
+    #         `_multi_member_mismatch_neg` (目标 '枝.叶' 型序 != 源 ⟹ **A2007**) ·
+    #         `_multi_member_same_ok` (同类型多层赋值 / 链到链 / 标量成员 → 放行 + 运行值)
+    #     · **数组元素赋值**(R313 · L9424 在成员段后追加下标段, `变量型序(子0[数])` = 元素类型序):
+    #         `_arr_elem_mismatch_neg` (目标 'arr[]' 元素型序 != 源 ⟹ **A2008**) ·
+    #         `_arr_elem_same_ok` (同类型元素赋值 / 元素互赋 / 8B 元素 → 放行 + 运行值)
+    #     同族五路径至此**闸内锚齐备**: 赋值 A9002 · 初始化 A9002 · 返回 A2005 · 实参 A2006 ·
+    #       成员 A2007 · 数组元素 A2008。
+    #     本轮**零源码改动** ⟹ 不动点保持 F8FF9E12, 无需重建链 (纯加测试轮)。
+    'scripts/feat_zh_struct_multi_member_mismatch_neg.c',
+    'scripts/feat_zh_struct_multi_member_same_ok.c',
+    'scripts/feat_zh_struct_arr_elem_mismatch_neg.c',
+    'scripts/feat_zh_struct_arr_elem_same_ok.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
