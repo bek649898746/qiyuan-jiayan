@@ -1,3 +1,4 @@
+// RENAMED (round 29): was feat_zh_opt_uninit_neg.c —— 它是【运行期】负例, 文件名含 _neg 被闸误判为 compile_fail
 // @EXPECTED exit:nonzero
 // @EXPECTED out:解包空值
 #include <stdio.h>

@@ -179,7 +179,7 @@ CORE_FEAT = [
     'scripts/feat_zh_opt_nullcheck_stmt.c',
     'scripts/feat_zh_opt_flow_narrow.c',
     'scripts/feat_zh_opt_flow_narrow_while.c',
-    'scripts/feat_zh_opt_uninit.c', 'scripts/feat_zh_opt_uninit_neg.c',
+    'scripts/feat_zh_opt_uninit.c', 'scripts/feat_zh_opt_uninit_runfail.c',
     'scripts/feat_zh_opt_pending_neg.c', 'scripts/feat_zh_opt_static_nullable.c',
     'scripts/feat_zh_opt_static_nullable_neg.c',
     'scripts/feat_zh_float_dbl.c',
@@ -1956,6 +1956,11 @@ def run_one_test(name):
                              #   声明了才查 (未声明的不受影响, 零回归风险).
                              #   ⚠️ 只在 编译成功 时 可断言 (编译器 的 汇总行 在 成功收尾处 才打印).
     dep = False; multi = False
+    known_gap = False       # 闸盲区修补 (2026-09-26 round 29): `@KNOWN-GAP` 显式豁免 ——
+                            #   负例锚 (`_neg` / `@EXPECTED compile_fail`) 若 **编译成功**, 原框架
+                            #   直接进入运行分支 ⟹ `expect_cfail` 被完全无视 ⟹ 「应拒却应允」被静默判 PASS
+                            #   (2026-09-26 审计: 165 个 `_neg` 里 7 个编译成功, 全部被静默放过).
+                            #   现: 无豁免 ⟹ FAIL; 有 `@KNOWN-GAP` ⟹ PASS 但计为已知缺口 (可 grep 统计).
     arg_extra = []          # @ARG <编译器选项> (2026-09-14 P0-3): 闸 原 只 能 传 固定 [qcc, src, -o, out],
                             #   命令行 -D 宏 类 特性 完全 无法 覆盖 — 补 此 指令 (与 F5 闸盲区 同族: 闸 够不着 即 盲区)
     try:
@@ -1974,6 +1979,7 @@ def run_one_test(name):
         m = re.search(r'//\s*@EXPECTED\s+silent:\s*(\d+)', line)   # 第 84 站: 静默兜底 槽计数 断言
         if m: expected_silent = int(m.group(1))
         if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
+        if re.search(r'@KNOWN-GAP', line): known_gap = True   # round 29: 显式登记「应拒面缺失」的负例锚
         if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
         if '@MULTI' in line: multi = True      # 显式声明: 需 -c + jyld 跨 .o 链接 → 单文件无主/外链失败 = 许可 skip
         m = re.search(r'//\s*@ARG\s+(.+)$', line)
@@ -2020,6 +2026,12 @@ def run_one_test(name):
             return (name, True, 'SKIP:无主多文件(@MULTI 显式标注, 需 -c + jyld 链接)')
         return (name, False, '编译失败: ' + (err or '').strip()[:220])   # 其它真回归 → FAIL
 
+    # round 29 盲区修补: 负例锚 若【编译成功】⟹ 应拒面 根本没被测 ⟹ 必须 FAIL (除非显式 @KNOWN-GAP)
+    if expect_cfail:
+        if known_gap:
+            return (name, True, 'KNOWN-GAP: 负例锚 编译成功 —— 应拒面缺失, 已显式登记 (@KNOWN-GAP)')
+        return (name, False, 'compile_fail(期望) 但编译器【成功】了 —— 负例锚失效, 应拒面未被测 '
+                             '(若确属已知缺口, 请在文件头加 @KNOWN-GAP 显式登记)')
     # 运行
     out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
     err_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_err.txt')

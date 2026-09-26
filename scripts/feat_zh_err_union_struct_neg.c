@@ -1,3 +1,4 @@
+// @KNOWN-GAP: A6004 未触发 —— 错误联合 结构体值载荷 应编译期拒绝, 实测编译成功 (round 29 审计)
 // @EXPECTED compile_fail
 #include <stdio.h>
 /* P0-1 A1 (2026-09-10): 错误联合 结构体值载荷 编译期拒绝 A6004
