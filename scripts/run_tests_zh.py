@@ -262,6 +262,22 @@ CORE_FEAT = [
     'scripts/feat_zh_err_forward_ok.c', 'scripts/feat_zh_err_forward_mixed_neg.c', 'scripts/feat_zh_err_forward_normal_neg.c',
     'scripts/feat_zh_err_struct_small_ok.c', 'scripts/feat_zh_err_struct_big_ok.c',
     'scripts/feat_zh_err_struct_mixed_neg.c', 'scripts/feat_zh_err_struct_forward_ok.c',
+    #   ★ R309 (2026-09-26 启元 · 第 364 站 round 39): **聚合值 返回类型兼容性检查**（挂账 H′ 落地）。
+    #     缺口: 返回语句处不比较类型序 ⟹ 结构体类型不匹配被静默放行（**宽松于 C**; gcc 对
+    #       `struct A f(void){ struct B b; return b; }` 报 error: incompatible types when returning type…）。
+    #     定性: **通用层**缺口（round 38 五探针 m38a–m38e 证明**普通函数**同样漏，**非**错误联合特有）。
+    #     修法: 主源 **L11695 / L11696** 两条返回分支各插判据 —— `查返回名(当解析函)` 取当前函数返回
+    #       类型序 vs 表达式变量 `型序标`，**两者皆 >= 0（都是聚合值）且不等** ⟹ `A2005`。
+    #       `返构序 = -1` 表示非聚合返回、`型序标 = -1` 表示非聚合变量 ⟹ 天然排除标量/指针返回。
+    #     ★ **先定量后动手**（三面普查全 0 命中 ⟹ 零误伤可证）: ① 编译器**自身源码** 28911 行
+    #       （**吃狗粮**）→ 0; ② `srclib/` 9 个 `.c` → 0; ③ **全闸 857 锚**（插桩版 + `QCC_DBG_R309=1`
+    #       预演）→ 0; ④ 灵敏度校准: 插桩对 m38c 打印 `[R309-B] 返小 返=2 源=3`、对 m38b（同类型）不打印。
+    #     三态: 应拒 = `_mismatch_neg`（类型序不同 → A2005）· 应允 = `_same_ok`（同类型返回变量 + 链式转发）
+    #       · 运行值 = 后者 out/exit 断言。
+    #     锚三关: 旧编译器必红 —— `E3B69B55` 下 `_mismatch_neg` 编译成功（= 转正前状态）。
+    #     链: **一步收敛** v1 = v2 = 58CEC897。
+    'scripts/feat_zh_struct_return_mismatch_neg.c',
+    'scripts/feat_zh_struct_return_same_ok.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
