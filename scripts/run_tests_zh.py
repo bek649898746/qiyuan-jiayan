@@ -177,6 +177,21 @@ CORE_FEAT = [
     #   锚三关: 旧编译器必红 —— `E4A6A610` 下 `_ok` 报 A8002 (即负例态)；`_neg` 两态皆红(报 A8002)。
     'scripts/feat_zh_nullable_static_initnull_ok.c',
     'scripts/feat_zh_nullable_static_initnull_neg.c',
+    #   ★ R304 (2026-09-26 启元 · 第 364 站 round 34): **G4 收口 —— 文件作用域 可空 未解包取值 漏报**。
+    #     病灶: 全局声明分支 (主源 L19479) 把 `变可空.tag` 从 无值 预置成 **有值**, 而 tag 的语义是
+    #       「当前尚未赋值/可能为空」(唯一消费方 `串壬()` L3282 → A8001 L9148 取值/L9149 箭头·下标/L9331 星号)
+    #       ⟹ 文件作用域 可空变量 声明后 即被当「已赋值」⟹ `长 长 v = 广长;` 永不报 A8001
+    #       (第 364 站 round 29 审计发现 G4; round 33 定位到 确切字段 串壬@L3282 vs 变可空.tag@L19479)。
+    #     修法: 删去该预置 (保留 `可空值标 = 2` —— 槽布局 / `= 空` 资格判据 不受影响)
+    #       ⟹ 清 tag 的权力 交还 `副降一`(赋值/解包) 独占 ⟹ 全局 与 局部 同纪律。
+    #     三态: 应拒 = `feat_zh_nullable_static_wide_neg.c` (**由 @KNOWN-GAP 转正** —— 未赋值直接取值 → A8001) ·
+    #           应允 = `feat_zh_nullable_static_narrow_ok.c` (判空/赋值/解包 三条合法路径 仍放行 —— 防 过严) ·
+    #           运行值 = 后者 的 out 断言。
+    #     锚三关: 旧编译器必红 —— `CC449CC5` 下 `_neg` 编译成功并输出 0 (= 转正前的 @KNOWN-GAP 态);
+    #             正向守卫锚 两态皆绿 (它 防「过严」, 不 承担 缺陷判据)。
+    #     链: **一步收敛** v1 = v2 = C4879FDE。闸外 gcc 链接 PASS。
+    #     全局/局部 一致性: 帧类对照 = `feat_zh_nullable_i64_unchecked_neg.c` (一直报 A8001)。
+    'scripts/feat_zh_nullable_static_narrow_ok.c',
     'scripts/feat_zh_s2b3_static_value_nullable.c',
     'scripts/feat_zh_s2b4_copy.c',
     'scripts/feat_zh_s2c_drop_nonint.c',
