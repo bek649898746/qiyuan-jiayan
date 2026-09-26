@@ -132,7 +132,17 @@ CORE_FEAT = [
     'scripts/feat_zh_err_union_decons.c', 'scripts/feat_zh_err_union_decons_neg.c',
     'scripts/feat_zh_err_union_ll8.c', 'scripts/feat_zh_err_union_ptr8.c',
     'scripts/feat_zh_err_union_ptrbig8.c',
-    'scripts/feat_zh_err_union_struct_neg.c', 'scripts/feat_zh_multiret_struct_neg.c',
+    #   ★ R308 (2026-09-26 启元 · 第 364 站 round 38): `feat_zh_err_union_struct_neg.c` **已删除** ——
+    #     其前提（错误联合 结构体值载荷 编译期拒绝 A6004）**已被 G2b 取代**（2026-09-11）:
+    #       主源 L11695/L11696 里 A6004 检查已成死代码 `若 (0) { }`（注释原文「G2b 补 (2026-09-11):
+    #       大结构体 载荷 直接转发 已 实现 (sret 间接传递) — 原 A6004 拒绝 退役」）;
+    #       `错载荷类()` (**L5699**) 注释明写「G2b: **32=大结构体 载荷** (sret 结构体 + rax tag + rdx 错码)」。
+    #     替代覆盖更强 (本轮实测三锚皆 PASS): `feat_zh_err_struct_big_ok.c` (ERR STRUCT BIG OK) ·
+    #       `feat_zh_err_struct_small_ok.c` (ERR STRUCT SMALL OK) ·
+    #       `feat_zh_err_struct_forward_ok.c` (ERR STRUCT FORWARD OK)
+    #       + 负例 `feat_zh_err_struct_mixed_neg.c` (载荷类不一致 → A9001)。
+    #     载荷类判据仍有效 (本轮实测): 类 32 vs 8 不匹配 → A9001。
+    'scripts/feat_zh_multiret_struct_neg.c',
     'scripts/feat_zh_unsigned_signed_neg.c',
     'scripts/feat_zh_field_elem_narrow_neg.c',
     'scripts/feat_zh_err_try_in_normal_neg.c',
