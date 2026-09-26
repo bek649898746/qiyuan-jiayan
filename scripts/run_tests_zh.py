@@ -162,6 +162,21 @@ CORE_FEAT = [
     'scripts/feat_zh_nullable_static_local_wide_ok.c',
     'scripts/feat_zh_typedef_local_ok.c', 'scripts/feat_zh_typedef_scope_ok.c',
     'scripts/feat_zh_nullable_static_wide_ok.c', 'scripts/feat_zh_nullable_static_wide_neg.c',
+    # R302 (2026-09-26 启元 · 第 364 站 round 32): **文件作用域 可空 声明置空 `可空 T x = 空;`** —— 一正一负成对锚
+    #   缺口: 全局声明分支 (主源 L19480-19517) 的 `=` 处理有 4 条 `否 若` (结构体花括 / 数组花括 / 字符串 /
+    #     兜底 `赋值级()`), **独缺「`= 空` 收口」** ⟹ `空` 落兜底 → `原级()` (L7940「雷2」) ⟹ **误报 A8002**,
+    #     而那条 A8002 的文案【自己就建议写本形态】(自相矛盾)。
+    #     同族三处早已收口: L9895 结构词前缀 · L9997 逗号续行 · L10825 局部主分支 —— 只差全局声明这条。
+    #   修法 (1 条 `否 若`, 插在 L19498 之后 / L19514 之前): 复用既有 helper `可空声明判` (L3435)
+    #     + 文件级注入器 `可空静零注入` (本分支 L19479 已在用); 非可空 仍走 A8002 响亮分支。
+    #   实测: 全局 `可空 长 长 广长 = 空;` 修前 A8002 / 修后 编译成功并注入空 (判空为真, 运行输出 NULL)。
+    #   ★ 三态齐备: 应允 → `_ok` (全局 可空 长 长 + 可空 双, 判空为真 + 赋值后解包) ·
+    #     应拒 → `_neg` (非可空 `= 空` 必须仍报 A8002, 框架 `@EXPECTED err:A8002` 逐字校验) ·
+    #     运行值 → `_ok` 的 out 断言。
+    #   链: **一步收敛** v1 = v2 = CC449CC5。闸外 gcc 链接 PASS。
+    #   锚三关: 旧编译器必红 —— `E4A6A610` 下 `_ok` 报 A8002 (即负例态)；`_neg` 两态皆红(报 A8002)。
+    'scripts/feat_zh_nullable_static_initnull_ok.c',
+    'scripts/feat_zh_nullable_static_initnull_neg.c',
     'scripts/feat_zh_s2b3_static_value_nullable.c',
     'scripts/feat_zh_s2b4_copy.c',
     'scripts/feat_zh_s2c_drop_nonint.c',
