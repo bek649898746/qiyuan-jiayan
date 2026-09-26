@@ -1,5 +1,5 @@
 // @EXPECTED exit:0
-// @EXPECTED err:[WARN] 词法: 注释未闭合
+// @EXPECTED out:[WARN] 词法: 注释未闭合
 # 包含 <stdio.h>
 /* R333 (round 62) 补锚: 固化 R332 的「未闭合注释 WARN」成果.
 
