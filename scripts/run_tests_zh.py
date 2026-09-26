@@ -1956,6 +1956,7 @@ def run_one_test(name):
                              #   声明了才查 (未声明的不受影响, 零回归风险).
                              #   ⚠️ 只在 编译成功 时 可断言 (编译器 的 汇总行 在 成功收尾处 才打印).
     dep = False; multi = False
+    explicit_run = False    # round 30: 文件显式声明了运行期断言 (@EXPECTED exit:/out:)? `_neg` 不再推断 compile_fail
     known_gap = False       # 闸盲区修补 (2026-09-26 round 29): `@KNOWN-GAP` 显式豁免 ——
                             #   负例锚 (`_neg` / `@EXPECTED compile_fail`) 若 **编译成功**, 原框架
                             #   直接进入运行分支 ⟹ `expect_cfail` 被完全无视 ⟹ 「应拒却应允」被静默判 PASS
@@ -1969,7 +1970,7 @@ def run_one_test(name):
         head = ''
     for line in head.split('\n'):
         m = re.search(r'//\s*@EXPECTED\s+exit:\s*(\S+)', line)
-        if m: expected = m.group(1)
+        if m: expected = m.group(1); explicit_run = True
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+err:(.+)$', line)   # G0 (2026-09-11): stderr 断言 —
@@ -1978,7 +1979,7 @@ def run_one_test(name):
         if m: stdin_in = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+silent:\s*(\d+)', line)   # 第 84 站: 静默兜底 槽计数 断言
         if m: expected_silent = int(m.group(1))
-        if '@EXPECTED compile_fail' in line or '_neg' in os.path.basename(name): expect_cfail = True
+        if '@EXPECTED compile_fail' in line: expect_cfail = True   # round 30: 只认显式声明; _neg 推断移到解析循环之后
         if re.search(r'@KNOWN-GAP', line): known_gap = True   # round 29: 显式登记「应拒面缺失」的负例锚
         if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
         if '@MULTI' in line: multi = True      # 显式声明: 需 -c + jyld 跨 .o 链接 → 单文件无主/外链失败 = 许可 skip
@@ -1986,6 +1987,13 @@ def run_one_test(name):
         if m: arg_extra += shlex.split(m.group(1).strip())   # 2026-09-14 P0-3: 编译器 选项 (shlex 切分: `-D A=1` 与 `-DA=1` 两 形 皆可)
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
+    # round 30 (2026-09-26): `_neg` 推断 —— 该后缀在历史上有【两种语义】:
+    #   ① 负例 (应拒)  ② 负数 (negative VALUE —— probe_neg / regress_enum_neg / regress_ll_neg /
+    #      regress_neg_index_ptr 都带 @EXPECTED exit:0 的运行期断言)。
+    #   原判据只看后缀 ⟹ 5 个「负数」锚被误判为 compile_fail; round 29 硬化后它们编译成功即 FAIL。
+    #   现: 文件显式声明了运行期断言 (@EXPECTED exit:/out:/err:) ⟹ 以后者为准, 不判 compile_fail。
+    if (not expect_cfail) and (not explicit_run) and (expected_out is None) and (expected_err is None) and ("_neg" in os.path.basename(name)):
+        expect_cfail = True
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
     try:
         os.remove(h1)

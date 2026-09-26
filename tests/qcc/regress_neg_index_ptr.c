@@ -1,4 +1,3 @@
-// @KNOWN-GAP: 应拒面缺失 —— 本负例锚 实测【编译成功】, 闸的 compile_fail 分支从未触达 ⟹ 其「应拒」语义一直未被检测 (2026-09-26 round 29 审计发现)
 // @EXPECTED exit:0
 // @EXPECTED out:ok
 // regress: 负索引指针运算 p[-1] / *(p-1) — 32 位 -1 索引加到 64 位指针须符号扩展
