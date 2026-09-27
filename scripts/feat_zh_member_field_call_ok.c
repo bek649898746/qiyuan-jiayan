@@ -1,4 +1,4 @@
-// @EXPECTED out:MF-VAR 11 22 / MF-GLOB 81 82 / MF-CALL 31 32 / MF12-VAR 41 42 43 / MF12-CALL 51 52 53
+// @EXPECTED out:MF-VAR 11 22 / MF-GLOB 81 82 / MF-CALL 31 32 / MF12-VAR 41 42 43 / MF12-CALL 51 52 53 / AR8-CALL 31 32 / AR12-CALL 51 52 53
 // @EXPECTED exit:0
 /* R353 (round 78) H7 回归锚 —— 结构体 **成员字段** 写: {局部变量, 静态全局, 返回结构体的调用} RHS (8B 档) + 12B 变量档.
 
@@ -30,7 +30,10 @@
     g.直 = 全叶;     格式化 " / MF-GLOB %d %d", g.直.a, g.直.b;
     g.直 = 造叶(31); 格式化 " / MF-CALL %d %d", g.直.a, g.直.b;
     构 大 y; y.a = 41; y.b = 42; y.c = 43;
+    构 干 *p = &g;
     g.大直 = y;      格式化 " / MF12-VAR %d %d %d", g.大直.a, g.大直.b, g.大直.c;
-    g.大直 = 造大(51);格式化 " / MF12-CALL %d %d %d\n", g.大直.a, g.大直.b, g.大直.c;
+    g.大直 = 造大(51);格式化 " / MF12-CALL %d %d %d", g.大直.a, g.大直.b, g.大直.c;
+    p->直 = 造叶(31); 格式化 " / AR8-CALL %d %d", p->直.a, p->直.b;
+    p->大直 = 造大(51);格式化 " / AR12-CALL %d %d %d\n", p->大直.a, p->大直.b, p->大直.c;
     返 0;
 }
