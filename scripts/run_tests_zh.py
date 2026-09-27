@@ -10,6 +10,7 @@
   // @EXPECTED exit:42          退出码 == 42
   // @EXPECTED exit:nonzero     退出码 != 0 (探针/崩溃)
   // @EXPECTED out:<str>        stdout 包含该字符串 (可选)
+  // @EXPECTED warn:<str>       编译期 输出 包含该字符串 (可选; R356 仪器债 首刀)
 无 @EXPECTED 时默认 exit:0
 """
 import sys, os, subprocess, re, argparse, shlex
@@ -343,6 +344,7 @@ CORE_FEAT = [
     'scripts/feat_zh_member_arr_elem_ok.c',
     'scripts/feat_zh_member_arr_elem_call_ok.c',
     'scripts/feat_zh_member_field_call_ok.c',
+    'scripts/feat_zh_lex_unclosed_comment_warn.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
     'scripts/feat_zh_disc_value_copy_ok.c',
@@ -2089,7 +2091,7 @@ def run_one_test(name):
         src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     expected_err = None
-    expected_silent = None   # 闸 (2026-09-17 第 84 站): `@EXPECTED silent:N` —— 静默兜底 槽计数 断言.
+    expected_warn = None; expected_silent = None   # 闸 (2026-09-17 第 84 站): `@EXPECTED silent:N` —— 静默兜底 槽计数 断言.
                              #   C266/C292/C299 这一类缺陷 的 **签名就是静默兜底**, rc=0 不等于没缺陷;
                              #   声明了才查 (未声明的不受影响, 零回归风险).
                              #   ⚠️ 只在 编译成功 时 可断言 (编译器 的 汇总行 在 成功收尾处 才打印).
@@ -2117,6 +2119,8 @@ def run_one_test(name):
         if m: stdin_in = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+silent:\s*(\d+)', line)   # 第 84 站: 静默兜底 槽计数 断言
         if m: expected_silent = int(m.group(1))
+        m = re.search(r'//\s*@EXPECTED\s+warn:(.+)$', line)   # R356 (round 81): 编译期 诊断 (WARN) 断言 —— 仪器债 首刀
+        if m: expected_warn = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True   # round 30: 只认显式声明; _neg 推断移到解析循环之后
         if re.search(r'@KNOWN-GAP', line): known_gap = True   # round 29: 显式登记「应拒面缺失」的负例锚
         if '@DEP' in line: dep = True          # 显式声明: 依赖配套文件/外部符号 → 单文件编译失败 = 许可 skip (2026-09-07 收紧)
@@ -2178,6 +2182,9 @@ def run_one_test(name):
             return (name, True, 'KNOWN-GAP: 负例锚 编译成功 —— 应拒面缺失, 已显式登记 (@KNOWN-GAP)')
         return (name, False, 'compile_fail(期望) 但编译器【成功】了 —— 负例锚失效, 应拒面未被测 '
                              '(若确属已知缺口, 请在文件头加 @KNOWN-GAP 显式登记)')
+    cerr_all = (r.stderr or '') + (r.stdout or '')   # R356: 编译成功 路径 上也 需要 (原 仅 compile_fail 分支 有)
+    if expected_warn and expected_warn not in cerr_all:
+        return (name, False, 'warn 期望 编译输出 含 %r 实际=%r' % (expected_warn, cerr_all.strip()[:200]))
     # 运行
     out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
     err_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_err.txt')
