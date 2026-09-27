@@ -149,7 +149,7 @@ CORE_FEAT = [
     'scripts/feat_zh_err_try_in_normal_neg.c',
     'scripts/feat_zh_s2a_multi_nullable.c',
     'scripts/feat_zh_nullable_value_op_neg.c', 'scripts/feat_zh_nullable_value_op_ok.c',
-    'scripts/feat_zh_nullable_struct_ok.c', 'scripts/feat_zh_nullable_struct_unwrap_neg.c',
+    'scripts/feat_zh_nullable_struct_ok.c', 'scripts/feat_zh_nullable_member_write_ok.c', 'scripts/feat_zh_nullable_struct_unwrap_neg.c',
     'scripts/feat_zh_nullable_field_ptr_ok.c', 'scripts/feat_zh_nullable_field_ptr_judge_ok.c',
     'scripts/feat_zh_nullable_field_deref_ok.c', 'scripts/feat_zh_nullable_field_deref_neg.c',
     'scripts/feat_zh_nullable_deep_path_ok.c', 'scripts/feat_zh_nullable_deep_path_neg.c',
