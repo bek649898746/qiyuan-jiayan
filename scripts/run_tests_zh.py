@@ -348,6 +348,7 @@ CORE_FEAT = [
     'scripts/feat_zh_union_tagged64_ok.c',
     'scripts/feat_zh_switch_match_ok.c',
     'scripts/feat_zh_union_field_offset_ok.c',
+    'scripts/feat_zh_builtin_name_shadow_ok.c',
     'scripts/feat_zh_lex_unclosed_comment_warn.c',
     'scripts/feat_zh_iface_move_freeze_neg.c', 'scripts/feat_zh_iface_ret_neg.c',
     'scripts/feat_zh_alias_multilevel_dangle_neg.c',
