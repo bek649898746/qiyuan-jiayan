@@ -2062,6 +2062,11 @@ CORE_FEAT += [
     #   块级结构体字段注册单点 `体注册` 缺 `查类型` 回退 ⟹ 裸标签 `点` 被当字段名、`内` 变无类型字段
     #   ⟹ 毛利 恒 -1 ⟹ `a.内` 报 A9001。旧编译器必红（实测 seed 下 A9001）。
     'scripts/feat_zh_generic_bare_tag_ok.c',
+    # R532 (2026-09-29 虾米 · 批次 D): **两层成员链 LHS = 构值三目 RHS（>8B）**
+    #   —— `o.内.内 = c ? s1 : s2;` 原得 `1 0 0`（条件值被当标量存首 4 字节）；
+    #   根因 = 「嵌套成员写入」守卫漏三元型别(22) + `__tern_` 帧临时全源无分配点（半成品机制）。
+    #   旧编译器必红（实测 `1 0 0`）。
+    'scripts/feat_zh_memberchain_ternary_struct_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
