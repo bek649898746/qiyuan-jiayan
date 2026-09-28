@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -2056,6 +2056,7 @@ CORE_FEAT += [
 #     · 旧编译器必红（`9AC8514A` / R294 / R292 / R290 四态下**实测** `PS 0 0 | 0 2`）。
     'scripts/feat_zh_ptrarr_smallptr.c',
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
+    'scripts/feat_zh_ptrarr_deref_cast_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
