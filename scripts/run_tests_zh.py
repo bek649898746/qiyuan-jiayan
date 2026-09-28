@@ -2056,6 +2056,7 @@ CORE_FEAT += [
 #     · 旧编译器必红（`9AC8514A` / R294 / R292 / R290 四态下**实测** `PS 0 0 | 0 2`）。
     'scripts/feat_zh_ptrarr_smallptr.c',
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
+    'scripts/feat_zh_stray_comment_end_neg.c',
 ]
 
 def build_tests(args):
