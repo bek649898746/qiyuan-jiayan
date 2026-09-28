@@ -2057,6 +2057,7 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrarr_smallptr.c',
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
+    'scripts/feat_zh_arrow_pollution_ok.c',
 ]
 
 def build_tests(args):
