@@ -2058,6 +2058,10 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
     'scripts/feat_zh_ptrarr_deref_cast_ok.c',
     'scripts/feat_zh_deref_member_assign_ok.c',
+    # D-2/R531 (2026-09-29 虾米 · 批次 D): 泛型实参「裸结构体标签名」——
+    #   块级结构体字段注册单点 `体注册` 缺 `查类型` 回退 ⟹ 裸标签 `点` 被当字段名、`内` 变无类型字段
+    #   ⟹ 毛利 恒 -1 ⟹ `a.内` 报 A9001。旧编译器必红（实测 seed 下 A9001）。
+    'scripts/feat_zh_generic_bare_tag_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
