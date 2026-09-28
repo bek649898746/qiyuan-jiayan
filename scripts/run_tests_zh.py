@@ -2055,6 +2055,7 @@ CORE_FEAT += [
     #   锚三关: gcc 逐值 ✓ (scripts/oracle/feat_zh_ptrarr_smallptr_oracle.c, 零警告 → 逐字同) · 甲言 逐字同 ✓
 #     · 旧编译器必红（`9AC8514A` / R294 / R292 / R290 四态下**实测** `PS 0 0 | 0 2`）。
     'scripts/feat_zh_ptrarr_smallptr.c',
+    'scripts/feat_zh_ptrvar_sub_elem_ok.c',
 ]
 
 def build_tests(args):
