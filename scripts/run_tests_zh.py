@@ -2057,6 +2057,7 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrarr_smallptr.c',
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
     'scripts/feat_zh_ptrarr_deref_cast_ok.c',
+    'scripts/feat_zh_deref_member_assign_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
