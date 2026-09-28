@@ -2058,6 +2058,16 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrvar_sub_elem_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
+    # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
+    #   ⟹ 由新工具 `scripts/check_anchor_registered.py` 检出（16 个未入闸中 7 个有断言；另 9 个无断言 = 例子/程序，不入闸合理）。
+    #   ⟹ 它们**在此之前从未被闸验证过**（V5 = 「新锚不自动入闸」的实证）。
+    'scripts/feat_si.c',
+    'scripts/feat_zh_alloca_expr.c',
+    'scripts/feat_zh_cond_else_nested.c',
+    'scripts/feat_zh_macro_toplevel_expand.c',
+    'scripts/feat_zh_member_float_arr_ok.c',
+    'scripts/feat_zh_sizeof_unknown_neg.c',
+    'scripts/feat_zh_typedef_ptr_alias.c',
 ]
 
 def build_tests(args):
