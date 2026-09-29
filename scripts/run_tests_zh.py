@@ -2092,6 +2092,10 @@ CORE_FEAT += [
     #   单点 `枚词体跳过()`（纯重构 · 零行为差异 ⟹ 旧编译器亦通过 = **回归哨兵**，非灵敏度锚）。
     #   本锚覆盖同语义 **5 形态**（具名枚举字段 / 匿名枚举字段 / 嵌套内联体内 / 联合内 / 全局匿名体内）。
     'scripts/feat_zh_enum_field_skip_ok.c',
+    # R540 (2026-09-29 虾米 · 批次 B 第三段 · 第 377 站): 字段解析族「数组维度累加」7 份收口为单点
+    #   `数组维度累()`（指针参数传 维数一/副次/新尺寸）。**回归哨兵**（纯重构）。
+    #   ⚠️ 同站发现三例**既有缺陷**（嵌套内联体/typedef匿名体/大杂烩共存）不在本锚内，另开挂账。
+    'scripts/feat_zh_arrdim_field_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
