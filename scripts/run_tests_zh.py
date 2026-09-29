@@ -2080,6 +2080,14 @@ CORE_FEAT += [
     #   （「可能是系统库函数未登记 ⟹ 需在内建白名单登记」），非 ASCII 名保留原文案（零回归）。
     #   注：闸校验 `@EXPECTED err:A1001`；**引导文案**另由 diag 探针核验（见施工日志）。
     'scripts/feat_zh_prelude_gap_neg.c',
+    # R538 (2026-09-29 虾米 · 批次 B · t5 收口): 「字段名 撞 保留型词」错误检查 —— 原 8 份逐字同文、
+    #   且 **文案已分叉** (7 份 "声明侧吞字段, 嵌套/匿名 结构体" / L18107 "无名类型声明后须跟 字段名")，
+    #   收口为单点 `字段名撞型词查()` (L17358 解析() 之前) + 统一文案。以下两锚 = 同语义 **多形态族**
+    #   的新增覆盖 (联合 路径 / 逗号续行 路径); 两条既有锚 (feat_zh_fieldkw_long_neg /
+    #   feat_zh_field_decl_swallow_neg / _nested_neg) 同时加 `@EXPECTED err:声明侧吞字段`
+    #   ⟹ 文案 从此入闸 (原来闸只校错误码)。
+    'scripts/feat_zh_fieldkw_union_neg.c',
+    'scripts/feat_zh_fieldkw_comma_neg.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT

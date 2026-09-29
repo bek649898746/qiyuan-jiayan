@@ -1,6 +1,7 @@
 # 包含 <stdio.h>
 /* 字段名 撞型词 负例: 长 (保留类型词 long) 作成员名 → A9001 干净拒 (原: 声明侧被吞 + 读落 field[0] 静默错值) */
 // @EXPECTED compile_fail
+// @EXPECTED err:声明侧吞字段
 构 记录 { 整 宽; 整 长; }
 函数 整 主(空) {
     构 记录 r;
