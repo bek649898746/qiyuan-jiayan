@@ -2088,6 +2088,10 @@ CORE_FEAT += [
     #   ⟹ 文案 从此入闸 (原来闸只校错误码)。
     'scripts/feat_zh_fieldkw_union_neg.c',
     'scripts/feat_zh_fieldkw_comma_neg.c',
+    # R539 (2026-09-29 虾米 · 批次 B 第二段 · 第 376 站): 字段解析族「枚举(枚词) 成员体跳过」8 份收口为
+    #   单点 `枚词体跳过()`（纯重构 · 零行为差异 ⟹ 旧编译器亦通过 = **回归哨兵**，非灵敏度锚）。
+    #   本锚覆盖同语义 **5 形态**（具名枚举字段 / 匿名枚举字段 / 嵌套内联体内 / 联合内 / 全局匿名体内）。
+    'scripts/feat_zh_enum_field_skip_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
