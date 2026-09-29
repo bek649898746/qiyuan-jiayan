@@ -2100,6 +2100,10 @@ CORE_FEAT += [
     #   嵌套内联体/联合内联体 两条路径 补 `内联`(元素尺寸) ⟹ `构域元素` 不再回退到 行宽。
     #   ⚠️ **灵敏度锚**（旧编译器 166B2E0A 实测 `0 10 10 20 20 99 99` ⟹ 必红）。
     'scripts/feat_zh_multiarr_nested_ok.c',
+    # R545 (2026-09-29 虾米 · B6): 非法 typedef 形态 `类型 构 [标签]? { ... } 别名;` ——
+    #   改前 编译通过而运行崩(0xC0000005, 静默坏); 改后 编译期确定性拒绝 + 引导(同 C4 判据)。
+    #   ⚠️ **灵敏度锚**（旧编译器 FD288230 编译过 + 运行崩 ⟹ 必红）。
+    'scripts/feat_zh_typedef_illegal_form_neg.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
