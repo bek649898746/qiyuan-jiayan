@@ -1,9 +1,9 @@
 {
- "fixed": "FE7978B6",
- "time": "2026-09-29 22:43:07",
+ "fixed": "EA7C70E5",
+ "time": "2026-09-29 23:31:57",
  "gates": {
   "zh_feat": {
-   "anchor_count": 922,
+   "anchor_count": 923,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
