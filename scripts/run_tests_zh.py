@@ -2074,6 +2074,12 @@ CORE_FEAT += [
     #   修法：`表达式构序` + `内存地址` 各加逗号支；嵌套成员写入与普通成员写各加逗号判定支；`构初校验` 改判据。
     #   旧编译器必红（实测 `R534 FAIL 甲 0 0 0`）。
     'scripts/feat_zh_comma_expr_struct_ok.c',
+    # R537 (2026-09-29 虾米 · 批次 C · **C4 特性站**): prelude（内建白名单）缺口 → 确定性诊断 + 引导 ——
+    #   甲言跳过 `<...>` 系统头 ⟹ 标准库声明靠内建白名单放行；未收录者调用原报晦涩的
+    #   「未声明函数 'x' — 调用前需定义或声明原型」；本刀对 **ASCII 名**（形如库函数）追加引导
+    #   （「可能是系统库函数未登记 ⟹ 需在内建白名单登记」），非 ASCII 名保留原文案（零回归）。
+    #   注：闸校验 `@EXPECTED err:A1001`；**引导文案**另由 diag 探针核验（见施工日志）。
+    'scripts/feat_zh_prelude_gap_neg.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
