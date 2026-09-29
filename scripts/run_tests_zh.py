@@ -2096,6 +2096,10 @@ CORE_FEAT += [
     #   `数组维度累()`（指针参数传 维数一/副次/新尺寸）。**回归哨兵**（纯重构）。
     #   ⚠️ 同站发现三例**既有缺陷**（嵌套内联体/typedef匿名体/大杂烩共存）不在本锚内，另开挂账。
     'scripts/feat_zh_arrdim_field_ok.c',
+    # R544 (2026-09-29 虾米 · B2 根治): 嵌套内联体 多维数组字段 读侧步长错 —— `体注册` 的
+    #   嵌套内联体/联合内联体 两条路径 补 `内联`(元素尺寸) ⟹ `构域元素` 不再回退到 行宽。
+    #   ⚠️ **灵敏度锚**（旧编译器 166B2E0A 实测 `0 10 10 20 20 99 99` ⟹ 必红）。
+    'scripts/feat_zh_multiarr_nested_ok.c',
     'scripts/feat_zh_stray_comment_end_neg.c',
     'scripts/feat_zh_arrow_pollution_ok.c',
     # V5 补入闸（2026-09-28 虾米）：以下 7 个**早已写好且带 @EXPECTED 断言**，但从未出现在 CORE_FEAT
