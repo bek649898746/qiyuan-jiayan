@@ -843,7 +843,13 @@ CORE_FEAT = [
     'scripts/feat_zh_err_wide_assign_neg.c',
     'scripts/feat_zh_err_wide_uninit_neg.c',
     'scripts/feat_zh_err_wide_struct_ok.c',
-    'scripts/feat_zh_err_wide_double_ok.c',]
+    'scripts/feat_zh_err_wide_double_ok.c',
+    # 第 439 站续 · **D-11c 首刀** (2026-09-30): 宽载荷错误联合 **赋值 = 同类变量搬移** (纯解析层, 零码生成改动;
+    #   值槽 走 普通 8B 赋值, tag 槽 由 追加 逗号赋值 `__et_目标 = __et_源` 同步 —— 同 R397/R403 的 `__nt_` 搬移范式).
+    #   余项 (已取证留档): 错误调用源 / 构值载荷搬移 ⟹ 仍 A6011 明拒 (R445 取证: 赋值码生成追加 tag store ⟹ 自举崩 v2 0xC0000005).
+    #   灵敏度: 改前编译器 (不动点 43ABF61B) 正锚 **A6011 编译失败** ⟹ 必红; 负锚 为 守卫哨 (新旧皆拒).
+    'scripts/feat_zh_err_wide_assign_copy_ok.c',
+    'scripts/feat_zh_err_wide_assign_call_neg.c',]
 # ==== 第 84 站 战线 1 补闸 (2026-09-17): C266 / C292+C295 / C299 三站 **零锚提交** 的补账 ====
 #   造锚 过程 里 抓出 4 个 新缺陷 (见 台账 §85/§86)，并 修正 两个 认识:
 #     · `甲言模式` 判据 = 中文**关键字**（不是中文标识符）—— 只有中文标识符的 C 文件
