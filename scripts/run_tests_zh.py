@@ -2195,6 +2195,8 @@ CORE_FEAT += [
     'scripts/feat_zh_typedef_ptr_alias.c',
     'scripts/feat_zh_scalar_arr_uninit_neg.c',
     'scripts/feat_zh_scalar_arr_elem_ok.c',
+    'scripts/feat_zh_err_wide_call_assign_ok.c',
+    'scripts/feat_zh_err_wide_struct_assign_neg.c',
 ]
 
 def build_tests(args):
