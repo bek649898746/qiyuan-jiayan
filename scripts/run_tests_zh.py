@@ -2193,6 +2193,8 @@ CORE_FEAT += [
     'scripts/feat_zh_member_float_arr_ok.c',
     'scripts/feat_zh_sizeof_unknown_neg.c',
     'scripts/feat_zh_typedef_ptr_alias.c',
+    'scripts/feat_zh_scalar_arr_uninit_neg.c',
+    'scripts/feat_zh_scalar_arr_elem_ok.c',
 ]
 
 def build_tests(args):
