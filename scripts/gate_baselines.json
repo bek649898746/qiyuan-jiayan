@@ -1,9 +1,9 @@
 {
  "fixed": "E1F35ABB",
- "time": "2026-10-01 06:35:46",
+ "time": "2026-10-01 06:48:04",
  "gates": {
   "zh_feat": {
-   "anchor_count": 958,
+   "anchor_count": 964,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
