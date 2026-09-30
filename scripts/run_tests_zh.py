@@ -2197,6 +2197,12 @@ CORE_FEAT += [
     'scripts/feat_zh_scalar_arr_elem_ok.c',
     'scripts/feat_zh_err_wide_call_assign_ok.c',
     'scripts/feat_zh_err_wide_struct_assign_neg.c',
+    'scripts/feat_zh_panic_ok.c',
+    'scripts/feat_zh_check_cancel_ok.c',
+    'scripts/feat_zh_check_cancel_zero_ok.c',
+    'scripts/feat_zh_recursion_guard_ok.c',
+    'scripts/feat_zh_bounds_check_in_ok.c',
+    'scripts/feat_zh_bounds_check_out_neg.c',
 ]
 
 def build_tests(args):
