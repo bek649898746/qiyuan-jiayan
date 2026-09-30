@@ -46,7 +46,7 @@ cfail = 0
 skip = 0
 for i, (src, is_bin) in enumerate(files):
     tag = os.path.basename(src)
-    head = open(src, encoding='utf-8', errors='replace').read(400)
+    head = open(src, encoding='utf-8', errors='replace').read()  # R561 (2026-09-30 第 429 站): 原 read(400) 截断 ⟹ 长头注释的 @EXPECTED 静默漏读（同 F-7）
     if '@EXPECTED compile_fail' in head:
         skip += 1  # 宿主/v1 都应编译失败 — 不对比产物 (编译失败本身由 run_tests 覆盖)
         continue

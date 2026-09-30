@@ -24,7 +24,7 @@ skip = 0
 t0 = time.time()
 for i, src in enumerate(files):
     tag = os.path.basename(src)
-    head = open(src, encoding='utf-8', errors='replace').read(400)
+    head = open(src, encoding='utf-8', errors='replace').read()  # R561 (2026-09-30 第 429 站): 原 read(400) 截断 ⟹ 长头注释的 @EXPECTED 静默漏读（同 F-7）
     if '@EXPECTED compile_fail' in head:
         skip += 1
         continue
