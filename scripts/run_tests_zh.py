@@ -2401,7 +2401,10 @@ def main():
     # 真回归重跑必再挂 (不放过), Windows 环境抖动 (杀软扫新 exe/启动时序) 重跑即过 (不误伤)
     if fail_l:
         retry_names = [n for n, ok, _ in results if not ok]
-        print(f'--- {len(retry_names)} 个失败, 自动重试一次 ---', flush=True)
+        # R435 (2026-09-30 虾米 · 第 435 站): **首轮失败锚名也落日志** ——
+        #   原状只打数量, 而 `--- 失败 ---` 段仅在「重试后仍失败」时打印 ⟹
+        #   「首轮挂、重试过」的偶发项**无锚名可追**（第 429 站实测踩到）。
+        print(f'--- {len(retry_names)} 个失败, 自动重试一次: ' + ' '.join(retry_names) + ' ---', flush=True)
         retried = [run_one_test(n) for n in retry_names]
         rmap = {n: (ok2, msg2) for n, ok2, msg2 in retried}
         results = [(n, rmap[n][0] if n in rmap else ok, rmap[n][1] if n in rmap else msg)
