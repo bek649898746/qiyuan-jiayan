@@ -49,7 +49,9 @@ def run_one_test(name):
     src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
     try:
-        head = open(src, encoding='utf-8', errors='replace').read(600)
+        # R561 (2026-09-30 虾米 · 第 429 站): 同 `run_tests_zh.py` —— **read(600) 截断 ⟹ 长头注释锚的
+        #   `@EXPECTED` 静默失效**（实测: tests/qcc 下 307 个含断言锚里 2 个落 600 之后）。改读全文。
+        head = open(src, encoding='utf-8', errors='replace').read()
     except Exception:
         head = ''
     for line in head.split('\n'):
