@@ -2203,6 +2203,8 @@ CORE_FEAT += [
     'scripts/feat_zh_recursion_guard_ok.c',
     'scripts/feat_zh_bounds_check_in_ok.c',
     'scripts/feat_zh_bounds_check_out_neg.c',
+    'scripts/feat_zh_delay_return_order_ok.c',
+    'scripts/feat_zh_recursion_guard_deep_neg.c',
 ]
 
 def build_tests(args):
