@@ -37,12 +37,12 @@ static int 多次(void) {
     return a[0] + b[0];
 }
 
-static int 求和(char *p) { return p[0] + p[1]; }
+static int 求和数(char *p) { return p[0] + p[1]; }
 
 static int 作实参(void) {
     char *p = (char *) alloca(8);
     p[0] = 6; p[1] = 8;
-    return 求和(p);
+    return 求和数(p);
 }
 
 static int 循环内(void) {
