@@ -841,8 +841,9 @@ CORE_FEAT = [
     #   灵敏度: 旧编译器 (不动点 05032749) —— 正锚 A9001 编译失败 / 赋值负锚 A9001 / 未初始化负锚 **编译通过 输出 -77 0** (静默错值) ⟹ 三锚 必红.
     'scripts/feat_zh_err_wide_ll_ok.c',
     'scripts/feat_zh_err_wide_assign_neg.c',
-    'scripts/feat_zh_err_wide_uninit_neg.c',]
-
+    'scripts/feat_zh_err_wide_uninit_neg.c',
+    'scripts/feat_zh_err_wide_struct_ok.c',
+    'scripts/feat_zh_err_wide_double_ok.c',]
 # ==== 第 84 站 战线 1 补闸 (2026-09-17): C266 / C292+C295 / C299 三站 **零锚提交** 的补账 ====
 #   造锚 过程 里 抓出 4 个 新缺陷 (见 台账 §85/§86)，并 修正 两个 认识:
 #     · `甲言模式` 判据 = 中文**关键字**（不是中文标识符）—— 只有中文标识符的 C 文件
