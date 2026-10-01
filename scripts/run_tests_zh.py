@@ -2209,6 +2209,7 @@ CORE_FEAT += [
     'scripts/feat_zh_pool_ok.c',
     'scripts/feat_zh_sb_build_ok.c',
     'scripts/feat_zh_vec_grow_ok.c',
+    'scripts/feat_zh_compile_const_ok.c',
 ]
 
 def build_tests(args):
