@@ -2242,6 +2242,9 @@ CORE_FEAT += [
     #   原生成 `mov $0x5,%eax` 后无 store（赋值整段被 `偏移 >= 0` 类判据跳过且无诊断）。
     #   修后与「读」对称报 A1001。灵敏度: 旧编译器下编译成功 ⟹ 必红。
     'scripts/feat_zh_ext_var_assign_neg.c',
+    # 续五十 (2026-10-01): R454 = R453 同族第二例 —— `移入 b, 外盒;`（外部符号作移动源）
+    #   改前编译成功且移入整段被跳过（自证式探针: 目标 b.x 填 7 后仍为 7）。形态要点: 结构体须非 Copy。
+    'scripts/feat_zh_ext_move_src_neg.c',
 ]
 
 def build_tests(args):
