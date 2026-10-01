@@ -2228,6 +2228,7 @@ CORE_FEAT += [
     'scripts/feat_zh_err_wide_struct_move_ok.c',
     'scripts/feat_zh_err_wide_struct_recover_ok.c',
     'scripts/feat_zh_lock_scope_ok.c',
+    'scripts/feat_zh_borrow_reborrow_neg.c',
 ]
 
 def build_tests(args):
