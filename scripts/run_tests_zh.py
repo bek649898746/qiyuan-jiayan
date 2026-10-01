@@ -1978,6 +1978,14 @@ CORE_FEAT += [
     #           · 甲言 B15E80A3 逐字同 ✓ (本轮无源码改动, 不动点不变)
     'scripts/feat_zh_disc_combo_ok.c',
     'scripts/feat_zh_disc_exhaustive_neg.c',
+    # R3 (2026-10-02 第 439 站续七十五): **5 个无码语义错误 → 接入错误码体系** (大哥方针「基础软件不能遗漏不确定性」· R3 可机器读)。
+    # 改动前: 这些报错走 `输出到文件(错误流, "[ERR] ...")` + `退出(1)`，**没有码** ⟹ 闸断言不了。
+    # 现: `格式化到串(错缓冲, ...)` + `发错误("A60xx", 错缓冲)` ⟹ 随 `发错误` 走**结构化 JSON 诊断**（code/fixes/codeLine）。
+    'scripts/feat_zh_disc_multiptr_payload_neg.c',
+    'scripts/feat_zh_disc_structval_payload_neg.c',
+    'scripts/feat_zh_disc_variant_reserved_neg.c',
+    'scripts/feat_zh_ct_assert_const_neg.c',
+    'scripts/feat_zh_ct_assert_false_neg.c',
     # R267 (2026-09-26 启元 · 第 364 站 round 8): **泛型 (泛型函数宏) —— 主面 + 组合面 + 边界 三态锚**
     #   机制: `泛型 名(参数) = 体;` ⟹ 注册为**函数宏（文本级模板）**, 调用按实参类型展开 ⟹ 天然多类型
     #     (源码 L6786 原话: "文本级模板, 调用按实参类型展开"; 另支持 泛型约束 `泛型 名: 接口(参数)` 与 变参 `...`)
