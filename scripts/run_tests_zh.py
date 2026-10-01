@@ -2467,6 +2467,30 @@ def main():
     except Exception as _e:
         print('[闸①] 检查器 异常 (不计红, 但请查): %s' % _e)
 
+    # 闸② / 闸③ (2026-10-02 第 439 站续七十四 · 大哥方针「基础软件不能遗漏不确定性」):
+    #   两个检查器**早已写好且各自全绿**，但一直**不在验收流程内** —— 按「度量一旦无人自动跑就会空转」
+    #   的既有教训（闸① 的由来）接入。两类都是在挡「不确定性外溢」:
+    #     闸② `-c` 模式冒烟 —— 闸内 998 个锚**全是链接模式**（`-c` 全文仅 2 处）⟹ `-c` 在闸里零覆盖。
+    #     闸③ 负例锚有效性 —— compile_fail 只要求「退出码 ≠ 0」⟹ **任何不相干错误都能让它"通过"**
+    #        （假锚 = 闸给的是假绿灯 = 最大的不确定性）。
+    #   `--fast`（30 用例开发档）跳过，与闸① 不同档。
+    if not args.fast:
+        import importlib.util as _ilu2
+        for _tag, _scr, _what in (
+                ('闸②', 'check_c_mode_smoke.py', '`-c` 模式冒烟'),
+                ('闸③', 'check_neg_anchors.py', '负例锚有效性')):
+            _p = os.path.join(root, 'scripts', _scr)
+            if not os.path.exists(_p):
+                print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
+            _r = subprocess.run([sys.executable, _p], capture_output=True)
+            _o = (_r.stdout + _r.stderr).decode('utf-8', 'replace')
+            for _l in [x for x in _o.strip().split('\n') if x.strip()][-5:]:
+                print('    ' + _l)
+            if _r.returncode != 0:
+                print('[%s %s] ❌ 未通过 (rc=%d)' % (_tag, _what, _r.returncode))
+                sys.exit(1)
+            print('[%s %s] ✅' % (_tag, _what))
+
     # 确保编译器
     qcc = find_qcc()
     if not os.path.exists(qcc):
