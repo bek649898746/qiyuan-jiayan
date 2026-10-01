@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Git 全量编译基线: 用 v4 (自宿主) 逐个编译核心 .c, 统计通过/失败/崩溃/超时."""
 import subprocess, os, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -8,6 +8,9 @@ V4 = os.environ.get('QCC', r'C:\Users\Administrator\Desktop\qiyuan-jiayan\v4.exe
 D = ['-D', '__STDC_VERSION__=199901L', '-D', '__GNUC__=5', '-D', '_WIN32=1', '-D', 'REG_STARTEND=1']
 
 # 核心目录 (排除 t/ oss-fuzz/ contrib/ compat/)
+# ⭐ 批次 G · D2/D3 (2026-10-02): **分母口径 = 只收可独立编译单元** —— `t/`(1135 项) 与 `compat/regex`(6 项)
+#   是 `#include` 片段/非构建单元，**单独编译必然失败**（C 语言性质，非甲言缺陷）⟹ 既不计入分母、也不算失败。
+#   口径已固化进 `scripts/corpus_baseline.json` 的 `denominator_rule` 字段（可复算）。
 CORE_DIRS = ['', 'builtin', 'reftable', 'xdiff', 'ewah', 'refs', 'negotiator',
              'trace2', 'sha1dc', 'sha256', 'block-sha1']
 

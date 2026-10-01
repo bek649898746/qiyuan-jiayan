@@ -96,5 +96,14 @@
    "uncompr": "13e6cd6a69cc314791f2b0f06dc152f0a3fbd5e44571862a4c81512a44a60046",
    "zutil": "1ba7bb28ed50eb7ccd67031d6a55fcdeffdbbdd1f270cd49c2f82b6a75918fd4"
   }
+ },
+ "denominator_rule": "分母只收「**可独立编译单元**」：`#include` 片段（如 `compat/regex` 的 regcomp/regcomp_enhanced/regex_internal 等）与 `t/` 下的非构建单元 **既不计入分母、也不算失败** —— 它们单独编译必然失败，是 C 语言本身的性质，不是甲言缺陷。实测口径：git 语料只取 CORE_DIRS = [\"\", builtin, reftable, xdiff, ewah, refs, negotiator, trace2, sha1dc, sha256, block-sha1]（415 个 .c），`compat/regex` 由本体 `regex.c` 代表（已通关 C21）。",
+ "denominator_rule_src": "批次 G · D2/D3 (2026-10-02 第 439 站续七十六)",
+ "batch_g": {
+  "D1": "乙 · 需独立后续站：__MINGW32__ 全局开（数据支持：C7e 实测 554/562 优于主线 552/562 且 CRASH=0）；方案已定（prelude 加 `#define __MINGW32__` + 把 `NO_UNSETENV` 从 `#ifndef __MINGW32__` 移出，因 compat/mingw.h 明确要求 NO_SETENV 而 #error 禁止 __MINGW32__ 下定义 NO_UNSETENV）；判据 = 通过数 ≥554/562 ∧ CRASH=0。**本地不执行的原因**：全量语料闸的权威分母在启元侧（D:\\qiyuan_home），本地复现会与之分叉（plan Risks：口径不可互换）⟹ 应回该口径下执行。",
+  "D2": "甲 · 已修：分母定义已固化（见 denominator_rule）—— CORE_DIRS 本就排除 compat/regex 片段",
+  "D3": "甲 · 已修：同上 —— CORE_DIRS 本就排除 t/ 非构建单元",
+  "D4": "乙 · 需独立后续站：libsecret 缺 glib 依赖；**按方针不打桩**（打桩=假成功=R1/R2 违反）⟹ 待装真依赖后按「编过 ∧ 与 gcc 逐值一致」判据验收",
+  "D5": "乙 · 维持现状：extra_eval_1 属 `--lenient` 兼容档的宽松口径，本身就是**明示的档位**（非不确定性）⟹ 无需动作"
  }
 }
