@@ -2260,6 +2260,32 @@ CORE_FEAT += [
     # 续五十 (2026-10-01): R454 = R453 同族第二例 —— `移入 b, 外盒;`（外部符号作移动源）
     #   改前编译成功且移入整段被跳过（自证式探针: 目标 b.x 填 7 后仍为 7）。形态要点: 结构体须非 Copy。
     'scripts/feat_zh_ext_move_src_neg.c',
+    # 第 440 站 (2026-10-02): **族8（元编程/编译期）口径 B→A —— 六项闸内锚补齐**.
+    #   背景: ⑱ 深度分档表 §四 记「族8 六项 #166/#167/#168/#172/#174/#189 = 闸外探针实测证真，
+    #   但**闸内零锚**」(口径 B)。本批 13 枚锚把六项同时满足三判据（真语义 ∧ 负例拦截 ∧ 闸内锚）⟹ 口径 A.
+    #   ★ 五枚「改前必红」的新增拒绝路径（双向灵敏度已在 scratch 逐枚 before/after 实测）:
+    #     A6018 反射 类型/字段 无法求值（原 静默返 0 / -1）· A9009 卫生宏 体内局部名 >32（原 静默截断）
+    #     A9010 宏展开 嵌套 >24 层（原 静默停止展开，宏名静默降级为函数名）· A6019 嵌入文件不可读（原 无码报错）
+    #     A9103 过程宏 实参个数≠形参个数（原 完全不校验、多给静默忽略）
+    # #166 编译期反射（正: 区分性值 n=3 sz=24 off=8 fsz=8 offx=0；负×2: 类型未声明 / 字段不存在）
+    'scripts/feat_zh_reflect166_ok.c',
+    'scripts/feat_zh_reflect_undeclared_neg.c',
+    'scripts/feat_zh_reflect_badfield_neg.c',
+    # #167 宏系统（词元宏）（正: 42/21/117 全无同名函数；负×2: 嵌套超限 A9010 / 参数个数 A9007）
+    'scripts/feat_zh_macro167_ok.c',
+    'scripts/feat_zh_macro_depth_neg.c',
+    'scripts/feat_zh_macro_arity_neg.c',
+    # #168 卫生宏 gensym（正: 同名局部 outer 保持 100；负: 体内局部名超上限 A9009）
+    'scripts/feat_zh_hygiene168_ok.c',
+    'scripts/feat_zh_hygiene_cap_neg.c',
+    # #172 过程宏 展开面（正: 生成文本→注入→25/42）+ #174 生成面（正: 编译期条件决定生成哪段文本→142/121/100）
+    #   负: A9103（本轮新增）+ 既有 A9101/A9102 两锚
+    'scripts/feat_zh_procmacro172_ok.c',
+    'scripts/feat_zh_procmacro174_ok.c',
+    'scripts/feat_zh_procmacro_arity_neg.c',
+    # #189 编译期文件读取（正: 嵌入 payload → 读回 len=16 + 内容 JIAYAN-EMBED-189；负: A6019）
+    'scripts/feat_zh_embed_readback_ok.c',
+    'scripts/feat_zh_embed_missing_neg.c',
 ]
 
 def build_tests(args):
