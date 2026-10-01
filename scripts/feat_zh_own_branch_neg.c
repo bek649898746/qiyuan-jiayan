@@ -1,6 +1,7 @@
-# 包含 <stdio.h>
+﻿# 包含 <stdio.h>
 /* 所有权 分支精确 负例 (2026-09-05 虾米 环2): 分支内普通移动 → 汇合后读 → A3101 */
 // @EXPECTED compile_fail
+// @EXPECTED err:A3101
 构 内容 { 字 *s; 整 val; }
 构 内容 构建(整 n) { 构 内容 c; c.s = 0; c.val = n; 返 c; }
 整 使用(构 内容 x) { 返 x.val; }

@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* 2026-09-10 I2-③ 元素级: 结构体值数组 读从未写入的元素 → A4001
    修复前: 数组完全未登记 → 读 a[1].x 静默取栈垃圾 */

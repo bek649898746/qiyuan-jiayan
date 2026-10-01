@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3107
 # 包含 <stdio.h>
 /* 所有权 G1 (2026-09-09): 成员链 动态下标基 (项[i].v) 部分移出 — A3107 (同族: 运行期索引不可移出)
    @EXPECTED compile_fail */

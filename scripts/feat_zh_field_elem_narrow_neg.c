@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9002
 #include <stdio.h>
 /* P1-6 C2 (2026-09-10): 结构体字段/数组元素 双精度→整型 隐式 → A9002
    修复前: s.x=d 静默截断 3.14→0 */

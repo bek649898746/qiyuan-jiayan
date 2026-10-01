@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3101
 #包含 <stdio.h>
 
 /* feat_zh_ret_move_neg.c — 甲言模式: `返 <聚合变量>;` **是** 所有权移动 (P0-15 回归保护 2026-09-14)

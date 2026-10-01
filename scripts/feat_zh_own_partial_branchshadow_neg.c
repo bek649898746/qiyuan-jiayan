@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* 分支撤销遮蔽漏拦修复 (2026-09-09): 外层 s.子 移出, then 遮蔽块 内层 s.子 移出
    → else 入口 撤销 then 部分移动 不得误清外层登记 → else/汇合 外层读 s.子 应 A3101 (原漏拦) */

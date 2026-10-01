@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9005
 # 包含 <stdio.h>
 /* A3 负例 (2026-09-11): 闭包数组 槽 下标 越界 → A9005 (声明长度 2, 绑定 gs[5]) */
 函数 整 加整(整 a, 整 k) { 返 a + k; }

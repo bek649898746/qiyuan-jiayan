@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3102
 # 包含 <stdio.h>
 /* P3-1 (2026-09-10): 部分移出后 整体赋值移动 (t = a) → A3102 (同族: 赋值默认移动路径)
    @EXPECTED compile_fail */

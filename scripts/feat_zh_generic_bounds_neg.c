@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9006
 #包含 <stdio.h>
 /* R268 (2026-09-26 启元 · 第 364 站 round 9): **泛型约束 应拒面: 类型未实现接口**
    判据: `泛型 双倍: 可加(x)` 的实参类型未 `实现 可加` ⟹ **必须编译期报错**。

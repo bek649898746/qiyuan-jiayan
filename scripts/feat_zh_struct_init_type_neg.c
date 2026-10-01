@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A9002
 # 包含 <stdio.h>
 /* P2-18 (2026-09-10): 构值变量 不能用 另一类型/指针 初始化 → A9002
    @EXPECTED compile_fail */

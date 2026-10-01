@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9001
 #include <stdio.h>
 /* P0-2 E3 (2026-09-10): 普通函数内 尝试 → A9001 (错误联合塌缩成 int 丢 tag)
    修复前: 普通函数 尝试 f(-1) 裸返回错误码, tag 丢弃 */

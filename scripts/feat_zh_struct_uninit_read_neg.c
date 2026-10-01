@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 #include <stdio.h>
 /* P1-7 I2 (2026-09-10): 结构体局部变量未初始化读字段 → A4001
    修复前: 构 X t; t.tag 放行 (变构 未登记尾进) */

@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* NLL 声明合一别名悬垂 箭头写 (2026-09-10): 构 X *p = &x (声明合一) → x 移走 → p->v=99 写 应 A3101 */
 构 内部 { 字 *p; 整 v; };

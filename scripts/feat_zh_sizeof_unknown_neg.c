@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A1001
 #include <stdio.h>
 /* A15 负锚 (2026-09-13): `大小(<未声明名>)` 必须 **响亮 报错**。
    原 行为: 静默 返 4 (= sizeof(int)) —— 假尺寸 进 `分配内存(n * 大小(X))` 就是 堆溢出 炸弹。

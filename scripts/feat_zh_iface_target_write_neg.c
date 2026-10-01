@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3001
 #include <stdio.h>
 /* P0-5 A5-3 (2026-09-10): 接口引用 p=&a 后 写目标对象 a → A3001 冻结
    修复前: trait object 引用不建立借用边, 目标对象可被自由写 */

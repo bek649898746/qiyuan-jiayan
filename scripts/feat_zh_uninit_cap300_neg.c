@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 #include <stdio.h>
 /* 尾进容量回归 (2026-09-09): 300 未初始化局部 + 读 v299 应 A4001 — 扩容 2048 修复静默丢 */
 函数 整 主(空) {

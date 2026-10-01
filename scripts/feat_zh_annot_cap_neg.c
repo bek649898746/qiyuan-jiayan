@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A5001
 #include <stdio.h>
 /* A3-类型属性 容量守卫 (2026-09-12): `复制 T;` 等 T 标注 注册表 (复制表/源九一/线性表/空乙 各 64 槽, 枚底表 32 槽)
    在 **满 容量** 时 原来 是 **静默丢弃** —— 第 65 个 `复制 T;` 无声 失效, 该类型被当 非 Copy

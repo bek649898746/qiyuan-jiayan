@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 #include <stdio.h>
 /* P1-8 I1 (2026-09-10): 遍(for) 循环体初始化 未做分支汇合 → 循环后读 A4001
    修复前: for 体内赋值, 循环后读放行 (while 正常) */

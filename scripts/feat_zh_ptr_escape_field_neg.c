@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* I2-③ 余项 (2026-09-10): &s.a 只逃逸字段 a → 未写字段 s.b 读 仍 A4001 (字段级精度, 不整体放行)
    @EXPECTED compile_fail */

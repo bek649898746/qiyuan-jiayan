@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A6003
 # 包含 <stdio.h>
 /* 2026-09-10 E4③: 函数返回类型 上的 可空 修饰 → 显式 A6003
    修复前: 解析期 待定槽被静默清空 (可空载荷 无声降级为普通返回) */

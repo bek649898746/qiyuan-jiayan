@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A9001
 # 包含 <stdio.h>
 /* H1q (2026-09-11): 构值 三目 — 两 分支 类型 不一致 → A9001 显式 诊断
    (原 H1j 是 "构值 三目 一律 拦截"; H1q 起 同型 构值 三目 已 真支持, 见 feat_zh_struct_ternary_ok;

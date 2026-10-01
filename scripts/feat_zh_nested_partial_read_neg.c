@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* 2026-09-10 I2-③ 嵌套成员: 嵌套部分写 (o.n.x) 后 读同层未写叶 (o.n.y) → A4001
    修复前: 写 o.n.x 把直接字段 n 记为已写 → 读 o.n.y 静默垃圾 (子结构内部无追踪) */

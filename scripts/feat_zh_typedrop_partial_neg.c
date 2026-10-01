@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3106
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop A3 部分移动×析构 (2026-09-06): 合成容器 a (含析构字段) 移入 t, a.子 → A3106
    @EXPECT compile_fail:A3106 */

@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A8001
 #include <stdio.h>
 /* 静态可空 A8001 守卫负例 (2026-09-09): 可空 静 指针 落 tag → 未窄化解引用 → A8001 编译拒
    (修复前 变量静态 不落 tag → *p 编译过 + 运行时崩) */

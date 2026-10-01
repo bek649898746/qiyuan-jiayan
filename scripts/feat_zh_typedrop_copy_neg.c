@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3110
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop A5 (2026-09-06): 含析构字段结构 标 复制 → A3110 (Copy+Drop 冲突)
    @EXPECT compile_fail:A3110 */

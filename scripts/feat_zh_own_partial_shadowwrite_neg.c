@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* 遮蔽写端漏拦修复 (2026-09-09): 外层 s.子 移出, 遮蔽块内 整字段写 s.子=z.子
    不得误清外层已移登记 → 块退后外层读 s.子 应 A3101 (原漏拦放行) */

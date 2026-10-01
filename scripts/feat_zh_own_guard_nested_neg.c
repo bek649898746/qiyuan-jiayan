@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3106
 # 包含 <stdio.h>
 /* 所有权 守卫基 嵌套成员链 拷贝外流拒 (2026-09-06 虾米 G12): 守卫 a; t = a.内.子 (多级纯成员链, 叶非Copy) → A3106
    @EXPECT compile_fail:A3106 */

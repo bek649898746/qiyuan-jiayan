@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A8001
 # 包含 <stdio.h>
 /* A4 负例 (2026-09-11): 三目 窄化 只 覆盖 对应分支 — 另一分支 值读 可空变量 仍 必须 A8001
    (判空 m 真分支 = 空 → 真分支 读 m 非法; 若 实现 成 整句 窄化 则 本负例 会 静默编译) */

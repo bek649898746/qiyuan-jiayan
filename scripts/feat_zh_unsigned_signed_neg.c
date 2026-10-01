@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9002
 #include <stdio.h>
 /* P1-5 C1 (2026-09-10): signed↔unsigned 隐式转换 → A9002 (符号位语义变化)
    修复前: 整 s=-1; 无 整 u=s; 静默位保留 4294967295 */

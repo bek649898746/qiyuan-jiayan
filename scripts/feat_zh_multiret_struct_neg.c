@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A6005
 #include <stdio.h>
 /* P0-1 A2 (2026-09-10): 多值返回 结构体值载荷 编译期拒绝 A6005
    修复前: 返回(x, n+1) 的 struct x 走 64位打包通路被静默截断为 0 (错值放行) */

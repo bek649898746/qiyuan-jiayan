@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3105
 #include <stdio.h>
 
 /* 甲言 生命周期 elision 反例 (t4) (2026-09-07):

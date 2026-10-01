@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9005
 # 包含 <stdio.h>
 /* A3 负例 (2026-09-11): 闭包数组 三种 误用 均 精确 拒 (A9005):
    ① 未声明 就 绑定槽; ② 下标 越界; ③ 调用 用 变量 下标 (闭包 是 解析期 展开, 无 运行时 闭包值) */

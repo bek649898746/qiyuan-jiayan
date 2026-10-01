@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* I2-③ (2026-09-10): 部分初始化后 整体拷贝读 → A4001 (拷贝含未写字段 s.b 垃圾)
    字段级: 写 s.a 只就绪 s.a; 整变量拷贝读 = 读全部字段 → 仍登记则拦 */

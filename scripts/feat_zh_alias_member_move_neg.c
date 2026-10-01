@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* P0-3 4d (2026-09-10): 成员别名 p=&s.内.v + 移入 t,s.内 + *p 写 → A3101
    修复前: 总布 只登记单层变量目标 (p=&x), 成员目标 (&s.内.v) 漏登记 → 悬垂写漏拦 */

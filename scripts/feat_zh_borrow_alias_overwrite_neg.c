@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3004
 #include <stdio.h>
 /* P0-2 4b (2026-09-10): 借用 a + 别名 r=&a + 赋值覆盖 a → 别名悬垂 A3004
    修复前: 写=自动放还 只放还借用, 未使别名指针 r 失效 → r->tag 读到新值 (悬垂漏拦) */

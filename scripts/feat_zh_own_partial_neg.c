@@ -1,6 +1,7 @@
-# 包含 <stdio.h>
+﻿# 包含 <stdio.h>
 /* 所有权 部分移动 分支精确 负例 (2026-09-05 虾米 ring C): 若内 移入 目标, a.子 → 汇合后读 a.子 → A3101 */
 // @EXPECTED compile_fail
+// @EXPECTED err:A3101
 构 内部 { 字 *p; 整 v; }
 构 包 { 构 内部 子; 整 tag; }
 构 包 建包(整 n) { 构 包 x; x.子.p = 0; x.子.v = n; x.tag = n; 返 x; }

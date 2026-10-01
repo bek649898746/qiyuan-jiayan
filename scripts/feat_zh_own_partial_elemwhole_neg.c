@@ -1,6 +1,7 @@
-# 包含 <stdio.h>
+﻿# 包含 <stdio.h>
 /* 波1c (2026-09-09): 数组元素整移入 负例 — 移入 t, 项[0] 后读 项[0].v → A3101 (原漏拦位拷贝) */
 // @EXPECTED compile_fail
+// @EXPECTED err:A3101
 构 对 { 字 *p; 整 v; }
 构 对 dst[4];
 构 对 t;

@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3001
 #include <stdio.h>
 /* 借用表容量回归 (2026-09-09): 300 可变借用 + 读 x299 应 A3001 — 扩容 2048 修复静默丢 */
 函数 整 主(空) {

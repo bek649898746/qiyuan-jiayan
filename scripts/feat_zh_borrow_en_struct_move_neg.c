@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3004
 #include <stdio.h>
 /* P0-3 E4 (2026-09-10): 英文 struct + 中文借用 + 按值传参 → A3004
    修复前: 参移动 判据 甲言模式(语法关键词) 漏 英文 struct + 借用(词变量) 场景 → 借用期 move 漏拦 */

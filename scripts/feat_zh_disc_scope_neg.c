@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* A33 (2026-09-12): 判别 豁免 必须 只 覆盖 判别 类型 自身 — 程序里 只要 声明了 **任何** 判别 类型,
    其 它 普通 结构体 的 字段级 未初始化 追踪 不 得 被 静默 关闭。

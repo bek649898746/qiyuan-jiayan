@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3110
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop A1b 声明初始化表达式内覆写拒 (2026-09-06): 构 X b = (a = 新X(9), 新X(0)); → A3110
    @EXPECT compile_fail:A3110 */

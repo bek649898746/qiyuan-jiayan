@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* 数组遮蔽外层仍拦 (2026-09-09): 遮蔽块内整元素恢复不得误清外层 — 块退后外层读 应 A3101 */
 构 内部 { 字 *p; 整 v; };

@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3110
 # 包含 <stdio.h>
 /* 类型级析构 TypeDrop A1 表达式内覆写拒 (2026-09-06): (b = 新X(2), 1) 逗号表达式语句 内嵌覆写析构 b → A3110
    @EXPECT compile_fail:A3110 */

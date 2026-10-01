@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A5001
 #include <stdio.h>
 /* A3 (2026-09-12): 闭包 捕获 表 容量 护栏 — 单 闭包 捕获 上限 8 (快照 通道 按 槽 展开),
    原 收集 守卫 写 `若 (整甲 < 64 && 栈捌[整甲] < 8)` —— 满 8 就 **静默 丢弃** 第 9 个 捕获:

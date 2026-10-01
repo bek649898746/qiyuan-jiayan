@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* NLL 箭头成员写悬垂 (验证 2026-09-09 已知边界): p=&x 赋值登记 → x 移走 → p->v=99 箭头写
    应 A3101 (写方向仅 *p= 星号解引用覆盖, 箭头成员写漏查别名目标) */

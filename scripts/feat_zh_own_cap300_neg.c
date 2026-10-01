@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* 域六容量回归 (2026-09-09): 300 整元素移出 (登记 >256 上限) + 读 项[299] 应 A3101 — 扩容 2048 修复静默丢漏拦 */
 构 内部 { 字 *p; 整 v; };

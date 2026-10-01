@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 #include <stdio.h>
 /* 未初始化遮蔽漏拦修复 (2026-09-09): 外层 x 未初始化, 遮蔽块内 同名 x 初始化
    不得误清外层未初始化标记 → 块退后 外层读 x 应 A4001 (原漏拦 编译过+运行垃圾值) */

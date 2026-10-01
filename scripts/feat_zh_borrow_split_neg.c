@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3001
 #include <stdio.h>
 
 /* G4-1 补锚 (#33 借用分裂 · 负例面):

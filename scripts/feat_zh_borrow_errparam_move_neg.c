@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3004
 #include <stdio.h>
 /* P0-4 A5-2 (2026-09-10): 借用 y + 错误函数按值传参 尝试 f(y) → 借用期 move A3004
    修复前: 传参默认移动 条件 !下组(错误函数) 误排除错误函数传参 → 借用期 move 进错误函数漏拦 */

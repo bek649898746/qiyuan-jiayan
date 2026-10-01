@@ -2234,6 +2234,10 @@ CORE_FEAT += [
     'scripts/feat_zh_procmacro_badcode_neg.c',
     'scripts/feat_zh_contract_static_neg.c',
     'scripts/feat_zh_range_type_assign_neg.c',
+    # 续四十三 (2026-10-01): `A3103` 首个锚 —— 变量已移动⟹不能借用 (号合.0 #10). 触发条件=**非 Copy 类型**
+    #   (类型表Copy: 联合/指针字段/嵌套构字段/值宽>8B ⟹ 非 Copy; 字段全 Copy 的构 ⟹ 自动 Copy ⟹ 移入不设移标).
+    #   插桩两读数一对比定案: [MOVE] src=a + [BORROW] houzi=1. 与 A3002(死代码) 形成对照 ⟹ A3103 可达.
+    'scripts/feat_zh_a3103_moved_borrow_neg.c',
 ]
 
 def build_tests(args):
@@ -2321,8 +2325,13 @@ def run_one_test(name):
     #   ① 负例 (应拒)  ② 负数 (negative VALUE —— probe_neg / regress_enum_neg / regress_ll_neg /
     #      regress_neg_index_ptr 都带 @EXPECTED exit:0 的运行期断言)。
     #   原判据只看后缀 ⟹ 5 个「负数」锚被误判为 compile_fail; round 29 硬化后它们编译成功即 FAIL。
-    #   现: 文件显式声明了运行期断言 (@EXPECTED exit:/out:/err:) ⟹ 以后者为准, 不判 compile_fail。
-    if (not expect_cfail) and (not explicit_run) and (expected_out is None) and (expected_err is None) and ("_neg" in os.path.basename(name)):
+    #   现: 文件显式声明了【纯运行期】断言 (@EXPECTED exit:/out:) ⟹ 以后者为准, 不判 compile_fail。
+    # R449 (2026-10-01 · 第 439 站续四十四): **从判据里去掉 `expected_err is None`** —— 它是陷阱:
+    #   `err:` 断言在 **两个分支都被检查** (compile_fail 分支 L2359 / 运行分支 L2415), 并非运行期专属。
+    #   原判据把「加了 err: 断言」误当成「这是一条运行期锚」⟹ 给 `_neg` 锚补 err: 断言会**静默反转**
+    #   它的语义 (从「必须编译失败」变成「必须编译成功」) ⟹ 实测 **49 个锚** 因此 FAIL (闸 949/47)。
+    #   判据修正为「有纯运行期断言才算运行期锚」; 带 err: 的 `_neg` 锚仍按负例 (compile_fail 分支) 校验 err。
+    if (not expect_cfail) and (not explicit_run) and (expected_out is None) and ("_neg" in os.path.basename(name)):
         expect_cfail = True
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
     try:

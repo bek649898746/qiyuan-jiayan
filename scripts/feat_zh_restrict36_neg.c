@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A5002
 #包含 <stdio.h>
 
 /* #36 restrict 负例: 同一基对象被两个 restrict 指针占用 → A5002 */

@@ -1,6 +1,7 @@
-# 包含 <stdio.h>
+﻿# 包含 <stdio.h>
 /* 未知成员名 负例 (2026-09-05): 拼写错/不存在的字段 → A9001 干净拒 (原 codegen 静默: typo 读落任意偏移/写丢 — 字节视图实证) */
 // @EXPECTED compile_fail
+// @EXPECTED err:A9001
 构 记录 { 整 宽; 整 高; }
 函数 整 主(空) {
     构 记录 r;

@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A5001
 #include <stdio.h>
 /* A3-子表 清剿 (2026-09-12): 标签循环 登记表 容量 64 原为 **静默 丢弃**
    (`若 (标签循环数 < 64) { 登记 }`) —— 第 65 个 带标签 循环 不 登记, 带标签 断/续 的

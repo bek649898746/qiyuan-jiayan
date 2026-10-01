@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9005
 # 包含 <stdio.h>
 /* A3 负例 (2026-09-11): 闭包数组 变量 下标 调用 → A9005
    (闭包 调用 是 解析期 展开 — 无 运行时 闭包值; 变量下标 无法 在 解析期 定槽) */

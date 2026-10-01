@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A8001
 #include <stdio.h>
 /* P0-1 N1 (2026-09-10): 可空值类型 未解包取值 (运算/传参/比较) → A8001
    修复前: 可空 整 x+1 静默取载荷 (仅指针解引用拦 A8001) */

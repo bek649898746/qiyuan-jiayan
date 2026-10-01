@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9006
 #包含 <stdio.h>
 /* R272 (2026-09-26 启元 · 第 364 站 round 11): **约束泛型 应拒面 —— 下标实参 类型未实现接口**
    判据: `泛型 双倍: 可加(x)` 的实参是**下标表达式** `arr[0]` (元素类型 `丙` 未 `实现 可加`)

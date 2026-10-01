@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A4001
 # 包含 <stdio.h>
 /* I2-③ (2026-09-10): 结构体部分初始化 (字段写) 后读未写字段 → A4001
    修复前: 字段写 s.a=5 走 未初始化移除(s) 清整变量登记 → 读 s.b 静默垃圾值

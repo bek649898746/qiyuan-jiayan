@@ -1,3 +1,4 @@
+﻿// @EXPECTED err:A3101
 #包含 <stdio.h>
 
 /* #9 Copy 语义 负例: 非 Copy 类型 移入 后读取源 → A3101 已移动
