@@ -2286,6 +2286,11 @@ CORE_FEAT += [
     # #189 编译期文件读取（正: 嵌入 payload → 读回 len=16 + 内容 JIAYAN-EMBED-189；负: A6019）
     'scripts/feat_zh_embed_readback_ok.c',
     'scripts/feat_zh_embed_missing_neg.c',
+    # #181 宏卫生**深化**（正: 嵌套宏两层 gensym 帧互不串 → b_in=11/a_t=10/out=100）
+    #   🟡 判据原文 =「词元宏卫生面闸内锚 0（旧锚 feat_zh_macro_hygiene_ok.c 是 #定义词 预处理器 = 同名异物）」
+    #   ⟹ 本锚补上该面并钉**更深**形态（两层同名局部 + 调用点同名 + 参数为另一宏的 gensym 值）；
+    #   负例拦截由 feat_zh_hygiene_cap_neg.c（A9009）承担。
+    'scripts/feat_zh_hygiene_deep181_ok.c',
 ]
 
 def build_tests(args):

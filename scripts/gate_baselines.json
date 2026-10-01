@@ -1,9 +1,9 @@
 {
  "fixed": "FBBA98CE",
- "time": "2026-10-02 07:28:12",
+ "time": "2026-10-02 07:58:08",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1019,
+   "anchor_count": 1020,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
