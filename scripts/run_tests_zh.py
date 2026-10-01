@@ -2206,6 +2206,9 @@ CORE_FEAT += [
     'scripts/feat_zh_delay_return_order_ok.c',
     'scripts/feat_zh_recursion_guard_deep_neg.c',
     'scripts/feat_zh_panic_hook_ok.c',
+    'scripts/feat_zh_pool_ok.c',
+    'scripts/feat_zh_sb_build_ok.c',
+    'scripts/feat_zh_vec_grow_ok.c',
 ]
 
 def build_tests(args):
