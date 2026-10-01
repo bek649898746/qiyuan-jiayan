@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A1001
 #include <stdio.h>
 /* R267 (2026-09-26 启元 · 第 364 站 round 8): **泛型 应拒面 ①: 实参个数不足**
    判据: `泛型 最大值(x, y)` 只给 1 个实参 ⟹ 文本展开后 `y` 未声明 ⟹ **必须编译期报错**。

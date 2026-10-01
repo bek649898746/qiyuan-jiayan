@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:模式匹配非穷尽
 #include <stdio.h>
 /* R266 (2026-09-26 启元 · 第 364 站 round 7): **穷尽性检查 —— 应拒面**
    判据: `依据 r, tag 穷尽 形 对照 ...` 缺分支 ⟹ **必须编译期报错**;

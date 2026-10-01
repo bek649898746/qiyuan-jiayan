@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3001
 #include <stdio.h>
 
 /* 甲言 可变借用 &mut 负例验证 (2026-08-28): 机制层借用族 P0 #3 — 每段都应被编译期 [ERR] 拦截

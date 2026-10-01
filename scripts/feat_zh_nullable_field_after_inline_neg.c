@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A8001
 #包含 <stdio.h>
 
 /* 第 192 站 负例 —— **内联体 之后** 的 可空字段, 检查 应 生效 (未判空解引用 ⟹ A8001)

@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:编译期断言失败
 # 包含 <stdio.h>
 
 /* #74 类型级编程 负例: 编译期断言 类型不匹配 → 失败 */

@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A8002
 /* 第 198 站 负例 —— **非可空**变量 的 `= 空` 必须**仍然响亮报错**（A8002）
  *
  *   配套正向锚 `feat_zh_assign_null_ptr_ok.c` 把 `= 空` 的放行条件放宽到

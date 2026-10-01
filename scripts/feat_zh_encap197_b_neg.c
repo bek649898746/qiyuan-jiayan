@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A1001
 #包含 <stdio.h>
 
 /* #197 负面测试 — b_neg 引用 a.o 的私有符号 (隐藏函数/隐藏变量), 应链接失败 */

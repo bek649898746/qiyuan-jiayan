@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9001
 #include <stdio.h>
 /* C146 (2026-09-19 第 136 站): **变量名 撞 保留类型词 ⟹ 响亮报错 (A9001)**.
    病灶: 类型解析 走 `循环 (词型表[词位] == 型词)` —— 贪婪 消费 连续 型词; 撞词的 变量名 本身 是 型词

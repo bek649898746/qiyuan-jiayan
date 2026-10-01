@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3106
 # 包含 <stdio.h>
 /* 所有权 守卫基 字段拷贝外流拒 (2026-09-06 虾米 G9): 守卫 a; t = a.子 (非Copy 结构字段赋值外流)
    → A3106 (Rust E0509 同族: Drop 型不可读非Copy字段 — 基作用域整析构会与 t 双释放)

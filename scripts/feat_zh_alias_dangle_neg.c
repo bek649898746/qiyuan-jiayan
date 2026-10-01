@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* NLL 别名悬垂 (2026-09-09): p=&x (赋值登记) → x 移入 t → 经 *p/箭头读 应 A3101
    修复前: *p 解引用读 绕过 移动失效 (直接读已移 x 拦 不对称) */

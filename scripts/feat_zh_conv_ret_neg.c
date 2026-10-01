@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9002
 #include <stdio.h>
 /* 显式I2 负例 (2026-09-07): 整型函数返回 双精度 无显式转 → A9002
  *

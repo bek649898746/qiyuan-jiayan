@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A9004
 #包含 <stdio.h>
 
 /* #193 负例: 父未声明 A9004 / 联合继承 A9005 — 每个独立文件编译 */

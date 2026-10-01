@@ -1,4 +1,5 @@
-// @EXPECTED compile_fail
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3101
 #include <stdio.h>
 /* NLL 声明合一别名悬垂 *p 读 (2026-09-10): 构 X *q = &x (声明合一, 走 块() L7762 分支)
    → x 移入 t → (*q).v 解引用读 应 A3101 (修复前: 声明合一别名未登记 → 漏拦) */

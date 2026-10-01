@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3106
 # 包含 <stdio.h>
 /* 所有权 守卫变量部分移动拒绝 (2026-09-06 虾米 G5): 守卫 a 后 移入 t, a.子 → A3106 (Rust E0509:
    Drop 型不可字段移出 — 作用域退出整对象析构会双析构已移出字段)

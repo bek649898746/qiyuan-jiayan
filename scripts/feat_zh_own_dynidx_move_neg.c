@@ -1,3 +1,5 @@
+﻿// @EXPECTED compile_fail
+// @EXPECTED err:A3107
 # 包含 <stdio.h>
 /* 所有权 G1 (2026-09-09): 动态下标 (运行期索引) 整元素 不可移出 — A3107
    Rust E0508 精神: 运行期索引无法静态登记 → 移后读漏拦 (曾 aud2c 位拷贝无声放行)
