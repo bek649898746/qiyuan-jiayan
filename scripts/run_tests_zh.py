@@ -2224,6 +2224,7 @@ CORE_FEAT += [
     'scripts/feat_zh_timeout_ok.c',
     'scripts/feat_zh_retry_ok.c',
     'scripts/feat_zh_struct_arr_stride_ok.c',
+    'scripts/feat_zh_trylock_global_ok.c',
 ]
 
 def build_tests(args):
