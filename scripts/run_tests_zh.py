@@ -2217,6 +2217,12 @@ CORE_FEAT += [
     'scripts/feat_zh_send_thread_ok.c',
     'scripts/feat_zh_delay_ok.c',
     'scripts/feat_zh_embed_ok.c',
+    'scripts/feat_zh_immutable_ok.c',
+    'scripts/feat_zh_immutable_neg.c',
+    'scripts/feat_zh_zst_ok.c',
+    'scripts/feat_zh_fatal_error_ok.c',
+    'scripts/feat_zh_timeout_ok.c',
+    'scripts/feat_zh_retry_ok.c',
 ]
 
 def build_tests(args):
