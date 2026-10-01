@@ -2238,6 +2238,10 @@ CORE_FEAT += [
     #   (类型表Copy: 联合/指针字段/嵌套构字段/值宽>8B ⟹ 非 Copy; 字段全 Copy 的构 ⟹ 自动 Copy ⟹ 移入不设移标).
     #   插桩两读数一对比定案: [MOVE] src=a + [BORROW] houzi=1. 与 A3002(死代码) 形成对照 ⟹ A3103 可达.
     'scripts/feat_zh_a3103_moved_borrow_neg.c',
+    # 续四十九 (2026-10-01): R453 外部符号赋值 静默丢弃 根治 —— 单文件模式下 `extern 整 g; g = 5;`
+    #   原生成 `mov $0x5,%eax` 后无 store（赋值整段被 `偏移 >= 0` 类判据跳过且无诊断）。
+    #   修后与「读」对称报 A1001。灵敏度: 旧编译器下编译成功 ⟹ 必红。
+    'scripts/feat_zh_ext_var_assign_neg.c',
 ]
 
 def build_tests(args):
