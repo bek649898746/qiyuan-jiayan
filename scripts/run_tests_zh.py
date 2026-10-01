@@ -2210,6 +2210,13 @@ CORE_FEAT += [
     'scripts/feat_zh_sb_build_ok.c',
     'scripts/feat_zh_vec_grow_ok.c',
     'scripts/feat_zh_compile_const_ok.c',
+    'scripts/feat_zh_sealed_neg.c',
+    'scripts/feat_zh_partial_apply_ok.c',
+    'scripts/feat_zh_annotation_ok.c',
+    'scripts/feat_zh_threadsafe_ok.c',
+    'scripts/feat_zh_send_thread_ok.c',
+    'scripts/feat_zh_delay_ok.c',
+    'scripts/feat_zh_embed_ok.c',
 ]
 
 def build_tests(args):
