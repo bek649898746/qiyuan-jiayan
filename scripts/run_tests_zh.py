@@ -2229,6 +2229,11 @@ CORE_FEAT += [
     'scripts/feat_zh_err_wide_struct_recover_ok.c',
     'scripts/feat_zh_lock_scope_ok.c',
     'scripts/feat_zh_borrow_reborrow_neg.c',
+    'scripts/feat_zh_procmacro_undef_neg.c',
+    'scripts/feat_zh_contract_hash_unreg_neg.c',
+    'scripts/feat_zh_procmacro_badcode_neg.c',
+    'scripts/feat_zh_contract_static_neg.c',
+    'scripts/feat_zh_range_type_assign_neg.c',
 ]
 
 def build_tests(args):
