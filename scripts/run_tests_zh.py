@@ -2381,6 +2381,12 @@ CORE_FEAT += [
     #   本锚不定义任何 thread_*, 由编译器直接发射 `CreateThread`/`WaitForSingleObject` (主源 L24803/L24820「线程真接入」)。
     #   确定性: 每线程只写自己的槽 ⟹ 无竞争 ⟹ `等待` 后必为 1/11/21。
     'scripts/feat_zh_thread45_ok.c',
+    # 族3 #42 通道关闭语义 —— **真接入**（原「关闭语义主源 0 处」）：新增载体 `__ch_q_closed` +
+    #   语句 `关闭通道 q;` + 查询 `通道已关闭(q)`；正锚证「关闭前后 0 → 1」（真状态位 + 幂等）；
+    #   负锚证未声明通道 → A1001（且文案不泄露内部合成名）。
+    #   ⚠️ 同时是 R1 教训的回归哨兵：两个新关键字**已补进未知类型名排除链**，漏登记则语句被静默吞 ⟹ 正锚必红。
+    'scripts/feat_zh_chan42_close_ok.c',
+    'scripts/feat_zh_chan42_undecl_neg.c',
 ]
 
 def build_tests(args):
