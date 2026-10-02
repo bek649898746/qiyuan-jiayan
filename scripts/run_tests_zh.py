@@ -2361,6 +2361,26 @@ CORE_FEAT += [
     #   负 = 无参数对照函数 ⟹ A6026 (本轮把原「裸 [ERR] 无码」改为带码)
     'scripts/feat_zh_mcf222_ok.c',
     'scripts/feat_zh_mcf222_neg.c',
+    # ===== 第 446 站 (2026-10-02 虾米): 族3 #66 定时器/异步族 —— 真接入 + 收口 (4 枚, 全净增; 父提交 a50ffbbb 逐项核过) =====
+    #  判据来源: `_LONG_MARCH_MASTER.md` 第 445 站「下一刀」第一条 + `_DEBT_INDEX.md` L-1 留底。
+    #  改前 (编译器 924BBE38 + 运行时 HEAD) 实测四枚**全红/全静默**; 改后 (09AFB825) 正锚 PASS + 三负锚带码。
+    'scripts/feat_zh_evloop65_ok.c',        # #65 事件循环 真接入正锚: `异步 注册/泵/步进` 原运行时零实现+内建表零登记 ⟹ A1001 不可达;
+                                            #   改后 rc=0 输出 reg1=1 reg2=2 reg3=3 pump=2 step=1 (机制特有: 虚拟时钟到期计数), gcc 同源 oracle 逐字一致
+    'scripts/feat_zh_timer_undecl_neg.c',   # #66 R1 灵敏度负锚: `延时 未声明名;` 原(924BBE38) 因 `延时` 不在未知类型名排除链 ⟹ 被当变量声明**静默吞掉** rc=0; 改后 A1001
+    'scripts/feat_zh_timer_missing_neg.c',  # #66 R2a 灵敏度负锚: `延时;` 缺参 原 rc=0 静默 (语法糖脱糖路径未走普通调用的 A9007 实参检查); 改后 A9007
+    'scripts/feat_zh_timer_extra_neg.c',    # #66 R2b 灵敏度负锚: `延时 10, 20;` 多参 原 rc=0 静默忽略后续 (**静默错值**); 改后 A9007
+    # ===== 第 447 站 (2026-10-03 虾米): 族3 #41 协程完整 —— **真本体锚** (1 枚, 净增) =====
+    #  由来: 族3 扫描件「刀A」判据 —— 旧锚 (`feat_coro_zh.c`/`feat_coro.c`) **自带 `static void coro_init(...)`**
+    #        (用户手写状态机模拟) ⟹ **遮蔽真本体** ⟹ 只验脱糖连通性, 不构成真本体的独立验证 ⟹ 本体虽真仍降 🟡。
+    #  本锚**不定义任何 coro_\*** —— 直接用运行时 `qcc_rt.c` 真实现 (`coro_init`→**CreateFiber**,
+    #        `步进`→`ConvertThreadToFiber`+`SwitchToFiber`, `让出`→`__coro_yield`)。
+    #  机制特有观测: 协程内 `for` 4 次 × `让出` 挂起, 跨挂起点累积 `0+1+2+3 = 6`。
+    #  ⚠️ 签名约定 (读 `__coro_wrap` 定案): fn = `int (*)(void *)` **单参**; wrap 只调 fn 一次 ⟹ 协程须自循环 + `让出`。
+    'scripts/feat_zh_coro41_ok.c',
+    # 族3 #45 线程模型完整 —— **真本体锚**: 旧 `feat_thread_zh.c` 自带 `thread_create`/`thread_join` 模拟 (刀A 遮蔽真本体);
+    #   本锚不定义任何 thread_*, 由编译器直接发射 `CreateThread`/`WaitForSingleObject` (主源 L24803/L24820「线程真接入」)。
+    #   确定性: 每线程只写自己的槽 ⟹ 无竞争 ⟹ `等待` 后必为 1/11/21。
+    'scripts/feat_zh_thread45_ok.c',
 ]
 
 def build_tests(args):

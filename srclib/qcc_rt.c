@@ -1092,5 +1092,63 @@ void timer_delay(int ms) {
 long long timer_deadline(int ms) {
     return clock() + (long long)ms;
 }
+
+/* ---- 第 446 站 #65 事件循环 / #66 异步 · 真实现 (2026-10-02 虾米) ----
+   主源脱糖 (qcc_zh.jy L8437):  `异步 泵(q,r,t,l)` → `async_pump(q,r,t,l)` · `异步 步进(q,r,t)` → `async_step(q,r,t)` · `异步 注册(q,d)` → `async_register(q,d)`
+   原状: 三个脱糖目标 运行时**零实现** 且 主源内建豁免表**零登记** ⟹ 实测 A1001「未声明函数 'async_register'」⟹ 用户**完全不可达**
+         (与第 444 站的 `延时/timer_delay` 完全同型: 「脱糖点存在、目标不存在」)。
+   本站: 内建表登记三名 (真接入第 1 步, 编译器源) + 本文件提供**真实现** (第 2 步)。
+   语义 (本仓首次规范定义 —— 原主源注释只写「用户定义 async_*」, 无规范语义):
+     异步 注册(队列, 延时毫秒)               → 登记一个「延时毫秒后到期」的定时器, 返 序号 (1 起; 0 = 队列满)
+     异步 泵(队列, 轮数, 每轮毫秒, 上限毫秒)   → 推进虚拟时钟, 返 累计到期数 (停止: 轮数尽 或 虚拟时间 ≥ 上限>0)
+     异步 步进(队列, 轮数, 每轮毫秒)           → 同 泵, 无上限 (上限 <= 0)
+   确定性: **纯整数虚拟时钟**; 无 OS 定时器/信号/真并发/线程 ⟹ 同源 gcc 可逐字复现 (oracle 可对照)。
+   观测: 机制特有量 = 注册序号 与 到期计数 —— 由「虚拟时钟推进」与「各定时器到期时刻」共同决定,
+         非通用检查/原生 C 语义可产生。 */
+/* ⚠️ 实现约束 (本站实测血泪 · 必须遵守): **禁用二维数组下标** —— `static int a[4][64]; … a[qi][i]`
+      在本仓会触发「多维数组 / 元素宽」**既有缺陷** (B2/B4/D-12 族), 且**污染同一编译单元内后续代码生成**。
+      实测: 前插段用 `[4][64]` ⟹ 锚 `feat_zh_ptrptr_chain_ok` 的 `dpp[0][2]` 读错 (FAIL 静态二级 rc=3)、
+      `feat_zh_typeof_ptr_ok` 的 `pp[0][1]` 得 `0.00`; 改一维 + 手工索引后两者**立即恢复 PASS**。
+      隔离实验 (同尺寸 static 数组 / 空函数壳) 均**不触发** ⟹ 触发点确为**二维下标的使用**。
+      ⟹ 本段一律用**一维数组 + 手工索引**。 */
+static int __qcc_ev_now[4];
+static int __qcc_ev_due[256];
+static int __qcc_ev_live[256];
+static int __qcc_ev_cnt[4];
+
+int async_register(int q, int delay_ms) {
+    int qi = (q % 4 + 4) % 4;   /* 4 个独立事件循环; 负数取模归一 (禁依赖 % 的符号语义) */
+    int i;
+    if (__qcc_ev_cnt[qi] >= 64) return 0;
+    i = __qcc_ev_cnt[qi];
+    __qcc_ev_due[qi * 64 + i] = __qcc_ev_now[qi] + (delay_ms > 0 ? delay_ms : 0);
+    __qcc_ev_live[qi * 64 + i] = 1;
+    __qcc_ev_cnt[qi] = i + 1;
+    return i + 1;
+}
+
+int async_pump(int q, int rounds, int tick_ms, int limit_ms) {
+    int qi = (q % 4 + 4) % 4;
+    int r, i, hit, total = 0;
+    if (rounds <= 0) rounds = 1;
+    if (tick_ms <= 0) tick_ms = 1;
+    for (r = 0; r < rounds; r++) {
+        if (limit_ms > 0 && __qcc_ev_now[qi] >= limit_ms) break;   /* 到达时限 ⟹ 提前收 */
+        __qcc_ev_now[qi] = __qcc_ev_now[qi] + tick_ms;
+        hit = 0;
+        for (i = 0; i < __qcc_ev_cnt[qi]; i++) {
+            if (__qcc_ev_live[qi * 64 + i] != 0 && __qcc_ev_due[qi * 64 + i] <= __qcc_ev_now[qi]) {
+                __qcc_ev_live[qi * 64 + i] = 0;   /* 触发即摘除 (一次性定时器) */
+                hit = hit + 1;
+            }
+        }
+        total = total + hit;
+    }
+    return total;
+}
+
+int async_step(int q, int rounds, int tick_ms) {
+    return async_pump(q, rounds, tick_ms, 0);
+}
 #endif
 
