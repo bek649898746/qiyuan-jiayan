@@ -2393,6 +2393,11 @@ CORE_FEAT += [
     #   ⚠️ 设计订正（实测）：初版用 `#定义 NDEBUG` 不可行 —— 用户侧 `#定义` 是「纯 C 异物」，对象宏不进表（`NDEBUG` 报 A1001）。
     'scripts/feat_zh_assert91_ok.c',
     'scripts/feat_zh_assert91_debug_neg.c',
+    # 族6 #142 冗余/不可达模式检查 —— **真接入**（对照 多子句侧；判/择 侧已有 L15527 实现）：
+    #   原 其他: 之后仍写子句 ⟹ rc=0 静默（后续子句不可达但无任何提示）⟹ 改后 A6027 带码拒绝。
+    #   ⚠️ 同项的第二形态「重复常量模式值」本轮**未生效**（判据未命中，已如实留底，未纳入锚），故不含该锚。
+    'scripts/feat_zh_mcf_unreach_neg.c',
+    'scripts/feat_zh_mcf142_ok.c',
 ]
 
 def build_tests(args):
