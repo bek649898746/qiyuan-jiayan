@@ -2406,6 +2406,19 @@ CORE_FEAT += [
     #   ⚠️ 用法订正：原生 `宏` **只在表达式位置展开**；宏体内调用**内建**会报 A1001（既有缺口，非本站引入）。
     'scripts/feat_zh_macro_va282_ok.c',
     'scripts/feat_zh_macro_va282_neg.c',
+    # 族15 #289 调试信息 (DWARF) —— **真接入**（两处真缺陷根治; 行号/文件 归属 校正）:
+    #   ① 行号 未 扣 前插运行时节 偏移: `调试行表`/`调试函数表` 两处记录点 直接 存 `词行表`
+    #      （全项目 其余 6 处 —— 发错误/__LINE__/源位置/语义导航 —— 都 用 `词行表 - (剩伴?剩伴:反进)`）
+    #      ⟹ 实测 修复前: CU 名 = `feat_zh_dwarf289_ok.c`（20 行）而 用户函数 decl_line = 1163/1167/1171,
+    #      运行时 113 个函数 全 归 用户文件, 行表 file=1 最大行 1171。
+    #   ② 行表 两源 未 按地址归并: 原 先 发 全部 函数起点 再 发 调试行表, 第二段 沿用 第一段的 `上码`
+    #      ⟹ 单调守卫 把 行表行 几乎 全数 丢弃（修复前 锚产物 file=1 仅 4 行）。
+    #   修法: `调试定位()` 单一权威（用户文件=1 / 前插运行时=2）+ abbrev 加 `decl_file` +
+    #        file_names 两条目（用户源 + `qcc_rt.c`）+ 行号程序 归并 + `DW_LNS_set_file` +
+    #        `调写SLEB`（有符号 行增量; 原 用 ULEB 写 负增量）+ 调试缓冲 128K→1M。
+    #   验证: `scripts/check_dwarf289.py`（闸④）现场 反查 锚文件 真行号 与 DWARF 对账。
+    #   ⚠️ 本锚 运行期只验 程序本身（DWARF 校验 必须 由 独立 检查器 做 —— 运行中的程序 看不到 自己的调试节）。
+    'scripts/feat_zh_dwarf289_ok.c',
 ]
 
 def build_tests(args):
@@ -2639,6 +2652,7 @@ def main():
         import importlib.util as _ilu2
         for _tag, _scr, _what in (
                 ('闸②', 'check_c_mode_smoke.py', '`-c` 模式冒烟'),
+                ('闸④', 'check_dwarf289.py', '#289 调试信息 (DWARF) 行号/文件归属'),
                 ('闸③', 'check_neg_anchors.py', '负例锚有效性')):
             _p = os.path.join(root, 'scripts', _scr)
             if not os.path.exists(_p):
