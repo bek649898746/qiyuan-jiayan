@@ -2345,6 +2345,10 @@ CORE_FEAT += [
     # 族11 #228 内存安全检查 (第 444 站): 正 = 定长数组 界内字面量下标 + 变量下标(C 语义不查) 不误拦;
     #   负 = 既有 feat_zh_dep_type52_neg(.neg2).c ⟹ A2001 (本轮补正锚, 三条件齐)
     'scripts/feat_zh_dep_type228_ok.c',
+    # 族7 #154 取消/中断 (第 444 站 · 本轮根治真缺陷): `取消 X;` 触发分支原不查 X 已声明 ⟹ 静默放行;
+    #   修法 = 补 `查变量 < 0 ⟹ A1001`; 正 = 检查点针对具体标志 (exit=22); 负 = 未声明标志 ⟹ A1001
+    'scripts/feat_zh_cancel154_ok.c',
+    'scripts/feat_zh_cancel154_neg.c',
 ]
 
 def build_tests(args):
