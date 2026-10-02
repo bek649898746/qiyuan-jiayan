@@ -2349,6 +2349,12 @@ CORE_FEAT += [
     #   修法 = 补 `查变量 < 0 ⟹ A1001`; 正 = 检查点针对具体标志 (exit=22); 负 = 未声明标志 ⟹ A1001
     'scripts/feat_zh_cancel154_ok.c',
     'scripts/feat_zh_cancel154_neg.c',
+    # 族3 #66 定时器/超时 (第 444 站 · **真接入**): 主源内建登记 + 运行时 qcc_rt.c 真实现(clock 忙等)
+    #   正 = 时钟() 差值 DELAY OK 200 (改前 A1001 不可达, 见 before_after.log)
+    'scripts/feat_zh_timer66_ok.c',
+    # 族11 #235 零大小类型 ZST (第 444 站): 函数内 `空类型 T;` 注册尺寸 0 ⟹ 反射 类型大小(T) = 0 (普通构值 = 4)
+    #   负例面 = 既有 feat_zh_reflect_undeclared_neg.c (A6018 未声明类型)
+    'scripts/feat_zh_zst235_ok.c',
 ]
 
 def build_tests(args):

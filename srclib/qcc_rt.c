@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>   /* 第 444 站 #66: clock()/CLOCKS_PER_SEC — timer_delay/timer_deadline 真实现 */
 /* qcc 内建（gcc 编译检查用声明；实际由 qcc 运行时提供） */
 void *_va_alloc(int n);
 int _setpos(void *f, int off, int whence);
@@ -1070,6 +1071,26 @@ int __qcc_div_check(int divisor) {
 long long __qcc_div_check64(long long divisor) {
     if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
     return divisor;
+}
+
+/* ---- 第 444 站 #66 定时器/超时 · 真实现 (2026-10-02 虾米) ----
+   主源脱糖 (qcc_zh.jy L13887/L13896):  `延时 N;` → `timer_delay(N);` · `超时 N;` → `timer_deadline(N);`
+   原状: 两名未登记内建豁免 ⟹ 编译期 A1001 未声明函数 ⟹ 用户**写不出** `延时` (判据: 951 锚零覆盖 = 不可触达)。
+   本站: 主源内建豁免表登记两名 (真接入第 1 步) + 本文件提供**真实现** (第 2 步)。
+   实现选 **clock() 忙等** 而非 Sleep: 不引 Windows API (保持 qcc_rt.c 可被 gcc 与自宿主两路编译),
+   且确定性可控。CLOCKS_PER_SEC 在 Windows = 1000 ⟹ 1 tick = 1ms ⟹ 毫秒语义成立。
+   观测: `长整 t0 = 时钟(); 延时 200; 长整 t1 = 时钟();` ⟹ t1-t0 >= 200 (真睡眠; 空实现得 ~0)。 */
+void timer_delay(int ms) {
+    if (ms <= 0) return;
+    {
+        long long t0 = clock();
+        long long end = t0 + (long long)ms;   /* Windows CLOCKS_PER_SEC=1000 ⟹ 1 tick = 1ms ⟹ ms 毫秒 = ms ticks。
+                                                 禁双精度 (编译器前插本文件 ⟹ 浮点转换触发 A9002) · 禁 CLOCKS_PER_SEC 宏 (编译器不可见 ⟹ A1001) */
+        while (clock() < end) { /* 忙等 (确定性, 不依赖 OS 定时器/信号) */ }
+    }
+}
+long long timer_deadline(int ms) {
+    return clock() + (long long)ms;
 }
 #endif
 

@@ -3038,7 +3038,8 @@ __attribute__((原粗))
         /* 启元 Q2 修复 (2026-09-23): 下面 6 个 甲言内建 都【已有内联分支】(码生成 里有 比较字符串(串升,X) 分支),
            却漏登记 位非标[] ⟹ 主薄() 返 0 ⟹ 双玖 为真 ⟹ 走"普通函数调用" ⟹ -c 模式 .obj 里留成外部引用 ⟹
            外部链接报 undefined reference. 与已登记的 _va_alloc / thread_create 同族 (同在 内置豁免表 L4472 行)。 */
-        "_bump_set", "_bump_top", "atomic_fetch_add", "atomic_compare_exchange", "get_proc_address", "load_library" }; /* 2026-08-28 类型-根-14 #45: 线程内建 (创建线程/WaitForSingleObject 导入表 调用) */
+        "_bump_set", "_bump_top", "atomic_fetch_add", "atomic_compare_exchange", "get_proc_address", "load_library",
+        "timer_delay", "timer_deadline" }; /* 2026-08-28 #45 线程内建; 第 444 站 #66: `延时 N`→timer_delay(N) · `超时 N`→timer_deadline(N) 脱糖目标登记 (原未登记 ⟹ A1001 用户不可达; 运行时 qcc_rt.c 供真实现) */
     遍 (整 计 = 0; 计 < (整)(大小(位非标)/大小((位非标)[0])); 计++) 若 (!比较字符串(位非标[计], 数)) 返 1;
     返 0;
 }
