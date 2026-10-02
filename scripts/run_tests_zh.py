@@ -2332,6 +2332,10 @@ CORE_FEAT += [
     'scripts/feat_zh_label_undeclared_neg.c',
     # #276 字符串构建器（族14）: 正锚为既有条目 · 负 = 未声明的构建器 ⟹ **A6025**（本轮新增）
     'scripts/feat_zh_sb_undeclared_neg.c',
+    # 族2 #31 借用迁移 (borrow move) · 别名链传播 (第 443 站): 正 = 借用经 r2=r1 迁移 + 返回值迁移后仍活别名 (三=56);
+    #   负 = 传播后 写被借用变量 且 传播目标写后仍用 ⟹ **A3001** (只在 L7594 传播生效时拒绝 = 灵敏度)
+    'scripts/feat_zh_borrow_move_ok.c',
+    'scripts/feat_zh_borrow_move_neg.c',
 ]
 
 def build_tests(args):
