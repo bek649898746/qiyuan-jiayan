@@ -2336,6 +2336,15 @@ CORE_FEAT += [
     #   负 = 传播后 写被借用变量 且 传播目标写后仍用 ⟹ **A3001** (只在 L7594 传播生效时拒绝 = 灵敏度)
     'scripts/feat_zh_borrow_move_ok.c',
     'scripts/feat_zh_borrow_move_neg.c',
+    # 族1 #6 引用计数 Rc (第 444 站): 正 = 共享快照(a=42)/克隆链(b=7); 负 = 取后复用 ⟹ A3101
+    'scripts/feat_zh_rc6_ok.c',
+    'scripts/feat_zh_rc6_neg.c',
+    # 族1 #7 原子引用计数 Arc (第 444 站): 同 Rc 形, 原子计数通路
+    'scripts/feat_zh_arc7_ok.c',
+    'scripts/feat_zh_arc7_neg.c',
+    # 族11 #228 内存安全检查 (第 444 站): 正 = 定长数组 界内字面量下标 + 变量下标(C 语义不查) 不误拦;
+    #   负 = 既有 feat_zh_dep_type52_neg(.neg2).c ⟹ A2001 (本轮补正锚, 三条件齐)
+    'scripts/feat_zh_dep_type228_ok.c',
 ]
 
 def build_tests(args):
