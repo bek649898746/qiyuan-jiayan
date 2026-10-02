@@ -2291,6 +2291,33 @@ CORE_FEAT += [
     #   ⟹ 本锚补上该面并钉**更深**形态（两层同名局部 + 调用点同名 + 参数为另一宏的 gensym 值）；
     #   负例拦截由 feat_zh_hygiene_cap_neg.c（A9009）承担。
     'scripts/feat_zh_hygiene_deep181_ok.c',
+    # 第 441 站 (2026-10-02): **跨族**特性主线 —— 4 族 5 项同时达「真语义 ∧ 负例拦截 ∧ 闸内锚」。
+    #   ⭐ 本批 7 枚锚是**早已写好却从未入闸**的（既往「写好未入闸」病的又一现场）⟹ 先逐枚实跑确认是真锚不是空锚。
+    #   ★ 四处源码根治（全部把「无码 / 静默」换成「响亮 + 带码」）:
+    #     A6020 密封（原 `输出到文件([ERR] 密封类型…)` 无码）×2 处拦截点
+    #     A6021 内存池 块参数 ≤0（原 **静默钳位** 成 4×1，实测 `内存池 池,0,0;` 竟正常运行）
+    #     A6022 内存池 池未声明（原报 `A1001 未声明标识符 '__pool_X_id'` —— **泄内部符号名**）
+    #     A6023 传线程 线程不安全类型（原无码）
+    #     ★ 外加一处**真缺陷根治**：#70 的 `线程安全 T;` 原**反向**把 T 登记进不安全表
+    #       （`新失` 只置空不减 后劣, 紧接的 `!串又` 因空串不等而返真 ⟹ 刚移除的名字又被加回；
+    #        缺 `!尾平一` 守卫）—— 由本站**加强正锚**（把 `传线程` 移入函数体, 真走检查路径）暴露。
+    # #207 密封/最终类（族9）: 正 = 密封类型的**正常使用**照常成立；负 = 实现 被 A6020 拒。一开一关。
+    'scripts/feat_zh_sealed_ok.c',
+    'scripts/feat_zh_sealed_neg.c',
+    # #70 Send/同步（族3 并发）: 正×2（线程安全 T; + 传线程 在函数体内真走检查）· 负 = 线程不安全 → A6023
+    'scripts/feat_zh_send_thread_ok.c',
+    'scripts/feat_zh_threadsafe_ok.c',
+    'scripts/feat_zh_send_unsafe_neg.c',
+    # #225 内存池（族11）: 正 = LIFO 复用/取尽/归池读回；负×2 = 块参数非法 A6021 / 池未声明 A6022
+    'scripts/feat_zh_pool_ok.c',
+    'scripts/feat_zh_pool_badparam_neg.c',
+    'scripts/feat_zh_pool_undeclared_neg.c',
+    # #209 不可变性（族10）: 正 = 不变 冻结 + **普通变量仍可赋值**（归因对照）；负 = 再赋值 A9006
+    'scripts/feat_zh_immutable_ok.c',
+    'scripts/feat_zh_immutable_neg.c',
+    # #212 柯里化/部分应用（族10）: 正 = 绑定首参 g(5)==加(10,5)==15；负 = 目标函数未声明 A1001
+    'scripts/feat_zh_partial_apply_ok.c',
+    'scripts/feat_zh_partial_apply_neg.c',
 ]
 
 def build_tests(args):
