@@ -2355,6 +2355,10 @@ CORE_FEAT += [
     # 族11 #235 零大小类型 ZST (第 444 站): 函数内 `空类型 T;` 注册尺寸 0 ⟹ 反射 类型大小(T) = 0 (普通构值 = 4)
     #   负例面 = 既有 feat_zh_reflect_undeclared_neg.c (A6018 未声明类型)
     'scripts/feat_zh_zst235_ok.c',
+    # 族10 #222 多子句函数定义 (第 445 站): `对照` 等值分派 (m0=100 m1=200 m7=214, 含 其他: 默认兜底)
+    #   负 = 无参数对照函数 ⟹ A6026 (本轮把原「裸 [ERR] 无码」改为带码)
+    'scripts/feat_zh_mcf222_ok.c',
+    'scripts/feat_zh_mcf222_neg.c',
 ]
 
 def build_tests(args):
