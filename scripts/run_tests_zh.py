@@ -2387,6 +2387,12 @@ CORE_FEAT += [
     #   ⚠️ 同时是 R1 教训的回归哨兵：两个新关键字**已补进未知类型名排除链**，漏登记则语句被静默吞 ⟹ 正锚必红。
     'scripts/feat_zh_chan42_close_ok.c',
     'scripts/feat_zh_chan42_undecl_neg.c',
+    # 族4 #91 断言分级 —— **真接入**（原 `NDEBUG` 主源 0 处 / 无 release 档 ⟹ 用户写不出「发布版关断言」）：
+    #   新增编译期语句 `发布模式;`（置编译器全局 发布标，纯状态、不生成代码）；`断言` 分支命中后**跳过参数且不求值**
+    #   （对齐 C `((void)0)`，副作用也不发生）。一开一关：正锚 `AFTER`+exit0；对照锚无开关 ⟹ 空+exit1。
+    #   ⚠️ 设计订正（实测）：初版用 `#定义 NDEBUG` 不可行 —— 用户侧 `#定义` 是「纯 C 异物」，对象宏不进表（`NDEBUG` 报 A1001）。
+    'scripts/feat_zh_assert91_ok.c',
+    'scripts/feat_zh_assert91_debug_neg.c',
 ]
 
 def build_tests(args):
