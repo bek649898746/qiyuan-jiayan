@@ -18,6 +18,8 @@ MEMS = '构 盒 s; s.f = 加一; s.t[0] = 加一; s.t[1] = 倍二; s.t2[0][0] = 
 
 # (id, 声明块, 前置语句, 表达式)
 CASES = []
+# --- 第 455 站第二十三轮 (L-15 真接入): 函数名 取址 —— `&函数名` 类型 = 函数指针 ⟹ 直调 与 管道 均放行 ---
+CASES.append(('FN_addr', H, '', '(&加一)(5)', '(&加一)', '5 |> &加一'))
 # --- 局部 标量 ---
 for form, ex in (('bare', 'fp(5)'), ('deref', '(*fp)(5)'), ('addr', '(&fp)(5)')):
     CASES.append(('LOC_scalar_' + form, H, S1, ex, 'fp', '5 |> ' + ('fp' if form == 'bare' else ('*fp' if form == 'deref' else '&fp'))))
