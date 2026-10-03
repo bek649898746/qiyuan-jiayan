@@ -2475,6 +2475,14 @@ CORE_FEAT += [
     #       ⟹ `&` 形态在甲言整体不可调用（通用调用点缺陷, 挂账 L-15），管道拒之且文案已订正。
     'scripts/feat_zh_pipe213_arr_elem_ok.c',
     'scripts/feat_zh_pipe213_ampaddr_neg.c',
+    # 第 455 站 第七轮 (skeptic 第三轮驳回 → 判据补 **层级**):
+    #   负: `整 (*t[2])(整) = {加一,倍二}; 5 |> t;` —— **裸数组名**（A22 码 9+16*1，层级 1）。
+    #       第六轮判据 `(登-1)%16==9` 丢掉层级 ⟹ 数组被当标量函数指针放行 ⟹ rc=0 + 0xC0000005
+    #       （基准线: 同输入 `t(5)` 直接调用 也崩）。
+    #   负: `整 (**pp)(整) = &fp; 5 |> *pp;` —— 函数指针的指针解引用一代（层级 1）。
+    #       基准线: `(*pp)(5)` 直接调用 = 0xC0000005 ⟹ 拒; 而 `(*fp)(5)` = FPC 6 ⟹ `5 |> *fp` 放行。
+    'scripts/feat_zh_pipe213_arr_bare_neg.c',
+    'scripts/feat_zh_pipe213_pp_deref_neg.c',
 ]
 
 def build_tests(args):
