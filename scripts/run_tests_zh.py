@@ -2578,6 +2578,10 @@ CORE_FEAT += [
     # 刀7/刀8 主动枚举补: 调用返回函数指针族 的 **值语义 / 管道 / 三层** ——
     #   `*f()` / `**g()` 作值 (刀7) · `**h()` 链根=调用 (刀8) · `5 |> (*f())` / `5 |> *g()` · `(**h())(5)`。
     'scripts/feat_zh_l15_retval_ok.c',
+    # 刀9 主动枚举第三批: **调用结果的可用性** —— `f()(5)` 直调 / `5 |> f()` 管道 / 赋变量 /
+    #   赋 pp 再解引用 / 作实参; 负锚: `5 |> g()` (返回值 层级1) 拒 (与 gcc 同拒)。
+    'scripts/feat_zh_l15_callres_ok.c',
+    'scripts/feat_zh_l15_pipecall_neg.c',
 ]
 
 def build_tests(args):
