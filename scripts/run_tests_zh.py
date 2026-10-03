@@ -2483,6 +2483,13 @@ CORE_FEAT += [
     #       基准线: `(*pp)(5)` 直接调用 = 0xC0000005 ⟹ 拒; 而 `(*fp)(5)` = FPC 6 ⟹ `5 |> *fp` 放行。
     'scripts/feat_zh_pipe213_arr_bare_neg.c',
     'scripts/feat_zh_pipe213_pp_deref_neg.c',
+    # 第 455 站 第九轮 (自查「相邻档位全跑」→ 覆盖 全局 / 形参 / 成员 / 指针-到-数组 四档):
+    #   正: `整 (*gf)(整) = 加一; 5 |> gf;` = **6** —— **文件级**函数指针变量（原被误拒: `查变量` 查不到全局 ⟹
+    #       判据补既有 `变量基登()` 全局回退）。基准线 `gf(5)` = GFC 6 ✓。
+    #   负: `整 (*pm)[3] = &arr; 5 |> pm;` —— **指针-到-数组**（词元前缀 `(*名)` 与函数指针完全相同 ⟹
+    #       上游分支误登记 A22 ⟹ 本分支必须清除）。基准线 `pm(5)` 直接调用 = 0xC0000005 ⟹ 拒之合理。
+    'scripts/feat_zh_pipe213_globfn_ok.c',
+    'scripts/feat_zh_pipe213_ptrarr_neg.c',
 ]
 
 def build_tests(args):
