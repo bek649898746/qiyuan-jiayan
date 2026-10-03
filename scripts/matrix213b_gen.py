@@ -57,6 +57,9 @@ GS1D1 = '整 (*gt[1])(整) = {加一};'
 MEM1 = '构 盒 { 整 (*f)(整); 整 (*t[1])(整); 整 (*t2[2][3])(整); }\n'
 MEMS1 = '构 盒 s; s.f = 加一; s.t[0] = 加一; s.t2[0][0] = 加一;'
 CASES.append(('SZ_mem_1d_1', H + MEM1, MEMS1, 's.t[0](5)', 's.t[0]', '5 |> s.t[0]'))
+# 第八轮修复面: **标量成员字段 + 下标** (基准 `s.f[0](5)` 崩 ⟹ 管道必须拒)
+CASES.append(('SC_mem_scalar_sub', H + MEM1, MEMS1, 's.f[9](5)', 's.f[9]', '5 |> s.f[9]'))
+CASES.append(('AR_mem_scalar_sub', H + MEM1, MEMS1 + ' 构 盒 *p = &s;', 'p->f[9](5)', 'p->f[9]', '5 |> p->f[9]'))
 CASES.append(('SZ_mem_1d_bare', H + MEM1, MEMS1, 's.t(5)', 's.t', '5 |> s.t'))
 CASES.append(('SZ_loc_1d_1', H, S1D1, 't[0](5)', 't[0]', '5 |> t[0]'))
 CASES.append(('SZ_loc_1d_3', H, S1D3, 't[2](5)', 't[2]', '5 |> t[2]'))

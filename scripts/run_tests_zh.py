@@ -2509,6 +2509,11 @@ CORE_FEAT += [
     #       对照 `5 |> s.t2[0][0]` = 6（正锚 memarr_elem_ok 覆盖）。判据 = **L == D**。
     'scripts/feat_zh_pipe213_memarrow_neg.c',
     'scripts/feat_zh_pipe213_mem2drow_neg.c',
+    # 第 455 站第二十一轮 (skeptic 第八轮 真修): **标量**成员函数指针字段 + **越界下标**
+    #   负: `5 |> s.f[9]` —— 基准 `s.f[9](5)` 崩 ⟹ 拒 (第十八轮曾因「写了 [i] 就是数组」的猜测而误放行)。
+    #   正解 = 声明期**侧表**登记元素数（`字段素登/字段素查`; 0=标量), 而非从类型表猜
+    #        —— 标量 `整 (*f)(整)` 与 size-1 数组 `整 (*t[1])(整)` 在类型表里逐字段同形。
+    'scripts/feat_zh_pipe213_scalarsub_neg.c',
 ]
 
 def build_tests(args):
