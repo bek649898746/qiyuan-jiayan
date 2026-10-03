@@ -20,6 +20,11 @@ MEMS = '构 盒 s; s.f = 加一; s.t[0] = 加一; s.t[1] = 倍二; s.t2[0][0] = 
 CASES = []
 # --- 第 455 站第二十三轮 (L-15 真接入): 函数名 取址 —— `&函数名` 类型 = 函数指针 ⟹ 直调 与 管道 均放行 ---
 CASES.append(('FN_addr', H, '', '(&加一)(5)', '(&加一)', '5 |> &加一'))
+# --- 第 455 站第二十四轮 (L-15 二轮 · skeptic 第十轮): **非变量操作数** 的解引用被调者 ---
+MEMPP = '构 盒P { 整 (**pp)(整); }\n'
+CASES.append(('FN_chain2', H, '整 (*fp)(整) = 加一; 整 (**pp)(整) = &fp; 整 (***ppp)(整) = &pp;', '(**ppp)(5)', '(**ppp)', '5 |> **ppp'))
+CASES.append(('MEM_pp_deref', H + MEMPP, '构 盒P s; 整 (*fp)(整) = 加一; s.pp = &fp;', '(*s.pp)(5)', '(*s.pp)', '5 |> *s.pp'))
+CASES.append(('ELEMPP_arr', H, '整 (*fp)(整) = 加一; 整 (**t[2])(整) = {&fp, &fp};', '(*t[0])(5)', '(*t[0])', '5 |> *t[0]'))
 # --- 局部 标量 ---
 for form, ex in (('bare', 'fp(5)'), ('deref', '(*fp)(5)'), ('addr', '(&fp)(5)')):
     CASES.append(('LOC_scalar_' + form, H, S1, ex, 'fp', '5 |> ' + ('fp' if form == 'bare' else ('*fp' if form == 'deref' else '&fp'))))

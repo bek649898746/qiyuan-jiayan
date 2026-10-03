@@ -2533,6 +2533,17 @@ CORE_FEAT += [
     'scripts/feat_zh_l15_ampfp_neg.c',
     'scripts/feat_zh_l15_datptr_neg.c',
     'scripts/feat_zh_l15_ppp_deref_neg.c',
+    # ===== L-15 第二轮 (2026-10-03 · 第 455 站第二十四轮 · skeptic 第十轮 驳回修复) =====
+    # 病灶: 第二十三轮的层级判据**只认变量子** ⟹ 解引用链 / 成员字段 / 下标元素 落回旧「无条件丢层」
+    #   ⟹ 少一次解引用 ⟹ call 到指针自身的地址 → 0xC0000005（gcc 同源 oracle 全部 = 6）。
+    # 修法 (真结构): 新增 `表达式层级()`（变量 / **解引用链** / **成员·箭头字段** / **下标元素** / 取址）;
+    #   码生成点与管道判据同源消费; 另修 ① `节点_解引用` 链宽 R251 段（函数指针链不得按「最内层标量」收窄成 1 字节）
+    #   ② 字段声明路径漏掉 `整 (**pp)(整)`（只跳 `( *`，词位停在第二个 `*`）⟹ 新增声明期侧表 `字段函层登/查` 记星数。
+    # 正锚: L15DC `6 6 6`（(`**ppp`) / (`***ppp`) / 管道）· L15MP `6 6`（成员 / 箭头 二级字段）
+    #       · L15AE `6 6`（数组元素 二级指针）。
+    'scripts/feat_zh_l15_derefchain_ok.c',
+    'scripts/feat_zh_l15_mempp_ok.c',
+    'scripts/feat_zh_l15_arrelem_pp_ok.c',
 ]
 
 def build_tests(args):
