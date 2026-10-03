@@ -2459,6 +2459,10 @@ CORE_FEAT += [
     'scripts/feat_zh_pipe213_var_neg.c',
     'scripts/feat_zh_pipe213_member_neg.c',
     'scripts/feat_zh_doc288_nonconst_neg.c',
+    # 第 455 站 站内自查再修: 解引用 RHS (5 |> *p, p 指整) 同样 编译 rc=0 + 运行期 0xC0000005;
+    #   甲言无「变量是函数指针」标记 (型定表.是否函数指 只标 类型定义 名) ⟹ 收窄为「解引用 一律拒」,
+    #   等价写法  |> fp 已由既有闸内锚 eat_pipe2.c (4 |> f) 覆盖。
+    'scripts/feat_zh_pipe213_deref_neg.c',
 ]
 
 def build_tests(args):
