@@ -2544,6 +2544,8 @@ CORE_FEAT += [
     'scripts/feat_zh_l15_derefchain_ok.c',
     'scripts/feat_zh_l15_mempp_ok.c',
     'scripts/feat_zh_l15_arrelem_pp_ok.c',
+    # 边界自查补: **三元** 基 的解引用被调者 (真加载一次; 宽度由 `强制解引宽8` 保证 = 8)
+    'scripts/feat_zh_l15_addrreder_ok.c',
 ]
 
 def build_tests(args):
