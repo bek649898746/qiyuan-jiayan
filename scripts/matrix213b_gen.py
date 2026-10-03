@@ -50,6 +50,17 @@ CASES.append(('ARR_1d_bare', H + MEM, MEMS + ' 构 盒 *p = &s;', 'p->t(5)', 'p-
 CASES.append(('LOC_1d_deref', H, S1D, '(*(t[0]))(5)', '*(t[0])', '5 |> *(t[0])'))
 CASES.append(('LOC_pp_deref2', H, '整 (*fp)(整) = 加一; 整 (**pp)(整) = &fp;', '(**pp)(5)', '**pp', '5 |> **pp'))
 CASES.append(('LOC_pp_deref1', H, '整 (*fp)(整) = 加一; 整 (**pp)(整) = &fp;', '(*pp)(5)', '*pp', '5 |> *pp'))
+# ---- 第十八轮: **array-size 轴** (1,2,3) —— 1-elem 成员数组曾是最深一档未覆盖格 ----
+S1D1 = '整 (*t[1])(整) = {加一};'
+S1D3 = '整 (*t[3])(整) = {加一, 倍二, 加一};'
+GS1D1 = '整 (*gt[1])(整) = {加一};'
+MEM1 = '构 盒 { 整 (*f)(整); 整 (*t[1])(整); 整 (*t2[2][3])(整); }\n'
+MEMS1 = '构 盒 s; s.f = 加一; s.t[0] = 加一; s.t2[0][0] = 加一;'
+CASES.append(('SZ_mem_1d_1', H + MEM1, MEMS1, 's.t[0](5)', 's.t[0]', '5 |> s.t[0]'))
+CASES.append(('SZ_mem_1d_bare', H + MEM1, MEMS1, 's.t(5)', 's.t', '5 |> s.t'))
+CASES.append(('SZ_loc_1d_1', H, S1D1, 't[0](5)', 't[0]', '5 |> t[0]'))
+CASES.append(('SZ_loc_1d_3', H, S1D3, 't[2](5)', 't[2]', '5 |> t[2]'))
+CASES.append(('SZ_glb_1d_1', H, GS1D1, 'gt[0](5)', 'gt[0]', '5 |> gt[0]'))
 CASES.append(('PAR_scalar', H, '', None, None, None))
 CASES.append(('PAR_1d_i', H, '', None, None, None))
 
@@ -71,4 +82,7 @@ for cid, h, decl, dex, dtxt, pex in CASES:
         psrc = h + '函数 整 主(空) {\n    ' + decl + '\n    整 甲 = ' + pex + ';\n    格式化 "CELL ' + cid + ' %d\\n", 甲;\n    返 0;\n}\n'
     open(os.path.join(D, cid + '_d.c'), 'w', encoding='utf-8-sig', newline='\r\n').write(dsrc)
     open(os.path.join(D, cid + '_p.c'), 'w', encoding='utf-8-sig', newline='\r\n').write(psrc)
+# 生成器自检 (第十八轮): 维度 = 声明位置{局部,形参,成员字段,全局} × 形状{标量,1D,2D} × 形态{裸名,[i],[i][j],*,&}
+# + array-size 轴{1,2,3} 的代表格。断言格数 >= 30 (低于此说明有维度被手挑掉)。
+assert len(CASES) >= 30, ('matrix under-covered: %d cells' % len(CASES))
 print('generated', len(CASES), 'cells ->', len(CASES) * 2, 'probes in', D)
