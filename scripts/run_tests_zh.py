@@ -2582,6 +2582,10 @@ CORE_FEAT += [
     #   赋 pp 再解引用 / 作实参; 负锚: `5 |> g()` (返回值 层级1) 拒 (与 gcc 同拒)。
     'scripts/feat_zh_l15_callres_ok.c',
     'scripts/feat_zh_l15_pipecall_neg.c',
+    'scripts/feat_zh_tdfp_ok.c',
+    'scripts/feat_zh_tdfp_arr_ok.c',
+    'scripts/feat_zh_tdfp_neg.c',
+    'scripts/feat_zh_tdfp_datptr_neg.c',
 ]
 
 def build_tests(args):
