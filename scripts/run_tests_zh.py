@@ -2546,6 +2546,11 @@ CORE_FEAT += [
     'scripts/feat_zh_l15_arrelem_pp_ok.c',
     # 边界自查补: **三元** 基 的解引用被调者 (真加载一次; 宽度由 `强制解引宽8` 保证 = 8)
     'scripts/feat_zh_l15_addrreder_ok.c',
+    # ===== L-15 **根因** 锚 (第二十四轮 · auditor 四审要点) =====
+    # 真根因: `&函数名` 的 codegen 走「查变量失败」路径 ⟹ **零产码**; `*X` 又无条件加载。
+    # 修法 (C 6.5.3.2, 在 表达式 codegen 层): ① `&函数名` → 值 = 函数地址; ② `*X` 若 层级(X)==0 (函数指针值) → 函数指示符, 不加载。
+    # 该锚 覆盖 auditor 点名的 `(*(&f))(5)` 以及 值语义/无括号/二级 共 5 个形态 (L15AD2 '6 6 6 6 6')。
+    'scripts/feat_zh_l15_addrderedef_ok.c',
 ]
 
 def build_tests(args):
