@@ -47,6 +47,9 @@ CASES.append(('ARR_scalar', H + MEM, MEMS + ' 构 盒 *p = &s;', 'p->f(5)', 'p->
 CASES.append(('ARR_1d_i', H + MEM, MEMS + ' 构 盒 *p = &s;', 'p->t[0](5)', 'p->t[0]', '5 |> p->t[0]'))
 CASES.append(('ARR_1d_bare', H + MEM, MEMS + ' 构 盒 *p = &s;', 'p->t(5)', 'p->t', '5 |> p->t'))
 # --- 形参 ---
+CASES.append(('LOC_1d_deref', H, S1D, '(*(t[0]))(5)', '*(t[0])', '5 |> *(t[0])'))
+CASES.append(('LOC_pp_deref2', H, '整 (*fp)(整) = 加一; 整 (**pp)(整) = &fp;', '(**pp)(5)', '**pp', '5 |> **pp'))
+CASES.append(('LOC_pp_deref1', H, '整 (*fp)(整) = 加一; 整 (**pp)(整) = &fp;', '(*pp)(5)', '*pp', '5 |> *pp'))
 CASES.append(('PAR_scalar', H, '', None, None, None))
 CASES.append(('PAR_1d_i', H, '', None, None, None))
 

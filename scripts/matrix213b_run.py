@@ -3,7 +3,7 @@
 import io, sys, os, subprocess
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 QCC = sys.argv[1]
-D = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'matrix')
+D = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'matrix2')
 
 CASES = sorted(set(f.rsplit('_', 1)[0] for f in os.listdir(D) if f.endswith('.c')))
 rows = []
