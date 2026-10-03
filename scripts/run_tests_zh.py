@@ -2498,6 +2498,10 @@ CORE_FEAT += [
     #   矩阵（15 格）: `python scripts/matrix213_gen.py` + `python scripts/matrix213_run.py <qcc.exe>` ⟹ 0 mismatch。
     'scripts/feat_zh_pipe213_garr_elem_ok.c',
     'scripts/feat_zh_pipe213_arr2d_neg.c',
+    # 第 455 站 第十二轮 (skeptic 第五轮 ①): 成员/箭头 的 **函数指针数组字段** 元素
+    #   正: `构 盒 { 整 (*t[2])(整); }; 5 |> s.t[0];` / `5 |> p->t[0];` = 6 / 10 / 6
+    #       （基准线 `s.t[0](5)`=6、`p->t[0](5)`=6 均正常；原误拒 ⟹ `节点_下标` 支持成员/箭头基）。
+    'scripts/feat_zh_pipe213_memarr_elem_ok.c',
 ]
 
 def build_tests(args):
