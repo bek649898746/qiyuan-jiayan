@@ -2463,6 +2463,11 @@ CORE_FEAT += [
     #   甲言无「变量是函数指针」标记 (型定表.是否函数指 只标 类型定义 名) ⟹ 收窄为「解引用 一律拒」,
     #   等价写法  |> fp 已由既有闸内锚 eat_pipe2.c (4 |> f) 覆盖。
     'scripts/feat_zh_pipe213_deref_neg.c',
+    # 第 455 站 终稿 (真可调用性判据 的 双向钉死):
+    #   正: `整 (*fp)(整) = 加一; 5 |> fp` / `5 |> *fp` —— **甲言语法** 函数指针变量（判据 靠 A22 基类码 9=函数指）。
+    #   负: `整 *p = &甲; 5 |> p` —— **数据指针变量**（与函数指针同形; 旧判据 只判节点型别/指深 ⟹ 放行 ⟹ 运行期 0xC0000005）。
+    'scripts/feat_zh_pipe213_fnptr_ok.c',
+    'scripts/feat_zh_pipe213_datptr_neg.c',
 ]
 
 def build_tests(args):
