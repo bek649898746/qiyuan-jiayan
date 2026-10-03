@@ -2490,6 +2490,14 @@ CORE_FEAT += [
     #       上游分支误登记 A22 ⟹ 本分支必须清除）。基准线 `pm(5)` 直接调用 = 0xC0000005 ⟹ 拒之合理。
     'scripts/feat_zh_pipe213_globfn_ok.c',
     'scripts/feat_zh_pipe213_ptrarr_neg.c',
+    # 第 455 站 第十轮 (矩阵法 · skeptic 第四轮 两点):
+    #   正: `整 (*gt[2])(整) = {加一,倍二}; 5 |> gt[0];` = **6 / 10** —— **文件级**函数指针数组的**元素**
+    #       （原误拒: C153 段 无 A22 登记 ⟹ 补；基准线 `gt[0](5)` = 6 正常）。
+    #   负: `整 (*t2[2][3])(整) = {{...}}; 5 |> t2[0];` —— **2D 数组的「行」**（原误放行崩:
+    #       数组层级固定记 1 ⟹ 改为按维数；基准线 `t2[0](5)` 直接调用也崩）。
+    #   矩阵（15 格）: `python scripts/matrix213_gen.py` + `python scripts/matrix213_run.py <qcc.exe>` ⟹ 0 mismatch。
+    'scripts/feat_zh_pipe213_garr_elem_ok.c',
+    'scripts/feat_zh_pipe213_arr2d_neg.c',
 ]
 
 def build_tests(args):
