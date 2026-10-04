@@ -2643,6 +2643,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_typedef_neg.c',      # 第 455 站 第四十九轮: `typedef 整 常 CI; CI x; x = 6;` ⟹ A9006
     'scripts/feat_zh_orpat_ok.c',              # 第 455 站 第五十轮: `例 1 | 2 | 3:` or 模式 (三择/负值/兜底)
     'scripts/feat_zh_orpat_neg.c',             # 第 455 站 第五十轮: `例 1 | 1:` ⟹ A6027 (交替项 重复)
+    'scripts/feat_zh_orpat_clause_ok.c',       # 第 455 站 第五十一轮: 多子句函数 `对照 1|2|3:` or 模式
+    'scripts/feat_zh_orpat_clause_neg.c',      # 第 455 站 第五十一轮: `对照 1 | 1:` ⟹ A6027
 ]
 
 def build_tests(args):
