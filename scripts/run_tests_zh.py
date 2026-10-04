@@ -2621,6 +2621,9 @@ CORE_FEAT += [
     'scripts/feat_zh_const_arrptr_ok.c',     # 第 455 站 第四十轮: const 指针数组 元素 只读 但 所指可改 — 防误伤
     'scripts/feat_zh_const_arrptr_neg.c',    # 第 455 站 第四十轮: `整 * const a[2]; a[0] = &值3;` ⟹ A9006
     'scripts/feat_zh_const_glbarrptr_neg.c', # 第 455 站 第四十轮: 文件级 const 指针数组 元素 赋值 ⟹ A9006
+    'scripts/feat_zh_ptrarr_store_ok.c',      # 第 455 站 第四十一轮: 指针数组 元素解引用赋值 4 字节存 (前: 8 字节清零相邻)
+    'scripts/feat_zh_ptrarr_store_char_ok.c', # 第 455 站 第四十一轮: 字符指针数组 元素解引用赋值 1 字节存
+    'scripts/feat_zh_deref_idx_ok.c',         # 第 455 站 第四十一轮: 二维指针 下标解引用赋值 口径 回归保护
 ]
 
 def build_tests(args):
