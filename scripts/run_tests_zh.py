@@ -2633,6 +2633,10 @@ CORE_FEAT += [
     'scripts/feat_zh_dupcase_ok.c',         # 第 455 站 第四十三轮: 合法 例 集合 (枚举/负值/范围/其他) 全放行
     'scripts/feat_zh_dupcase_neg.c',        # 第 455 站 第四十三轮: `例 0: … 例 0: …` ⟹ A6027
     'scripts/feat_zh_dupcase_neg2.c',       # 第 455 站 第四十三轮: `例 3:` 与 `例 甲:`(枚举=3) 同值 ⟹ A6027
+    'scripts/feat_zh_const_pointee_ok.c',       # 第 455 站 第四十四轮: const 所指轴 — 改指针/二级链 不误伤
+    'scripts/feat_zh_const_pointee_neg.c',      # 第 455 站 第四十四轮: `整 常 *p; *p = 5;` ⟹ A9006
+    'scripts/feat_zh_const_pointee_idx_neg.c',  # 第 455 站 第四十四轮: `整 常 *p; p[0] = 5;` ⟹ A9006
+    'scripts/feat_zh_const_pointee_glb_neg.c',  # 第 455 站 第四十四轮: 文件级 const 所指 ⟹ A9006
 ]
 
 def build_tests(args):
