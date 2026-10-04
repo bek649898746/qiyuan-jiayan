@@ -2661,6 +2661,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_typedef_pointee_neg.c', # 第 455 站 第五十八轮: typedef 常所指 写入 ⟹ A9006
     'scripts/feat_zh_const_kw_ok.c',                 # 第 455 站 第五十九轮: `常量 名 = 值;` 无类型 正锚 (放行面)
     'scripts/feat_zh_const_kw_neg.c',                # 第 455 站 第五十九轮: `常量 <类型> 名` = 类型词 当 常量名 ⟹ A9001
+    'scripts/feat_zh_enum_typeword_ok.c',            # 第 455 站 第六十轮: 正常枚举 放行面 (隐式递增/显值/具名/块级)
+    'scripts/feat_zh_enum_typeword_neg.c',           # 第 455 站 第六十轮: 枚举常量名 撞 类型词 ⟹ A9001
 ]
 
 def build_tests(args):
