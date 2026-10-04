@@ -2649,6 +2649,8 @@ CORE_FEAT += [
     'scripts/feat_zh_rangepat_clause_neg.c',    # 第 455 站 第五十二轮: 相同区间臂 重复 ⟹ A6027
     'scripts/feat_zh_orpat_yiju_ok.c',         # 第 455 站 第五十三轮: `依据` 档 `1 | 2 | 3:` N 路 or 模式
     'scripts/feat_zh_orpat_yiju_neg.c',        # 第 455 站 第五十三轮: 同一 交替项 内 重复值 ⟹ 冗余模式 #142
+    'scripts/feat_zh_bind_clause_ok.c',        # 第 455 站 第五十四轮: `对照 引用 v:` 绑定 + `对照 _:` 通配
+    'scripts/feat_zh_bind_clause_neg.c',       # 第 455 站 第五十四轮: 全匹配(引用/通配 无守卫)臂 之后 子句 不可达 ⟹ A6027
 ]
 
 def build_tests(args):
