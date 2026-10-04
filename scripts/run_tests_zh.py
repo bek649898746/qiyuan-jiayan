@@ -2647,6 +2647,8 @@ CORE_FEAT += [
     'scripts/feat_zh_orpat_clause_neg.c',      # 第 455 站 第五十一轮: `对照 1 | 1:` ⟹ A6027
     'scripts/feat_zh_rangepat_clause_ok.c',     # 第 455 站 第五十二轮: 多子句函数 `对照 1 ... 5:` 区间模式
     'scripts/feat_zh_rangepat_clause_neg.c',    # 第 455 站 第五十二轮: 相同区间臂 重复 ⟹ A6027
+    'scripts/feat_zh_orpat_yiju_ok.c',         # 第 455 站 第五十三轮: `依据` 档 `1 | 2 | 3:` N 路 or 模式
+    'scripts/feat_zh_orpat_yiju_neg.c',        # 第 455 站 第五十三轮: 同一 交替项 内 重复值 ⟹ 冗余模式 #142
 ]
 
 def build_tests(args):
