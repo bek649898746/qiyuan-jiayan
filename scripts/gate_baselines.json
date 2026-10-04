@@ -1,10 +1,10 @@
 {
- "fixed": "CB76A137",
- "time": "2026-10-04 20:39:28",
+ "fixed": "C1212E3E",
+ "time": "2026-10-04 21:22:11",
  "gates": {
   "zh_feat": {
    "anchor_count": 1162,
-   "source": "run_tests_zh.py 的 CORE_FEAT 长度（第 455 站第四十五轮 · 1160 → 1162: +const_scope_ok/_neg）"
+   "source": "run_tests_zh.py 的 CORE_FEAT 长度（第 455 站第四十七轮 · 1162 不变；本轮 只 收紧 2 条既有锚 的 err: 断言）"
   },
   "lua": {
    "white_list": 33,
