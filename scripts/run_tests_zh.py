@@ -2665,6 +2665,8 @@ CORE_FEAT += [
     'scripts/feat_zh_enum_typeword_neg.c',           # 第 455 站 第六十轮: 枚举常量名 撞 类型词 ⟹ A9001
     'scripts/feat_zh_funcname_idx_ok.c',           # 第 455 站 第六十一轮: `__func__[i]` 读 (原 运行 0xC0000005)
     'scripts/feat_zh_funcname_idx_neg.c',          # 第 455 站 第六十一轮: 写 只读串/__func__ ⟹ A9006
+    'scripts/feat_zh_const_typedef_ptrassign_ok.c',  # 第 455 站 第六十二轮: `CI *p` 指针对象 可改指 (原 误拒)
+    'scripts/feat_zh_const_typedef_ptrassign_neg.c', # 第 455 站 第六十二轮: `CI *p; *p = 5` 所指只读 ⟹ A9006 (原 误放)
 ]
 
 def build_tests(args):
