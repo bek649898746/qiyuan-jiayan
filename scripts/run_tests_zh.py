@@ -2653,6 +2653,8 @@ CORE_FEAT += [
     'scripts/feat_zh_bind_clause_neg.c',       # 第 455 站 第五十四轮: 全匹配(引用/通配 无守卫)臂 之后 子句 不可达 ⟹ A6027
     'scripts/feat_zh_mixpat_ok.c',            # 第 455 站 第五十五轮: 混合交替 `区间 | 值` (择/对照 档)
     'scripts/feat_zh_mixpat_neg.c',           # 第 455 站 第五十五轮: 区间臂 覆盖 后续 臂 ⟹ A6027
+    'scripts/feat_zh_mixpat_yiju_ok.c',       # 第 455 站 第五十六轮: `依据` 档 混合交替 `范围 低 到 高 | 值`
+    'scripts/feat_zh_mixpat_yiju_neg.c',      # 第 455 站 第五十六轮: 依据 区间臂 覆盖 后续 臂 ⟹ 冗余模式 #142
 ]
 
 def build_tests(args):
