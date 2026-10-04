@@ -2671,6 +2671,8 @@ CORE_FEAT += [
     'scripts/feat_zh_bubian_kw_neg.c',              # 第 455 站 第六十三轮: `不变 <类型> 名` = 类型词 当 变量名 ⟹ A9001
     'scripts/feat_zh_exchain_ok.c',                  # 第 455 站 第六十四轮: 异常链 带约定 正常面 (试/捕获/抛出/若错)
     'scripts/feat_zh_exchain_neg.c',                 # 第 455 站 第六十四轮: 裸用 试/捕获 ⟹ A1001 + 异常链 约定 引导
+    'scripts/feat_zh_throw_ok.c',                    # 第 455 站 第六十五轮: 抛出 带约定 正常面 (throw_ex 置 ex_pending/ex_val)
+    'scripts/feat_zh_throw_neg.c',                   # 第 455 站 第六十五轮: 裸 抛出 ⟹ A1001 + 异常链 约定 引导
 ]
 
 def build_tests(args):
