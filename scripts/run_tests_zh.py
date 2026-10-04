@@ -2641,6 +2641,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_scope_neg.c',       # 第 455 站 第四十五轮: 本函数内 const 强制 不削弱 ⟹ A9006
     'scripts/feat_zh_const_typedef_ok.c',       # 第 455 站 第四十九轮: const typedef — 普通 typedef/标量 不误伤
     'scripts/feat_zh_const_typedef_neg.c',      # 第 455 站 第四十九轮: `typedef 整 常 CI; CI x; x = 6;` ⟹ A9006
+    'scripts/feat_zh_orpat_ok.c',              # 第 455 站 第五十轮: `例 1 | 2 | 3:` or 模式 (三择/负值/兜底)
+    'scripts/feat_zh_orpat_neg.c',             # 第 455 站 第五十轮: `例 1 | 1:` ⟹ A6027 (交替项 重复)
 ]
 
 def build_tests(args):
