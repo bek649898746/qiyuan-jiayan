@@ -2590,6 +2590,9 @@ CORE_FEAT += [
     'scripts/feat_zh_fn_deref_neg.c',
     'scripts/feat_zh_retfp_td_ok.c',
     'scripts/feat_zh_retfp_td_neg.c',
+    'scripts/feat_zh_subfn_ok.c',
+    'scripts/feat_zh_callret_neg.c',
+    'scripts/feat_zh_callret_ptr_neg.c',
 ]
 
 def build_tests(args):
