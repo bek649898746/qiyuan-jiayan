@@ -2659,6 +2659,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
     'scripts/feat_zh_const_typedef_pointee_neg.c', # 第 455 站 第五十八轮: typedef 常所指 写入 ⟹ A9006
+    'scripts/feat_zh_const_kw_ok.c',                 # 第 455 站 第五十九轮: `常量 名 = 值;` 无类型 正锚 (放行面)
+    'scripts/feat_zh_const_kw_neg.c',                # 第 455 站 第五十九轮: `常量 <类型> 名` = 类型词 当 常量名 ⟹ A9001
 ]
 
 def build_tests(args):
