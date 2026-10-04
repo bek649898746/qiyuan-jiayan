@@ -2657,6 +2657,8 @@ CORE_FEAT += [
     'scripts/feat_zh_mixpat_yiju_neg.c',      # 第 455 站 第五十六轮: 依据 区间臂 覆盖 后续 臂 ⟹ 冗余模式 #142
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
+    'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
+    'scripts/feat_zh_const_typedef_pointee_neg.c', # 第 455 站 第五十八轮: typedef 常所指 写入 ⟹ A9006
 ]
 
 def build_tests(args):
