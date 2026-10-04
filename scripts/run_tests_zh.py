@@ -2595,6 +2595,9 @@ CORE_FEAT += [
     'scripts/feat_zh_callret_ptr_neg.c',
     'scripts/feat_zh_decl_qual_ok.c',
     'scripts/feat_zh_decl_qual_neg.c',
+    'scripts/feat_zh_varcall_fp_ok.c',
+    'scripts/feat_zh_varcall_neg.c',
+    'scripts/feat_zh_varcall_glb_neg.c',
 ]
 
 def build_tests(args):
