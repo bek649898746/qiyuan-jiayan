@@ -1,5 +1,5 @@
 ﻿// @EXPECTED compile_fail
-// @EXPECTED err:A9006
+// @EXPECTED err:元素 是 const/常量 对象
 /* 第 455 站·第四十二轮 负锚: **声明说明符档 const 数组 元素 只读**（局部）。
    形态: `整 常 a[2] = { 1, 2 }; a[0] = 3;` ⟹ A9006。 */
 函数 整 主(空) {
