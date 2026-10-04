@@ -2630,6 +2630,9 @@ CORE_FEAT += [
     'scripts/feat_zh_const_quals_glb_neg.c',   # 第 455 站 第四十二轮: 文件级 `整 常 gv` 赋值 ⟹ A9006
     'scripts/feat_zh_const_quals_glbarr_neg.c',# 第 455 站 第四十二轮: 文件级 `整 常 ga[2]` 元素赋值 ⟹ A9006
     'scripts/feat_zh_const_quals_param_neg.c', # 第 455 站 第四十二轮: `取(整 常 x) { x = 9; }` ⟹ A9006
+    'scripts/feat_zh_dupcase_ok.c',         # 第 455 站 第四十三轮: 合法 例 集合 (枚举/负值/范围/其他) 全放行
+    'scripts/feat_zh_dupcase_neg.c',        # 第 455 站 第四十三轮: `例 0: … 例 0: …` ⟹ A6027
+    'scripts/feat_zh_dupcase_neg2.c',       # 第 455 站 第四十三轮: `例 3:` 与 `例 甲:`(枚举=3) 同值 ⟹ A6027
 ]
 
 def build_tests(args):
