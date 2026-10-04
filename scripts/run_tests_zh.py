@@ -2598,6 +2598,8 @@ CORE_FEAT += [
     'scripts/feat_zh_varcall_fp_ok.c',
     'scripts/feat_zh_varcall_neg.c',
     'scripts/feat_zh_varcall_glb_neg.c',
+    'scripts/feat_zh_callee_mix_ok.c',
+    'scripts/feat_zh_scalarcall_neg.c',
 ]
 
 def build_tests(args):
