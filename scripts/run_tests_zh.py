@@ -2669,6 +2669,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_typedef_ptrassign_neg.c', # 第 455 站 第六十二轮: `CI *p; *p = 5` 所指只读 ⟹ A9006 (原 误放)
     'scripts/feat_zh_bubian_kw_ok.c',               # 第 455 站 第六十三轮: `不变 名 = 值;` 无类型 正锚 (放行面)
     'scripts/feat_zh_bubian_kw_neg.c',              # 第 455 站 第六十三轮: `不变 <类型> 名` = 类型词 当 变量名 ⟹ A9001
+    'scripts/feat_zh_exchain_ok.c',                  # 第 455 站 第六十四轮: 异常链 带约定 正常面 (试/捕获/抛出/若错)
+    'scripts/feat_zh_exchain_neg.c',                 # 第 455 站 第六十四轮: 裸用 试/捕获 ⟹ A1001 + 异常链 约定 引导
 ]
 
 def build_tests(args):
