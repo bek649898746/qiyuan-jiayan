@@ -2673,6 +2673,8 @@ CORE_FEAT += [
     'scripts/feat_zh_exchain_neg.c',                 # 第 455 站 第六十四轮: 裸用 试/捕获 ⟹ A1001 + 异常链 约定 引导
     'scripts/feat_zh_throw_ok.c',                    # 第 455 站 第六十五轮: 抛出 带约定 正常面 (throw_ex 置 ex_pending/ex_val)
     'scripts/feat_zh_throw_neg.c',                   # 第 455 站 第六十五轮: 裸 抛出 ⟹ A1001 + 异常链 约定 引导
+    'scripts/feat_zh_structword_kw_ok.c',           # 第 455 站 第六十六轮: 类/结构体/枚 关键字 正常面 (放行锚, 防误伤)
+    'scripts/feat_zh_structword_varname_neg.c',      # 第 455 站 第六十六轮: 局部变量名 撞 结构词/枚词 别名 ⟹ A9001
 ]
 
 def build_tests(args):
