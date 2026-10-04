@@ -2609,6 +2609,10 @@ CORE_FEAT += [
     'scripts/feat_zh_const_ok.c',
     'scripts/feat_zh_const_assign_neg.c',
     'scripts/feat_zh_const_glb_neg.c',
+    'scripts/feat_zh_const_datptr_ok.c',      # 第 455 站 第三十八轮: const 数据指针 正锚 (只读但不破坏可读) — 回归保护
+    'scripts/feat_zh_const_datptr_neg.c',     # 第 455 站 第三十八轮: `整 * const p = &值; p = &值2;` ⟹ A9006 (敏感度)
+    'scripts/feat_zh_const_datptr_neg2.c',    # 第 455 站 第三十八轮: 中文关键字 `常` 同款 ⟹ A9006
+    'scripts/feat_zh_const_dpp_neg.c',        # 第 455 站 第三十八轮: 多级 `整 ** const pp` ⟹ A9006
 ]
 
 def build_tests(args):
