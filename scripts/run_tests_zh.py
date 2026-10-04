@@ -2624,6 +2624,12 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrarr_store_ok.c',      # 第 455 站 第四十一轮: 指针数组 元素解引用赋值 4 字节存 (前: 8 字节清零相邻)
     'scripts/feat_zh_ptrarr_store_char_ok.c', # 第 455 站 第四十一轮: 字符指针数组 元素解引用赋值 1 字节存
     'scripts/feat_zh_deref_idx_ok.c',         # 第 455 站 第四十一轮: 二维指针 下标解引用赋值 口径 回归保护
+    'scripts/feat_zh_const_quals_ok.c',        # 第 455 站 第四十二轮: 类型限定符档 const — `整 常 *p` 与 普通对象 不误伤
+    'scripts/feat_zh_const_quals_neg.c',       # 第 455 站 第四十二轮: `整 常 v = 5; v = 6;` ⟹ A9006
+    'scripts/feat_zh_const_quals_arr_neg.c',   # 第 455 站 第四十二轮: `整 常 a[2]; a[0] = 3;` ⟹ A9006
+    'scripts/feat_zh_const_quals_glb_neg.c',   # 第 455 站 第四十二轮: 文件级 `整 常 gv` 赋值 ⟹ A9006
+    'scripts/feat_zh_const_quals_glbarr_neg.c',# 第 455 站 第四十二轮: 文件级 `整 常 ga[2]` 元素赋值 ⟹ A9006
+    'scripts/feat_zh_const_quals_param_neg.c', # 第 455 站 第四十二轮: `取(整 常 x) { x = 9; }` ⟹ A9006
 ]
 
 def build_tests(args):
