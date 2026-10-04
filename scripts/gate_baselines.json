@@ -1,10 +1,10 @@
 {
- "fixed": "0C0C3DB6",
- "time": "2026-10-04 15:58:29",
+ "fixed": "55EF6AFA",
+ "time": "2026-10-04 16:33:01",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1136,
-   "source": "run_tests_zh.py 的 CORE_FEAT 长度（第 455 站第三十八轮 · 1132 → 1136: +datptr_ok/+datptr_neg/+datptr_neg2/+dpp_neg）"
+   "anchor_count": 1141,
+   "source": "run_tests_zh.py 的 CORE_FEAT 长度（第 455 站第三十九轮 · 1136 → 1141: +ptr3_ok/+structptr_ok/+structptr_neg/+glbptr_neg/+paramptr_neg）"
   },
   "lua": {
    "white_list": 33,
