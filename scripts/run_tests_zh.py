@@ -2667,6 +2667,8 @@ CORE_FEAT += [
     'scripts/feat_zh_funcname_idx_neg.c',          # 第 455 站 第六十一轮: 写 只读串/__func__ ⟹ A9006
     'scripts/feat_zh_const_typedef_ptrassign_ok.c',  # 第 455 站 第六十二轮: `CI *p` 指针对象 可改指 (原 误拒)
     'scripts/feat_zh_const_typedef_ptrassign_neg.c', # 第 455 站 第六十二轮: `CI *p; *p = 5` 所指只读 ⟹ A9006 (原 误放)
+    'scripts/feat_zh_bubian_kw_ok.c',               # 第 455 站 第六十三轮: `不变 名 = 值;` 无类型 正锚 (放行面)
+    'scripts/feat_zh_bubian_kw_neg.c',              # 第 455 站 第六十三轮: `不变 <类型> 名` = 类型词 当 变量名 ⟹ A9001
 ]
 
 def build_tests(args):
