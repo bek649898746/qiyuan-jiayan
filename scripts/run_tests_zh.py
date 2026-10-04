@@ -2618,6 +2618,9 @@ CORE_FEAT += [
     'scripts/feat_zh_const_structptr_neg.c',  # 第 455 站 第三十九轮: `结构体 X * const p = &甲; p = &乙;` ⟹ A9006
     'scripts/feat_zh_const_glbptr_neg.c',     # 第 455 站 第三十九轮: 文件级 `整 * const gp` 赋值 ⟹ A9006
     'scripts/feat_zh_const_paramptr_neg.c',   # 第 455 站 第三十九轮: 形参 `整 * const p` 赋值 ⟹ A9006
+    'scripts/feat_zh_const_arrptr_ok.c',     # 第 455 站 第四十轮: const 指针数组 元素 只读 但 所指可改 — 防误伤
+    'scripts/feat_zh_const_arrptr_neg.c',    # 第 455 站 第四十轮: `整 * const a[2]; a[0] = &值3;` ⟹ A9006
+    'scripts/feat_zh_const_glbarrptr_neg.c', # 第 455 站 第四十轮: 文件级 const 指针数组 元素 赋值 ⟹ A9006
 ]
 
 def build_tests(args):
