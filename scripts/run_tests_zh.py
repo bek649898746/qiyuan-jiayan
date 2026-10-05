@@ -2755,6 +2755,9 @@ CORE_FEAT += [
     'scripts/feat_zh_zifu_ok.c',                  # 第 455 站 第一百零六轮: `字符` 作标识符 放行面 (C157 边界)
     'scripts/feat_zh_zifu_neg.c',                 # 第 455 站 第一百零六轮: 文件级 `字符 <名>` ⟹ A9001
     'scripts/feat_zh_zifufield_neg.c',            # 第 455 站 第一百零六轮: 字段位 `字符 <名>` ⟹ A9001
+    'scripts/feat_zh_tdtype_ok.c',                 # 第 455 站 第一百零七轮: typedef 类型 作返回/形参 放行面
+    'scripts/feat_zh_zifuparam_neg.c',            # 第 455 站 第一百零七轮: 形参位 `字符 <名>` ⟹ A9001
+    'scripts/feat_zh_zifuret_neg.c',              # 第 455 站 第一百零七轮: 返回类型位 `字符` ⟹ A9001
 ]
 
 def build_tests(args):
