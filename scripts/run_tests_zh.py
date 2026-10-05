@@ -2680,6 +2680,9 @@ CORE_FEAT += [
     'scripts/feat_zh_struct_const_field_typedef_neg.c',# 第 455 站 第六十七轮: typedef 匿名体 常字段 写 ⟹ A9006
     'scripts/feat_zh_disc_payload_or_ok.c',             # 第 455 站 第六十八轮: 判别 变体载荷臂 或 模式 (非首/末变体命中 + 守卫)
     'scripts/feat_zh_disc_payload_or_neg.c',            # 第 455 站 第六十八轮: 或模式 绑定名不一致 ⟹ A9001
+    'scripts/feat_zh_funcname_scope_ok.c',              # 第 455 站 第六十九轮: 函数内 __func__ 放行面
+    'scripts/feat_zh_funcname_scope_neg.c',             # 第 455 站 第六十九轮: 文件作用域 __func__ ⟹ A1001
+    'scripts/feat_zh_funcname_scope_idx_neg.c',         # 第 455 站 第六十九轮: 文件作用域 __func__[i] ⟹ A1001
 ]
 
 def build_tests(args):
