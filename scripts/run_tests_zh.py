@@ -2743,6 +2743,8 @@ CORE_FEAT += [
     'scripts/feat_zh_gotolabel_ok.c',            # 第 455 站 第一百轮: goto/标签 放行面 (后向/前向/循环标签)
     'scripts/feat_zh_gotolabel_neg.c',           # 第 455 站 第一百轮: 跳转 目标 未定义 ⟹ A9001 (消 运行期段错)
     'scripts/feat_zh_gotokw_neg.c',              # 第 455 站 第一百轮: 跳转目标位/标签位 撞关键字 ⟹ A9001
+    'scripts/feat_zh_enkw_ok.c',                 # 第 455 站 第一百零一轮: 英文 C 关键字 作关键字 用 放行面
+    'scripts/feat_zh_enkw_neg.c',                # 第 455 站 第一百零一轮: 英文 C 语句关键字 作变量名 ⟹ A9001
 ]
 
 def build_tests(args):
