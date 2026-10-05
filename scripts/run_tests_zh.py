@@ -2678,6 +2678,8 @@ CORE_FEAT += [
     'scripts/feat_zh_struct_const_field_ok.c',         # 第 455 站 第六十七轮: 常字段 读/布局/箭头读 放行面
     'scripts/feat_zh_struct_const_field_neg.c',        # 第 455 站 第六十七轮: 具名结构体 常字段 写 ⟹ A9006
     'scripts/feat_zh_struct_const_field_typedef_neg.c',# 第 455 站 第六十七轮: typedef 匿名体 常字段 写 ⟹ A9006
+    'scripts/feat_zh_disc_payload_or_ok.c',             # 第 455 站 第六十八轮: 判别 变体载荷臂 或 模式 (非首/末变体命中 + 守卫)
+    'scripts/feat_zh_disc_payload_or_neg.c',            # 第 455 站 第六十八轮: 或模式 绑定名不一致 ⟹ A9001
 ]
 
 def build_tests(args):
