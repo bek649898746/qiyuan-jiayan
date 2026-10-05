@@ -2766,6 +2766,9 @@ CORE_FEAT += [
     'scripts/feat_zh_zifuprefix_neg.c',           # 第 455 站 第一百零九轮: 局部 `静态 字符` ⟹ A9001
     'scripts/feat_zh_zifuglobalstatic_neg.c',     # 第 455 站 第一百零九轮: 文件级 `静态 字符` ⟹ A9001
     'scripts/feat_zh_enumbasekw_neg.c',           # 第 455 站 第一百零九轮: 枚举底层位 撞关键字 ⟹ A9001
+    'scripts/feat_zh_constname_ok.c',             # 第 455 站 第一百一十轮: 常量/不变 正常形态 放行面
+    'scripts/feat_zh_consttype_neg.c',            # 第 455 站 第一百一十轮: `常量 <未知类型> 名` ⟹ A9001
+    'scripts/feat_zh_immutabletype_neg.c',        # 第 455 站 第一百一十轮: `不变 <未知类型> 名` ⟹ A9001
 ]
 
 def build_tests(args):
