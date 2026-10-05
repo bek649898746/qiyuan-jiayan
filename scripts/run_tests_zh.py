@@ -2693,6 +2693,8 @@ CORE_FEAT += [
     'scripts/feat_zh_yiju_wild_unreach_neg.c',          # 第 455 站 第七十四轮: 依据 档 全匹配臂 非末位 ⟹ A6027
     'scripts/feat_zh_struct_lead_const_ok.c',           # 第 455 站 第七十五轮: 前置 常 字段 放行面 (含 指针字段 可写)
     'scripts/feat_zh_struct_lead_const_neg.c',          # 第 455 站 第七十五轮: 前置 常 对象字段 写 ⟹ A9006
+    'scripts/feat_zh_struct_ptr_const_ok.c',            # 第 455 站 第七十六轮: const 指针字段 放行面 (所指 const ⟹ 字段可写)
+    'scripts/feat_zh_struct_ptr_const_neg.c',           # 第 455 站 第七十六轮: const 指针字段 (整 * 常 p) 写 ⟹ A9006
 ]
 
 def build_tests(args):
