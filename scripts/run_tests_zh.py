@@ -2762,6 +2762,10 @@ CORE_FEAT += [
     'scripts/feat_zh_enumtagkw_neg.c',            # 第 455 站 第一百零八轮: 文件级 枚举标签位 撞关键字 ⟹ A9001
     'scripts/feat_zh_enumtagkwblk_neg.c',         # 第 455 站 第一百零八轮: 块级 枚举标签位 撞关键字 ⟹ A9001
     'scripts/feat_zh_enumbase_neg.c',             # 第 455 站 第一百零八轮: 枚举底层类型位 `字符` ⟹ A9001
+    'scripts/feat_zh_staticprefix_ok.c',           # 第 455 站 第一百零九轮: 前置限定符+合法类型 放行面
+    'scripts/feat_zh_zifuprefix_neg.c',           # 第 455 站 第一百零九轮: 局部 `静态 字符` ⟹ A9001
+    'scripts/feat_zh_zifuglobalstatic_neg.c',     # 第 455 站 第一百零九轮: 文件级 `静态 字符` ⟹ A9001
+    'scripts/feat_zh_enumbasekw_neg.c',           # 第 455 站 第一百零九轮: 枚举底层位 撞关键字 ⟹ A9001
 ]
 
 def build_tests(args):
