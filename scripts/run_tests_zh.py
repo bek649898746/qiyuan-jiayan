@@ -2705,6 +2705,8 @@ CORE_FEAT += [
     'scripts/feat_zh_ptr_arith_write_neg.c',             # 第 455 站 第八十轮: 常所指 指针算术 越级写 ⟹ A9006
     'scripts/feat_zh_addr_write_ok.c',                   # 第 455 站 第八十一轮: 非只读目标 的 *(&X) 写 + 只读读 放行面
     'scripts/feat_zh_addr_write_neg.c',                  # 第 455 站 第八十一轮: 经 只读对象地址 写 ⟹ A9006
+    'scripts/feat_zh_field_comma_ro_ok.c',              # 第 455 站 第八十二轮: 普通逗号表 / 指针字段 逗号表 放行面
+    'scripts/feat_zh_field_comma_ro_neg.c',             # 第 455 站 第八十二轮: 常 逗号表 后声明符 写 ⟹ A9006
 ]
 
 def build_tests(args):
