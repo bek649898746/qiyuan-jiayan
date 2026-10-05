@@ -2745,6 +2745,9 @@ CORE_FEAT += [
     'scripts/feat_zh_gotokw_neg.c',              # 第 455 站 第一百轮: 跳转目标位/标签位 撞关键字 ⟹ A9001
     'scripts/feat_zh_enkw_ok.c',                 # 第 455 站 第一百零一轮: 英文 C 关键字 作关键字 用 放行面
     'scripts/feat_zh_enkw_neg.c',                # 第 455 站 第一百零一轮: 英文 C 语句关键字 作变量名 ⟹ A9001
+    'scripts/feat_zh_sizeofname_ok.c',          # 第 455 站 第一百零二轮: 大小(…) 运算符 + 普通指针 放行面
+    'scripts/feat_zh_sizeofname_neg.c',         # 第 455 站 第一百零二轮: 内建名 大小/sizeof 作变量名 ⟹ A9001
+    'scripts/feat_zh_ptrnamekw_neg.c',          # 第 455 站 第一百零二轮: 指针声明 名位撞关键字 ⟹ A9001 (原 段错)
 ]
 
 def build_tests(args):
