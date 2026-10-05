@@ -2699,6 +2699,8 @@ CORE_FEAT += [
     'scripts/feat_zh_field_pointee_ro_neg.c',           # 第 455 站 第七十七轮: 字段所指 const 解引用写 ⟹ A9006
     'scripts/feat_zh_ptr_ro_compound_ok.c',             # 第 455 站 第七十八轮: 普通指针/变量的 复合赋值 放行面
     'scripts/feat_zh_ptr_ro_compound_neg.c',            # 第 455 站 第七十八轮: 常所指 复合赋值 ⟹ A9006
+    'scripts/feat_zh_ptr_ro_incr_ok.c',                 # 第 455 站 第七十九轮: 普通指针/变量/数组 自增 放行面
+    'scripts/feat_zh_ptr_ro_incr_neg.c',                # 第 455 站 第七十九轮: 常所指 自增/自减 ⟹ A9006
 ]
 
 def build_tests(args):
