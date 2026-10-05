@@ -2695,6 +2695,8 @@ CORE_FEAT += [
     'scripts/feat_zh_struct_lead_const_neg.c',          # 第 455 站 第七十五轮: 前置 常 对象字段 写 ⟹ A9006
     'scripts/feat_zh_struct_ptr_const_ok.c',            # 第 455 站 第七十六轮: const 指针字段 放行面 (所指 const ⟹ 字段可写)
     'scripts/feat_zh_struct_ptr_const_neg.c',           # 第 455 站 第七十六轮: const 指针字段 (整 * 常 p) 写 ⟹ A9006
+    'scripts/feat_zh_field_pointee_ro_ok.c',            # 第 455 站 第七十七轮: 字段所指只读 放行面 (赋指针/读所指/普通指针可写)
+    'scripts/feat_zh_field_pointee_ro_neg.c',           # 第 455 站 第七十七轮: 字段所指 const 解引用写 ⟹ A9006
 ]
 
 def build_tests(args):
