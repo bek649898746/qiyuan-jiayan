@@ -2719,6 +2719,8 @@ CORE_FEAT += [
     'scripts/feat_zh_sw_local_ro_neg.c',            # 第 455 站 第八十七轮: 结构体 局部声明 `常` 落标 ⟹ A9006
     'scripts/feat_zh_stmtkw_ok.c',                   # 第 455 站 第八十八轮: 语句关键字 正常用法 放行面
     'scripts/feat_zh_stmtkw_neg.c',                  # 第 455 站 第八十八轮: 语句关键字 作变量名 ⟹ A9001
+    'scripts/feat_zh_sw_obj_ro_ok.c',                # 第 455 站 第八十九轮: 结构体 局部声明 放行面
+    'scripts/feat_zh_sw_obj_ro_neg.c',               # 第 455 站 第八十九轮: 纯对象形 `常 构 S s` ⟹ A9006
 ]
 
 def build_tests(args):
