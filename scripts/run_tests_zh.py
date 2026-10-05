@@ -2717,6 +2717,8 @@ CORE_FEAT += [
     'scripts/feat_zh_const_write_paths_neg.c',     # 第 455 站 第八十六轮: 常对象/常数组 复合赋值·自增 ⟹ A9006
     'scripts/feat_zh_sw_local_ro_ok.c',             # 第 455 站 第八十七轮: 结构体 局部声明 放行面
     'scripts/feat_zh_sw_local_ro_neg.c',            # 第 455 站 第八十七轮: 结构体 局部声明 `常` 落标 ⟹ A9006
+    'scripts/feat_zh_stmtkw_ok.c',                   # 第 455 站 第八十八轮: 语句关键字 正常用法 放行面
+    'scripts/feat_zh_stmtkw_neg.c',                  # 第 455 站 第八十八轮: 语句关键字 作变量名 ⟹ A9001
 ]
 
 def build_tests(args):
