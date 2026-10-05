@@ -2732,6 +2732,8 @@ CORE_FEAT += [
     'scripts/feat_zh_paramkw_ok.c',                  # 第 455 站 第九十五轮: 形参/字段 正常名 放行面
     'scripts/feat_zh_paramkw_neg.c',                 # 第 455 站 第九十五轮: 形参名 撞关键字 ⟹ A9001
     'scripts/feat_zh_fieldkw_neg.c',                 # 第 455 站 第九十五轮: 字段名 撞关键字 ⟹ A9001
+    'scripts/feat_zh_tagkw_ok.c',                    # 第 455 站 第九十六轮: 结构体标签 正常/匿名 放行面
+    'scripts/feat_zh_tagkw_neg.c',                   # 第 455 站 第九十六轮: 标签名 撞 语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
