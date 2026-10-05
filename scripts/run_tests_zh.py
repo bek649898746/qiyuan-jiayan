@@ -2750,6 +2750,8 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrnamekw_neg.c',          # 第 455 站 第一百零二轮: 指针声明 名位撞关键字 ⟹ A9001 (原 段错)
     'scripts/feat_zh_tdnamekw_ok.c',             # 第 455 站 第一百零三轮: typedef 别名 正常形态 放行面
     'scripts/feat_zh_tdnamekw_neg.c',            # 第 455 站 第一百零三轮: typedef 别名 撞关键字 ⟹ A9001 (原 误导)
+    'scripts/feat_zh_statickw_ok.c',             # 第 455 站 第一百零五轮: `静态` 拼写 归一 (≡静/static) 四面覆盖
+    'scripts/feat_zh_statickw_neg.c',            # 第 455 站 第一百零五轮: `静态` 作变量名 ⟹ A9001 (与 静 同判据)
 ]
 
 def build_tests(args):
