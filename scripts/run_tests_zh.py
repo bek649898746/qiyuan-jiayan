@@ -2740,6 +2740,9 @@ CORE_FEAT += [
     'scripts/feat_zh_funcname_typeword_neg.c',      # 第 455 站 第九十八轮: 函数名 撞 类型词 ⟹ A9001 (重开 R70)
     'scripts/feat_zh_gvarkw_ok.c',               # 第 455 站 第九十九轮: 文件级 声明 放行面
     'scripts/feat_zh_gvarkw_neg.c',              # 第 455 站 第九十九轮: 文件级 变量名 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_gotolabel_ok.c',            # 第 455 站 第一百轮: goto/标签 放行面 (后向/前向/循环标签)
+    'scripts/feat_zh_gotolabel_neg.c',           # 第 455 站 第一百轮: 跳转 目标 未定义 ⟹ A9001 (消 运行期段错)
+    'scripts/feat_zh_gotokw_neg.c',              # 第 455 站 第一百轮: 跳转目标位/标签位 撞关键字 ⟹ A9001
 ]
 
 def build_tests(args):
