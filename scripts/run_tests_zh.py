@@ -2685,6 +2685,8 @@ CORE_FEAT += [
     'scripts/feat_zh_funcname_scope_idx_neg.c',         # 第 455 站 第六十九轮: 文件作用域 __func__[i] ⟹ A1001
     'scripts/feat_zh_wild_or_ok.c',                     # 第 455 站 第七十一轮: 值|通配 _ (对照档 + 依据档)
     'scripts/feat_zh_wild_or_neg.c',                    # 第 455 站 第七十一轮: 通配 _ 非末位 ⟹ A6027 不可达
+    'scripts/feat_zh_switch_wild_ok.c',                 # 第 455 站 第七十二轮: 择/例 档 通配 _ (首项 + 交替项)
+    'scripts/feat_zh_switch_zero_keep_ok.c',            # 第 455 站 第七十二轮: 例 0: 回归 (通配 不 污染 0 值臂)
 ]
 
 def build_tests(args):
