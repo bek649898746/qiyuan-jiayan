@@ -2725,6 +2725,8 @@ CORE_FEAT += [
     'scripts/feat_zh_baretag_neg.c',                 # 第 455 站 第九十轮: 裸标签名 直用 ⟹ A9001
     'scripts/feat_zh_tdbrace_ok.c',                  # 第 455 站 第九十一轮: 类型名+花括初始化 登记 (原 A4001 假阳)
     'scripts/feat_zh_tdbrace_neg.c',                 # 第 455 站 第九十一轮: 真未初始化读 仍报 A4001
+    'scripts/feat_zh_trailq_ok.c',                   # 第 455 站 第九十二轮: 后置限定符 放行面
+    'scripts/feat_zh_trailq_neg.c',                  # 第 455 站 第九十二轮: 裸标签名+后置限定符 ⟹ A9001
 ]
 
 def build_tests(args):
