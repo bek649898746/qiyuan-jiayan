@@ -2771,6 +2771,8 @@ CORE_FEAT += [
     'scripts/feat_zh_immutabletype_neg.c',        # 第 455 站 第一百一十轮: `不变 <未知类型> 名` ⟹ A9001
     'scripts/feat_zh_implname_ok.c',              # 第 455 站 第一百一十一轮: 实现 正常绑定 + 真 vtable 调用 放行面
     'scripts/feat_zh_implkw_neg.c',               # 第 455 站 第一百一十一轮: 实现 绑定位 撞 语句关键字 ⟹ A9001
+    'scripts/feat_zh_ifacem_ok.c',                # 第 455 站 第一百一十二轮: 多方法 接口 + 实现 + 真 vtable 调用 放行面
+    'scripts/feat_zh_ifacemkw_neg.c',             # 第 455 站 第一百一十二轮: 接口 方法位 撞 语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
