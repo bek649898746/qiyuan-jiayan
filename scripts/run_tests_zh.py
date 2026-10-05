@@ -2689,6 +2689,8 @@ CORE_FEAT += [
     'scripts/feat_zh_switch_zero_keep_ok.c',            # 第 455 站 第七十二轮: 例 0: 回归 (通配 不 污染 0 值臂)
     'scripts/feat_zh_switch_wild_last_ok.c',            # 第 455 站 第七十三轮: 通配臂 末位 + 其他 放行面
     'scripts/feat_zh_switch_wild_unreach_neg.c',        # 第 455 站 第七十三轮: 通配臂 之后 仍有 例 ⟹ A6027
+    'scripts/feat_zh_yiju_wild_last_ok.c',              # 第 455 站 第七十四轮: 依据 档 全匹配臂 末位/守卫 放行面
+    'scripts/feat_zh_yiju_wild_unreach_neg.c',          # 第 455 站 第七十四轮: 依据 档 全匹配臂 非末位 ⟹ A6027
 ]
 
 def build_tests(args):
