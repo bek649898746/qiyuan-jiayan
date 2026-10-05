@@ -2758,6 +2758,10 @@ CORE_FEAT += [
     'scripts/feat_zh_tdtype_ok.c',                 # 第 455 站 第一百零七轮: typedef 类型 作返回/形参 放行面
     'scripts/feat_zh_zifuparam_neg.c',            # 第 455 站 第一百零七轮: 形参位 `字符 <名>` ⟹ A9001
     'scripts/feat_zh_zifuret_neg.c',              # 第 455 站 第一百零七轮: 返回类型位 `字符` ⟹ A9001
+    'scripts/feat_zh_enum_ok.c',                   # 第 455 站 第一百零八轮: 枚举 正常形态 四面 放行面
+    'scripts/feat_zh_enumtagkw_neg.c',            # 第 455 站 第一百零八轮: 文件级 枚举标签位 撞关键字 ⟹ A9001
+    'scripts/feat_zh_enumtagkwblk_neg.c',         # 第 455 站 第一百零八轮: 块级 枚举标签位 撞关键字 ⟹ A9001
+    'scripts/feat_zh_enumbase_neg.c',             # 第 455 站 第一百零八轮: 枚举底层类型位 `字符` ⟹ A9001
 ]
 
 def build_tests(args):
