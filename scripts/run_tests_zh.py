@@ -2683,6 +2683,8 @@ CORE_FEAT += [
     'scripts/feat_zh_funcname_scope_ok.c',              # 第 455 站 第六十九轮: 函数内 __func__ 放行面
     'scripts/feat_zh_funcname_scope_neg.c',             # 第 455 站 第六十九轮: 文件作用域 __func__ ⟹ A1001
     'scripts/feat_zh_funcname_scope_idx_neg.c',         # 第 455 站 第六十九轮: 文件作用域 __func__[i] ⟹ A1001
+    'scripts/feat_zh_wild_or_ok.c',                     # 第 455 站 第七十一轮: 值|通配 _ (对照档 + 依据档)
+    'scripts/feat_zh_wild_or_neg.c',                    # 第 455 站 第七十一轮: 通配 _ 非末位 ⟹ A6027 不可达
 ]
 
 def build_tests(args):
