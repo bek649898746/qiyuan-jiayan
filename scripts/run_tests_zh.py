@@ -2748,6 +2748,8 @@ CORE_FEAT += [
     'scripts/feat_zh_sizeofname_ok.c',          # 第 455 站 第一百零二轮: 大小(…) 运算符 + 普通指针 放行面
     'scripts/feat_zh_sizeofname_neg.c',         # 第 455 站 第一百零二轮: 内建名 大小/sizeof 作变量名 ⟹ A9001
     'scripts/feat_zh_ptrnamekw_neg.c',          # 第 455 站 第一百零二轮: 指针声明 名位撞关键字 ⟹ A9001 (原 段错)
+    'scripts/feat_zh_tdnamekw_ok.c',             # 第 455 站 第一百零三轮: typedef 别名 正常形态 放行面
+    'scripts/feat_zh_tdnamekw_neg.c',            # 第 455 站 第一百零三轮: typedef 别名 撞关键字 ⟹ A9001 (原 误导)
 ]
 
 def build_tests(args):
