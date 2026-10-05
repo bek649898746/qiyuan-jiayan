@@ -1,9 +1,9 @@
 ﻿{
- "fixed": "CB90DE2B",
+ "fixed": "F9595C4E",
  "time": "2026-10-05 07:18:00",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1216,
+   "anchor_count": 1218,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度"
   },
   "lua": {
