@@ -2707,6 +2707,8 @@ CORE_FEAT += [
     'scripts/feat_zh_addr_write_neg.c',                  # 第 455 站 第八十一轮: 经 只读对象地址 写 ⟹ A9006
     'scripts/feat_zh_field_comma_ro_ok.c',              # 第 455 站 第八十二轮: 普通逗号表 / 指针字段 逗号表 放行面
     'scripts/feat_zh_field_comma_ro_neg.c',             # 第 455 站 第八十二轮: 常 逗号表 后声明符 写 ⟹ A9006
+    'scripts/feat_zh_field_declscan_ok.c',              # 第 455 站 第八十三轮: 普通/指针 逗号表 + 跨声明 放行面
+    'scripts/feat_zh_field_declscan_neg.c',             # 第 455 站 第八十三轮: 逗号表 中间/前置形 声明符 只读 ⟹ A9006
 ]
 
 def build_tests(args):
