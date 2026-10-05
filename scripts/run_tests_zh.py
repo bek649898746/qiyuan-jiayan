@@ -2736,6 +2736,8 @@ CORE_FEAT += [
     'scripts/feat_zh_tagkw_neg.c',                   # 第 455 站 第九十六轮: 标签名 撞 语句关键字 ⟹ A9001
     'scripts/feat_zh_enumkw_ok.c',                   # 第 455 站 第九十七轮: 枚举常量 正常名 放行面
     'scripts/feat_zh_enumkw_neg.c',                  # 第 455 站 第九十七轮: 枚举常量名 撞关键字 ⟹ A9001
+    'scripts/feat_zh_funcname_typeword_ok.c',       # 第 455 站 第九十八轮: 函数名 非类型词 放行面 (型词名(空) 形态不误伤)
+    'scripts/feat_zh_funcname_typeword_neg.c',      # 第 455 站 第九十八轮: 函数名 撞 类型词 ⟹ A9001 (重开 R70)
 ]
 
 def build_tests(args):
