@@ -2728,6 +2728,9 @@ CORE_FEAT += [
     'scripts/feat_zh_copyname_neg.c',              # 第455站第一百四十轮 R510 (缺陷族 #9 复制): `复制 123;` 名位非标识符 ⟹ A6064 (原 rc=0 Copy语义静默失效)
     'scripts/feat_zh_typefun127_ok.c',             # 第455站第一百四十二轮 R512 (收 #127 类型级函数): 判类型 真/假/间接 三路
     'scripts/feat_zh_typefun127_undefvar_neg.c',   # 第455站第一百四十二轮 R512 (收 #127): 判类型 变量位未声明 ⟹ A6065 (原 rc=0 恒返 1 静默错值)
+    'scripts/feat_zh_typefun127_lit_neg.c',               # 第455站第一百四十六轮 R516 (收 #127 字面量位): `判类型(x, 123)` ⟹ A6065 (原 rc=0 静默 `T 0`; 首版判据 曾 误插块注释 ⟹ 死代码)
+    'scripts/feat_zh_exist122_iface_neg.c',        # 第455站第一百四十六轮 R516 (收 #122 存在类型): `-> 实现 未定义接口` ⟹ A9004
+    'scripts/feat_zh_exist122_notimpl_neg.c',      # 第455站第一百四十六轮 R516 (收 #122): 返回类型未实现接口 ⟹ A9005
     'scripts/feat_zh_move13_onearg_neg.c',            # 第455站第一百四十二轮 R513 (收 #13 移动构造): `移入 a;` 缺源 ⟹ A6067 (原 rc=0 静默无输出)
     'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
     'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
