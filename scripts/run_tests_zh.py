@@ -2679,6 +2679,13 @@ CORE_FEAT += [
 'scripts/feat_zh_overload_cmp_neg.c',       # 第 455 站 第一百三十轮 R498: 比较 重载 到 未声明函数 ⟹ A1001「未声明函数」
 'scripts/feat_zh_cast_operand_ok.c',        # 第 455 站 第一百三十一轮 R499 (#74): `转 整(表达式)` 带括号 操作数 = 完整 表达式 (CV 4 6 3)
 'scripts/feat_zh_cast_operand_neg.c',       # 第 455 站 第一百三十一轮 R499: `转 整()` 空 操作数 ⟹ A6039 (原 静默 0)
+'scripts/feat_zh_overload_conv_ok.c',       # 第 455 站 第一百三十二轮 R500 (族13 #259): `重载 转 智能 = 智转;` ⟹ `转 整(构值)`=7012 分派 (+ 结构体数组守卫)
+'scripts/feat_zh_overload_conv_neg.c',      # 第 455 站 第一百三十二轮 R500: 转换 重载 到 未声明函数 ⟹ A1001「未声明函数」
+'scripts/feat_zh_annot173_ok.c',            # 第 455 站 第一百三十二轮 R501 (族8 #173): 注解数 / 注解值("名") 语言级 消费者 (ANN 2 1.2.3 2)
+'scripts/feat_zh_annot173_neg.c',           # 第 455 站 第一百三十二轮 R501: `注解值("不存在")` ⟹ A6041
+'scripts/feat_zh_annot173_nonconst_neg.c',  # 第 455 站 第一百三十二轮 R501: `注解值(变量名)` ⟹ A6040
+'scripts/feat_zh_macro_over_ok.c',          # 第 455 站 第一百三十二轮 R502 (族8 #179): 同名 宏 按 元数 分派 (MO 2 3 11)
+'scripts/feat_zh_macro_over_neg.c',         # 第 455 站 第一百三十二轮 R502: 同名 宏 无 元数 匹配 ⟹ A9007「无 元数 匹配 的 重载」
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
