@@ -2658,6 +2658,12 @@ CORE_FEAT += [
 'scripts/feat_zh_rangepat_tight_ok.c',      # 第 455 站 第一百二十六轮 R493 (词法器 `.` 单一权威): `低...高` **紧邻拼写** 三档同测 (择/对照/依据) —— 修复前 择/对照 静默退化 (旧编译器 exit=1)
 'scripts/feat_zh_rangepat_malformed_neg.c', # 第 455 站 第一百二十六轮 R493b: `例 1 .. 9:` (两个点) ⟹ A6032 确定性拒绝 (原 rc=0 静默退化 单值臂)
 'scripts/feat_zh_rangepat_nobound_neg.c',   # 第 455 站 第一百二十六轮 R493b: `对照 1 ...:` (三点后无上界) ⟹ A6032 (原 rc=0 静默退化)
+'scripts/feat_zh_fmt275_ok.c',              # 第 455 站 第一百二十七轮 #275: `格式化` 编译期 格式检查 (转换符 6 == 实参 6; 含 %% / {} / %*d)
+'scripts/feat_zh_fmt275_few_neg.c',         # 第 455 站 第一百二十七轮 #275: 转换符 多于 实参 ⟹ A6033 (原 rc=0 静默, printf 读未传槽 = 野值)
+'scripts/feat_zh_fmt275_interp_neg.c',      # 第 455 站 第一百二十七轮 #275: `{}` 插值 占位符 多于 实参 ⟹ A6033 (同判据落 展开后 结果串)
+'scripts/feat_zh_bind_switch_ok.c',         # 第 455 站 第一百二十七轮 R494 (族6 #138): 择/例 档 绑定模式 `例 引用 v:` (三档同测; 含守卫) 
+'scripts/feat_zh_bind_switch_namemiss_neg.c', # 第 455 站 第一百二十七轮 R494: `例 引用:` 绑定名缺失 ⟹ A6034 (原 rc=0 静默)
+'scripts/feat_zh_bind_switch_unreach_neg.c',  # 第 455 站 第一百二十七轮 R494: 绑定臂(恒真) 之后仍有 例 ⟹ A6027 (原 A1001)
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
