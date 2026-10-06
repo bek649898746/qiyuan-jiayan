@@ -2669,6 +2669,12 @@ CORE_FEAT += [
 'scripts/feat_zh_builtin_arg_ok.c',         # 第 455 站 第一百二十八轮 R495 (族10 #214 / 族14 #268 / 族6 #143): 内建 迭代+切片 语句 良构 实参 框架 全走查
 'scripts/feat_zh_builtin_arg_missing_neg.c', # 第 455 站 第一百二十八轮 R495: `切片前缀 t, s, 3;` 缺参 ⟹ A6036 (原 rc=0 静默得空串)
 'scripts/feat_zh_builtin_arg_extra_neg.c',  # 第 455 站 第一百二十八轮 R495: `反转 b, a, 3;` 多参 ⟹ A6037 (原 rc=0 + 运行期 0xC0000005)
+'scripts/feat_zh_overload_index_ok.c',      # 第 455 站 第一百二十九轮 R497 (族13 #256): `重载 [] 智能 = 智取;` ⟹ a[4]=1402 分派 (+ 结构体数组 守卫 反证)
+'scripts/feat_zh_overload_index_neg.c',     # 第 455 站 第一百二十九轮 R497: `[]` 重载 到 未声明函数 ⟹ A1001「未声明函数」(原 文案 为「未声明标识符」)
+'scripts/feat_zh_overload_pluseq_ok.c',     # 第 455 站 第一百二十九轮 R497 (族13 #260): `重载 += 智能 = 智累;` ⟹ a += 3 得 5013 分派
+'scripts/feat_zh_overload_pluseq_neg.c',    # 第 455 站 第一百二十九轮 R497: `+=` 重载 到 未声明函数 ⟹ A1001 (原 该行 误报 A9002)
+'scripts/feat_zh_sliceop_ok.c',             # 第 455 站 第一百二十九轮 R497 (族13 #263): `遍 x 于 a 从 1 到 4` 区间迭代 (9 / 3)
+'scripts/feat_zh_sliceop_neg.c',            # 第 455 站 第一百二十九轮 R497: 区间迭代 缺 `到 高` ⟹ A6038 (原 rc=0 静默空区间)
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
