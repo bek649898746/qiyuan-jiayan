@@ -2687,7 +2687,9 @@ CORE_FEAT += [
 'scripts/feat_zh_bindat_neg.c',             # 第 455 站 第一百三十二轮 R502: `例 @ :` 缺绑定名 ⟹ A6034 (原 @ 被静默丢弃)
 'scripts/feat_zh_errclass90_ok.c',          # 第 455 站 第一百三十三轮 R503 (族4 #90/#89): `可恢复错误 "…"` 打印 分类标签 + 继续执行
 'scripts/feat_zh_errclass90_fatal_ok.c',    # 第 455 站 第一百三十三轮 R503: `用户错误 "…"` 打印 分类标签 + 出口(1)
-'scripts/feat_zh_errclass90_neg.c',         # 第 455 站 第一百三十三轮 R503: `可恢复错误;` 缺消息 ⟹ A6042 (原 rc=0 空标签)
+'scripts/feat_zh_errclass90_neg.c',         # 第 455 站 第一百三十三轮 R503: 分类语句 尾部 多余记号 ⟹ A6042 (原 静默丢弃)
+'scripts/feat_zh_retry85_ok.c',             # 第 455 站 第一百三十四轮 R504 (族4 #85): `重试 f(), 次;` 次数 为 表达式 (恰好 3 次)
+'scripts/feat_zh_retry85_neg.c',            # 第 455 站 第一百三十四轮 R504: `重试 f();` 缺次数 ⟹ A6043 (原 rc=0 垃圾上界)
 # ⛔ 第 455 站 第一百三十二轮 R502: `feat_zh_macro_over_ok.c` / `_neg.c` **不入闸** —— #179 宏按元数重载
 #    在隔离探针上成立, 但改变编译器**自身**宏展开 ⟹ 自宿主回归 (闸内 `feat_zh_annot173_ok` 红) ⟹ 已撤回+挂账 (见 _DEBT_INDEX.md)。
 #    锚文件保留作挂账取证, 待下一刀 定位根因 后再入闸。
