@@ -2711,6 +2711,11 @@ CORE_FEAT += [
     'scripts/feat_zh_namespace_ok.c',              # 第455站第一百三十七轮 R507 (收 #279 名称空间): `名称空间 甲 {…}` + `甲_符号`/`甲::符号` 双拼写 ⟹ NS 7 9 (该特性首枚闸内锚)
     'scripts/feat_zh_namespace_neg.c',             # 第455站第一百三十七轮 R507 (收 #279): `名称空间 {…}` 缺名 ⟹ A6050 (原 只报 误导的「未找到 主 入口」)
     'scripts/feat_zh_visname_neg.c',               # 第455站第一百三十七轮 R507 (收 #284 可见性): `私有 123;` 名位非标识符 ⟹ A6049 (原 rc=0, 标记静默落空)
+    'scripts/feat_zh_finally_stmt_ok.c',           # 第455站第一百三十八轮 R508 (收 #163 finally): `无论如何 语句;` = 延迟 同义拼写, 函数退出执行 (FB F)
+    'scripts/feat_zh_finally_block_ok.c',          # 第455站第一百三十八轮 R508 (收 #163): **块体形** `无论如何 { … }` 同 handler 放行 (兄弟形护栏)
+    'scripts/feat_zh_finally_empty_neg.c',         # 第455站第一百三十八轮 R508 (收 #163): 空形 `无论如何;` ⟹ A6053 (原 rc=0 注册空延迟项)
+    'scripts/feat_zh_iter_noniterable_neg.c',      # 第455站第一百三十八轮 R508 (收 #165 迭代器协议): `遍 x 于 <非可迭代结构体>` ⟹ A6052 (原 rc=0 静默 0 迭代)
+    'scripts/feat_zh_linear_name_neg.c',           # 第455站第一百三十八轮 R508 (收 #109 线性类型): `线性 未定义名;` ⟹ A6054 (原 rc=0 标记静默失效)
     'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
     'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
     'scripts/feat_zh_range_bounds_ok.c',           # 第455站第一百三十六轮 R506 (收 #101): 良构区间 + 变量下界 均放行
