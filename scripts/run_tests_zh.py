@@ -2787,6 +2787,9 @@ CORE_FEAT += [
     'scripts/feat_zh_contract_ok.c',              # 第 455 站 第一百一十七轮: `契约 C;` 正常形态 放行面
     'scripts/feat_zh_contractkw_neg.c',           # 第 455 站 第一百一十七轮: `契约 跳` 名位 撞语句关键字 ⟹ A9001
     'scripts/feat_zh_contractunreg_neg.c',        # 第 455 站 第一百一十七轮: `契约 未定义名` ⟹ A9004 带码致命 (原 裸ERR rc=0)
+    'scripts/feat_zh_fntyptypedef_ok.c',          # 第 455 站 第一百一十八轮: 函数指针 typedef 合法名 + 真调用 放行面
+    'scripts/feat_zh_fntyptypenamekw_neg.c',      # 第 455 站 第一百一十八轮: 文件级 `类型定义 整 (*跳)(整);` ⟹ A9001
+    'scripts/feat_zh_fntyptypelocalkw_neg.c',     # 第 455 站 第一百一十八轮: 局部 `类型定义 整 (*跳)(整);` ⟹ A9001
 ]
 
 def build_tests(args):
