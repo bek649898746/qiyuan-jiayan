@@ -2681,11 +2681,13 @@ CORE_FEAT += [
 'scripts/feat_zh_cast_operand_neg.c',       # 第 455 站 第一百三十一轮 R499: `转 整()` 空 操作数 ⟹ A6039 (原 静默 0)
 'scripts/feat_zh_overload_conv_ok.c',       # 第 455 站 第一百三十二轮 R500 (族13 #259): `重载 转 智能 = 智转;` ⟹ `转 整(构值)`=7012 分派 (+ 结构体数组守卫)
 'scripts/feat_zh_overload_conv_neg.c',      # 第 455 站 第一百三十二轮 R500: 转换 重载 到 未声明函数 ⟹ A1001「未声明函数」
-'scripts/feat_zh_annot173_ok.c',            # 第 455 站 第一百三十二轮 R501 (族8 #173): 注解数 / 注解值("名") 语言级 消费者 (ANN 2 1.2.3 2)
-'scripts/feat_zh_annot173_neg.c',           # 第 455 站 第一百三十二轮 R501: `注解值("不存在")` ⟹ A6041
-'scripts/feat_zh_annot173_nonconst_neg.c',  # 第 455 站 第一百三十二轮 R501: `注解值(变量名)` ⟹ A6040
-'scripts/feat_zh_macro_over_ok.c',          # 第 455 站 第一百三十二轮 R502 (族8 #179): 同名 宏 按 元数 分派 (MO 2 3 11)
-'scripts/feat_zh_macro_over_neg.c',         # 第 455 站 第一百三十二轮 R502: 同名 宏 无 元数 匹配 ⟹ A9007「无 元数 匹配 的 重载」
+# ⛔ 第 455 站 第一百三十二轮 R501: `feat_zh_annot173_ok.c` / `_neg.c` / `_nonconst_neg.c` **不入闸** —— #173 注解消费面
+#    在 隔离 探针 上 成立 (v1/种子编 全 绿), 但 **自宿主编译器 (v2/v3) 丢掉 顶层 `注解` 登记** (`注解数=0`) ⟹ 锚 红 ⟹ 已 撤回 + 挂账 (见 _DEBT_INDEX.md)。
+'scripts/feat_zh_bindat_ok.c',              # 第 455 站 第一百三十二轮 R502 (族6 #135): `@` 绑定标记 归一 到 `引用` (三档同测 AT 105 107 109)
+'scripts/feat_zh_bindat_neg.c',             # 第 455 站 第一百三十二轮 R502: `例 @ :` 缺绑定名 ⟹ A6034 (原 @ 被静默丢弃)
+# ⛔ 第 455 站 第一百三十二轮 R502: `feat_zh_macro_over_ok.c` / `_neg.c` **不入闸** —— #179 宏按元数重载
+#    在隔离探针上成立, 但改变编译器**自身**宏展开 ⟹ 自宿主回归 (闸内 `feat_zh_annot173_ok` 红) ⟹ 已撤回+挂账 (见 _DEBT_INDEX.md)。
+#    锚文件保留作挂账取证, 待下一刀 定位根因 后再入闸。
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
