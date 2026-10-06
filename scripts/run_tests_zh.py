@@ -2716,6 +2716,10 @@ CORE_FEAT += [
     'scripts/feat_zh_finally_empty_neg.c',         # 第455站第一百三十八轮 R508 (收 #163): 空形 `无论如何;` ⟹ A6053 (原 rc=0 注册空延迟项)
     'scripts/feat_zh_iter_noniterable_neg.c',      # 第455站第一百三十八轮 R508 (收 #165 迭代器协议): `遍 x 于 <非可迭代结构体>` ⟹ A6052 (原 rc=0 静默 0 迭代)
     'scripts/feat_zh_linear_name_neg.c',           # 第455站第一百三十八轮 R508 (收 #109 线性类型): `线性 未定义名;` ⟹ A6054 (原 rc=0 标记静默失效)
+    'scripts/feat_zh_auto102_ok.c',                # 第455站第一百三十八轮 R509 (收 #102 类型推断): `自动 x = 5;` 推断+读取 (AUTO 5)
+    'scripts/feat_zh_auto102_noinit_neg.c',        # 第455站第一百三十八轮 R509 (收 #102): `自动 x;` 无初始化式 ⟹ A6058 (原 rc=0 读到 0)
+    'scripts/feat_zh_dep110_name_neg.c',           # 第455站第一百三十八轮 R509 (收 #110 依赖类型): `定长 123, 5;` 元素类型位字面量 ⟹ A6056 (原 rc=0 声明静默无效)
+    'scripts/feat_zh_drop15_fnname_neg.c',         # 第455站第一百三十八轮 R509 (收 #15 Drop 标记): `析构 甲, 未定义名;` ⟹ A6057 (原 rc=0 析构从不调用)
     'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
     'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
     'scripts/feat_zh_range_bounds_ok.c',           # 第455站第一百三十六轮 R506 (收 #101): 良构区间 + 变量下界 均放行
