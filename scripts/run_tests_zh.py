@@ -2885,6 +2885,15 @@ CORE_FEAT += [
     'scripts/feat_zh_rangenamekw_neg.c',          # 第 455 站 第一百二十四轮: `范围 跳 于 …` 名位 撞语句关键字 ⟹ A9001
 ]
 
+# R518 (2026-10-07 虾米 · 第 455 站第一百四十七轮 · B类攻坚 批L): **#46 编译器卡死 根治 (A6069)**
+#   `体注册()` 字段循环 无进展 守卫 ⟹ 「既非 类型 亦非 成员名」的词 确定性命中 A6069, 不再 25s 卡死。
+#   两 入口 各自 负例 + 一 正向对照 (详见 feat_zh_struct_field_ok.c 头注)。
+CORE_FEAT += [
+    'scripts/feat_zh_struct_member_lit_neg.c',      # #46 裸形态: `构 { 123 一, 二 } x;` ⟹ A6069 (旧编 25s 卡死)
+    'scripts/feat_zh_generic_typedef46_lit_neg.c',  # #46 宏入口: 泛型 类型别名 字面量 实参 ⟹ A6069 (旧编 25s 卡死)
+    'scripts/feat_zh_struct_field_ok.c',            # R518 正向对照: 逗号继承/浮点/指针/内联匿名体 四 合法路径 不误伤
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
