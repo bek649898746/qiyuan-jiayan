@@ -2782,6 +2782,8 @@ CORE_FEAT += [
     'scripts/feat_zh_ifacenamekw_neg.c',          # 第 455 站 第一百一十五轮: `接口 跳` 名位 撞语句关键字 ⟹ A9001
     'scripts/feat_zh_implifacekw_neg.c',          # 第 455 站 第一百一十五轮: `实现 跳 于 B` 接口名位 撞语句关键字 ⟹ A9001
     'scripts/feat_zh_impltypekw_neg.c',           # 第 455 站 第一百一十五轮: `实现 甲 于 跳` 类型名位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_ifaceinherit_ok.c',          # 第 455 站 第一百一十六轮: 接口继承+子接口实现+真调用 放行面
+    'scripts/feat_zh_ifaceinheritkw_neg.c',       # 第 455 站 第一百一十六轮: `接口 甲 : 跳` 父名位 撞语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
