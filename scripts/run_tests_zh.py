@@ -2705,6 +2705,12 @@ CORE_FEAT += [
     'scripts/feat_zh_cerror_neg.c',                # 第455站第一百三十六轮 R506 (收 #190): `编译错误 "消息";` ⟹ A6046 (原 未注册词 ⟹ A1001 码不符)
     'scripts/feat_zh_cerror_msg_neg.c',            # 第455站第一百三十六轮 R506 (收 #190): `编译错误 123;` 消息非字符串 ⟹ A6046
     'scripts/feat_zh_cerror_var_neg.c',            # 第455站第一百三十六轮 R506 回归护栏: `编译错误 变量;` 形 落 未知类型名兜底 被 静默吞 ⟹ 补进 排除链 ⟹ A6046 (与 D-11f 同型)
+    'scripts/feat_zh_doctest_ok.c',                # 第455站第一百三十七轮 R507 (收 #192 编译期测试/文档): `测试 "名" 用 函数;` + `跑测试` 走 **真运行时** qcc_rt.c (DT 0)
+    'scripts/feat_zh_doctest_name_neg.c',          # 第455站第一百三十七轮 R507 (收 #192): `测试 123 用 f;` 用例名非串 ⟹ A6051 (原 A1001 空名 误导)
+    'scripts/feat_zh_doctest_fn_neg.c',            # 第455站第一百三十七轮 R507 (收 #192): `测试 "名" 用 123;` 函数位非标识符 ⟹ A6051
+    'scripts/feat_zh_namespace_ok.c',              # 第455站第一百三十七轮 R507 (收 #279 名称空间): `名称空间 甲 {…}` + `甲_符号`/`甲::符号` 双拼写 ⟹ NS 7 9 (该特性首枚闸内锚)
+    'scripts/feat_zh_namespace_neg.c',             # 第455站第一百三十七轮 R507 (收 #279): `名称空间 {…}` 缺名 ⟹ A6050 (原 只报 误导的「未找到 主 入口」)
+    'scripts/feat_zh_visname_neg.c',               # 第455站第一百三十七轮 R507 (收 #284 可见性): `私有 123;` 名位非标识符 ⟹ A6049 (原 rc=0, 标记静默落空)
     'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
     'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
     'scripts/feat_zh_range_bounds_ok.c',           # 第455站第一百三十六轮 R506 (收 #101): 良构区间 + 变量下界 均放行
