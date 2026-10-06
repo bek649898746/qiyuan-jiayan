@@ -2775,6 +2775,10 @@ CORE_FEAT += [
     'scripts/feat_zh_ifacemkw_neg.c',             # 第 455 站 第一百一十二轮: 接口 方法位 撞 语句关键字 ⟹ A9001
     'scripts/feat_zh_inherit_ok.c',               # 第 455 站 第一百一十三轮: 结构体单继承正常 + `字符` 作标签/基类 放行面
     'scripts/feat_zh_inheritkw_neg.c',            # 第 455 站 第一百一十三轮: 结构体继承基类位 撞 语句关键字 ⟹ A9001
+    'scripts/feat_zh_declkw_ok.c',                # 第 455 站 第一百一十四轮: 常量/不变/自动 正常名字 放行面
+    'scripts/feat_zh_constnamekw_neg.c',          # 第 455 站 第一百一十四轮: `常量 跳` 名字位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_immutnamekw_neg.c',          # 第 455 站 第一百一十四轮: `不变 跳` 名字位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_autokw_neg.c',               # 第 455 站 第一百一十四轮: `自动 跳` 名字位 撞语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
