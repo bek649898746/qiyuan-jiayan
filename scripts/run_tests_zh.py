@@ -2797,6 +2797,8 @@ CORE_FEAT += [
     'scripts/feat_zh_fptrvar_ok.c',               # 第 455 站 第一百二十三轮: 函数指针 变量 合法名 声明 放行面
     'scripts/feat_zh_fptrvarnamekw_neg.c',        # 第 455 站 第一百二十三轮: 局部 `整 (*跳)(整);` ⟹ A9001
     'scripts/feat_zh_fptrglobalkw_neg.c',         # 第 455 站 第一百二十三轮: 顶层 `整 (*跳)(整);` ⟹ A9001
+    'scripts/feat_zh_range_ok.c',                 # 第 455 站 第一百二十四轮: `范围 名 于 …` 合法名 放行面
+    'scripts/feat_zh_rangenamekw_neg.c',          # 第 455 站 第一百二十四轮: `范围 跳 于 …` 名位 撞语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
