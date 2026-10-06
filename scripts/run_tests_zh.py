@@ -2690,6 +2690,15 @@ CORE_FEAT += [
 'scripts/feat_zh_errclass90_neg.c',         # 第 455 站 第一百三十三轮 R503: 分类语句 尾部 多余记号 ⟹ A6042 (原 静默丢弃)
 'scripts/feat_zh_retry85_ok.c',             # 第 455 站 第一百三十四轮 R504 (族4 #85): `重试 f(), 次;` 次数 为 表达式 (恰好 3 次)
 'scripts/feat_zh_retry85_neg.c',            # 第 455 站 第一百三十四轮 R504: `重试 f();` 缺次数 ⟹ A6043 (原 rc=0 垃圾上界)
+    'scripts/feat_zh_recursion_guard_zero_neg.c',  # 第455站第一百三十五轮 R505 (收 #155 深度递归保护 · 拒面): `递归保护 0;` ⟹ A6044 (原 rc=0; 守卫 `__rec++ > 0` 使 首次 调用 即 命中)
+    'scripts/feat_zh_recursion_guard_negv_neg.c',  # 第455站第一百三十五轮 R505 (收 #155): `递归保护 -1;` ⟹ A6044 (一元负号 是 二元(减,0,1) ⟹ 判据 须 常量折叠 `目弊` 才拦得住)
+    'scripts/feat_zh_recursion_guard_frame_neg.c', # 第455站第一百三十五轮 R505 (收 #155): `递归保护 5 返 0;` 缺分号 ⟹ A6044 (原 静默 吞 后续 语句)
+    'scripts/feat_zh_panic_hook_eq_ok.c',          # 第455站第一百三十五轮 R505 (收 #162 恐慌钩子): `恐慌钩子 = 名;` 兄弟拼写 ⟹ 钩子真安装 (HOOKx, 退出1; 原 `=` 被当钩子名 ⟹ 只输出 x)
+    'scripts/feat_zh_panic_hook_target_neg.c',     # 第455站第一百三十五轮 R505 (收 #162): `恐慌钩子 123;` 目标 非 标识符 ⟹ A6045 (原 rc=0, 钩子 永不 调用)
+    'scripts/feat_zh_immut_read_ok.c',             # 第455站第一百三十五轮 R505 (收 #209 不可变性): `不变 x = 5;` 正常 只读 使用 (IM 5)
+    'scripts/feat_zh_immut_compound_neg.c',        # 第455站第一百三十五轮 R505 (收 #209): `不变 x += 1;` ⟹ A9006 (原 rc=0 且 x 静默 变 6)
+    'scripts/feat_zh_immut_incr_neg.c',            # 第455站第一百三十五轮 R505 (收 #209): `不变 x++;` ⟹ A9006 (原 rc=0 且 x 静默 变 6)
+    'scripts/feat_zh_immut_prefix_neg.c',          # 第455站第一百三十五轮 R505 (收 #209): `不变 ++x;` ⟹ A9006 (前缀 路径 同 helper `指只读写拦`)
 # ⛔ 第 455 站 第一百三十二轮 R502: `feat_zh_macro_over_ok.c` / `_neg.c` **不入闸** —— #179 宏按元数重载
 #    在隔离探针上成立, 但改变编译器**自身**宏展开 ⟹ 自宿主回归 (闸内 `feat_zh_annot173_ok` 红) ⟹ 已撤回+挂账 (见 _DEBT_INDEX.md)。
 #    锚文件保留作挂账取证, 待下一刀 定位根因 后再入闸。
