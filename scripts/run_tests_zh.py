@@ -2779,6 +2779,9 @@ CORE_FEAT += [
     'scripts/feat_zh_constnamekw_neg.c',          # 第 455 站 第一百一十四轮: `常量 跳` 名字位 撞语句关键字 ⟹ A9001
     'scripts/feat_zh_immutnamekw_neg.c',          # 第 455 站 第一百一十四轮: `不变 跳` 名字位 撞语句关键字 ⟹ A9001
     'scripts/feat_zh_autokw_neg.c',               # 第 455 站 第一百一十四轮: `自动 跳` 名字位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_ifacenamekw_neg.c',          # 第 455 站 第一百一十五轮: `接口 跳` 名位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_implifacekw_neg.c',          # 第 455 站 第一百一十五轮: `实现 跳 于 B` 接口名位 撞语句关键字 ⟹ A9001
+    'scripts/feat_zh_impltypekw_neg.c',           # 第 455 站 第一百一十五轮: `实现 甲 于 跳` 类型名位 撞语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
