@@ -2675,6 +2675,8 @@ CORE_FEAT += [
 'scripts/feat_zh_overload_pluseq_neg.c',    # 第 455 站 第一百二十九轮 R497: `+=` 重载 到 未声明函数 ⟹ A1001 (原 该行 误报 A9002)
 'scripts/feat_zh_sliceop_ok.c',             # 第 455 站 第一百二十九轮 R497 (族13 #263): `遍 x 于 a 从 1 到 4` 区间迭代 (9 / 3)
 'scripts/feat_zh_sliceop_neg.c',            # 第 455 站 第一百二十九轮 R497: 区间迭代 缺 `到 高` ⟹ A6038 (原 rc=0 静默空区间)
+'scripts/feat_zh_overload_cmp_ok.c',        # 第 455 站 第一百三十轮 R498 (族13 #261): `重载 < 智能 = 智比;` 反向语义 判定 (CMPC 0 1 = 真分派)
+'scripts/feat_zh_overload_cmp_neg.c',       # 第 455 站 第一百三十轮 R498: 比较 重载 到 未声明函数 ⟹ A1001「未声明函数」
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
