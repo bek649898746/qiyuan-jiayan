@@ -2655,6 +2655,9 @@ CORE_FEAT += [
     'scripts/feat_zh_mixpat_neg.c',           # 第 455 站 第五十五轮: 区间臂 覆盖 后续 臂 ⟹ A6027
     'scripts/feat_zh_mixpat_yiju_ok.c',       # 第 455 站 第五十六轮: `依据` 档 混合交替 `范围 低 到 高 | 值`
     'scripts/feat_zh_mixpat_yiju_neg.c',      # 第 455 站 第五十六轮: 依据 区间臂 覆盖 后续 臂 ⟹ 冗余模式 #142
+'scripts/feat_zh_rangepat_tight_ok.c',      # 第 455 站 第一百二十六轮 R493 (词法器 `.` 单一权威): `低...高` **紧邻拼写** 三档同测 (择/对照/依据) —— 修复前 择/对照 静默退化 (旧编译器 exit=1)
+'scripts/feat_zh_rangepat_malformed_neg.c', # 第 455 站 第一百二十六轮 R493b: `例 1 .. 9:` (两个点) ⟹ A6032 确定性拒绝 (原 rc=0 静默退化 单值臂)
+'scripts/feat_zh_rangepat_nobound_neg.c',   # 第 455 站 第一百二十六轮 R493b: `对照 1 ...:` (三点后无上界) ⟹ A6032 (原 rc=0 静默退化)
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
