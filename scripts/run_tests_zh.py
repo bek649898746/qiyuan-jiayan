@@ -2701,6 +2701,14 @@ CORE_FEAT += [
     'scripts/feat_zh_immut_prefix_neg.c',          # 第455站第一百三十五轮 R505 (收 #209): `不变 ++x;` ⟹ A9006 (前缀 路径 同 helper `指只读写拦`)
     'scripts/feat_zh_immut_collide_ok.c',           # 第455站第一百三十五轮 R505 修订 · #209 回归护栏: 跨函数 **同名** 可变变量 不得 被 `不变` 判据 误拒 (首版 只比名字 ⟹ 假 A9006; 父编 `=` 路径 同病)
     'scripts/feat_zh_immut_shadow_ok.c',            # 第455站第一百三十五轮 R505 修订 · #209 回归护栏: 块内 **遮蔽** 外层 `不变` 的 可变量 写 必须放行
+    'scripts/feat_zh_cerror_ok.c',                 # 第455站第一百三十六轮 R506 (收 #190 编译期断言族): `编译期断言(2+2==4)` 放行 (同族 正锚)
+    'scripts/feat_zh_cerror_neg.c',                # 第455站第一百三十六轮 R506 (收 #190): `编译错误 "消息";` ⟹ A6046 (原 未注册词 ⟹ A1001 码不符)
+    'scripts/feat_zh_cerror_msg_neg.c',            # 第455站第一百三十六轮 R506 (收 #190): `编译错误 123;` 消息非字符串 ⟹ A6046
+    'scripts/feat_zh_cerror_var_neg.c',            # 第455站第一百三十六轮 R506 回归护栏: `编译错误 变量;` 形 落 未知类型名兜底 被 静默吞 ⟹ 补进 排除链 ⟹ A6046 (与 D-11f 同型)
+    'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
+    'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
+    'scripts/feat_zh_range_bounds_ok.c',           # 第455站第一百三十六轮 R506 (收 #101): 良构区间 + 变量下界 均放行
+    'scripts/feat_zh_range_bounds_neg.c',          # 第455站第一百三十六轮 R506 (收 #101): 常量上下界倒置 ⟹ A6048 (原 rc=0, 运行期恒「范围越界」)
 # ⛔ 第 455 站 第一百三十二轮 R502: `feat_zh_macro_over_ok.c` / `_neg.c` **不入闸** —— #179 宏按元数重载
 #    在隔离探针上成立, 但改变编译器**自身**宏展开 ⟹ 自宿主回归 (闸内 `feat_zh_annot173_ok` 红) ⟹ 已撤回+挂账 (见 _DEBT_INDEX.md)。
 #    锚文件保留作挂账取证, 待下一刀 定位根因 后再入闸。
