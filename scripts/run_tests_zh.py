@@ -2790,6 +2790,8 @@ CORE_FEAT += [
     'scripts/feat_zh_fntyptypedef_ok.c',          # 第 455 站 第一百一十八轮: 函数指针 typedef 合法名 + 真调用 放行面
     'scripts/feat_zh_fntyptypenamekw_neg.c',      # 第 455 站 第一百一十八轮: 文件级 `类型定义 整 (*跳)(整);` ⟹ A9001
     'scripts/feat_zh_fntyptypelocalkw_neg.c',     # 第 455 站 第一百一十八轮: 局部 `类型定义 整 (*跳)(整);` ⟹ A9001
+    'scripts/feat_zh_discpayload_ok.c',           # 第 455 站 第一百一十九轮: 判别 类型化载荷 合法字段名 + 真分派 放行面
+    'scripts/feat_zh_disctypefieldkw_neg.c',      # 第 455 站 第一百一十九轮: 判别 载荷 字段名位 撞语句关键字 ⟹ A9001
 ]
 
 def build_tests(args):
