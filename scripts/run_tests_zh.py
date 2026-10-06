@@ -2724,6 +2724,8 @@ CORE_FEAT += [
     'scripts/feat_zh_assert91_noexpr_neg.c',       # 第455站第一百四十轮 R510 (收 #91): 空形 `断言;` ⟹ A6062 (原 rc=0, 运行时恒 出口1)
     'scripts/feat_zh_comptime187_ok.c',            # 第455站第一百四十轮 R510 (收 #187 部分求值): `编译期(2+3*4)` ⟹ CT 20
     'scripts/feat_zh_comptime187_bad_neg.c',       # 第455站第一百四十轮 R510 (收 #187): `编译期(未定义名+1)` 求值失败 ⟹ A6061 (原 静默得 0)
+    'scripts/feat_zh_sealname_neg.c',              # 第455站第一百四十轮 R510 (缺陷族 #207 密封): `密封 123;` 名位非标识符 ⟹ A6063 (原 rc=0 密封拦截静默失效)
+    'scripts/feat_zh_copyname_neg.c',              # 第455站第一百四十轮 R510 (缺陷族 #9 复制): `复制 123;` 名位非标识符 ⟹ A6064 (原 rc=0 Copy语义静默失效)
     'scripts/feat_zh_panic_msg_neg.c',             # 第455站第一百三十六轮 R506 (收 #88): `恐慌 123;` 非字符串消息 ⟹ A6047 (原 rc=0 静默打印默认消息)
     'scripts/feat_zh_panic_nomsg_ok.c',            # 第455站第一百三十六轮 R506 (收 #88): 无消息形 `恐慌;` 保留 默认消息+退出1 (契约护栏)
     'scripts/feat_zh_range_bounds_ok.c',           # 第455站第一百三十六轮 R506 (收 #101): 良构区间 + 变量下界 均放行
