@@ -2664,6 +2664,11 @@ CORE_FEAT += [
 'scripts/feat_zh_bind_switch_ok.c',         # 第 455 站 第一百二十七轮 R494 (族6 #138): 择/例 档 绑定模式 `例 引用 v:` (三档同测; 含守卫) 
 'scripts/feat_zh_bind_switch_namemiss_neg.c', # 第 455 站 第一百二十七轮 R494: `例 引用:` 绑定名缺失 ⟹ A6034 (原 rc=0 静默)
 'scripts/feat_zh_bind_switch_unreach_neg.c',  # 第 455 站 第一百二十七轮 R494: 绑定臂(恒真) 之后仍有 例 ⟹ A6027 (原 A1001)
+'scripts/feat_zh_noarg_const_ok.c',         # 第 455 站 第一百二十八轮 R496 (族12 #253 / 族8 #191·#192): 无参 内建 常量 `目标架构/目标字长/源位置/文档数` 有括号 与 无括号 同测
+'scripts/feat_zh_noarg_const_neg.c',        # 第 455 站 第一百二十八轮 R496: `目标架构(1)` ⟹ A6035 (原 静默 丢 实参)
+'scripts/feat_zh_builtin_arg_ok.c',         # 第 455 站 第一百二十八轮 R495 (族10 #214 / 族14 #268 / 族6 #143): 内建 迭代+切片 语句 良构 实参 框架 全走查
+'scripts/feat_zh_builtin_arg_missing_neg.c', # 第 455 站 第一百二十八轮 R495: `切片前缀 t, s, 3;` 缺参 ⟹ A6036 (原 rc=0 静默得空串)
+'scripts/feat_zh_builtin_arg_extra_neg.c',  # 第 455 站 第一百二十八轮 R495: `反转 b, a, 3;` 多参 ⟹ A6037 (原 rc=0 + 运行期 0xC0000005)
     'scripts/feat_zh_const_typedef_ptr_ok.c',  # 第 455 站 第五十七轮: `typedef 整 * 常 CPI` 只读 指针对象 (放行面)
     'scripts/feat_zh_const_typedef_ptr_neg.c', # 第 455 站 第五十七轮: typedef 常指针对象 写入 ⟹ A9006
     'scripts/feat_zh_const_typedef_pointee_ok.c',  # 第 455 站 第五十八轮: `typedef 整 常 * CPD` 只读 所指 (放行面)
