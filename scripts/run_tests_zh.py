@@ -2933,6 +2933,13 @@ CORE_FEAT += [
     'scripts/feat_zh_iflet157_neg.c',   # #157 负锚: 缺 体块 ⟹ A6071
 ]
 
+# R529 (2026-10-07 虾米 · 第 455 站第一百五十三轮 · B类攻坚 批R): **#173 注解 消费面 真接入 (A6040/A6041)**
+CORE_FEAT += [
+    'scripts/feat_zh_annot173_ok.c',            # #173 正锚: 注解数/注解值 消费面 (ANN 2 1.2.3 2)
+    'scripts/feat_zh_annot173_neg.c',           # #173 负锚: 注解 未定义 ⟹ A6041
+    'scripts/feat_zh_annot173_nonconst_neg.c',   # #173 负锚: 键 非 编译期字符串 ⟹ A6040
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
