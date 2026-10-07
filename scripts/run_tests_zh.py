@@ -2917,6 +2917,13 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_cabi240_revtype_neg.c',   # #240: 标量 <- 构值返回的 调用 ⟹ A9002 (原 静默错值)
     'scripts/feat_zh_cabi240_revtype_ok.c',     # #240 正向对照: 构值接收 + 标量 <- 构值字段 边界
+
+]
+
+# R525 (2026-10-07 虾米 · 第 455 站第一百五十二轮): **#117/#108 拒面** —— 泛型约束 接口名 未定义 ⟹ A9004
+#   （原 挂账 判据「静默 rc=0」已 过时: R525 复测 = rc=1 + A9004; 允面 = 既有 feat_zh_specialization50.c）
+CORE_FEAT += [
+    'scripts/feat_zh_specialize117_neg.c',   # #117/#108: 泛型约束 指向 未定义接口 ⟹ A9004
 ]
 
 def build_tests(args):
