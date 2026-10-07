@@ -2900,6 +2900,12 @@ CORE_FEAT += [
     'scripts/feat_zh_macrodump182_ok.c',   # #182: --macro-expand 展开 dump ([宏] 名 => 文本) 断言
 ]
 
+# R522 (2026-10-07 虾米 · 第 455 站第一百四十九轮 · B类攻坚 批N): **#96 泛型/函数宏 实参个数 判据 (A6068)**
+CORE_FEAT += [
+    'scripts/feat_zh_generic96_arity_neg.c',   # #96: 少传实参 ⟹ A6068 (原 误导性 A1001)
+    'scripts/feat_zh_generic96_ok.c',           # #96 正向对照: 元数相符 + 零参宏 空调用 + 反向取值
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
