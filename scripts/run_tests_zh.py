@@ -3033,6 +3033,13 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_selfref22_ok.c',       # 1/22 正锚: `构 节点 { 整 v; 构 节点 *下; }` + 三结点建链/遍历 ⟹ SELF22 7 3
 ]
+# R553 (2026-10-08 虾米 · C类攻坚 批C-G): **未注册特性词 响亮拒绝 (新码 A6086)** —— 白名单 制, 单点 helper + 块()/解析() 两 调用点
+CORE_FEAT += [
+    'scripts/feat_zh_unreg6086_body_neg.c', # 函数体 位置: `溢出检查 开;` ⟹ A6086 (父编 rc=0 静默 no-op)
+    'scripts/feat_zh_unreg6086_top_neg.c',  # 顶层 位置: `导出 函数 …` ⟹ A6086 (父编 报 误导的「未找到 主 入口」)
+    'scripts/feat_zh_unreg6086_ok.c',       # 零误伤 对照: 白名单词 作 变量名(声明位)/赋值位 + 结构体 名 ⟹ UNREG6086 PASS
+    'scripts/feat_zh_lazy215_ok.c',         # 10/215 惰性序列 (陈旧挂账反证): 无限 生成器 只 取 前 5 ⟹ LAZY215 15 5
+]
 
 
 
