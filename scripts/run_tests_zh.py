@@ -2989,6 +2989,22 @@ CORE_FEAT += [
     'scripts/feat_zh_effect216_neg.c',     # #216 负锚: 执行 未声明 效应 ⟹ A6076
     'scripts/feat_zh_effect216_bad_neg.c', # #216 负锚: 效应 声明 near-miss ⟹ A6077
 ]
+# R547 (2026-10-08 虾米 · C类攻坚 批C-A): **3/53 结构化并发 拒面 (A6078) + 4/92 浮点确定性 + 3/64 绿色线程/纤程**
+CORE_FEAT += [
+    'scripts/feat_zh_structconc53_neg.c',   # 3/53 负锚: `结构化并发;` (无块) ⟹ A6078 (父编 静默 rc=0)
+    'scripts/feat_zh_fpdet92_ok.c',         # 4/92 正锚: IEEE 双精度 无 x87 漂移 (FLOAT 0 1 1)
+    'scripts/feat_zh_fpdet92_neg.c',        # 4/92 负锚: `整 x = 1.5;` 隐式窄化 ⟹ A9002
+    'scripts/feat_zh_fiber64_ok.c',         # 3/64 正锚: 语言级 fiber (生成/产出/下一个) FIBER 60 30
+    'scripts/feat_zh_fiber64_neg.c',        # 3/64 负锚: 下一个(未声明) ⟹ A6074
+]
+# R547b (2026-10-08 虾米 · 批C-A 续): **本批新增 拒面** —— 浮点字面量 溢出 (A6080) / 生成 实参 守卫 (A6079)
+CORE_FEAT += [
+    'scripts/feat_zh_fpdet92_of_neg.c',      # 4/92 负锚 (新增): `双 a = 1e400;` 溢出 ⟹ A6080 (父编 静默 +inf)
+    'scripts/feat_zh_fiber64_gen_neg.c',      # 3/64 负锚 (新增): `生成(g, 123, 0);` 非函数 ⟹ A6079 (父编 rc=0 产物崩)
+    'scripts/feat_zh_fiber64_gen2_neg.c',     # 3/64 负锚 (新增): `生成(g);` 缺实参 ⟹ A6079 (父编 rc=0)
+]
+
+
 
 
 
