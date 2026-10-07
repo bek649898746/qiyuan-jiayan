@@ -614,6 +614,42 @@ long long __gen_yield_v(long long v) { /* 生成器产出: 存值槽 → 挂起�
     return v;
 }
 
+/* R545 (#267): 原生串 (长度前缀, 非 char*) —— 值 = 指向 [4B 小端 长][文本 …][0] 的 指针.
+   布局 由 编译器 生成 (`原生 "文本"` 字面量); 以下 两个 helper 是 语言级 访问 面. */
+int __qcc_nstr_len(void *p) { return p ? ((int *)p)[0] : 0; }        /* 串长(s) */
+char *__qcc_nstr_data(void *p) { return p ? ((char *)p) + 4 : (char *)0; } /* 串数据(s) */
+
+/* R546 (#216): 代数效应 处理器 (one-shot, **可恢复**) —— 执行者 = 主 fiber, 处理器 = 独立 fiber.
+   语义: `执行 效应(实参)` → 执行者 挂起 (SwitchToFiber 到 该 效应 的 处理器 fiber), 实参 由 `效应参()` 取出;
+   处理器 调 `恢复(值)` → 切回 执行者, `执行 …` 的 结果 = 值 ⟹ 执行者 在 **原 位置 继续** (这正是 代数效应
+   相对 异常 的 本质: 处理器 能 恢复 计算). 处理器 应 以 循环 形态 常驻 (同 生成器 约定)。 */
+static void *__eff_h[64];
+static void *__eff_fn[64];
+static void *__eff_main = 0;
+static long long __eff_arg = 0, __eff_ret = 0;
+
+static void __eff_wrap(void *param) { /* 处理器 fiber 入口: 调 用户 处理器; 返回 后 常驻 (不 结束 fiber) */
+    int i = (int)(long long)param;
+    ((int (*)(void *))__eff_fn[i])(0);
+    for (;;) SwitchToFiber(__eff_main);
+}
+
+void __eff_install(int id, void *fn) { /* 处理 名 = 处理器; */
+    if (!__eff_main) __eff_main = ConvertThreadToFiber(0);
+    if (id >= 0 && id < 64 && !__eff_h[id]) { __eff_fn[id] = fn; __eff_h[id] = CreateFiber(0, __eff_wrap, (void *)(long long)id); }
+}
+
+long long __eff_perform(int id, long long arg) { /* 执行 名(实参) —— 挂起 执行者, 转 处理器; 恢复 后 返 其 值 */
+    if (id < 0 || id >= 64 || !__eff_h[id]) { fprintf(stderr, "[EFF] 未安装 处理器: 效应 %d\n", id); exit(1); }
+    if (!__eff_main) __eff_main = ConvertThreadToFiber(0);
+    __eff_arg = arg;
+    SwitchToFiber(__eff_h[id]);
+    return __eff_ret;
+}
+
+long long __eff_take(void) { return __eff_arg; }          /* 效应参() —— 处理器 侧 取 实参 */
+void __eff_resume(long long v) { __eff_ret = v; SwitchToFiber(__eff_main); } /* 恢复(值) —— 处理器 侧 恢复 执行者 */
+
 
 /* 接入 2026-08-28 P1 #6 引用计数 (Rc): 共享所有权, 运行时计数
    Rc = 8B (仅指针, 指向 data; 计数在 data 前 4B) — 按值传参/返回走普通路径 (避开 sret+big 缺口)

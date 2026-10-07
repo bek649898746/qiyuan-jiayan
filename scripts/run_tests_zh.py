@@ -2980,6 +2980,16 @@ CORE_FEAT += [
     'scripts/feat_zh_diag83_col_ok.c',    # #83 正锚: A9002 的 JSON col=18
     'scripts/feat_zh_diag83_col2_ok.c',   # #83 正锚: A6071 的 JSON col=21 (不同列 ⟹ 非常量)
 ]
+# R545/R546 (2026-10-07 虾米 · B类攻坚 批Y): **#267 原生串 (长度前缀) + #216 代数效应+处理器**
+CORE_FEAT += [
+    'scripts/feat_zh_nstr267_ok.c',        # #267 正锚: 原生串 字面量 + 串长/串数据 (NSTR 3 abc abc)
+    'scripts/feat_zh_nstr267_nul_ok.c',    # #267 正锚: 嵌入 NUL ⟹ 串长 3 (NSTR0 3 97 0 98, 长度前缀 铁证)
+    'scripts/feat_zh_nstr267_neg.c',       # #267 负锚: 原生 后 非字面量 ⟹ A6075
+    'scripts/feat_zh_effect216_ok.c',      # #216 正锚: 效应/处理/执行/效应参/恢复 (EFF 12 60)
+    'scripts/feat_zh_effect216_neg.c',     # #216 负锚: 执行 未声明 效应 ⟹ A6076
+    'scripts/feat_zh_effect216_bad_neg.c', # #216 负锚: 效应 声明 near-miss ⟹ A6077
+]
+
 
 
 
