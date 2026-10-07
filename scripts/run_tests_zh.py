@@ -3218,7 +3218,13 @@ def main():
         for _tag, _scr, _what in (
                 ('闸②', 'check_c_mode_smoke.py', '`-c` 模式冒烟'),
                 ('闸④', 'check_dwarf289.py', '#289 调试信息 (DWARF) 行号/文件归属'),
-                ('闸③', 'check_neg_anchors.py', '负例锚有效性')):
+                ('闸③', 'check_neg_anchors.py', '负例锚有效性'),
+                # R543 (2026-10-07 虾米 · 族12 #241/#254 收口): **闸⑤** —— `-c` 产出物 **交给 jyld 链接 并 运行**。
+                #   由来: 闸② 只验 `-c` 能编译, **主闸 的锚 全走 链接模式**, 故 「.o → jyld → 可执行」整条 工具链
+                #   **零覆盖** ⟹ 实测 真缺陷: `int main(void){return 42;}` 经 qcc -c + jyld 得 rc=0x2CE000 (jyld 的
+                #   k32 IAT 前 8 槽 被 LoadLibraryA 插入 顶偏一 ⟹ CRT 桩 call 到 ExitProcess)。任何 走 jyld 的工具链
+                #   回归 从此 由 闸 自动抓 (含 归档 `.a` 往返)。
+                ('闸⑤', 'check_jyld_link_smoke.py', '`-c` 产物 + jyld 链接 运行 冒烟 (含 .a 归档往返)')):
             _p = os.path.join(root, 'scripts', _scr)
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue

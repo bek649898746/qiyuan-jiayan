@@ -73,9 +73,14 @@ static int gsym_n = 0;
 
 /* kernel32 IAT 动态槽（qcc write_pe 同源 + Gate-1 sqlite3 扩展 60+ 函数, fix 2026-08-07） */
 static const char *k32_names[] = {
+    /* ⚠️ 前 8 项 = qcc CRT 桩 的**硬编码槽位** (核名[] 同序): 0=GetStdHandle 1=WriteFile 2=CreateFileA 3=ReadFile
+       4=VirtualAlloc 5=SetFilePointer 6=ExitProcess 7=GetCommandLineA —— **不可插入/删除** (gen_crt 用 +8*6 / +8*7)。
+       R543 根治 (2026-10-07 虾米): C10f 曾把 "LoadLibraryA" 插在 索引 4 ⟹ 后 8 项 全体 **后移一** ⟹ 桩 的 槽 6 实际 call SetFilePointer、
+       槽 7 实际 call **ExitProcess** ⟹ 进程 在 argv 解析 处 **提前退出** (退码 = 垃圾地址, 无任何输出) ——
+       实测 `int main(void){return 42;}` 经 `qcc -c` + `jyld` 得 rc=0x2CE000 而非 42。现 移出 前 8 (仍 按 名 解析, 不受位置影响)。 */
     "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile",
-    "LoadLibraryA", /* C10f 回退 (2026-09-17): 编译器内建符号 load_library 的落点 —— 见 resolve_one 别名表 */
     "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA",
+    "LoadLibraryA", /* C10f 回退 (2026-09-17): 编译器内建符号 load_library 的落点 —— 见 resolve_one 别名表 (位置 ≥8, 不影响 CRT 硬编码槽) */
     "CloseHandle","CreateFileMappingW","CreateFileW","CreateMutexW",
     "DeleteFileA","DeleteFileW","FlushFileBuffers","FlushViewOfFile",
     "FormatMessageA","FormatMessageW","GetCurrentProcessId","GetDiskFreeSpaceA",
