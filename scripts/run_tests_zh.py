@@ -2953,6 +2953,26 @@ CORE_FEAT += [
     'scripts/feat_zh_module286_ok.c',          # #286 正锚: 导入 辅助文件 并 调用其中函数 (MOD286 25)
     'scripts/feat_zh_module286_missing_neg.c',   # #286 负锚: 导入 不存在文件 ⟹ 找不到文件
 ]
+# R538 (2026-10-07 虾米 · 第 455 站第一百五十六轮 · B类攻坚 批U): **#281 属性（attribute）本体表 + 语言级 消费面 (A6072/A6073)**
+CORE_FEAT += [
+    'scripts/feat_zh_attr281_ok.c',             # #281 正锚: 属性数/属性值("名") 消费面 (ATTR 2 4)
+    'scripts/feat_zh_attr281_missing_neg.c',    # #281 负锚: 属性 未出现 ⟹ A6073
+    'scripts/feat_zh_attr281_nonconst_neg.c',   # #281 负锚: 键 非 编译期字符串 ⟹ A6072
+]
+# R539 (2026-10-07 虾米 · B类攻坚 批U 续): **#46 协程 交错正锚 + #47 actor 拒锚 + #48 异步 拒锚 (A6074)**
+CORE_FEAT += [
+    'scripts/feat_zh_coro46_interleave_ok.c',   # #46 正锚: 三 协程 交错 步进 (真 fiber 独立栈 3/6/9)
+    'scripts/feat_zh_actor47_undecl_neg.c',     # #47 负锚: 投递 未声明 邮箱 ⟹ A1001 (回退 actor_send)
+    'scripts/feat_zh_async48_undecl_neg.c',     # #48 负锚: 下一个(未声明g) ⟹ A6074 (原 静默 ⟹ 运行期 崩溃)
+]
+# R540 (2026-10-07 虾米 · B类攻坚 批V): **#145 模式绑定作用域 (对照 档 臂级可见性)**
+CORE_FEAT += [
+    'scripts/feat_zh_arm145_own_ok.c',    # #145 正锚: 本臂 绑定 可见 (ARM 3)
+    'scripts/feat_zh_arm145_leak_neg.c',   # #145 负锚: 跨臂 引用 第一臂 绑定 ⟹ A1001 (父编 rc=0 静默)
+]
+
+
+
 
 def build_tests(args):
     if args.zh_feat:
