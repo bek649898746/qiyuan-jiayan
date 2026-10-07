@@ -2904,6 +2904,12 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_generic96_arity_neg.c',   # #96: 少传实参 ⟹ A6068 (原 误导性 A1001)
     'scripts/feat_zh_generic96_ok.c',           # #96 正向对照: 元数相符 + 零参宏 空调用 + 反向取值
+
+]
+
+# R523 (2026-10-07 虾米 · 第 455 站第一百五十轮 · B类攻坚 批O): **#175 变参模板 须 至少 一具名形参 (A6070)**
+CORE_FEAT += [
+    'scripts/feat_zh_generic175_neg.c',   # #175: `泛型 首(...)` 只写变参 ⟹ A6070 (原 静默接受)
 ]
 
 def build_tests(args):
