@@ -2894,6 +2894,12 @@ CORE_FEAT += [
     'scripts/feat_zh_struct_field_ok.c',            # R518 正向对照: 逗号继承/浮点/指针/内联匿名体 四 合法路径 不误伤
 ]
 
+# R520 (2026-10-07 虾米 · 第 455 站第一百四十八轮 · B类攻坚 批M): **#182 宏展开调试 真接入**
+#   CLI `--macro-expand` ⟹ 每个 函数宏 的 展开 结果 (名 + 实参替换后 文本) 打到 编译器 输出。
+CORE_FEAT += [
+    'scripts/feat_zh_macrodump182_ok.c',   # #182: --macro-expand 展开 dump ([宏] 名 => 文本) 断言
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
