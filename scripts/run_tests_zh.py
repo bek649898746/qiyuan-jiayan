@@ -3011,6 +3011,13 @@ CORE_FEAT += [
     'scripts/feat_zh_macro183_ok.c',         # 8/183 正锚: 导入 宏库 ⟹ MACRO183 42 100 (声明宏+对象宏 跨文件)
     'scripts/feat_zh_macro183_neg.c',        # 8/183 负锚: 导入 非串 ⟹ A6082 (父编 静默 跳过)
 ]
+# R549 (2026-10-08 虾米 · C类攻坚 批C-C): **13/262 范围 `..` 确定性拒绝 (A6083) + 8/184 文件级 定长 (拒面 A9005)**
+CORE_FEAT += [
+    'scripts/feat_zh_dotdot262_neg.c',       # 13/262 负锚: `整 a = 1..10;` 两点 ⟹ A6083 (父编 rc=0 且 a=1 = 静默错值)
+    'scripts/feat_zh_dotdot262_ok.c',        # 13/262 邻面 回归锁: 三点区间 + `.5` + `遍 从 到` + 成员单点 ⟹ DOT262 11 22 5 5
+    'scripts/feat_zh_constgen184_ok.c',      # 8/184 正锚: 文件级 `定长 T 名, N;` 六 元素类型 ⟹ CG184 7 9 97 5 6 42 1 8 (父编 崩/A9001)
+    'scripts/feat_zh_constgen184_neg.c',     # 8/184 负锚: `定长 整 阵, 0;` 长度 非正 ⟹ A9005 (父编 rc=0 产物 0xC0000005)
+]
 
 
 
