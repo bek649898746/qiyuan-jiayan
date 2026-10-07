@@ -2945,6 +2945,13 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_macro179_overload_ok.c',    # #179 正锚: 同名多版本 按元数 择优 (OVL 2 3)
     'scripts/feat_zh_macro179_arity_neg.c',       # #179 负锚: 无相符版本 ⟹ A9007
+
+]
+
+# R536 (2026-10-07 虾米 · 第 455 站第一百五十五轮 · B类攻坚 批T): **#286 多文件模块 语言级 `导入`**
+CORE_FEAT += [
+    'scripts/feat_zh_module286_ok.c',          # #286 正锚: 导入 辅助文件 并 调用其中函数 (MOD286 25)
+    'scripts/feat_zh_module286_missing_neg.c',   # #286 负锚: 导入 不存在文件 ⟹ 找不到文件
 ]
 
 def build_tests(args):
