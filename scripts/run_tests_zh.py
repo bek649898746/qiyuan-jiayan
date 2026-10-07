@@ -3018,6 +3018,12 @@ CORE_FEAT += [
     'scripts/feat_zh_constgen184_ok.c',      # 8/184 正锚: 文件级 `定长 T 名, N;` 六 元素类型 ⟹ CG184 7 9 97 5 6 42 1 8 (父编 崩/A9001)
     'scripts/feat_zh_constgen184_neg.c',     # 8/184 负锚: `定长 整 阵, 0;` 长度 非正 ⟹ A9005 (父编 rc=0 产物 0xC0000005)
 ]
+# R550 (2026-10-08 虾米 · C类攻坚 批C-D): **3/67 协作式取消 (陈旧挂账反证) + 11/239 缓存行对齐/填充 (陈旧挂账反证)**
+CORE_FEAT += [
+    'scripts/feat_zh_cancel67_ok.c',        # 3/67 正锚: 取消 标记 旗; / 取消 旗; / 检查取消 旗 返回 v; ⟹ CANCEL67 0 1 1 99
+    'scripts/feat_zh_cancel67_neg.c',       # 3/67 负锚: 取消 未声明标志 ⟹ A1001 (触发 未声明 标志)
+    'scripts/feat_zh_cacheline239_ok.c',    # 11/239 正锚: __attribute__((aligned(64))) 实取地址 %64==0 + 显式 填充 字段 ⟹ CACHE239 PASS
+]
 
 
 
