@@ -3003,6 +3003,15 @@ CORE_FEAT += [
     'scripts/feat_zh_fiber64_gen_neg.c',      # 3/64 负锚 (新增): `生成(g, 123, 0);` 非函数 ⟹ A6079 (父编 rc=0 产物崩)
     'scripts/feat_zh_fiber64_gen2_neg.c',     # 3/64 负锚 (新增): `生成(g);` 缺实参 ⟹ A6079 (父编 rc=0)
 ]
+# R548 (2026-10-08 虾米 · C类攻坚 批C-B): **3/62 任务并行 fork-join + 8/183 宏导入** (拒面 A6081/A6082)
+CORE_FEAT += [
+    'scripts/feat_zh_task62_ok.c',          # 3/62 正锚: 线程 t 跑 f,a; + 等待 t; ⟹ FJ 30 (fork-join 两极)
+    'scripts/feat_zh_task62_wait_neg.c',     # 3/62 负锚: 等待 未声明句柄 ⟹ A6081 (父编 静默 rc=0)
+    'scripts/feat_zh_task62_fn_neg.c',       # 3/62 负锚: 线程 跑 非函数 ⟹ A6081 (父编 rc=0 产物 0xC0000005)
+    'scripts/feat_zh_macro183_ok.c',         # 8/183 正锚: 导入 宏库 ⟹ MACRO183 42 100 (声明宏+对象宏 跨文件)
+    'scripts/feat_zh_macro183_neg.c',        # 8/183 负锚: 导入 非串 ⟹ A6082 (父编 静默 跳过)
+]
+
 
 
 
