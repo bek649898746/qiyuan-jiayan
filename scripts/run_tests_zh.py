@@ -2938,6 +2938,13 @@ CORE_FEAT += [
     'scripts/feat_zh_annot173_ok.c',            # #173 正锚: 注解数/注解值 消费面 (ANN 2 1.2.3 2)
     'scripts/feat_zh_annot173_neg.c',           # #173 负锚: 注解 未定义 ⟹ A6041
     'scripts/feat_zh_annot173_nonconst_neg.c',   # #173 负锚: 键 非 编译期字符串 ⟹ A6040
+
+]
+
+# R534 (2026-10-07 虾米 · 第 455 站第一百五十四轮 · B类攻坚 批S): **#179 宏重载 按元数 择优**
+CORE_FEAT += [
+    'scripts/feat_zh_macro179_overload_ok.c',    # #179 正锚: 同名多版本 按元数 择优 (OVL 2 3)
+    'scripts/feat_zh_macro179_arity_neg.c',       # #179 负锚: 无相符版本 ⟹ A9007
 ]
 
 def build_tests(args):
