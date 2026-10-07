@@ -3024,6 +3024,11 @@ CORE_FEAT += [
     'scripts/feat_zh_cancel67_neg.c',       # 3/67 负锚: 取消 未声明标志 ⟹ A1001 (触发 未声明 标志)
     'scripts/feat_zh_cacheline239_ok.c',    # 11/239 正锚: __attribute__((aligned(64))) 实取地址 %64==0 + 显式 填充 字段 ⟹ CACHE239 PASS
 ]
+# R551 (2026-10-08 虾米 · C类攻坚 批C-E): **14/269 字符串字面量 UTF-8 规范性 校验 (新码 A6085)**
+CORE_FEAT += [
+    'scripts/feat_zh_utf8269_ok.c',         # 14/269 正锚: 单字节/3字节中文/\xNN 转义/相邻拼接 四 类 规范 序列 ⟹ UTF8269 PASS
+    'scripts/feat_zh_utf8269_neg.c',        # 14/269 负锚: 字面量 含 非法 字节 0xFF 0xFE ⟹ A6085 (父编 rc=0 且 输出 乱码)
+]
 
 
 
