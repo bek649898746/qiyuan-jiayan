@@ -2924,6 +2924,13 @@ CORE_FEAT += [
 #   （原 挂账 判据「静默 rc=0」已 过时: R525 复测 = rc=1 + A9004; 允面 = 既有 feat_zh_specialization50.c）
 CORE_FEAT += [
     'scripts/feat_zh_specialize117_neg.c',   # #117/#108: 泛型约束 指向 未定义接口 ⟹ A9004
+
+]
+
+# R528 (2026-10-07 虾米 · 第 455 站第一百五十二轮 · B类攻坚 批Q): **#157 if-let 语句 真脱糖 (A6071)**
+CORE_FEAT += [
+    'scripts/feat_zh_iflet157_ok.c',    # #157 正锚: 真值走体/假值走否则/无否则落后续 四值
+    'scripts/feat_zh_iflet157_neg.c',   # #157 负锚: 缺 体块 ⟹ A6071
 ]
 
 def build_tests(args):
