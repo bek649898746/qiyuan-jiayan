@@ -2910,6 +2910,13 @@ CORE_FEAT += [
 # R523 (2026-10-07 虾米 · 第 455 站第一百五十轮 · B类攻坚 批O): **#175 变参模板 须 至少 一具名形参 (A6070)**
 CORE_FEAT += [
     'scripts/feat_zh_generic175_neg.c',   # #175: `泛型 首(...)` 只写变参 ⟹ A6070 (原 静默接受)
+
+]
+
+# R524 (2026-10-07 虾米 · 第 455 站第一百五十一轮 · B类攻坚 批P): **#240 C ABI 反向 类型检查 (A9002)**
+CORE_FEAT += [
+    'scripts/feat_zh_cabi240_revtype_neg.c',   # #240: 标量 <- 构值返回的 调用 ⟹ A9002 (原 静默错值)
+    'scripts/feat_zh_cabi240_revtype_ok.c',     # #240 正向对照: 构值接收 + 标量 <- 构值字段 边界
 ]
 
 def build_tests(args):
