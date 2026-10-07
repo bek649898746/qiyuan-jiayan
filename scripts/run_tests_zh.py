@@ -3029,6 +3029,10 @@ CORE_FEAT += [
     'scripts/feat_zh_utf8269_ok.c',         # 14/269 正锚: 单字节/3字节中文/\xNN 转义/相邻拼接 四 类 规范 序列 ⟹ UTF8269 PASS
     'scripts/feat_zh_utf8269_neg.c',        # 14/269 负锚: 字面量 含 非法 字节 0xFF 0xFE ⟹ A6085 (父编 rc=0 且 输出 乱码)
 ]
+# R552 (2026-10-08 虾米 · C类攻坚 批C-F): **1/22 自引用结构 (陈旧挂账反证)** —— 声明期自引用 + 运行期建链/遍历 三面实测
+CORE_FEAT += [
+    'scripts/feat_zh_selfref22_ok.c',       # 1/22 正锚: `构 节点 { 整 v; 构 节点 *下; }` + 三结点建链/遍历 ⟹ SELF22 7 3
+]
 
 
 
