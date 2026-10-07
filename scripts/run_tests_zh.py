@@ -2970,6 +2970,18 @@ CORE_FEAT += [
     'scripts/feat_zh_arm145_own_ok.c',    # #145 正锚: 本臂 绑定 可见 (ARM 3)
     'scripts/feat_zh_arm145_leak_neg.c',   # #145 负锚: 跨臂 引用 第一臂 绑定 ⟹ A1001 (父编 rc=0 静默)
 ]
+# R542 (2026-10-07 虾米 · B类攻坚 批V 续): **#251 内联汇编 (中文指令 编码器 真接入 + --asm-trace)**
+CORE_FEAT += [
+    'scripts/feat_zh_asm251_ok.c',        # #251 正锚: `__asm("空操作")` ⟹ 编码器 打点 `[ASM] 空操作 => nop`
+    'scripts/feat_zh_asm251_bad_neg.c',    # #251 负锚: 未知指令 ⟹ `[ERR] __asm 未编码`
+]
+# R543 (2026-10-07 虾米 · B类攻坚 批X): **#83 错误上下文 (loc.col 真值 —— 词元 列号表)**
+CORE_FEAT += [
+    'scripts/feat_zh_diag83_col_ok.c',    # #83 正锚: A9002 的 JSON col=18
+    'scripts/feat_zh_diag83_col2_ok.c',   # #83 正锚: A6071 的 JSON col=21 (不同列 ⟹ 非常量)
+]
+
+
 
 
 
