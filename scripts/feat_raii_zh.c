@@ -1,11 +1,11 @@
-// @EXPECTED out:PASS
+﻿// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* 甲言 RAII 完整(析构) 接入测试 (2026-08-28): 机制层所有权族 P0 #8 — 守卫 x, 析构名;
    作用域退出自动调用 析构名(x) (Rust 式 drop, LIFO 逆序, 嵌套内层先析构) */
 
 int g_sum = 0;
-void 关资源(int x) { g_sum += x; }
+void 关资源(int *x) { g_sum += *x; }   /* R587 (批C-AN · P-06): 守卫 析构 **传址** —— 原 传值 */
 
 int main(void) {
     int a = 5; int b = 10;

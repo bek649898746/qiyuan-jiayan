@@ -1,9 +1,9 @@
 {
-  "fixed": "0BFF43E7",
-  "time": "2026-10-09 R585 (批C-AL 例/case 标签 常量表达式)",
+  "fixed": "8128D12C",
+  "time": "2026-10-09 R587 (批C-AN P-06 守卫析构 传址)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1553,
+      "anchor_count": 1556,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {

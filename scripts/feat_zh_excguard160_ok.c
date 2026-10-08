@@ -1,4 +1,4 @@
-// @EXPECTED out:EXCGUARD160 PASS
+﻿// @EXPECTED out:EXCGUARD160 PASS
 // @EXPECTED exit:0
 #包含 <stdio.h>
 /* 族7 #160「异常安全保证」正锚 (R557 · 2026-10-08): 抛出 路径 的 守卫 析构。
@@ -10,7 +10,7 @@
 static int ex_pending = 0;
 static void throw_ex(int t, int c, const char *m) { (void)t; (void)c; (void)m; ex_pending = 1; }
 静 整 清 = 0;
-静 空 关资源(整 x) { 清 += x; }
+静 空 关资源(整 *x) { 清 += *x; }   /* R587 (批C-AN · P-06): 守卫 析构 **传址** —— 原 传值（审计方 P-06） */
 函数 整 主(空) {
     整 甲 = 5;
     试 {
