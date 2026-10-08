@@ -3135,6 +3135,11 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_uniontype125_ok.c',        # 5/125 定案证据锚: 无标签联合 `联 名 {…}` + 标签联合 `判别 名 于 {…}` + 依据对照 ⟹ UNION125 7 250 1
 ]
+# R572 (2026-10-08 虾米 · C类攻坚 批C-Y): **两条 定案（rule (i) 语义由既有机制承担）** —— 零编译器改动, 各 附 证据锚
+CORE_FEAT += [
+    'scripts/feat_zh_intersection124_ok.c',     # 5/124 交集类型 定案锚: 一类型实现两接口 + 两泛型各自虚表分派 ⟹ INTER124 42 41
+    'scripts/feat_zh_typetest137_ok.c',         # 6/137 类型测试 定案锚: 判类型(x,T) 编译期 1/0 + 判别 tag 比较 1/0 ⟹ TYPTEST137 1 0 1 0
+]
 
 
 
