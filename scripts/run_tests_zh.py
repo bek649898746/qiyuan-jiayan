@@ -3120,6 +3120,11 @@ CORE_FEAT += [
     'scripts/feat_zh_conv247_fastcall_neg.c',   # 12/247 负锚: `__fastcall` ⟹ A6096
     'scripts/feat_zh_conv247_cdecl_neg.c',      # 12/247 负锚: `调用约定`(中文词形) ⟹ A6096
 ]
+# R569 (2026-10-08 虾米 · C类攻坚 批C-V): **8/186 编译期哈希真接入** —— `编译期 哈希("文本")` ⟹ 编译期 FNV-1a 32 位常量
+CORE_FEAT += [
+    'scripts/feat_zh_compilehash186_ok.c',      # 8/186 正锚: 三键 (含 多字节 UTF-8) 与 Python FNV-1a 独立 oracle 逐值一致 ⟹ CHASH186 440920331 524808426 2257816995
+    'scripts/feat_zh_compilehash186_neg.c',     # 8/186 负锚: `哈希(变量)` 非字面量 ⟹ A6061 响亮拒绝
+]
 
 
 
