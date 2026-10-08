@@ -1,30 +1,30 @@
 {
- "fixed": "FCB41E28",
- "time": "2026-10-09 05:06:28",
- "gates": {
-  "zh_feat": {
-   "anchor_count": 1551,
-   "source": "run_tests_zh.py 的 CORE_FEAT 长度"
-  },
-  "lua": {
-   "white_list": 33,
-   "source": "lua_run.py 的 WHITE 白名单"
-  },
-  "zlib": {
-   "white_list": 15,
-   "source": "zlib_run.py 的 ALL 白名单"
-  },
-  "git_quick": {
-   "total": 51,
-   "ok": 40,
-   "fail": 11,
-   "crash": 0,
-   "source": "scratch_gl/git563_quick_r238v.txt"
-  },
-  "srclib": {
-   "detail_lines": 13,
-   "real_fail": 71,
-   "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
+  "fixed": "0BFF43E7",
+  "time": "2026-10-09 R585 (批C-AL 例/case 标签 常量表达式)",
+  "gates": {
+    "zh_feat": {
+      "anchor_count": 1553,
+      "source": "run_tests_zh.py 的 CORE_FEAT 长度"
+    },
+    "lua": {
+      "white_list": 33,
+      "source": "lua_run.py 的 WHITE 白名单"
+    },
+    "zlib": {
+      "white_list": 15,
+      "source": "zlib_run.py 的 ALL 白名单"
+    },
+    "git_quick": {
+      "total": 51,
+      "ok": 40,
+      "fail": 11,
+      "crash": 0,
+      "source": "scratch_gl/git563_quick_r238v.txt"
+    },
+    "srclib": {
+      "detail_lines": 13,
+      "real_fail": 71,
+      "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
+    }
   }
- }
 }
