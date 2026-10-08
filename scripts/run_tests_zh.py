@@ -3040,6 +3040,12 @@ CORE_FEAT += [
     'scripts/feat_zh_unreg6086_ok.c',       # 零误伤 对照: 白名单词 作 变量名(声明位)/赋值位 + 结构体 名 ⟹ UNREG6086 PASS
     'scripts/feat_zh_lazy215_ok.c',         # 10/215 惰性序列 (陈旧挂账反证): 无限 生成器 只 取 前 5 ⟹ LAZY215 15 5
 ]
+# R555 (2026-10-08 虾米 · C类攻坚 批C-I): **定案 S-21..S-24 证据锚** —— 7/161 栈展开 · 6/143 切片模式 · 12/245 异常 ABI
+CORE_FEAT += [
+    'scripts/feat_zh_defer161_ok.c',        # 7/161 (S-21): 延迟 清理 在 正常返回 + 提前返回 两条 退出路径 都 真执行 ⟹ DEFER161 1 2
+    'scripts/feat_zh_slice143_ok.c',        # 6/143 (S-22): `切片 目标, 源, 4, 1, 3;` 段复制 语义 真在 ⟹ SLICE143 2 3
+    'scripts/feat_zh_errabi245_ok.c',       # 12/245 (S-23): 错误联合 ABI (tag 判定 传播; 成功值撞错码不误传) ⟹ ERRABI245 7 5 7 1
+]
 
 
 
