@@ -3046,6 +3046,11 @@ CORE_FEAT += [
     'scripts/feat_zh_slice143_ok.c',        # 6/143 (S-22): `切片 目标, 源, 4, 1, 3;` 段复制 语义 真在 ⟹ SLICE143 2 3
     'scripts/feat_zh_errabi245_ok.c',       # 12/245 (S-23): 错误联合 ABI (tag 判定 传播; 成功值撞错码不误传) ⟹ ERRABI245 7 5 7 1
 ]
+# R556 (2026-10-08 虾米 · C类攻坚 批C-J): **定案 S-25/S-26 证据锚** —— 2/30 两阶段借用 · 2/40 栈借用模型
+CORE_FEAT += [
+    'scripts/feat_zh_2phase30_ok.c',        # 2/30 (S-25): 读长-写索引 形态 零冲突 ⟹ PHASE30 9 3
+    'scripts/feat_zh_stacked40_ok.c',       # 2/40 (S-26): 裸指针 双向 别名 无限制 ⟹ STACK40 7 7
+]
 
 
 
