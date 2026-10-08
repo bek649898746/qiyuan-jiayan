@@ -738,6 +738,36 @@ int ex_val = 0;
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+/* R567 (2026-10-08 虾米 · C类攻坚 批C-T · 族3 #59 **futex 原语**): `futex 等待(&v, 期望)` → __qcc_futex_wait;
+   `futex 唤醒(&v, 数量)` → __qcc_futex_wake。 实现 = Windows WaitOnAddress / WakeByAddress{Single,All} (Win8+),
+   **动态 解析** (load_library + get_proc_address —— 与 mmap 同款 ⟹ **不动 IAT 固定槽表** ⟹ 零 布局 风险);
+   解析 失败 ⟹ 退化 忙等 (等待) / 无操作 (唤醒, 读者 自己 观察到 值 变) —— 语义 仍 正确, 只是 非 阻塞。
+   ⚠️ 数据 增量 = 4 + 4 + 8×3 = 32 字节 (16 的 倍数 ✓ 遵守 R562b 的 运行时数据 16 字节 增量 规约)。 */
+static int __fx_tried = 0;
+static int __fx_ok = 0;
+static void *(*__fx_wait)(void *, void *, int, int) = 0;
+static void (*__fx_wake1)(void *) = 0;
+static void (*__fx_wakeall)(void *) = 0;
+static void __fx_init(void) {
+    if (__fx_tried) return;
+    __fx_tried = 1;
+    void *k = load_library("kernel32.dll");
+    if (!k) return;
+    __fx_wait = get_proc_address(k, "WaitOnAddress");
+    __fx_wake1 = get_proc_address(k, "WakeByAddressSingle");
+    __fx_wakeall = get_proc_address(k, "WakeByAddressAll");
+    if (__fx_wait && __fx_wake1 && __fx_wakeall) __fx_ok = 1;
+}
+void __qcc_futex_wait(int *addr, int expected) { /* 仅当 *addr == expected 时 阻塞 (原子 比较) */
+    __fx_init();
+    if (__fx_ok) { __fx_wait(addr, &expected, 4, -1); return; }
+    while (*addr == expected) { } /* 退化: 忙等 */
+}
+void __qcc_futex_wake(int *addr, int n) { /* n <= 0 = 唤醒 全部 */
+    __fx_init();
+    if (!__fx_ok) return; /* 退化: 读者 忙等 自己 观察 */
+    if (n <= 0) __fx_wakeall(addr); else __fx_wake1(addr);
+}
 /* R566 (2026-10-08 虾米 · C类攻坚 批C-S · 族14 #271 **内建 哈希表**): `哈希表 表;` / `设 表, 键, 值;` / `取 表, 键, 目标;`
    —— 固定 池 (16 表 × 256 槽) + **线性探测**; 整数 键 → 整数 值; 全 静态 数组 ⟹ 无 malloc、无 结构体 指针
    (运行时 布局 残留 教训: 池/单元 一律 走 静态 平行数组)。 缺键 读 得 0; 表 满 返回 -2。 */

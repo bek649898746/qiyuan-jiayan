@@ -3107,6 +3107,12 @@ CORE_FEAT += [
     'scripts/feat_zh_hashtable271_noarg_neg.c', # 14/271 负锚: `设 表, 1;` 缺值 ⟹ A6094
     'scripts/feat_zh_hashtable271_notarget_neg.c', # 14/271 负锚: `取 表, 1;` 缺目标 ⟹ A6094
 ]
+# R567 (2026-10-08 虾米 · C类攻坚 批C-T): **3/59 futex 原语真接入** —— `futex 等待/唤醒(&v, n)` → Windows WaitOnAddress 族 (动态解析)
+CORE_FEAT += [
+    'scripts/feat_zh_futex59_ok.c',             # 3/59 正锚: 原子比较立即返回 + 真阻塞/唤醒通路 + 无丢唤醒 ⟹ FUTEX59 1 1 1 (调度无关)
+    'scripts/feat_zh_futex59_op_neg.c',         # 3/59 负锚: 未知操作名 ⟹ A6095
+    'scripts/feat_zh_futex59_argc_neg.c',       # 3/59 负锚: 实参个数不符 ⟹ A6095
+]
 
 
 
