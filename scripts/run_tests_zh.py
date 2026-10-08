@@ -3059,6 +3059,10 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_chan_cap_neg.c',       # 3/69 近失负锚: `通道 管;`（缺容量）⟹ A6087 (父编 rc=0 静默默认容量 4)
 ]
+# R560 (2026-10-08 虾米 · C类攻坚 批C-N): **定案 S-27 证据锚** —— 3/54 无锁 数据结构 (CAS 无锁栈)
+CORE_FEAT += [
+    'scripts/feat_zh_lockfree54_ok.c',      # 3/54 (S-27): CAS 无锁栈 压入/弹出 ⟹ LF54 60 0
+]
 
 
 
