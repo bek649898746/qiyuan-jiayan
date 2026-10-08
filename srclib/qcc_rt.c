@@ -559,6 +559,9 @@ static void *__coro_fn[64];
 static void *__coro_arg[64];
 static int __coro_done[64];
 static int __coro_cnt = 0;
+static long long __coro_stack_size = 0; /* R562 (2026-10-08 虾米 · C类攻坚 批C-P · 15/290 **协程栈 控制**): 其后 创建 的 纤程 (生成器/协程/效应处理器) 用 该 字节数 作 栈 尺寸; 0 = 系统默认 (PE 栈保留值, 实测 ~1MB ⟹ 深递归 生成器 崩 0xC0000005) */
+long long __coro_stack_pad16 = 0; /* ⚠️ **对齐 模 保持 位** (R562 · 2026-10-08): 运行时 数据 区 **必须以 16 字节 为 增量** 增长 —— 用户侧 `__attribute__((aligned(16)))` 全局 的 落址 与 运行时 数据 尺寸 **模 16** 强相关 (全闸 实证: 本 R562 只加 8 字节 ⟹ feat_zh_attribute94 的 `(长整)&x % 16` 由 0 变 4 ⟹ 闸 红)。配 8 字节 补齐 使 增量 = 16 ⟹ 模 不变。**根治 见 `_DEBT_INDEX.md` 真缺陷「全局 aligned(N) 靠布局巧合」** (待 修: 全局对齐 不应 依赖 运行时 数据 尺寸)。非 static ⟹ 免 gcc 未用变量 告警 */
+void __qcc_coro_stack(long long n) { if (n > 0) __coro_stack_size = n; }
 
 static void __coro_wrap(void *param) { /* 纤维入口: 调用户 fn → 置完成 → 切回主流程 */
     int i = (int)(long long)param;
@@ -571,7 +574,7 @@ int coro_init(int *c, void *fn, void *arg) { /* 分配协程索引 + 建纤维 (
     int i = __coro_cnt; __coro_cnt = __coro_cnt + 1;
     *c = i;
     __coro_fn[i] = fn; __coro_arg[i] = arg; __coro_done[i] = 0;
-    __coro_fiber[i] = CreateFiber(0, __coro_wrap, (void *)(long long)i);
+    __coro_fiber[i] = CreateFiber((long long)__coro_stack_size, __coro_wrap, (void *)(long long)i);
     return __coro_fiber[i] != 0;
 }
 
@@ -636,7 +639,7 @@ static void __eff_wrap(void *param) { /* 处理器 fiber 入口: 调 用户 处�
 
 void __eff_install(int id, void *fn) { /* 处理 名 = 处理器; */
     if (!__eff_main) __eff_main = ConvertThreadToFiber(0);
-    if (id >= 0 && id < 64 && !__eff_h[id]) { __eff_fn[id] = fn; __eff_h[id] = CreateFiber(0, __eff_wrap, (void *)(long long)id); }
+    if (id >= 0 && id < 64 && !__eff_h[id]) { __eff_fn[id] = fn; __eff_h[id] = CreateFiber((long long)__coro_stack_size, __eff_wrap, (void *)(long long)id); }
 }
 
 long long __eff_perform(int id, long long arg) { /* 执行 名(实参) —— 挂起 执行者, 转 处理器; 恢复 后 返 其 值 */

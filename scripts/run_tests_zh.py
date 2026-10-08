@@ -3068,6 +3068,22 @@ CORE_FEAT += [
     'scripts/feat_zh_unsafe249_ok.c',       # 12/249 正锚: `不安全 读寄存器;` + `不安全 { 调用 }` ⟹ UNSAFE249 7
     'scripts/feat_zh_unsafe249_neg.c',      # 12/249 负锚: 安全上下文 裸调用 ⟹ A6088 (父编 A6086 未注册特性词)
 ]
+# R562 (2026-10-08 虾米 · C类攻坚 批C-P): **15/290 协程栈 控制 真接入** —— `协程栈 N;` → __qcc_coro_stack(N)
+#   → qcc_rt.c 的 CreateFiber 栈尺寸 (原 **硬编 0** = 系统默认 ~1MB ⟹ 生成器内深递归必崩 0xC0000005)
+CORE_FEAT += [
+    'scripts/feat_zh_corostack290_ok.c',    # 15/290 正锚: 生成器内 700 帧×2KB 深递归 ⟹ COROSTACK290 700 (默认栈下必崩)
+    'scripts/feat_zh_corostack290_neg.c',   # 15/290 负锚: `协程栈 0;` ⟹ A6089 (0 字节栈无意义, 原会被静默忽略)
+    'scripts/feat_zh_corostack290_top_neg.c', # 15/290 边界负锚: 顶层 `协程栈 N;` ⟹ A6089 (响亮拒绝, 零静默)
+]
+# R563 (2026-10-08 虾米 · C类攻坚 批C-P): **10/219 数据流变量（单赋值约束）真接入** ——
+#   `数据流 类型 名 = 初值;` = 局部单赋值变量; 再写 (= / 复合赋值 / 前缀 ++ / 后缀 ++) ⟹ A6090; 缺初值 ⟹ A6089
+CORE_FEAT += [
+    'scripts/feat_zh_dataflow219_ok.c',         # 10/219 正锚: 合法形态 (声明+只读) ⟹ DATAFLOW219 30 20
+    'scripts/feat_zh_dataflow219_neg.c',        # 10/219 负锚: 声明后再赋值 ⟹ A6090
+    'scripts/feat_zh_dataflow219_noinit_neg.c', # 10/219 负锚: 缺初值 ⟹ A6089
+    'scripts/feat_zh_dataflow219_compound_neg.c', # 10/219 负锚: `甲 += 5;` ⟹ A6090 (复合赋值通道)
+    'scripts/feat_zh_dataflow219_scope_ok.c',   # 10/219 零误伤控制锚: 内层同名普通变量 覆盖 ⟹ 不得误拒 (DATAFLOWSCOPE 7 5)
+]
 
 
 
