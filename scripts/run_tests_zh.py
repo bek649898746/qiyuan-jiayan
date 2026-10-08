@@ -3226,6 +3226,16 @@ CORE_FEAT += [
     'scripts/feat_zh_assocty112_neg.c',         # 配套负锚: `关联类型` 词面 未注册 ⟹ A6086 响亮 (绝不 静默 吞)
     'scripts/feat_zh_effmark217_ok.c',          # 族10 #217 定案 S-47 证据锚: 效应 声明/执行/处理 三 面 ⟹ EFFMARK217 6 10 1 (兄弟锚 feat_zh_effect216_{ok,neg,bad_neg} 复验全绿)
 ]
+# R582 (2026-10-08 虾米 · 缺陷 修复 批C-AJ): **常量 求值 的 运算符 优先级 + 结合性**
+#   病灶: `常量表达式求值`（主源 L18477）为 **平铺 循环**（读 一 运算符 + 一 操作数 立即 应用）⟹ 严格 左到右,
+#     无 优先级/结合性 ⟹ `常量 甲 = 2 + 3 * 4;` 得 **20**（应 14）· `整 维1[3 + 2 * 4];` 得 **20 元素**（应 11）
+#     —— **数组 维度 静默 算错**（尺寸/偏移 错 → 越界 风险, 零 诊断）。
+#   修法: 拆 `常量优先级(算子)` 表 + `常量二项(数值, 最低)`（自递归 · 左结合）+ 入口 复位状态 (平铺 → 优先级 爬升);
+#     算子 集合 与 各级 语义 **逐字 保留**（只 改 结合顺序）。⚠️ 该 求值器 被 **编译器 自身** 的 数组 维度 使用
+#     ⟹ 修 后 内部 维度 可能 变小（原 靠 错值 撑大）⟹ **自举 v1==v2 是 主要 检验**（潜在 越界 会 当场 暴露）。
+CORE_FEAT += [
+    'scripts/feat_zh_constprec582_ok.c',        # 正锚+控制 7 格: 常量 优先级 14 / 左结合 5 / 控制 10·20 / **维度 11** / 控制 5 / 合成判 1 ⟹ CONSTPREC582 14 5 10 20 11 5 1 (父编 20 5 10 20 20 5 0 必红)
+]
 # R579 (2026-10-08) 附记: **#204 方法重载 未 收口** —— 本轮 曾 一度 按 定案 S-43 收口（「同名 方法 在 两 类型 上
 #   各 解析 = 参数类型 参与 解析」），随后 **自我 纠正并 撤回**：`a.取值()` / `b.取值()` 是 **不同 接收者 作用域**
 #   （类比 C++ `A::f` / `B::f`），**不是** 同一 作用域 内 的 重载决议 ⟹ 判定行 的 「无 同名不同参 的 符号表级
@@ -3398,13 +3408,16 @@ def run_one_test(name):
         rc = p.returncode
         out = (p.stdout or '').strip()
         err = (p.stderr or '').strip()
-    except subprocess.TimeoutExpired as te:
-        try:
-            te.kill()
-        except Exception:
-            pass
+    except subprocess.TimeoutExpired:
+        # ⚠️ 量具 修复 (R582 · 2026-10-08 · 与 R575 的 check_dwarf289 越界修 同 类): 原 处理 分支 引用
+        #   `te.kill()` / `te.pid` —— `subprocess.TimeoutExpired` **两者 都 没有** ⟹ 报错处理 自身 抛
+        #   AttributeError, 被 `pool.map` 传播 ⟹ **整轮 全量闸 直接 崩**（连 既有 的 「失败 自动重试一次」
+        #   都 走 不到）。现场: 8 路 并行 下 `feat_zh_ovf77_trap`（ud2 硬陷阱 ⟹ Windows 未处理异常 ⟹
+        #   WER 路径 在 负载下 偶发 慢）超 15s ⟹ 命中 本 分支 ⟹ 全量闸 中断。
+        #   语义 **不变**: 超时 仍 计 FAIL（'TIMEOUT'）, 重试 机制 照旧; 只 把 「杀 孙进程」 由 不存在 的
+        #   pid 改为 **按 镜像名 树杀**（`cmd /c <exe>` 的 孙进程）—— run(timeout=) 已 杀 子进程 (cmd)。
         rc = 'TIMEOUT'; out = ''; err = ''
-        subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)
+        subprocess.run(['taskkill', '/F', '/T', '/IM', os.path.basename(h1)], capture_output=True, timeout=10)
     except Exception as e:
         rc = 'ERR'; out = str(e); err = ''
     try:
