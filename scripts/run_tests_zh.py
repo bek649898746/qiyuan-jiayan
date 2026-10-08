@@ -3125,6 +3125,12 @@ CORE_FEAT += [
     'scripts/feat_zh_compilehash186_ok.c',      # 8/186 正锚: 三键 (含 多字节 UTF-8) 与 Python FNV-1a 独立 oracle 逐值一致 ⟹ CHASH186 440920331 524808426 2257816995
     'scripts/feat_zh_compilehash186_neg.c',     # 8/186 负锚: `哈希(变量)` 非字面量 ⟹ A6061 响亮拒绝
 ]
+# R570 (2026-10-08 虾米 · C类攻坚 批C-W): **3/60 线程池真接入** —— 线程池/提交/等待池 三语句 (运行时 CreateThread + 原子领取)
+CORE_FEAT += [
+    'scripts/feat_zh_threadpool60_ok.c',        # 3/60 正锚: 4 任务 原子计数恒 4 + 各写己槽求和恒 60 (调度无关); 等待池 返回即全部完成
+    'scripts/feat_zh_threadpool60_undecl_neg.c',# 3/60 负锚: `提交 未声明池, …` ⟹ A6097
+    'scripts/feat_zh_threadpool60_wait_neg.c',  # 3/60 负锚: `等待池 未声明池;` ⟹ A6097
+]
 
 
 

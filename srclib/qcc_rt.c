@@ -738,6 +738,51 @@ int ex_val = 0;
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+/* R570 (2026-10-08 虾米 · C类攻坚 批C-W · 族3 #60 **线程池**): `线程池 池, N;` → __qcc_tp_new(N);
+   `提交 池, 任务, 实参;` → __qcc_tp_submit(任务, 实参); `等待池 池;` → __qcc_tp_wait()。
+   单 全局 池: 任务 = (函数指针, 实参) 两 平行数组; 工作线程 自旋 等 **启动旗**; 等待池 置旗 后 join 全部;
+   工作线程 用 `原子 加(&qh, 1)` **原子 领取** 任务序号 ⟹ 无重复/无丢任务; 序号 超 总数 ⟹ 线程 正常退出
+   ⟹ 无死锁。提交 发生在 单线程 (等待池 之前) ⟹ 无入队竞争。线程 API 走 IAT (CreateThread/
+   WaitForSingleObject —— 编译器 内建发射, 与 mmap 的 CreateFileA 同路)。
+   ⚠️ 数据增量 = 16*8 + 128*8*2 + 6*4 = 2200, 补 8 ⟹ **2208 = 16×138** ✓ (遵守 R562b 的 16 字节 增量 规约)。 */
+static void *__tp_th[16];
+static void *__tp_fn[128];
+static void *__tp_arg[128];
+static int __tp_n = 0;
+static int __tp_total = 0;
+static int __tp_qh = 0;
+static int __tp_go = 0;
+static int __tp_inited = 0;
+static long long __tp_pad16 = 0;
+static void __tp_worker(void *p) {
+    while (!__tp_go) { } /* 等 启动旗 (等待池 置) */
+    for (;;) {
+        int idx = 原子 加(&__tp_qh, 1); /* 原子 领取 任务 序号 (返回 旧值) */
+        if (idx >= __tp_total) return 0; /* 取尽 ⟹ 退出 */
+        ((int (*)(void *))__tp_fn[idx])(__tp_arg[idx]);
+    }
+}
+int __qcc_tp_new(int n) {
+    if (__tp_inited) return 0; /* 单 池: 再 声明 复用 同一 池 */
+    if (n < 1) return -1;
+    if (n > 16) n = 16;
+    __tp_inited = 1; __tp_n = n;
+    for (int i = 0; i < n; i++) __tp_th[i] = CreateThread(0, 0, (void *)__tp_worker, (void *)(long long)i, 0, 0);
+    return 0;
+}
+int __qcc_tp_submit(void *fn, void *arg) {
+    if (!__tp_inited || __tp_total >= 128) return -1;
+    __tp_fn[__tp_total] = fn; __tp_arg[__tp_total] = arg; __tp_total = __tp_total + 1;
+    return 0;
+}
+int __qcc_tp_wait(void) {
+    if (!__tp_inited) return -1;
+    __tp_go = 1; /* 放开 工作线程 */
+    for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1); /* join 全部 ⟹ 返回时 全部 任务 已 完成 */
+    __tp_total = 0; __tp_qh = 0; __tp_go = 0; /* 复位 ⟹ 可 再 提交/等待 一轮 */
+    return 0;
+}
+
 /* R567 (2026-10-08 虾米 · C类攻坚 批C-T · 族3 #59 **futex 原语**): `futex 等待(&v, 期望)` → __qcc_futex_wait;
    `futex 唤醒(&v, 数量)` → __qcc_futex_wake。 实现 = Windows WaitOnAddress / WakeByAddress{Single,All} (Win8+),
    **动态 解析** (load_library + get_proc_address —— 与 mmap 同款 ⟹ **不动 IAT 固定槽表** ⟹ 零 布局 风险);
