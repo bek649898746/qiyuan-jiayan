@@ -3131,6 +3131,10 @@ CORE_FEAT += [
     'scripts/feat_zh_threadpool60_undecl_neg.c',# 3/60 负锚: `提交 未声明池, …` ⟹ A6097
     'scripts/feat_zh_threadpool60_wait_neg.c',  # 3/60 负锚: `等待池 未声明池;` ⟹ A6097
 ]
+# R571 (2026-10-08 虾米 · C类攻坚 批C-X): **5/125 联合类型 定案（rule (i) 语义由既有机制承担）** —— 零编译器改动, 证据锚
+CORE_FEAT += [
+    'scripts/feat_zh_uniontype125_ok.c',        # 5/125 定案证据锚: 无标签联合 `联 名 {…}` + 标签联合 `判别 名 于 {…}` + 依据对照 ⟹ UNION125 7 250 1
+]
 
 
 
