@@ -3113,6 +3113,13 @@ CORE_FEAT += [
     'scripts/feat_zh_futex59_op_neg.c',         # 3/59 负锚: 未知操作名 ⟹ A6095
     'scripts/feat_zh_futex59_argc_neg.c',       # 3/59 负锚: 实参个数不符 ⟹ A6095
 ]
+# R568 (2026-10-08 虾米 · C类攻坚 批C-U): **12/247 调用约定控制** —— 定案(x64 单一约定) + 响亮拒绝 A6096
+CORE_FEAT += [
+    'scripts/feat_zh_conv247_ok.c',             # 12/247 零误伤控制锚: 普通函数/调用照常 ⟹ CC247 7 (A6096 只拦调用约定词)
+    'scripts/feat_zh_conv247_stdcall_neg.c',    # 12/247 负锚: `__stdcall` ⟹ A6096
+    'scripts/feat_zh_conv247_fastcall_neg.c',   # 12/247 负锚: `__fastcall` ⟹ A6096
+    'scripts/feat_zh_conv247_cdecl_neg.c',      # 12/247 负锚: `调用约定`(中文词形) ⟹ A6096
+]
 
 
 

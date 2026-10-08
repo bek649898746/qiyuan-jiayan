@@ -10,7 +10,17 @@
 
 param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
 $ErrorActionPreference = 'Stop'
-$expected = 'E175D016'  # R567 (2026-10-08 虾米 · C类攻坚 批C-T): **3/59 futex 原语 真接入** (新码 A6095)
+$expected = '3EA5C67B'  # R568 (2026-10-08 虾米 · C类攻坚 批C-U): **两条 定案 落地** —— 1/21 固定 pin (概念不适用, 零代码改动) + 12/247 调用约定控制 (定案 + 响亮拒绝 A6096)
+#   ① **1/21 固定 pin ⟹ 定案 S-28**: pin 唯一用途 = 阻止**移动式回收器**搬迁 ⟹ 本语言 零 GC (剥注释核过:
+#     `垃圾回收`/`标记清除`/`压缩堆`/`移动堆` 全 0 · `GC` 11 处 全为 `GCC` · `搬迁` 3 处 全为 「判据搬迁」重构注释),
+#     分配 = malloc/free + `_bump_` 递增 ⟹ 地址 永不搬迁 ⟹ 「固定」无 可 固定 的对象; 现 报 **A6086** (已 响亮)。
+#   ② **12/247 调用约定 ⟹ 定案 S-29 + 响亮拒绝 A6096**: 目标 唯一 x86-64 (PE32+ · 0x8664) ⟹ 只 一种 调用约定
+#     (前 4 整/指针 rcx/rdx/r8/r9 · 浮点 xmm0-3 · 余 栈 · >8B sret), MSVC 自身 在 x64 亦 忽略 __stdcall/__fastcall;
+#     语言 ABI 由 编译器 统一 处理 ⟹ 开关 无 可 控制 对象。现状 铁证: `__stdcall 整 甲(整 x){…}` ⟹ 误导的
+#     「未找到 主 入口」(词 被 静默吞) ⟹ 本轮 加 A6096 响亮拒绝 (附 定案 说明)。零误伤: 剥注释 语料 2126 文件
+#     五词 (__stdcall/__fastcall/__cdecl/__vectorcall/调用约定) **0 命中**。
+#   锚 +4 (仅 12/247 需 锚): 控制 (普通函数/调用 照常 ⟹ CC247 7) + 负 3 (__stdcall / __fastcall / 调用约定 ⟹ A6096)。
+#   链 一步收敛 **v1 == v2 == 3EA5C67B**。
 #   语言级 `futex 等待(&v, 期望值)` / `futex 唤醒(&v, 数量)` ⟹ __qcc_futex_wait / __qcc_futex_wake。
 #   ★ 实现 路线 (关窍): **不 动 IAT** —— Windows 的 WaitOnAddress/WakeByAddress{Single,All} 由 运行时
 #     load_library + get_proc_address **动态 解析** (与 mmap 同款) ⟹ 绕开 「IAT 固定槽表 + 组偏移常量」
