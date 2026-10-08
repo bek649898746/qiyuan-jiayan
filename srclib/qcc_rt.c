@@ -738,6 +738,36 @@ int ex_val = 0;
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+/* R566 (2026-10-08 虾米 · C类攻坚 批C-S · 族14 #271 **内建 哈希表**): `哈希表 表;` / `设 表, 键, 值;` / `取 表, 键, 目标;`
+   —— 固定 池 (16 表 × 256 槽) + **线性探测**; 整数 键 → 整数 值; 全 静态 数组 ⟹ 无 malloc、无 结构体 指针
+   (运行时 布局 残留 教训: 池/单元 一律 走 静态 平行数组)。 缺键 读 得 0; 表 满 返回 -2。 */
+static int __ht_key[16][256];
+static int __ht_val[16][256];
+static char __ht_use[16][256];
+static int __ht_cnt = 0;
+static long long __ht_pad16 = 0; static int __ht_pad4 = 0; /* ⚠️ **16 字节 模 保持 补齐** (R566c): 本 块 新增 数据 = 69632 (数组) + 4 (`__ht_cnt`) = 69636 ✗ 非 16 倍数 ⟹ 全量闸 `feat_zh_attribute94.c` 曾 由绿转红 (全局 aligned(16) 落址 依赖 运行时数据尺寸 模 16, 见 R562b 规约)。补 12 字节 ⟹ 69648 = 16×4353 ✓ */
+int __qcc_ht_new(void) { int i = __ht_cnt; if (i >= 16) return -1; __ht_cnt = i + 1; return i; }
+static int __ht_slot(int key) { int h = key * 40503; if (h < 0) h = -h; return h % 256; } /* 乘性 哈希 (Knuth 40503) */
+int __qcc_ht_put(int id, int key, int val) {
+    if (id < 0 || id >= 16) return -1;
+    int s = __ht_slot(key);
+    for (int k = 0; k < 256; k++) {
+        int j = (s + k) % 256;
+        if (!__ht_use[id][j] || __ht_key[id][j] == key) { __ht_use[id][j] = 1; __ht_key[id][j] = key; __ht_val[id][j] = val; return 0; }
+    }
+    return -2; /* 满 */
+}
+int __qcc_ht_get(int id, int key) {
+    if (id < 0 || id >= 16) return 0;
+    int s = __ht_slot(key);
+    for (int k = 0; k < 256; k++) {
+        int j = (s + k) % 256;
+        if (!__ht_use[id][j]) return 0;
+        if (__ht_key[id][j] == key) return __ht_val[id][j];
+    }
+    return 0;
+}
+
 int __qcc_lazy_get(int *set, int *val, int (*f)(int), int a) {
     if (!*set) { *val = f(a); *set = 1; }
     return *val;

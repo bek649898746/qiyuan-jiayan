@@ -3100,6 +3100,13 @@ CORE_FEAT += [
     'scripts/feat_zh_pure208_io_neg.c',     # 10/208 负锚: 纯函数内 `格式化` ⟹ A6092
     'scripts/feat_zh_pure208_kw_neg.c',     # 10/208 边界负锚: `纯 整 x = 5;` (非函数形态) ⟹ A6092 响亮拒绝
 ]
+# R566 (2026-10-08 虾米 · C类攻坚 批C-S): **14/271 哈希表机制（内建哈希表）真接入** —— 哈希表/设/取 三语句
+CORE_FEAT += [
+    'scripts/feat_zh_hashtable271_ok.c',        # 14/271 正锚: 同槽键 (2 与 258) 靠线性探测共存 + 同键覆写 + 缺键得 0 ⟹ HT271 100 200 300 0
+    'scripts/feat_zh_hashtable271_undecl_neg.c',# 14/271 负锚: `设 未声明表, 1, 2;` ⟹ A6094
+    'scripts/feat_zh_hashtable271_noarg_neg.c', # 14/271 负锚: `设 表, 1;` 缺值 ⟹ A6094
+    'scripts/feat_zh_hashtable271_notarget_neg.c', # 14/271 负锚: `取 表, 1;` 缺目标 ⟹ A6094
+]
 
 
 
