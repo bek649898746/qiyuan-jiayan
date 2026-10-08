@@ -3063,6 +3063,11 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_lockfree54_ok.c',      # 3/54 (S-27): CAS 无锁栈 压入/弹出 ⟹ LF54 60 0
 ]
+# R561 (2026-10-08 虾米 · C类攻坚 批C-O): **12/249 FFI 安全标记 真接入** —— `不安全 名;` 标记 + 块 + 调用点 A6088
+CORE_FEAT += [
+    'scripts/feat_zh_unsafe249_ok.c',       # 12/249 正锚: `不安全 读寄存器;` + `不安全 { 调用 }` ⟹ UNSAFE249 7
+    'scripts/feat_zh_unsafe249_neg.c',      # 12/249 负锚: 安全上下文 裸调用 ⟹ A6088 (父编 A6086 未注册特性词)
+]
 
 
 
