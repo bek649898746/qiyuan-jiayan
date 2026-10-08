@@ -3168,6 +3168,18 @@ CORE_FEAT += [
     'scripts/feat_zh_ws61_neg.c',               # 3/61 编译期 负锚: `工作窃取 关;` ⟹ A6099 (父提交 报 A6086 ⟹ 必红)
     'scripts/feat_zh_ws61_top_neg.c',           # 3/61 编译期 负锚: 顶层 `工作窃取 开;` ⟹ A6099 (父提交 报 A6086 ⟹ 必红)
 ]
+# R576 (2026-10-08 虾米 · C类攻坚 批C-AC): **族9 #203 扩展方法 真接入** —— 顶层 `扩展 构 类型 { 方法 = 函数 };`
+#   调用 `x.方法(…)` / `p->方法(…)` 重写 为 `函数(接收者, …)`（接收者 传 地址）; 四 判据 全 报 A6100
+CORE_FEAT += [
+    'scripts/feat_zh_extmethod203_ok.c',        # 9/203 正锚: `.` 接收者 / 带额外实参 / `->` 接收者 / 与字段共存 ⟹ EXT203 7 21 14 1
+    'scripts/feat_zh_extmethod203_body_neg.c',  # 9/203 负锚: 函数体内使用 ⟹ A6100
+    'scripts/feat_zh_extmethod203_dup_neg.c',   # 9/203 负锚: 重复绑定 ⟹ A6100
+    'scripts/feat_zh_hkt119_ok.c',              # 5/119 定案 S-37 证据锚: 泛型 类型实参 = 文本替换 + 接口约束泛型 ⟹ HKT119 3 14
+    'scripts/feat_zh_hkt119_neg.c',             # 5/119 反证锚: 未实例化 类型别名 作 实参 ⟹ A1001 ⟹ 类型构造子 非 一 等 值
+    'scripts/feat_zh_deftparam118_ok.c',        # 5/118 定案 S-38 证据锚: 宏实参 全必填 按位替换 ⟹ DFT118 10 3 1
+    'scripts/feat_zh_deftparam118_neg.c',       # 5/118 反证锚: 缺实参 ⟹ A6068 ⟹ 无 可省略 默认值
+    'scripts/feat_zh_rowpoly121_ok.c',          # 5/121 定案 S-39 证据锚: 裸`构 *` 服务两类型 + 接口通道 ⟹ ROWPOLY121 5 7 5
+]
 
 
 
