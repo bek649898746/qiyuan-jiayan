@@ -3051,6 +3051,10 @@ CORE_FEAT += [
     'scripts/feat_zh_2phase30_ok.c',        # 2/30 (S-25): 读长-写索引 形态 零冲突 ⟹ PHASE30 9 3
     'scripts/feat_zh_stacked40_ok.c',       # 2/40 (S-26): 裸指针 双向 别名 无限制 ⟹ STACK40 7 7
 ]
+# R557 (2026-10-08 虾米 · C类攻坚 批C-K): **7/160 异常安全 真修** —— 抛出 跳转前 对本试体内守卫 LIFO 条件析构 + 置F(0)
+CORE_FEAT += [
+    'scripts/feat_zh_excguard160_ok.c',     # 7/160 正锚: 抛出 路径 守卫析构 (清=1005: 析构5 + 捕获1000) ⟹ EXCGUARD160 PASS (父编 rc=1 无输出)
+]
 
 
 
