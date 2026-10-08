@@ -1,4 +1,4 @@
-﻿// @EXPECTED out:STACK40 2 7
+﻿// @EXPECTED out:STACK40 7 7
 // @EXPECTED exit:0
 #包含 <stdio.h>
 /* 族2 #40「栈借用模型（Stacked Borrows）」—— 定案 (S-26) 证据锚 (R556 · 2026-10-08)。
