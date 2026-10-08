@@ -3055,6 +3055,10 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_excguard160_ok.c',     # 7/160 正锚: 抛出 路径 守卫析构 (清=1005: 析构5 + 捕获1000) ⟹ EXCGUARD160 PASS (父编 rc=1 无输出)
 ]
+# R558 (2026-10-08 虾米 · C类攻坚 批C-L): **通道 缺容量 近失收口 (新码 A6087)** + 锚迁移 (feat_zh_chan42_close_ok 4 处拼写)
+CORE_FEAT += [
+    'scripts/feat_zh_chan_cap_neg.c',       # 3/69 近失负锚: `通道 管;`（缺容量）⟹ A6087 (父编 rc=0 静默默认容量 4)
+]
 
 
 
