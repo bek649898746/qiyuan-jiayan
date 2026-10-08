@@ -222,7 +222,10 @@ def line_header(dline):
 def decode_lines(dline, addr_size):
     """DWARF v4 行号状态机 -> [(address, file, line)]。"""
     prog, _ = line_header(dline)
-    end = 10 + u(dline, 0, 4)
+    # R575 (2026-10-08 虾米 · 批C-AB) 修正: DWARF 的 unit_length **不 含** 其 自身 4 字节, 故 单元 结束 偏移
+    #   = 4 + unit_length（原 写 10 + unit_length ⟹ 多 走 6 字节 ⟹ 当 .debug_line 程序 尺寸 距 0x200 边界
+    #   < 6 字节 时 直接 走进 填充 区 后 越界, 抛 IndexError = **假红**（本批 现场 命中: 程序 5117B, 段 5120B）。
+    end = 4 + u(dline, 0, 4)
     opcode_base = dline[15]
     line_base = dline[13] - 256
     line_range = dline[14]

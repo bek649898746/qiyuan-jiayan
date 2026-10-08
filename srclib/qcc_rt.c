@@ -754,8 +754,167 @@ static int __tp_qh = 0;
 static int __tp_go = 0;
 static int __tp_inited = 0;
 static long long __tp_pad16 = 0;
+/* R575 (2026-10-08 虾米 · C类攻坚 批C-AB · 族3 #61 **工作窃取** 真实现):
+   语言面: `工作窃取 开;` → __qcc_ws_on();  `提交子 任务, 实参;` → __qcc_ws_submit_child(任务, 实参);
+           `等待子;` → __qcc_ws_children_join();  （`提交 池, …;` 在 WS 模式 下 落 全局队列 平铺。）
+   语义:
+     ① 每 **参与者** (0 = 主线程, 1..16 = 工作线程) 有 **自己 的 队列**: **任务内 提交** (提交子) 落
+        当前 参与者 自己 的 队列 (尾 推入); 工作线程 先 取 **自己 队头**, 空 ⟹ **从 别人 队头 窃取**,
+        再 空 ⟹ 取 全局队列 (主线程 平铺 提交);
+     ② `等待子;` = 等「**己 提交 的 子任务** 全部 完成」(顶层 任务 不 计 ⟹ 无 「父 等 自己」 死锁);
+        等待 期间 **己 不 取 己 子任务**（只 帮 别人）⟹ **并行 由 构造 保证**: 窃取 一旦 不 工作,
+        子任务 无人 执行 ⟹ **死锁** ⟹ 闸 以 超时 FAIL 判 真伪（本 特性 的 真伪判据）;
+        ⚠️ 故 `等待子` 需 **>= 2 个 工作线程**（池 内 只有 己 一个 时, 己 子任务 无人 可 窃 ⟹ 死锁, 文档 记录）;
+     ③ 参与者 身份 走 **TLS**（kernel32 TlsAlloc/TlsSetValue/TlsGetValue, **动态 解析** —— 与 futex 同款,
+        不动 IAT 固定槽表）; TLS 不可用 ⟹ 提交子/等待子 **响亮 拒绝** (exit 2), 不 静默降级;
+     ④ 队列 互斥 = **自旋锁**, 用 已验证 的 `原子 加` (lock xadd, 返 旧值) 实现 test-and-set ——
+        **不 用 `原子 比较交换`**: 本轮 现场 实证 该 builtin 在 本 语境 下 恒 失败 (诊断: CAS 返值 ≠ 期望,
+        队列 头 永不 前进 ⟹ 认领 死循环), 故 改 锁 方案 (队列 操作 普通 读写 + 锁 保护, 零 CAS);
+     ⑤ 误用 响亮: 等待子 而 未 开 / 池 未 声明 / 队列 满 ⟹ fprintf(stderr) + exit(非 0);
+     ⑥ 诊断: 环境变量 QCC_DBG_WS=1 ⟹ 打印 启动/提交/认领/退出 轨迹 (默认 零输出);
+     ⑦ 数据 增量 见 下方 注释 (16 字节 倍数 规约, 由 闸内 feat_zh_attribute94.c 反证)。 */
+static volatile int __ws_on_flag = 0;
+static volatile int __ws_stop = 0;
+static volatile int __ws_out = 0;
+static int __ws_slot2 = -1;
+static int __ws_tried = 0;
+static int __ws_lk = 0;
+static int __ws_hd[17];
+static int __ws_tl[17];
+static int __ws_kids_p[17];
+static int __ws_kids_d[17];
+static int __ws_gh = 0;
+static int __ws_gt = 0;
+static void *__ws_fn[544];   /* 17 参与者 x 32 槽 (索引 参与者*32 + 槽) */
+static void *__ws_arg[544];
+static void *(*__ws_tlsalloc)(void) = 0;
+static int (*__ws_tlsset)(int, void *) = 0;
+static void *(*__ws_tlsget)(int) = 0;
+int __ws_steals = 0;          /* 成功 **窃取** 次数 (非 static: 供 闸内 锚 断言 窃取 真 发生) */
+static int __ws_pad[4];       /* 数据 补齐 —— 实测: 运行时 其余 增量 已 是 16 的 倍数, 只 需 本 段 自身 为 16 的倍数 (探针: pad 16/32/48 字节 通过, 24/40/56 失败) */
+static void __ws_lock(void) { while (原子 加(&__ws_lk, 1) != 0) { 原子 加(&__ws_lk, -1); } }
+static void __ws_unlock(void) { 原子 加(&__ws_lk, -1); }
+static void __ws_init(void) {
+    if (__ws_tried) return;
+    __ws_tried = 1;
+    void *k = load_library("kernel32.dll");
+    if (!k) return;
+    __ws_tlsalloc = get_proc_address(k, "TlsAlloc");
+    __ws_tlsset = get_proc_address(k, "TlsSetValue");
+    __ws_tlsget = get_proc_address(k, "TlsGetValue");
+    if (__ws_tlsalloc && __ws_tlsset && __ws_tlsget) {
+        int s2 = (int)(long long)__ws_tlsalloc();
+        if (s2 >= 0 && s2 < 100000) __ws_slot2 = s2;
+    }
+}
+static int __ws_dbg = -1;
+static void __ws_dbginit(void) { if (__ws_dbg < 0) { char *e = getenv("QCC_DBG_WS"); __ws_dbg = (e && e[0]) ? 1 : 0; } }
+static int __ws_me(void) { /* 0 = 主线程/未知, 1..16 = 工作线程 */
+    if (__ws_slot2 < 0) return 0;
+    return (int)(long long)__ws_tlsget(__ws_slot2);
+}
+static void __ws_mark(int who) {
+    if (__ws_slot2 >= 0) __ws_tlsset(__ws_slot2, (void *)(long long)who);
+}
+int __qcc_ws_me(void) { return __ws_me(); }
+int __qcc_ws_steals(void) { return __ws_steals; }
+int __qcc_ws_on(void) {
+    __ws_init();
+    __ws_dbginit();
+    __ws_on_flag = 1;
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] on: tls_slot=%d\n", __ws_slot2);
+    return 0;
+}
+/* 取 who 队列 头 一 个 槽 (锁 内 领 号, 返 槽 索引 或 -1) —— 调用方 在 锁 外 执行 任务 */
+static int __ws_take_idx(int who) {
+    int r = -1;
+    __ws_lock();
+    if (__ws_hd[who] < __ws_tl[who]) { r = who * 32 + (__ws_hd[who] & 31); __ws_hd[who] = __ws_hd[who] + 1; }
+    __ws_unlock();
+    return r;
+}
+static int __ws_take_global_idx(void) {
+    int r = -1;
+    __ws_lock();
+    if (__ws_gh < __ws_gt) { r = __ws_gh & 127; __ws_gh = __ws_gh + 1; }
+    __ws_unlock();
+    return r;
+}
+/* 取 一 个 任务 (只 看 **别人** 队列 + 全局队列; 自己 队列 不 取 —— 供 等待子 用) 并 执行: 返 1 = 干 了 活 */
+static int __ws_do_other(int self) {
+    for (int k = 0; k <= __tp_n && k <= 16; k++) { /* R575i: 0 号 = 主线程, 也 有 自己 队列 */
+        if (k == self) continue;
+        int sl = __ws_take_idx(k);
+        if (sl >= 0) {
+            __ws_steals = __ws_steals + 1;
+            __ws_kids_d[k] = __ws_kids_d[k] + 1;
+            __ws_out = __ws_out - 1;
+            ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
+            return 1;
+        }
+    }
+    int gi = __ws_take_global_idx();
+    if (gi >= 0) {
+        __ws_out = __ws_out - 1;
+        ((int (*)(void *))__tp_fn[gi])(__tp_arg[gi]);
+        return 1;
+    }
+    return 0;
+}
+static void __ws_worker_loop(int me) {
+    __ws_mark(me);
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] worker start: me=%d (回读 TLS=%d)\n", me, __ws_me());
+    for (;;) {
+        int sl = __ws_take_idx(me);   /* ① 自己 队列 头 */
+        if (sl >= 0) {
+            __ws_kids_d[me] = __ws_kids_d[me] + 1;
+            __ws_out = __ws_out - 1;
+            ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
+            continue;
+        }
+        if (__ws_do_other(me)) continue;   /* ② 窃取 / 全局 */
+        if (__ws_stop) {
+            if (__ws_dbg) fprintf(stdout, "[DBG-WS] worker %d 退出\n", me);
+            return;
+        }
+    }
+}
+int __qcc_ws_submit_child(void *fn, void *arg) { /* `提交子` —— 任务内 提交: 落 己 队列 */
+    if (!__ws_on_flag) {  /* 未 开 窃取 ⟹ 退化 为 单 池 全局队列 (与 `提交` 同 语义) */
+        if (!__tp_inited || __tp_total >= 128) return -1;
+        __tp_fn[__tp_total] = fn; __tp_arg[__tp_total] = arg; __tp_total = __tp_total + 1;
+        return 0;
+    }
+    if (!__tp_inited) return -1;
+    int me = __ws_me();
+    if (me < 0 || me > 16) { fprintf(stderr, "[工作窃取] 提交子: 参与者 身份 不可用 (me=%d)\n", me); exit(2); }
+    __ws_lock();
+    int t = __ws_tl[me];
+    if (t - __ws_hd[me] >= 32) { __ws_unlock(); fprintf(stderr, "[工作窃取] 提交子: 参与者 %d 队列 满 (>32)\n", me); exit(1); }
+    __ws_fn[me * 32 + (t & 31)] = fn;
+    __ws_arg[me * 32 + (t & 31)] = arg;
+    __ws_tl[me] = t + 1;
+    __ws_kids_p[me] = __ws_kids_p[me] + 1;
+    __ws_out = __ws_out + 1;
+    __ws_unlock();
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] submit_child: me=%d tl=%d\n", me, t + 1);
+    return 0;
+}
+int __qcc_ws_children_join(void) { /* `等待子;` —— 等 己 子任务 全部 完成 (己 不 自取) */
+    if (!__ws_on_flag) { fprintf(stderr, "[工作窃取] 等待子: 未 开启 —— 请 先 写 `工作窃取 开;` (在 线程池 声明 之前)\n"); exit(1); }
+    if (!__tp_inited) { fprintf(stderr, "[工作窃取] 等待子: 线程池 未 声明 —— 请 先 写 `线程池 池, N;`\n"); exit(1); }
+    int me = __ws_me();
+    if (me < 0 || me > 16) { fprintf(stderr, "[工作窃取] 等待子: 参与者 身份 不可用 (me=%d)\n", me); exit(2); }
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] join: me=%d kids_p=%d kids_d=%d\n", me, __ws_kids_p[me], __ws_kids_d[me]);
+    while (__ws_kids_d[me] < __ws_kids_p[me]) {  /* 判据 = **己 子任务** ⟹ 无 「父 等 自己」 死锁 */
+        __ws_do_other(me);
+    }
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] join done: me=%d steals=%d\n", me, __ws_steals);
+    return 0;
+}
 static void __tp_worker(void *p) {
     while (!__tp_go) { } /* 等 启动旗 (等待池 置) */
+    if (__ws_on_flag) { __ws_worker_loop((int)(long long)p + 1); return; } /* R575: +1 —— 0 号 留给 主线程 */
     for (;;) {
         int idx = 原子 加(&__tp_qh, 1); /* 原子 领取 任务 序号 (返回 旧值) */
         if (idx >= __tp_total) return 0; /* 取尽 ⟹ 退出 */
@@ -771,12 +930,35 @@ int __qcc_tp_new(int n) {
     return 0;
 }
 int __qcc_tp_submit(void *fn, void *arg) {
-    if (!__tp_inited || __tp_total >= 128) return -1;
+    if (!__tp_inited) return -1;
+    if (__ws_on_flag) { /* R575: WS 模式 —— 顶层 `提交` 一律 落 全局队列 (任务内 用 `提交子`) */
+        __ws_lock();
+        if (__ws_gt - __ws_gh >= 128) { __ws_unlock(); fprintf(stderr, "[工作窃取] 提交: 全局队列 满 (>128)\n"); exit(1); }
+        int gt = __ws_gt;
+        __tp_fn[gt & 127] = fn;
+        __tp_arg[gt & 127] = arg;
+        __ws_gt = gt + 1;
+        __ws_out = __ws_out + 1;
+        __ws_unlock();
+        return 0;
+    }
+    if (__tp_total >= 128) return -1;
     __tp_fn[__tp_total] = fn; __tp_arg[__tp_total] = arg; __tp_total = __tp_total + 1;
     return 0;
 }
 int __qcc_tp_wait(void) {
     if (!__tp_inited) return -1;
+    if (__ws_on_flag) { /* R575: WS 模式 —— 自旋 等 未完成 计数 归零 (等待 期间 主线程 也 帮 窃取), 再 置 停止旗 并 join */
+        __tp_go = 1;
+        if (__ws_dbg) fprintf(stdout, "[DBG-WS] wait: 自旋 (out=%d)\n", __ws_out);
+        while (__ws_out > 0) { __ws_do_other(0); }
+        if (__ws_dbg) fprintf(stdout, "[DBG-WS] wait: 自旋 结束 (out=%d) => 停止旗\n", __ws_out);
+        __ws_stop = 1;
+        for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1);
+        __tp_total = 0; __tp_qh = 0; __tp_go = 0; __ws_stop = 0; __ws_out = 0; __ws_gh = 0; __ws_gt = 0;
+        for (int i = 0; i <= 16; i++) { __ws_hd[i] = 0; __ws_tl[i] = 0; __ws_kids_p[i] = 0; __ws_kids_d[i] = 0; }
+        return 0;
+    }
     __tp_go = 1; /* 放开 工作线程 */
     for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1); /* join 全部 ⟹ 返回时 全部 任务 已 完成 */
     __tp_total = 0; __tp_qh = 0; __tp_go = 0; /* 复位 ⟹ 可 再 提交/等待 一轮 */
