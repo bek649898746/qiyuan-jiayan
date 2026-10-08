@@ -3084,6 +3084,15 @@ CORE_FEAT += [
     'scripts/feat_zh_dataflow219_compound_neg.c', # 10/219 负锚: `甲 += 5;` ⟹ A6090 (复合赋值通道)
     'scripts/feat_zh_dataflow219_scope_ok.c',   # 10/219 零误伤控制锚: 内层同名普通变量 覆盖 ⟹ 不得误拒 (DATAFLOWSCOPE 7 5)
 ]
+# R564 (2026-10-08 虾米 · C类攻坚 批C-Q): **9/199 抽象类/纯虚（不可实例化）真接入** —— `抽象 构 X {…};` ⟹ 值声明 A6091
+CORE_FEAT += [
+    'scripts/feat_zh_abstract199_ok.c',         # 9/199 正锚+零误伤: 抽象可定义 + 子类型继承 + 具体值实例化 + 抽象指针合法 ⟹ ABSTRACT199 3 4
+    'scripts/feat_zh_abstract199_neg.c',        # 9/199 负锚: 局部 `基 b;` ⟹ A6091
+    'scripts/feat_zh_abstract199_glob_neg.c',   # 9/199 负锚: 文件级 `基 g;` (中退出口) ⟹ A6091
+    'scripts/feat_zh_abstract199_arr_neg.c',    # 9/199 负锚: 值数组 `基 阵[2];` ⟹ A6091
+    'scripts/feat_zh_abstract199_kw_neg.c',     # 9/199 边界负锚: `抽象 函数 …` (非构形态) ⟹ A6091 响亮拒绝
+    'scripts/feat_zh_abstract199_ptrarr_ok.c',  # 9/199 零误伤控制锚: 抽象类型 **指针数组** `基 *阵[2];` 合法 ⟹ ABSTRACT199P 2
+]
 
 
 
