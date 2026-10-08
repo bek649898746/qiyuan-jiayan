@@ -3093,6 +3093,13 @@ CORE_FEAT += [
     'scripts/feat_zh_abstract199_kw_neg.c',     # 9/199 边界负锚: `抽象 函数 …` (非构形态) ⟹ A6091 响亮拒绝
     'scripts/feat_zh_abstract199_ptrarr_ok.c',  # 9/199 零误伤控制锚: 抽象类型 **指针数组** `基 *阵[2];` 合法 ⟹ ABSTRACT199P 2
 ]
+# R565 (2026-10-08 虾米 · C类攻坚 批C-R): **10/208 纯函数标记真接入** —— `纯 函数 T 名(…){…}` ⟹ 体内 不得写全局/I-O
+CORE_FEAT += [
+    'scripts/feat_zh_pure208_ok.c',         # 10/208 正锚+零误伤: 纯函数只写局部/可调用 + **非纯函数写全局** 必须合法 ⟹ PURE208 49
+    'scripts/feat_zh_pure208_glob_neg.c',   # 10/208 负锚: 纯函数写全局 ⟹ A6092
+    'scripts/feat_zh_pure208_io_neg.c',     # 10/208 负锚: 纯函数内 `格式化` ⟹ A6092
+    'scripts/feat_zh_pure208_kw_neg.c',     # 10/208 边界负锚: `纯 整 x = 5;` (非函数形态) ⟹ A6092 响亮拒绝
+]
 
 
 
