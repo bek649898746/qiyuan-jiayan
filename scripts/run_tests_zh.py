@@ -3140,6 +3140,18 @@ CORE_FEAT += [
     'scripts/feat_zh_intersection124_ok.c',     # 5/124 交集类型 定案锚: 一类型实现两接口 + 两泛型各自虚表分派 ⟹ INTER124 42 41
     'scripts/feat_zh_typetest137_ok.c',         # 6/137 类型测试 定案锚: 判类型(x,T) 编译期 1/0 + 判别 tag 比较 1/0 ⟹ TYPTEST137 1 0 1 0
 ]
+# R573 (2026-10-08 虾米 · C类攻坚 批C-Z): **4/77 溢出检查 真接入** —— 顶层 `溢出检查 开;` / `关;` (编译单元级 顺序 开关)
+#   ⟹ 其 后 解析 的 函数 的 **有符号** 32/64 位 `+ - *` 发射 jno+ud2 检查 (溢出 ⟹ 0xC000001D 硬陷阱, 不 静默 回绕)
+CORE_FEAT += [
+    'scripts/feat_zh_ovf77_ok.c',               # 4/77 正锚: 开 之下 非溢出 加/减/乘 (32 位 + 64 位) 照常出值 ⟹ OVF77 7 20 -500 1000000 1
+    'scripts/feat_zh_ovf77_uns_ok.c',           # 4/77 判据控制锚: 开 之下 无符号 仍 按 C 回绕 (只 检查 有符号) ⟹ OVFUNS 1 1
+    'scripts/feat_zh_ovf77_off_ok.c',           # 4/77 可选性控制锚: 无 指令 ⟹ 回绕 (零 默认影响) ⟹ OVFOFF -2147483648 2147483647
+    'scripts/feat_zh_ovf77_close_ok.c',         # 4/77 关 路径锚: `开` 后 `关` ⟹ 回绕 ⟹ OVFCLOSE -2147483648
+    'scripts/feat_zh_ovf77_trap.c',             # 4/77 核心锚: 开 + 有符号 32 位 INT_MAX+1 ⟹ ud2 陷阱 ⟹ exit 3221225501
+    'scripts/feat_zh_ovf77_trap64.c',           # 4/77 64 位锚: 开 + INT64_MAX+1 ⟹ ud2 陷阱 ⟹ exit 3221225501
+    'scripts/feat_zh_ovf77_body_neg.c',         # 4/77 负锚: 函数体 位置 ⟹ A6098 (父提交 报 A6086 ⟹ 必红)
+    'scripts/feat_zh_ovf77_top_neg.c',          # 4/77 负锚: 顶层 形 错 (`溢出检查;`) ⟹ A6098 (父提交 报 A6086 ⟹ 必红)
+]
 
 
 
