@@ -1,9 +1,9 @@
 {
-  "fixed": "4116FD09",
-  "time": "2026-10-09 R591b (批C-AQ 切片类型 + 切片词面冲突修正)",
+  "fixed": "243DA40D",
+  "time": "2026-10-09 R593 (批C-AR 导出 前缀 语言面 + 白名单原子迁移)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1564,
+      "anchor_count": 1566,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
