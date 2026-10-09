@@ -3479,6 +3479,12 @@ CORE_FEAT += [
     'scripts/feat_zh_constarr185_ok.c',        # R612 正锚: 折叠值 用于 ① 另一常量 ② 数组维度 ⟹ CONSTA 3 6
     'scripts/feat_zh_constarr185_neg.c',       # R612 负锚 ①: 下标越界 ⟹ A2001（改前 A9001 ⟹ 必红）
     'scripts/feat_zh_constarr185_elem_neg.c',  # R612 负锚 ②: 元素非常量（运行期全局）⟹ A6017（改前 A9001 ⟹ 必红）
+    # R613 (2026-10-10 虾米 · 族8 #178 「声明宏/macro_rules 式」): **同名多规则 · 按实参个数选择**。
+    #   改点 = 宏展开器 `副组`: ① 收集全部同名候选（原遇同名即断）② 实参收集后、A6068 之前按元数重选;
+    #   **guard `同名数 > 1`** ⟹ 单版本宏展开路径逐字不变（自举零扰动）。无匹配元数仍 A6068。
+    #   灵敏度: 正锚 改前报 A6068「期望 1 实得 2」⟹ 必红; 改后 MACROOVL 7 7 12。
+    'scripts/feat_zh_macroovl613_ok.c',        # R613 正锚: 同名 `翻(x)`/`翻(x,y)` ⟹ 1 参走 1 参规则、2 参走 2 参规则
+    'scripts/feat_zh_macroovl613_neg.c',       # R613 负锚（防过严）: 3 个实参 无匹配元数 ⟹ 仍 A6068（不静默落首个）
 ]
 def build_tests(args):
     if args.zh_feat:
