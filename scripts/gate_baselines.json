@@ -1,9 +1,9 @@
 {
-  "fixed": "8128D12C",
-  "time": "2026-10-09 R587 (批C-AN P-06 守卫析构 传址)",
+  "fixed": "81A8F354",
+  "time": "2026-10-09 R589 (批C-AO 族5 #123 细化类型 真接入)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1556,
+      "anchor_count": 1559,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
