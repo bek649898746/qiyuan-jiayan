@@ -3465,6 +3465,13 @@ CORE_FEAT += [
     'scripts/feat_zh_fwdread_local_neg.c',    # R610 负锚 ①: 同块 前向读 普通局部 ⟹ A1001（父编 rc=0 且 `NEVER 1` ⟹ 必红）
     'scripts/feat_zh_fwdread_dataflow_neg.c', # R610 负锚 ②: 同形 走 `数据流` 声明面 (族10 #220 现场探针原型) ⟹ A1001（父编 rc=0 且 `NEVER 1` ⟹ 必红）
     'scripts/feat_zh_fwdread_crossfn_neg.c',  # R610 负锚 ③ (回归对照): 跨函数 未声明读 ⟹ A1001（父编 已 正确 ⟹ 防 新码 误伤）
+    # R611 (2026-10-10 虾米 · 族3 #69 「消息传递细化」): **消息不可变约束** —— 消息 须 是 独立 的 值语义 对象;
+    #   借出中 (`当繁` >= 0) 或 已移动 (`后子`) 的变量 不得 作消息 ⟹ A3004 / A3102 响亮拒绝 (actor 隔离模型)。
+    #   改点 = `投递` handler 两路 (内联入队 / 回退 actor_send) 之后, 纯加法 + 只读所有权判据。
+    #   灵敏度: 负锚 父编 rc=0 (编译成功) ⟹ 必红; 两 正锚 父编/新编 同绿 ⟹ 零误伤。
+    'scripts/feat_zh_msg69_ok.c',             # R611 正锚 ①: 未借出/未移动 变量 作消息 ⟹ 放行 (MSG69 16 7)
+    'scripts/feat_zh_msg69_release_ok.c',     # R611 正锚 ②: 借用→放还→投递 ⟹ 放行 (MSG69REL 11; 约束 与 借用 生命周期 绑定)
+    'scripts/feat_zh_msg69_borrow_neg.c',     # R611 负锚: 借出中 投递 ⟹ A3004（父编 rc=0 ⟹ 必红）
 ]
 def build_tests(args):
     if args.zh_feat:
