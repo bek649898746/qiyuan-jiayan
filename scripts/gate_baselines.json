@@ -1,9 +1,9 @@
 {
-  "fixed": "243DA40D",
-  "time": "2026-10-09 R593 (批C-AR 导出 前缀 语言面 + 白名单原子迁移)",
+  "fixed": "99EDA012",
+  "time": "2026-10-09 R595 (批C-AS 族4 #93 空指针 检查 真接入 + 新码 A6107)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1566,
+      "anchor_count": 1573,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
