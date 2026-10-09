@@ -1,9 +1,9 @@
 {
-  "fixed": "E5EAF9CF",
-  "time": "2026-10-09 R590b (批C-AP 零拷贝切片 + 遍区间冲突修正)",
+  "fixed": "4116FD09",
+  "time": "2026-10-09 R591b (批C-AQ 切片类型 + 切片词面冲突修正)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1562,
+      "anchor_count": 1564,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
