@@ -1,9 +1,9 @@
 {
-  "fixed": "81A8F354",
-  "time": "2026-10-09 R589 (批C-AO 族5 #123 细化类型 真接入)",
+  "fixed": "E5EAF9CF",
+  "time": "2026-10-09 R590b (批C-AP 零拷贝切片 + 遍区间冲突修正)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1559,
+      "anchor_count": 1562,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
