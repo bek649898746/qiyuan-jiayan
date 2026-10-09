@@ -1,9 +1,9 @@
 {
-  "fixed": "FD5557CB",
-  "time": "2026-10-09 R595b (批C-AS 续: 族4 #93 空指针 检查 —— 指针形参 下标 锚 + 冗余兜底站)",
+  "fixed": "324ED9A9",
+  "time": "2026-10-09 R596 (批C-AT 族3 #62 任务并行: 未声明 句柄 槽 尺寸 修复)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1574,
+      "anchor_count": 1575,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
