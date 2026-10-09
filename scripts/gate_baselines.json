@@ -1,9 +1,9 @@
 {
   "fixed": "0D7B618C",
-  "time": "2026-10-09 R598 (批C-AV 族15 #285 重导出 收口: 语言面 + .drectve 端到端 + 白名单迁移)",
+  "time": "2026-10-09 R601 (批C-AW 族5 #129 归纳/余归纳 定案 S-50: 余归纳 证据锚, 零 编译器 改动)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1575,
+      "anchor_count": 1576,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
