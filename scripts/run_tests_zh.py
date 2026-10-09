@@ -3472,6 +3472,13 @@ CORE_FEAT += [
     'scripts/feat_zh_msg69_ok.c',             # R611 正锚 ①: 未借出/未移动 变量 作消息 ⟹ 放行 (MSG69 16 7)
     'scripts/feat_zh_msg69_release_ok.c',     # R611 正锚 ②: 借用→放还→投递 ⟹ 放行 (MSG69REL 11; 约束 与 借用 生命周期 绑定)
     'scripts/feat_zh_msg69_borrow_neg.c',     # R611 负锚: 借出中 投递 ⟹ A3004（父编 rc=0 ⟹ 必红）
+    # R612 (2026-10-10 虾米 · 族8 #185 「编译期分配」): **编译期 整数数组常量** 声明 + 下标折叠（真接入）。
+    #   纯加法: 新侧表 常阵名/常阵值/常阵长（与 标量 剩集/外联 并列）; 声明分支 前置 于 既有 标量 handler;
+    #   下标折叠 在 常量求值器 内, **严格守卫**（仅 名 命中 常阵 才生效）⟹ 编译期 热路径 零扰动。
+    #   灵敏度: 三 锚 在 改前 626A0D0F 均 报 A9001 ⟹ 与 期望 不符 = 必红。
+    'scripts/feat_zh_constarr185_ok.c',        # R612 正锚: 折叠值 用于 ① 另一常量 ② 数组维度 ⟹ CONSTA 3 6
+    'scripts/feat_zh_constarr185_neg.c',       # R612 负锚 ①: 下标越界 ⟹ A2001（改前 A9001 ⟹ 必红）
+    'scripts/feat_zh_constarr185_elem_neg.c',  # R612 负锚 ②: 元素非常量（运行期全局）⟹ A6017（改前 A9001 ⟹ 必红）
 ]
 def build_tests(args):
     if args.zh_feat:
