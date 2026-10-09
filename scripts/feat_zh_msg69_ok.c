@@ -1,4 +1,4 @@
-// @EXPECTED out:MSG69 7 9
+// @EXPECTED out:MSG69 16 7
 // @EXPECTED exit:0
 # 包含 <stdio.h>
 /* 族3 #69「消息传递细化」—— **消息不可变约束** 正锚 (R611 · 2026-10-10 虾米)
