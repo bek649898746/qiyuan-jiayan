@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """check_drectve248 —— **族12 #248 导出表控制 收口 检查器**（闸⑥）。
 
 背景（R597 · 2026-10-09 · 批C-AU）：
@@ -88,8 +88,29 @@ else:
     if n != 4:
         print('[负] ❌ NumberOfSections=%d (期望 4)' % n); bad.append('neg-nsec')
 
+# ③ 重导出 (族15 #285): `重导出 甲;` 须 同样 落 `/EXPORT:甲`（同一 导出表 ⟹ 同一 `.drectve`）
+RE = H + u'函数 整 甲(整 x) { 返 x + 2; }\n重导出 甲;\n函数 整 主(空) { 格式化 "%d\\n", 甲(5); 返 0; }\n'
+obj, rc, msg = build('re', RE)
+if rc != 0 or not os.path.exists(obj):
+    print('[重导出] ❌ `-c` 编译失败 rc=%d %s' % (rc, msg[:160])); bad.append('re-compile')
+else:
+    n, secs, raw = sections(obj)
+    hit = [(nm, sz, dt) for nm, sz, ptr, dt in secs if nm == '.drectve']
+    print('[重导出] 节数=%d 节名=%s' % (n, ' '.join(s[0] for s in secs)))
+    if not hit or (u'/EXPORT:甲'.encode('utf-8') not in hit[0][2]):
+        print('[重导出] ❌ 无 `.drectve` 或 未 含 /EXPORT:甲'); bad.append('re-noexport')
+    else:
+        print('[重导出] `.drectve` 内容=%r' % hit[0][2][:120])
+# ④ 重导出 未声明 名 ⟹ A6108 (零静默)
+RE2 = H + u'重导出 不存在名;\n函数 整 主(空) { 返 0; }\n'
+obj, rc, msg = build('re2', RE2)
+if rc == 0 or (u'A6108' not in msg):
+    print('[重导出 负] ❌ 未 声明 名 未 响亮 拒绝 rc=%d %s' % (rc, msg[:140])); bad.append('re-noname')
+else:
+    print('[重导出 负] ✅ rc=%d 含 A6108' % rc)
+
 print()
-print('[check_drectve248] 判据 2 组 (正 导出 / 负 零回归) · 失败 %d' % len(bad))
+print('[check_drectve248] 判据 4 组 (正 导出 / 负 零回归 / 重导出 / 重导出 负) · 失败 %d' % len(bad))
 if bad:
     print('  ❌ %s' % ' '.join(bad)); sys.exit(1)
 print('  → 全过')

@@ -1,6 +1,6 @@
 {
-  "fixed": "0A0A3EC6",
-  "time": "2026-10-09 R597 (批C-AU 族12 #248 导出表控制 收口: COFF .drectve 段 + 闸⑥ 检查器)",
+  "fixed": "0D7B618C",
+  "time": "2026-10-09 R598 (批C-AV 族15 #285 重导出 收口: 语言面 + .drectve 端到端 + 白名单迁移)",
   "gates": {
     "zh_feat": {
       "anchor_count": 1575,
