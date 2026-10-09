@@ -1,9 +1,9 @@
 {
-  "fixed": "99EDA012",
-  "time": "2026-10-09 R595 (批C-AS 族4 #93 空指针 检查 真接入 + 新码 A6107)",
+  "fixed": "FD5557CB",
+  "time": "2026-10-09 R595b (批C-AS 续: 族4 #93 空指针 检查 —— 指针形参 下标 锚 + 冗余兜底站)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1573,
+      "anchor_count": 1574,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
