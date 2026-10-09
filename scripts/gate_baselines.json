@@ -1,6 +1,6 @@
 {
-  "fixed": "324ED9A9",
-  "time": "2026-10-09 R596 (批C-AT 族3 #62 任务并行: 未声明 句柄 槽 尺寸 修复)",
+  "fixed": "0A0A3EC6",
+  "time": "2026-10-09 R597 (批C-AU 族12 #248 导出表控制 收口: COFF .drectve 段 + 闸⑥ 检查器)",
   "gates": {
     "zh_feat": {
       "anchor_count": 1575,

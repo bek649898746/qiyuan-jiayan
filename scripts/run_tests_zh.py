@@ -3669,7 +3669,12 @@ def main():
                 #   **零覆盖** ⟹ 实测 真缺陷: `int main(void){return 42;}` 经 qcc -c + jyld 得 rc=0x2CE000 (jyld 的
                 #   k32 IAT 前 8 槽 被 LoadLibraryA 插入 顶偏一 ⟹ CRT 桩 call 到 ExitProcess)。任何 走 jyld 的工具链
                 #   回归 从此 由 闸 自动抓 (含 归档 `.a` 往返)。
-                ('闸⑤', 'check_jyld_link_smoke.py', '`-c` 产物 + jyld 链接 运行 冒烟 (含 .a 归档往返)')):
+                ('闸⑤', 'check_jyld_link_smoke.py', '`-c` 产物 + jyld 链接 运行 冒烟 (含 .a 归档往返)'),
+                # R597 (2026-10-09 虾米 · 族12 #248 收口): **闸⑥** —— `-c` 产物 里 的 **导出 指令 段**。
+                #   由来: R593 只 做 了 语言面(`导出` 前缀 + `导出名数()`), 导出名 **从未 进 目标文件** ⟹ #248 挂账;
+                #   R597 补 COFF `.drectve` 段(内容 `/EXPORT:名\0`, MSVC 同款 通道) ⟹ 链接器 读 该 段 即 生成 PE 导出目录。
+                #   判据: ① 有 导出 ⟹ 节数 5 + `.drectve` 含 `/EXPORT:甲`;  ② 无 导出 ⟹ 节数 4 且 **无** 该 节(零回归)。
+                ('闸⑥', 'check_drectve248.py', '族12 #248 导出 指令 段 (`.drectve` / `/EXPORT:名`)')):
             _p = os.path.join(root, 'scripts', _scr)
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
