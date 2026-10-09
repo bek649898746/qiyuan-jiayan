@@ -1,9 +1,9 @@
 {
-  "fixed": "0D7B618C",
-  "time": "2026-10-09 R601 (批C-AW 族5 #129 归纳/余归纳 定案 S-50: 余归纳 证据锚, 零 编译器 改动)",
+  "fixed": "DF8B4318",
+  "time": "2026-10-09 R605 (批C-AY 族6 #134 嵌套模式 收口: 一层 子模式)",
   "gates": {
     "zh_feat": {
-      "anchor_count": 1576,
+      "anchor_count": 1577,
       "source": "run_tests_zh.py 的 CORE_FEAT 长度"
     },
     "lua": {
