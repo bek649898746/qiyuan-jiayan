@@ -3806,8 +3806,9 @@ def main():
         #   现 每 50 个 打一行 `[进度] i/N 当前锚`，卡住时 一眼 看出 停 在 谁 身上。
         results = []
         for _i, _t in enumerate(tests):
+            print('  [正在跑] %d/%d %s' % (_i + 1, len(tests), _t), flush=True)  # R634: 卡死时 可精确到**单锚**
             results.append(run_one_test(_t))
-            if (_i + 1) % 50 == 0 or (_i + 1) == len(tests):
+            if (_i + 1) % 10 == 0 or (_i + 1) == len(tests):  # R634: 粒度 50 -> 10
                 print('  [进度] %d/%d  (刚跑完: %s)' % (_i + 1, len(tests), _t), flush=True)
 
     def summarize():
