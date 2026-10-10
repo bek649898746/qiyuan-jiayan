@@ -3247,6 +3247,15 @@ CORE_FEAT += [
     'scripts/feat_zh_ptrmem625_ok.c',           # 形态① 正锚 6 格: 匿名 typedef 体 + 具名标签 typedef 体 各 常指针链/控制 ⟹ S1T625 11 22 33 11 22 33 (父编 4544600 … 33 exit=1 必红)
     'scripts/feat_zh_fwdtypedef625_ok.c',       # 形态② 正锚 3 格: 前向 typedef 名 作 指针字段 基 ⟹ SFT625 11 22 33 (父编 4544584 4544584 33 exit=1 必红)
 ]
+# R627 (2026-10-10 虾米 · 进IR前 T8 根治): **系统类型名(size_t/int64_t/off_t/…) = 内置 typedef**
+#   病灶: 甲言 跳过 `<...>` 系统头 ⟹ 该族 名 在本 TU 未登记 ⟹ ① 声明(`extern size_t f(void);` 名字被当类型吞掉 ⟹ 调用 A1001)
+#     ② 转型 `(size_t)x` ③ `大小(size_t)` 三面 同时 断（真载体: lua `lobject.h` 的 `LUAI_FUNC size_t luaO_str2num(...)`）。
+#   修法: 解析() 复位后 把 该族 名 **登记为 内置 typedef**（按名 取宽度）+ `左系` 认作类型名 ⟹ 既有通路 全 生效。
+#   实测: **lua 语料 ok 23 → 29（+6 文件: lapi/lbaselib/llex/lstrlib/lundump/lvm）, 零 新红**; 自编译 零静默; 锚 +1（父编 编译失败 必红）。
+#     ⚠️ 声明面 **无 EXE 模式锚**（未声明 调用 在 EXE 模式 走 槽0 静默 ⟹ 不可判别）⟹ 其 判据 落 闸② `-c` 冒烟 的 `systype_decl` 用例。
+CORE_FEAT += [
+    'scripts/feat_zh_systype627_ok.c',          # 正锚 5 格: 大小(size_t/int8_t/int64_t/int32_t/ptrdiff_t) = 8 1 8 4 8 ⟹ SYST627 8 1 8 4 8 (父编 编译失败 A1001 必红)
+]
 # R584 (2026-10-08 虾米 · C类攻坚 批C-AK): **族11 #232「字段重排（布局优化）」真接入** —— opt-in 布局 开关
 #   语言级: `字段重排 开;` / `字段重排 关;`（编译单元级 **顺序** 开关, 与 `溢出检查 开;` 同族）——
 #     开 之后 **定义** 的结构体, 字段 按 **自然对齐 降序** 重排（同 对齐 保持 声明序 = 稳定）, 偏移 重算,
