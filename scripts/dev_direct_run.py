@@ -26,6 +26,7 @@
 import io
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -64,8 +65,9 @@ def parse_expect(name):
     p = os.path.join('scripts', name)
     if not os.path.exists(p):
         return None
-    head = '\n'.join(io.open(p, encoding='utf-8-sig', errors='replace').read().splitlines()[:8])
-    d = {'cfail': '@EXPECTED compile_fail' in head, 'exit': None, 'out': None, 'err': None}
+    full = io.open(p, encoding='utf-8-sig', errors='replace').read()
+    head = '\n'.join(full.splitlines()[:8])
+    d = {'cfail': '@EXPECTED compile_fail' in head, 'exit': None, 'out': None, 'err': None, 'args': []}
     m = re.search(r'@EXPECTED exit:(-?\d+)', head)
     if m:
         d['exit'] = int(m.group(1))
@@ -75,6 +77,11 @@ def parse_expect(name):
     m = re.search(r'@EXPECTED err:(\S+)', head)
     if m:
         d['err'] = m.group(1).strip()
+    # @ARG <编译器选项>（与 run_tests_zh.py L3559 同约定）
+    #   R629 (2026-10-10): 原 本器 不解析 @ARG ⟹ 带 `-D` 的锚（如 feat_zh_cmdline_define_ok.c）
+    #   恒报 "A1001 未声明标识符" 假红。@ARG 只出现在锚头，故全文件扫即可。
+    for ma in re.finditer(r'@ARG\s+(.+)$', full, re.M):
+        d['args'] += shlex.split(ma.group(1).strip())
     return d
 
 
@@ -88,7 +95,7 @@ def run_one(name, cc):
     except OSError:
         pass
     try:
-        r = subprocess.run([cc, os.path.join('scripts', name), '-o', exe],
+        r = subprocess.run([cc] + d['args'] + [os.path.join('scripts', name), '-o', exe],
                            capture_output=True, encoding='utf-8', errors='replace', timeout=120)
     except subprocess.TimeoutExpired:
         return name, 'FAIL', '编译超时 120s'

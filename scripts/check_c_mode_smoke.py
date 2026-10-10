@@ -42,6 +42,25 @@ CASES = {
 
 bad = []
 
+# R629 (2026-10-10 虾米 · 进IR前 A4 残留 根治) —— **带 `-D 名=值` 的 行号 校正**
+#   病灶: `命宏前插()`（主源 L248）把 每个 `-D` 当 一行 `#define` **前插到 用户源码 之前** ⟹ 用户源码 下移 N 行,
+#     而 行号 公式 的 校正量 `剩伴` 只 统计 运行库 行数 ⟹ **少减 N** ⟹ `__LINE__`/发错误/源位置/语义导航 四 处 一致 偏 +N。
+#   判据（判别性 · 编译期 可判）: `-D M=1` 下 `编译期断言(__LINE__ == 3);` —— 改前 偏 +1 ⟹ 断言失败 ⟹ rc≠0; 改后 rc=0。
+ARGS_CASES = {
+    'dline_off': (H + '// 注释行\n函数 整 主(空) { 编译期断言(__LINE__ == 3); 格式化 "DLINE ok\\n", 0; 返 0; }\n',
+                  ['-D', 'M=1']),
+}
+for name, (src, extra) in ARGS_CASES.items():
+    p = os.path.join(OUT, name + '.c')
+    io.open(p, 'w', encoding='utf-8-sig', newline='\n').write(src)
+    r = subprocess.run([CC, p, '-c'] + extra + ['-o', os.path.join(OUT, name + '.obj')],
+                       capture_output=True, timeout=300)
+    ok = (r.returncode == 0)
+    msg = (r.stdout + r.stderr).decode('utf-8', 'replace').strip().replace('\n', ' ')
+    print('%-8s -c: %s%s' % (name, 'OK' if ok else 'FAIL', '' if ok else '  | ' + msg[:110]))
+    if not ok:
+        bad.append(name + '(-D 行号)')
+
 # R626 (2026-10-10 虾米 · 进IR前 槽0 根治) —— **判别性 用例**: 「已声明 但 无定义 的 内置名」在 `-c` 模式
 #   必须 发 **外部符号 调用**(交 链接器/msvcrt 解析), 不得 静默 生成「恒返 0」。
 #   病灶: `abort`(以及 `_exit` 等) 在 位非标 内建表 内(A1001 豁免) ⟹ 编译器 为它 登记 声明(函数表 有条目),
@@ -74,7 +93,7 @@ for name, src in CASES.items():
         bad.append(name)
 
 print()
-print('[check_c_mode_smoke] %d 用例 · `-c` 失败 %d' % (len(CASES) + len(EXTRA), len(bad)))
+print('[check_c_mode_smoke] %d 用例 · `-c` 失败 %d' % (len(CASES) + len(EXTRA) + len(ARGS_CASES), len(bad)))
 if bad:
     print('  ❌ 失败: %s' % ' '.join(bad))
     sys.exit(1)
