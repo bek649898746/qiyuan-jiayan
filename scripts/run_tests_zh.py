@@ -3614,9 +3614,31 @@ def run_one_test(name):
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
-                       encoding='utf-8', errors='replace',
-                       env=(dict(os.environ, QCC_DBG_SILENT='1') if expected_silent is not None else None))
+    try:
+        r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=120,   # R701 刀八: 编译期超时 (原 无 timeout= ⟹ 编译器 卡死 ⟹ 整轮 永久挂住 且 无现场)
+                           env=(dict(os.environ, QCC_DBG_SILENT='1') if expected_silent is not None else None))
+    except subprocess.TimeoutExpired as ce:
+        # R701 刀八 (2026-10-11 虾米 · 启元 施工单 v2 §刀八 P1): **编译期 超时 留现场 + 计 FAIL**
+        #   病灶: `run([qcc] ...)` 无 `timeout=` ⟹ 编译器 一旦卡死, 整轮全量闸 **永久挂住且无现场**
+        #     (2026-10-11 实测: `--only <3锚>` 跑 8.5 分钟无输出、kill 后日志为空 ⟹ 无法定位)。
+        #   现: 120s 上限 + 落盘**现场快照**(命令/部分输出/源码副本) 到 scratch_test/, 并 以 FAIL 报出。
+        _snap = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_COMPILE_TIMEOUT.txt')
+        try:
+            os.makedirs('scratch_test', exist_ok=True)
+            with open(_snap, 'w', encoding='utf-8') as _f:
+                _f.write('cmd: %s %s\n' % (qcc, ' '.join(list(arg_extra) + [src, '-o', h1])))
+                _f.write('--- partial stdout ---\n' + (ce.stdout or '') + '\n')
+                _f.write('--- partial stderr ---\n' + (ce.stderr or '') + '\n')
+                try:
+                    with open(src, 'r', encoding='utf-8', errors='replace') as _s:
+                        _f.write('--- source ---\n' + _s.read() + '\n')
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        return (name, False, 'COMPILE-TIMEOUT: 编译 超 120s (编译器 卡死) —— 现场 scratch_test/%s'
+                % os.path.basename(_snap))
 
     # 静默兜底 槽计数 断言 (第 84 站): 只在 编译成功 时 判定 (汇总行 在 成功收尾 才打印)
     if expected_silent is not None and r.returncode == 0:
@@ -3667,21 +3689,29 @@ def run_one_test(name):
         pass
     try:
         # cmd /c 启动: Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005 (fix 2026-08-08)
-        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True,
-                           encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
-        rc = p.returncode
-        out = (p.stdout or '').strip()
-        err = (p.stderr or '').strip()
-    except subprocess.TimeoutExpired:
-        # ⚠️ 量具 修复 (R582 · 2026-10-08 · 与 R575 的 check_dwarf289 越界修 同 类): 原 处理 分支 引用
-        #   `te.kill()` / `te.pid` —— `subprocess.TimeoutExpired` **两者 都 没有** ⟹ 报错处理 自身 抛
-        #   AttributeError, 被 `pool.map` 传播 ⟹ **整轮 全量闸 直接 崩**（连 既有 的 「失败 自动重试一次」
-        #   都 走 不到）。现场: 8 路 并行 下 `feat_zh_ovf77_trap`（ud2 硬陷阱 ⟹ Windows 未处理异常 ⟹
-        #   WER 路径 在 负载下 偶发 慢）超 15s ⟹ 命中 本 分支 ⟹ 全量闸 中断。
-        #   语义 **不变**: 超时 仍 计 FAIL（'TIMEOUT'）, 重试 机制 照旧; 只 把 「杀 孙进程」 由 不存在 的
-        #   pid 改为 **按 镜像名 树杀**（`cmd /c <exe>` 的 孙进程）—— run(timeout=) 已 杀 子进程 (cmd)。
-        rc = 'TIMEOUT'; out = ''; err = ''
-        subprocess.run(['taskkill', '/F', '/T', '/IM', os.path.basename(h1)], capture_output=True, timeout=10)
+        # R701 刀八: run() -> Popen() —— `run(timeout=)` 抛 TimeoutExpired 时**拿不到 pid**（见下 R582 注释），
+        #   无法按 PID 树杀; 原 按 镜像名 (`taskkill /IM <exe名>`) ⟹ **同名进程会被误杀**
+        #   (= 2026-10-03 刀A「串扰」同族旧债)。 Popen 持有 `_proc.pid` ⟹ 只杀 本树。
+        _proc = subprocess.Popen(['cmd', '/c', h1], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 text=True, encoding='utf-8', errors='replace')
+        try:
+            _o, _e = _proc.communicate(input=stdin_in, timeout=15)
+            rc = _proc.returncode
+            out = (_o or '').strip()
+            err = (_e or '').strip()
+        except subprocess.TimeoutExpired:
+            # ⚠️ 量具 修复 (R582 · 2026-10-08 · 与 R575 的 check_dwarf289 越界修 同 类): 原 处理 分支 引用
+            #   `te.kill()` / `te.pid` —— `subprocess.TimeoutExpired` **两者 都 没有** ⟹ 报错处理 自身 抛
+            #   AttributeError, 被 `pool.map` 传播 ⟹ **整轮 全量闸 直接 崩**（连 既有 的 「失败 自动重试一次」
+            #   都 走 不到）。现场: 8 路 并行 下 `feat_zh_ovf77_trap`（ud2 硬陷阱 ⟹ Windows 未处理异常 ⟹
+            #   WER 路径 在 负载下 偶发 慢）超 15s ⟹ 命中 本 分支 ⟹ 全量闸 中断。
+            #   语义 **不变**: 超时 仍 计 FAIL（'TIMEOUT'）, 重试 机制 照旧; R701 起 改 **按 PID 树杀`。
+            rc = 'TIMEOUT'; out = ''; err = ''
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(_proc.pid)], capture_output=True, timeout=10)
+            try:
+                _proc.kill()
+            except Exception:
+                pass
     except Exception as e:
         rc = 'ERR'; out = str(e); err = ''
     try:
@@ -3746,7 +3776,10 @@ def main():
     #     闸③ 负例锚有效性 —— compile_fail 只要求「退出码 ≠ 0」⟹ **任何不相干错误都能让它"通过"**
     #        （假锚 = 闸给的是假绿灯 = 最大的不确定性）。
     #   `--fast`（30 用例开发档）跳过，与闸① 不同档。
-    if not args.fast:
+    if not args.fast and not args.only:   # R701 刀八 (2026-10-11 虾米): `--only` 是 **单锚 诊断档**
+        #   (与 L3889 `gate = not args.zh_feat_all and not args.only` 同义 —— `--only` 本来就不算闸)。
+        #   ⚠️ 原 未豁免 ⟹ `--only 单锚` 仍 先 跑 6 个 闸检查器 ⟹ 实测 被拖 **8.5 分钟 无输出**
+        #   (2026-10-11 现场: 启元 5 用例 回归时 触发; 与 编译期无超时 是 同一族「闸可靠性」缺陷)。
         import importlib.util as _ilu2
         for _tag, _scr, _what in [
                 ('闸②', 'check_c_mode_smoke.py', '`-c` 模式冒烟'),
@@ -3771,7 +3804,11 @@ def main():
             _p = os.path.join(root, 'scripts', _scr)
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
-            _r = subprocess.run([sys.executable, _p], capture_output=True)
+            try:
+                _r = subprocess.run([sys.executable, _p], capture_output=True, timeout=600)   # R701 刀八: 检查器 也须 有超时 (原 无 `timeout=` ⟹ 检查器 卡死 ⟹ 整轮 挂住 且 无现场)
+            except subprocess.TimeoutExpired:
+                print('[%s %s] ❌ 检查器 超 600s (卡死) —— 待查: scripts/%s' % (_tag, _what, _scr))
+                sys.exit(1)
             _o = (_r.stdout + _r.stderr).decode('utf-8', 'replace')
             for _l in [x for x in _o.strip().split('\n') if x.strip()][-5:]:
                 print('    ' + _l)
