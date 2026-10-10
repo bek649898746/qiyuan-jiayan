@@ -926,7 +926,16 @@ int __qcc_tp_new(int n) {
     if (n < 1) return -1;
     if (n > 16) n = 16;
     __tp_inited = 1; __tp_n = n;
-    for (int i = 0; i < n; i++) __tp_th[i] = CreateThread(0, 0, (void *)__tp_worker, (void *)(long long)i, 0, 0);
+    for (int i = 0; i < n; i++) {
+        __tp_th[i] = CreateThread(0, 0, (void *)__tp_worker, (void *)(long long)i, 0, 0);
+        if (__tp_th[i] == 0) { /* R635 (2026-10-10 虾米 · 并发运行时 第一刀): **原 返回值 从未 检查** ——
+            CreateThread 失败时 无任何 诊断, 随后 `等待池` 置 __tp_go=1 也 无人 在自旋 ⟹ 任务 一个 都 不执行
+            (实测 threadpool60_ok 得 `TP60 0 0`, 期望 `TP60 4 60`; ws61 的 CAS 认领 空转 亦 同源) ⟹ **静默**。
+            此处 按 本项目「零静默」原则 响亮 失败。 */
+            fprintf(stderr, "[线程池] 创建 工作线程 #%d 失败 (CreateThread 返回 0) —— 任务 将 无人 执行; 请检查 线程上限/句柄/权限\n", i);
+            exit(5);
+        }
+    }
     return 0;
 }
 int __qcc_tp_submit(void *fn, void *arg) {

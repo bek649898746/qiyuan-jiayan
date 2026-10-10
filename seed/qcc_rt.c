@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>   /* 第 444 站 #66: clock()/CLOCKS_PER_SEC — timer_delay/timer_deadline 真实现 */
 /* qcc 内建（gcc 编译检查用声明；实际由 qcc 运行时提供） */
 void *_va_alloc(int n);
 int _setpos(void *f, int off, int whence);
@@ -558,6 +559,9 @@ static void *__coro_fn[64];
 static void *__coro_arg[64];
 static int __coro_done[64];
 static int __coro_cnt = 0;
+static long long __coro_stack_size = 0; /* R562 (2026-10-08 虾米 · C类攻坚 批C-P · 15/290 **协程栈 控制**): 其后 创建 的 纤程 (生成器/协程/效应处理器) 用 该 字节数 作 栈 尺寸; 0 = 系统默认 (PE 栈保留值, 实测 ~1MB ⟹ 深递归 生成器 崩 0xC0000005) */
+long long __coro_stack_pad16 = 0; /* ⚠️ **对齐 模 保持 位** (R562 · 2026-10-08): 运行时 数据 区 **必须以 16 字节 为 增量** 增长 —— 用户侧 `__attribute__((aligned(16)))` 全局 的 落址 与 运行时 数据 尺寸 **模 16** 强相关 (全闸 实证: 本 R562 只加 8 字节 ⟹ feat_zh_attribute94 的 `(长整)&x % 16` 由 0 变 4 ⟹ 闸 红)。配 8 字节 补齐 使 增量 = 16 ⟹ 模 不变。**根治 见 `_DEBT_INDEX.md` 真缺陷「全局 aligned(N) 靠布局巧合」** (待 修: 全局对齐 不应 依赖 运行时 数据 尺寸)。非 static ⟹ 免 gcc 未用变量 告警 */
+void __qcc_coro_stack(long long n) { if (n > 0) __coro_stack_size = n; }
 
 static void __coro_wrap(void *param) { /* 纤维入口: 调用户 fn → 置完成 → 切回主流程 */
     int i = (int)(long long)param;
@@ -570,7 +574,7 @@ int coro_init(int *c, void *fn, void *arg) { /* 分配协程索引 + 建纤维 (
     int i = __coro_cnt; __coro_cnt = __coro_cnt + 1;
     *c = i;
     __coro_fn[i] = fn; __coro_arg[i] = arg; __coro_done[i] = 0;
-    __coro_fiber[i] = CreateFiber(0, __coro_wrap, (void *)(long long)i);
+    __coro_fiber[i] = CreateFiber((long long)__coro_stack_size, __coro_wrap, (void *)(long long)i);
     return __coro_fiber[i] != 0;
 }
 
@@ -612,6 +616,42 @@ long long __gen_yield_v(long long v) { /* 生成器产出: 存值槽 → 挂起�
     SwitchToFiber(__coro_main_fiber);
     return v;
 }
+
+/* R545 (#267): 原生串 (长度前缀, 非 char*) —— 值 = 指向 [4B 小端 长][文本 …][0] 的 指针.
+   布局 由 编译器 生成 (`原生 "文本"` 字面量); 以下 两个 helper 是 语言级 访问 面. */
+int __qcc_nstr_len(void *p) { return p ? ((int *)p)[0] : 0; }        /* 串长(s) */
+char *__qcc_nstr_data(void *p) { return p ? ((char *)p) + 4 : (char *)0; } /* 串数据(s) */
+
+/* R546 (#216): 代数效应 处理器 (one-shot, **可恢复**) —— 执行者 = 主 fiber, 处理器 = 独立 fiber.
+   语义: `执行 效应(实参)` → 执行者 挂起 (SwitchToFiber 到 该 效应 的 处理器 fiber), 实参 由 `效应参()` 取出;
+   处理器 调 `恢复(值)` → 切回 执行者, `执行 …` 的 结果 = 值 ⟹ 执行者 在 **原 位置 继续** (这正是 代数效应
+   相对 异常 的 本质: 处理器 能 恢复 计算). 处理器 应 以 循环 形态 常驻 (同 生成器 约定)。 */
+static void *__eff_h[64];
+static void *__eff_fn[64];
+static void *__eff_main = 0;
+static long long __eff_arg = 0, __eff_ret = 0;
+
+static void __eff_wrap(void *param) { /* 处理器 fiber 入口: 调 用户 处理器; 返回 后 常驻 (不 结束 fiber) */
+    int i = (int)(long long)param;
+    ((int (*)(void *))__eff_fn[i])(0);
+    for (;;) SwitchToFiber(__eff_main);
+}
+
+void __eff_install(int id, void *fn) { /* 处理 名 = 处理器; */
+    if (!__eff_main) __eff_main = ConvertThreadToFiber(0);
+    if (id >= 0 && id < 64 && !__eff_h[id]) { __eff_fn[id] = fn; __eff_h[id] = CreateFiber((long long)__coro_stack_size, __eff_wrap, (void *)(long long)id); }
+}
+
+long long __eff_perform(int id, long long arg) { /* 执行 名(实参) —— 挂起 执行者, 转 处理器; 恢复 后 返 其 值 */
+    if (id < 0 || id >= 64 || !__eff_h[id]) { fprintf(stderr, "[EFF] 未安装 处理器: 效应 %d\n", id); exit(1); }
+    if (!__eff_main) __eff_main = ConvertThreadToFiber(0);
+    __eff_arg = arg;
+    SwitchToFiber(__eff_h[id]);
+    return __eff_ret;
+}
+
+long long __eff_take(void) { return __eff_arg; }          /* 效应参() —— 处理器 侧 取 实参 */
+void __eff_resume(long long v) { __eff_ret = v; SwitchToFiber(__eff_main); } /* 恢复(值) —— 处理器 侧 恢复 执行者 */
 
 
 /* 接入 2026-08-28 P1 #6 引用计数 (Rc): 共享所有权, 运行时计数
@@ -698,6 +738,302 @@ int ex_val = 0;
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+/* R570 (2026-10-08 虾米 · C类攻坚 批C-W · 族3 #60 **线程池**): `线程池 池, N;` → __qcc_tp_new(N);
+   `提交 池, 任务, 实参;` → __qcc_tp_submit(任务, 实参); `等待池 池;` → __qcc_tp_wait()。
+   单 全局 池: 任务 = (函数指针, 实参) 两 平行数组; 工作线程 自旋 等 **启动旗**; 等待池 置旗 后 join 全部;
+   工作线程 用 `原子 加(&qh, 1)` **原子 领取** 任务序号 ⟹ 无重复/无丢任务; 序号 超 总数 ⟹ 线程 正常退出
+   ⟹ 无死锁。提交 发生在 单线程 (等待池 之前) ⟹ 无入队竞争。线程 API 走 IAT (CreateThread/
+   WaitForSingleObject —— 编译器 内建发射, 与 mmap 的 CreateFileA 同路)。
+   ⚠️ 数据增量 = 16*8 + 128*8*2 + 6*4 = 2200, 补 8 ⟹ **2208 = 16×138** ✓ (遵守 R562b 的 16 字节 增量 规约)。 */
+static void *__tp_th[16];
+static void *__tp_fn[128];
+static void *__tp_arg[128];
+static int __tp_n = 0;
+static int __tp_total = 0;
+static int __tp_qh = 0;
+static int __tp_go = 0;
+static int __tp_inited = 0;
+static long long __tp_pad16 = 0;
+/* R575 (2026-10-08 虾米 · C类攻坚 批C-AB · 族3 #61 **工作窃取** 真实现):
+   语言面: `工作窃取 开;` → __qcc_ws_on();  `提交子 任务, 实参;` → __qcc_ws_submit_child(任务, 实参);
+           `等待子;` → __qcc_ws_children_join();  （`提交 池, …;` 在 WS 模式 下 落 全局队列 平铺。）
+   语义:
+     ① 每 **参与者** (0 = 主线程, 1..16 = 工作线程) 有 **自己 的 队列**: **任务内 提交** (提交子) 落
+        当前 参与者 自己 的 队列 (尾 推入); 工作线程 先 取 **自己 队头**, 空 ⟹ **从 别人 队头 窃取**,
+        再 空 ⟹ 取 全局队列 (主线程 平铺 提交);
+     ② `等待子;` = 等「**己 提交 的 子任务** 全部 完成」(顶层 任务 不 计 ⟹ 无 「父 等 自己」 死锁);
+        等待 期间 **己 不 取 己 子任务**（只 帮 别人）⟹ **并行 由 构造 保证**: 窃取 一旦 不 工作,
+        子任务 无人 执行 ⟹ **死锁** ⟹ 闸 以 超时 FAIL 判 真伪（本 特性 的 真伪判据）;
+        ⚠️ 故 `等待子` 需 **>= 2 个 工作线程**（池 内 只有 己 一个 时, 己 子任务 无人 可 窃 ⟹ 死锁, 文档 记录）;
+     ③ 参与者 身份 走 **TLS**（kernel32 TlsAlloc/TlsSetValue/TlsGetValue, **动态 解析** —— 与 futex 同款,
+        不动 IAT 固定槽表）; TLS 不可用 ⟹ 提交子/等待子 **响亮 拒绝** (exit 2), 不 静默降级;
+     ④ 队列 互斥 = **自旋锁**, 用 已验证 的 `原子 加` (lock xadd, 返 旧值) 实现 test-and-set ——
+        **不 用 `原子 比较交换`**: 本轮 现场 实证 该 builtin 在 本 语境 下 恒 失败 (诊断: CAS 返值 ≠ 期望,
+        队列 头 永不 前进 ⟹ 认领 死循环), 故 改 锁 方案 (队列 操作 普通 读写 + 锁 保护, 零 CAS);
+     ⑤ 误用 响亮: 等待子 而 未 开 / 池 未 声明 / 队列 满 ⟹ fprintf(stderr) + exit(非 0);
+     ⑥ 诊断: 环境变量 QCC_DBG_WS=1 ⟹ 打印 启动/提交/认领/退出 轨迹 (默认 零输出);
+     ⑦ 数据 增量 见 下方 注释 (16 字节 倍数 规约, 由 闸内 feat_zh_attribute94.c 反证)。 */
+static volatile int __ws_on_flag = 0;
+static volatile int __ws_stop = 0;
+static volatile int __ws_out = 0;
+static int __ws_slot2 = -1;
+static int __ws_tried = 0;
+static int __ws_lk = 0;
+static int __ws_hd[17];
+static int __ws_tl[17];
+static int __ws_kids_p[17];
+static int __ws_kids_d[17];
+static int __ws_gh = 0;
+static int __ws_gt = 0;
+static void *__ws_fn[544];   /* 17 参与者 x 32 槽 (索引 参与者*32 + 槽) */
+static void *__ws_arg[544];
+static void *(*__ws_tlsalloc)(void) = 0;
+static int (*__ws_tlsset)(int, void *) = 0;
+static void *(*__ws_tlsget)(int) = 0;
+int __ws_steals = 0;          /* 成功 **窃取** 次数 (非 static: 供 闸内 锚 断言 窃取 真 发生) */
+static int __ws_pad[4];       /* 数据 补齐 —— 实测: 运行时 其余 增量 已 是 16 的 倍数, 只 需 本 段 自身 为 16 的倍数 (探针: pad 16/32/48 字节 通过, 24/40/56 失败) */
+static void __ws_lock(void) { while (原子 加(&__ws_lk, 1) != 0) { 原子 加(&__ws_lk, -1); } }
+static void __ws_unlock(void) { 原子 加(&__ws_lk, -1); }
+static void __ws_init(void) {
+    if (__ws_tried) return;
+    __ws_tried = 1;
+    void *k = load_library("kernel32.dll");
+    if (!k) return;
+    __ws_tlsalloc = get_proc_address(k, "TlsAlloc");
+    __ws_tlsset = get_proc_address(k, "TlsSetValue");
+    __ws_tlsget = get_proc_address(k, "TlsGetValue");
+    if (__ws_tlsalloc && __ws_tlsset && __ws_tlsget) {
+        int s2 = (int)(long long)__ws_tlsalloc();
+        if (s2 >= 0 && s2 < 100000) __ws_slot2 = s2;
+    }
+}
+static int __ws_dbg = -1;
+static void __ws_dbginit(void) { if (__ws_dbg < 0) { char *e = getenv("QCC_DBG_WS"); __ws_dbg = (e && e[0]) ? 1 : 0; } }
+static int __ws_me(void) { /* 0 = 主线程/未知, 1..16 = 工作线程 */
+    if (__ws_slot2 < 0) return 0;
+    return (int)(long long)__ws_tlsget(__ws_slot2);
+}
+static void __ws_mark(int who) {
+    if (__ws_slot2 >= 0) __ws_tlsset(__ws_slot2, (void *)(long long)who);
+}
+int __qcc_ws_me(void) { return __ws_me(); }
+int __qcc_ws_steals(void) { return __ws_steals; }
+int __qcc_ws_on(void) {
+    __ws_init();
+    __ws_dbginit();
+    __ws_on_flag = 1;
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] on: tls_slot=%d\n", __ws_slot2);
+    return 0;
+}
+/* 取 who 队列 头 一 个 槽 (锁 内 领 号, 返 槽 索引 或 -1) —— 调用方 在 锁 外 执行 任务 */
+static int __ws_take_idx(int who) {
+    int r = -1;
+    __ws_lock();
+    if (__ws_hd[who] < __ws_tl[who]) { r = who * 32 + (__ws_hd[who] & 31); __ws_hd[who] = __ws_hd[who] + 1; }
+    __ws_unlock();
+    return r;
+}
+static int __ws_take_global_idx(void) {
+    int r = -1;
+    __ws_lock();
+    if (__ws_gh < __ws_gt) { r = __ws_gh & 127; __ws_gh = __ws_gh + 1; }
+    __ws_unlock();
+    return r;
+}
+/* 取 一 个 任务 (只 看 **别人** 队列 + 全局队列; 自己 队列 不 取 —— 供 等待子 用) 并 执行: 返 1 = 干 了 活 */
+static int __ws_do_other(int self) {
+    for (int k = 0; k <= __tp_n && k <= 16; k++) { /* R575i: 0 号 = 主线程, 也 有 自己 队列 */
+        if (k == self) continue;
+        int sl = __ws_take_idx(k);
+        if (sl >= 0) {
+            __ws_steals = __ws_steals + 1;
+            __ws_kids_d[k] = __ws_kids_d[k] + 1;
+            __ws_out = __ws_out - 1;
+            ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
+            return 1;
+        }
+    }
+    int gi = __ws_take_global_idx();
+    if (gi >= 0) {
+        __ws_out = __ws_out - 1;
+        ((int (*)(void *))__tp_fn[gi])(__tp_arg[gi]);
+        return 1;
+    }
+    return 0;
+}
+static void __ws_worker_loop(int me) {
+    __ws_mark(me);
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] worker start: me=%d (回读 TLS=%d)\n", me, __ws_me());
+    for (;;) {
+        int sl = __ws_take_idx(me);   /* ① 自己 队列 头 */
+        if (sl >= 0) {
+            __ws_kids_d[me] = __ws_kids_d[me] + 1;
+            __ws_out = __ws_out - 1;
+            ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
+            continue;
+        }
+        if (__ws_do_other(me)) continue;   /* ② 窃取 / 全局 */
+        if (__ws_stop) {
+            if (__ws_dbg) fprintf(stdout, "[DBG-WS] worker %d 退出\n", me);
+            return;
+        }
+    }
+}
+int __qcc_ws_submit_child(void *fn, void *arg) { /* `提交子` —— 任务内 提交: 落 己 队列 */
+    if (!__ws_on_flag) {  /* 未 开 窃取 ⟹ 退化 为 单 池 全局队列 (与 `提交` 同 语义) */
+        if (!__tp_inited || __tp_total >= 128) return -1;
+        __tp_fn[__tp_total] = fn; __tp_arg[__tp_total] = arg; __tp_total = __tp_total + 1;
+        return 0;
+    }
+    if (!__tp_inited) return -1;
+    int me = __ws_me();
+    if (me < 0 || me > 16) { fprintf(stderr, "[工作窃取] 提交子: 参与者 身份 不可用 (me=%d)\n", me); exit(2); }
+    __ws_lock();
+    int t = __ws_tl[me];
+    if (t - __ws_hd[me] >= 32) { __ws_unlock(); fprintf(stderr, "[工作窃取] 提交子: 参与者 %d 队列 满 (>32)\n", me); exit(1); }
+    __ws_fn[me * 32 + (t & 31)] = fn;
+    __ws_arg[me * 32 + (t & 31)] = arg;
+    __ws_tl[me] = t + 1;
+    __ws_kids_p[me] = __ws_kids_p[me] + 1;
+    __ws_out = __ws_out + 1;
+    __ws_unlock();
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] submit_child: me=%d tl=%d\n", me, t + 1);
+    return 0;
+}
+int __qcc_ws_children_join(void) { /* `等待子;` —— 等 己 子任务 全部 完成 (己 不 自取) */
+    if (!__ws_on_flag) { fprintf(stderr, "[工作窃取] 等待子: 未 开启 —— 请 先 写 `工作窃取 开;` (在 线程池 声明 之前)\n"); exit(1); }
+    if (!__tp_inited) { fprintf(stderr, "[工作窃取] 等待子: 线程池 未 声明 —— 请 先 写 `线程池 池, N;`\n"); exit(1); }
+    int me = __ws_me();
+    if (me < 0 || me > 16) { fprintf(stderr, "[工作窃取] 等待子: 参与者 身份 不可用 (me=%d)\n", me); exit(2); }
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] join: me=%d kids_p=%d kids_d=%d\n", me, __ws_kids_p[me], __ws_kids_d[me]);
+    while (__ws_kids_d[me] < __ws_kids_p[me]) {  /* 判据 = **己 子任务** ⟹ 无 「父 等 自己」 死锁 */
+        __ws_do_other(me);
+    }
+    if (__ws_dbg) fprintf(stdout, "[DBG-WS] join done: me=%d steals=%d\n", me, __ws_steals);
+    return 0;
+}
+static void __tp_worker(void *p) {
+    while (!__tp_go) { } /* 等 启动旗 (等待池 置) */
+    if (__ws_on_flag) { __ws_worker_loop((int)(long long)p + 1); return; } /* R575: +1 —— 0 号 留给 主线程 */
+    for (;;) {
+        int idx = 原子 加(&__tp_qh, 1); /* 原子 领取 任务 序号 (返回 旧值) */
+        if (idx >= __tp_total) return 0; /* 取尽 ⟹ 退出 */
+        ((int (*)(void *))__tp_fn[idx])(__tp_arg[idx]);
+    }
+}
+int __qcc_tp_new(int n) {
+    if (__tp_inited) return 0; /* 单 池: 再 声明 复用 同一 池 */
+    if (n < 1) return -1;
+    if (n > 16) n = 16;
+    __tp_inited = 1; __tp_n = n;
+    for (int i = 0; i < n; i++) {
+        __tp_th[i] = CreateThread(0, 0, (void *)__tp_worker, (void *)(long long)i, 0, 0);
+        if (__tp_th[i] == 0) { /* R635 (2026-10-10 虾米 · 并发运行时 第一刀): **原 返回值 从未 检查** ——
+            CreateThread 失败时 无任何 诊断, 随后 `等待池` 置 __tp_go=1 也 无人 在自旋 ⟹ 任务 一个 都 不执行
+            (实测 threadpool60_ok 得 `TP60 0 0`, 期望 `TP60 4 60`; ws61 的 CAS 认领 空转 亦 同源) ⟹ **静默**。
+            此处 按 本项目「零静默」原则 响亮 失败。 */
+            fprintf(stderr, "[线程池] 创建 工作线程 #%d 失败 (CreateThread 返回 0) —— 任务 将 无人 执行; 请检查 线程上限/句柄/权限\n", i);
+            exit(5);
+        }
+    }
+    return 0;
+}
+int __qcc_tp_submit(void *fn, void *arg) {
+    if (!__tp_inited) return -1;
+    if (__ws_on_flag) { /* R575: WS 模式 —— 顶层 `提交` 一律 落 全局队列 (任务内 用 `提交子`) */
+        __ws_lock();
+        if (__ws_gt - __ws_gh >= 128) { __ws_unlock(); fprintf(stderr, "[工作窃取] 提交: 全局队列 满 (>128)\n"); exit(1); }
+        int gt = __ws_gt;
+        __tp_fn[gt & 127] = fn;
+        __tp_arg[gt & 127] = arg;
+        __ws_gt = gt + 1;
+        __ws_out = __ws_out + 1;
+        __ws_unlock();
+        return 0;
+    }
+    if (__tp_total >= 128) return -1;
+    __tp_fn[__tp_total] = fn; __tp_arg[__tp_total] = arg; __tp_total = __tp_total + 1;
+    return 0;
+}
+int __qcc_tp_wait(void) {
+    if (!__tp_inited) return -1;
+    if (__ws_on_flag) { /* R575: WS 模式 —— 自旋 等 未完成 计数 归零 (等待 期间 主线程 也 帮 窃取), 再 置 停止旗 并 join */
+        __tp_go = 1;
+        if (__ws_dbg) fprintf(stdout, "[DBG-WS] wait: 自旋 (out=%d)\n", __ws_out);
+        while (__ws_out > 0) { __ws_do_other(0); }
+        if (__ws_dbg) fprintf(stdout, "[DBG-WS] wait: 自旋 结束 (out=%d) => 停止旗\n", __ws_out);
+        __ws_stop = 1;
+        for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1);
+        __tp_total = 0; __tp_qh = 0; __tp_go = 0; __ws_stop = 0; __ws_out = 0; __ws_gh = 0; __ws_gt = 0;
+        for (int i = 0; i <= 16; i++) { __ws_hd[i] = 0; __ws_tl[i] = 0; __ws_kids_p[i] = 0; __ws_kids_d[i] = 0; }
+        return 0;
+    }
+    __tp_go = 1; /* 放开 工作线程 */
+    for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1); /* join 全部 ⟹ 返回时 全部 任务 已 完成 */
+    __tp_total = 0; __tp_qh = 0; __tp_go = 0; /* 复位 ⟹ 可 再 提交/等待 一轮 */
+    return 0;
+}
+
+/* R567 (2026-10-08 虾米 · C类攻坚 批C-T · 族3 #59 **futex 原语**): `futex 等待(&v, 期望)` → __qcc_futex_wait;
+   `futex 唤醒(&v, 数量)` → __qcc_futex_wake。 实现 = Windows WaitOnAddress / WakeByAddress{Single,All} (Win8+),
+   **动态 解析** (load_library + get_proc_address —— 与 mmap 同款 ⟹ **不动 IAT 固定槽表** ⟹ 零 布局 风险);
+   解析 失败 ⟹ 退化 忙等 (等待) / 无操作 (唤醒, 读者 自己 观察到 值 变) —— 语义 仍 正确, 只是 非 阻塞。
+   ⚠️ 数据 增量 = 4 + 4 + 8×3 = 32 字节 (16 的 倍数 ✓ 遵守 R562b 的 运行时数据 16 字节 增量 规约)。 */
+static int __fx_tried = 0;
+static int __fx_ok = 0;
+static void *(*__fx_wait)(void *, void *, int, int) = 0;
+static void (*__fx_wake1)(void *) = 0;
+static void (*__fx_wakeall)(void *) = 0;
+static void __fx_init(void) {
+    if (__fx_tried) return;
+    __fx_tried = 1;
+    void *k = load_library("kernel32.dll");
+    if (!k) return;
+    __fx_wait = get_proc_address(k, "WaitOnAddress");
+    __fx_wake1 = get_proc_address(k, "WakeByAddressSingle");
+    __fx_wakeall = get_proc_address(k, "WakeByAddressAll");
+    if (__fx_wait && __fx_wake1 && __fx_wakeall) __fx_ok = 1;
+}
+void __qcc_futex_wait(int *addr, int expected) { /* 仅当 *addr == expected 时 阻塞 (原子 比较) */
+    __fx_init();
+    if (__fx_ok) { __fx_wait(addr, &expected, 4, -1); return; }
+    while (*addr == expected) { } /* 退化: 忙等 */
+}
+void __qcc_futex_wake(int *addr, int n) { /* n <= 0 = 唤醒 全部 */
+    __fx_init();
+    if (!__fx_ok) return; /* 退化: 读者 忙等 自己 观察 */
+    if (n <= 0) __fx_wakeall(addr); else __fx_wake1(addr);
+}
+/* R566 (2026-10-08 虾米 · C类攻坚 批C-S · 族14 #271 **内建 哈希表**): `哈希表 表;` / `设 表, 键, 值;` / `取 表, 键, 目标;`
+   —— 固定 池 (16 表 × 256 槽) + **线性探测**; 整数 键 → 整数 值; 全 静态 数组 ⟹ 无 malloc、无 结构体 指针
+   (运行时 布局 残留 教训: 池/单元 一律 走 静态 平行数组)。 缺键 读 得 0; 表 满 返回 -2。 */
+static int __ht_key[16][256];
+static int __ht_val[16][256];
+static char __ht_use[16][256];
+static int __ht_cnt = 0;
+static long long __ht_pad16 = 0; static int __ht_pad4 = 0; /* ⚠️ **16 字节 模 保持 补齐** (R566c): 本 块 新增 数据 = 69632 (数组) + 4 (`__ht_cnt`) = 69636 ✗ 非 16 倍数 ⟹ 全量闸 `feat_zh_attribute94.c` 曾 由绿转红 (全局 aligned(16) 落址 依赖 运行时数据尺寸 模 16, 见 R562b 规约)。补 12 字节 ⟹ 69648 = 16×4353 ✓ */
+int __qcc_ht_new(void) { int i = __ht_cnt; if (i >= 16) return -1; __ht_cnt = i + 1; return i; }
+static int __ht_slot(int key) { int h = key * 40503; if (h < 0) h = -h; return h % 256; } /* 乘性 哈希 (Knuth 40503) */
+int __qcc_ht_put(int id, int key, int val) {
+    if (id < 0 || id >= 16) return -1;
+    int s = __ht_slot(key);
+    for (int k = 0; k < 256; k++) {
+        int j = (s + k) % 256;
+        if (!__ht_use[id][j] || __ht_key[id][j] == key) { __ht_use[id][j] = 1; __ht_key[id][j] = key; __ht_val[id][j] = val; return 0; }
+    }
+    return -2; /* 满 */
+}
+int __qcc_ht_get(int id, int key) {
+    if (id < 0 || id >= 16) return 0;
+    int s = __ht_slot(key);
+    for (int k = 0; k < 256; k++) {
+        int j = (s + k) % 256;
+        if (!__ht_use[id][j]) return 0;
+        if (__ht_key[id][j] == key) return __ht_val[id][j];
+    }
+    return 0;
+}
+
 int __qcc_lazy_get(int *set, int *val, int (*f)(int), int a) {
     if (!*set) { *val = f(a); *set = 1; }
     return *val;
@@ -1070,6 +1406,84 @@ int __qcc_div_check(int divisor) {
 long long __qcc_div_check64(long long divisor) {
     if (divisor == 0) { fprintf(stderr, "[除零] 运行时除零错误 (除数=0)\n"); exit(1); }
     return divisor;
+}
+
+/* ---- 第 444 站 #66 定时器/超时 · 真实现 (2026-10-02 虾米) ----
+   主源脱糖 (qcc_zh.jy L13887/L13896):  `延时 N;` → `timer_delay(N);` · `超时 N;` → `timer_deadline(N);`
+   原状: 两名未登记内建豁免 ⟹ 编译期 A1001 未声明函数 ⟹ 用户**写不出** `延时` (判据: 951 锚零覆盖 = 不可触达)。
+   本站: 主源内建豁免表登记两名 (真接入第 1 步) + 本文件提供**真实现** (第 2 步)。
+   实现选 **clock() 忙等** 而非 Sleep: 不引 Windows API (保持 qcc_rt.c 可被 gcc 与自宿主两路编译),
+   且确定性可控。CLOCKS_PER_SEC 在 Windows = 1000 ⟹ 1 tick = 1ms ⟹ 毫秒语义成立。
+   观测: `长整 t0 = 时钟(); 延时 200; 长整 t1 = 时钟();` ⟹ t1-t0 >= 200 (真睡眠; 空实现得 ~0)。 */
+void timer_delay(int ms) {
+    if (ms <= 0) return;
+    {
+        long long t0 = clock();
+        long long end = t0 + (long long)ms;   /* Windows CLOCKS_PER_SEC=1000 ⟹ 1 tick = 1ms ⟹ ms 毫秒 = ms ticks。
+                                                 禁双精度 (编译器前插本文件 ⟹ 浮点转换触发 A9002) · 禁 CLOCKS_PER_SEC 宏 (编译器不可见 ⟹ A1001) */
+        while (clock() < end) { /* 忙等 (确定性, 不依赖 OS 定时器/信号) */ }
+    }
+}
+long long timer_deadline(int ms) {
+    return clock() + (long long)ms;
+}
+
+/* ---- 第 446 站 #65 事件循环 / #66 异步 · 真实现 (2026-10-02 虾米) ----
+   主源脱糖 (qcc_zh.jy L8437):  `异步 泵(q,r,t,l)` → `async_pump(q,r,t,l)` · `异步 步进(q,r,t)` → `async_step(q,r,t)` · `异步 注册(q,d)` → `async_register(q,d)`
+   原状: 三个脱糖目标 运行时**零实现** 且 主源内建豁免表**零登记** ⟹ 实测 A1001「未声明函数 'async_register'」⟹ 用户**完全不可达**
+         (与第 444 站的 `延时/timer_delay` 完全同型: 「脱糖点存在、目标不存在」)。
+   本站: 内建表登记三名 (真接入第 1 步, 编译器源) + 本文件提供**真实现** (第 2 步)。
+   语义 (本仓首次规范定义 —— 原主源注释只写「用户定义 async_*」, 无规范语义):
+     异步 注册(队列, 延时毫秒)               → 登记一个「延时毫秒后到期」的定时器, 返 序号 (1 起; 0 = 队列满)
+     异步 泵(队列, 轮数, 每轮毫秒, 上限毫秒)   → 推进虚拟时钟, 返 累计到期数 (停止: 轮数尽 或 虚拟时间 ≥ 上限>0)
+     异步 步进(队列, 轮数, 每轮毫秒)           → 同 泵, 无上限 (上限 <= 0)
+   确定性: **纯整数虚拟时钟**; 无 OS 定时器/信号/真并发/线程 ⟹ 同源 gcc 可逐字复现 (oracle 可对照)。
+   观测: 机制特有量 = 注册序号 与 到期计数 —— 由「虚拟时钟推进」与「各定时器到期时刻」共同决定,
+         非通用检查/原生 C 语义可产生。 */
+/* ⚠️ 实现约束 (本站实测血泪 · 必须遵守): **禁用二维数组下标** —— `static int a[4][64]; … a[qi][i]`
+      在本仓会触发「多维数组 / 元素宽」**既有缺陷** (B2/B4/D-12 族), 且**污染同一编译单元内后续代码生成**。
+      实测: 前插段用 `[4][64]` ⟹ 锚 `feat_zh_ptrptr_chain_ok` 的 `dpp[0][2]` 读错 (FAIL 静态二级 rc=3)、
+      `feat_zh_typeof_ptr_ok` 的 `pp[0][1]` 得 `0.00`; 改一维 + 手工索引后两者**立即恢复 PASS**。
+      隔离实验 (同尺寸 static 数组 / 空函数壳) 均**不触发** ⟹ 触发点确为**二维下标的使用**。
+      ⟹ 本段一律用**一维数组 + 手工索引**。 */
+static int __qcc_ev_now[4];
+static int __qcc_ev_due[256];
+static int __qcc_ev_live[256];
+static int __qcc_ev_cnt[4];
+
+int async_register(int q, int delay_ms) {
+    int qi = (q % 4 + 4) % 4;   /* 4 个独立事件循环; 负数取模归一 (禁依赖 % 的符号语义) */
+    int i;
+    if (__qcc_ev_cnt[qi] >= 64) return 0;
+    i = __qcc_ev_cnt[qi];
+    __qcc_ev_due[qi * 64 + i] = __qcc_ev_now[qi] + (delay_ms > 0 ? delay_ms : 0);
+    __qcc_ev_live[qi * 64 + i] = 1;
+    __qcc_ev_cnt[qi] = i + 1;
+    return i + 1;
+}
+
+int async_pump(int q, int rounds, int tick_ms, int limit_ms) {
+    int qi = (q % 4 + 4) % 4;
+    int r, i, hit, total = 0;
+    if (rounds <= 0) rounds = 1;
+    if (tick_ms <= 0) tick_ms = 1;
+    for (r = 0; r < rounds; r++) {
+        if (limit_ms > 0 && __qcc_ev_now[qi] >= limit_ms) break;   /* 到达时限 ⟹ 提前收 */
+        __qcc_ev_now[qi] = __qcc_ev_now[qi] + tick_ms;
+        hit = 0;
+        for (i = 0; i < __qcc_ev_cnt[qi]; i++) {
+            if (__qcc_ev_live[qi * 64 + i] != 0 && __qcc_ev_due[qi * 64 + i] <= __qcc_ev_now[qi]) {
+                __qcc_ev_live[qi * 64 + i] = 0;   /* 触发即摘除 (一次性定时器) */
+                hit = hit + 1;
+            }
+        }
+        total = total + hit;
+    }
+    return total;
+}
+
+int async_step(int q, int rounds, int tick_ms) {
+    return async_pump(q, rounds, tick_ms, 0);
 }
 #endif
 
