@@ -3805,9 +3805,11 @@ def main():
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
             try:
-                _r = subprocess.run([sys.executable, _p], capture_output=True, timeout=600)   # R701 刀八: 检查器 也须 有超时 (原 无 `timeout=` ⟹ 检查器 卡死 ⟹ 整轮 挂住 且 无现场)
+                _r = subprocess.run([sys.executable, _p], capture_output=True, timeout=1800)   # R701 刀八: 检查器 也须 有超时 (原 无 `timeout=` ⟹ 检查器 卡死 ⟹ 整轮 挂住 且 无现场)
+                # ⚠️ **1800s 是实测定的**(非拍脑袋): `check_neg_anchors.py` 验 1602 个负例锚 **实测 724s**
+                #   ⟹ 首版 600s 会**误杀**它 (2026-10-11 全量闸实测踩到: 闸③ 报"超600s卡死"= **假红**)。
             except subprocess.TimeoutExpired:
-                print('[%s %s] ❌ 检查器 超 600s (卡死) —— 待查: scripts/%s' % (_tag, _what, _scr))
+                print('[%s %s] ❌ 检查器 超 1800s (卡死) —— 待查: scripts/%s' % (_tag, _what, _scr))
                 sys.exit(1)
             _o = (_r.stdout + _r.stderr).decode('utf-8', 'replace')
             for _l in [x for x in _o.strip().split('\n') if x.strip()][-5:]:
