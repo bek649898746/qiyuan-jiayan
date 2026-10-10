@@ -2883,6 +2883,7 @@ CORE_FEAT += [
     'scripts/feat_zh_fptrglobalkw_neg.c',         # 第 455 站 第一百二十三轮: 顶层 `整 (*跳)(整);` ⟹ A9001
     'scripts/feat_zh_range_ok.c',                 # 第 455 站 第一百二十四轮: `范围 名 于 …` 合法名 放行面
     'scripts/feat_zh_rangenamekw_neg.c',          # 第 455 站 第一百二十四轮: `范围 跳 于 …` 名位 撞语句关键字 ⟹ A9001
+    'feat_zh_structfield1024_neg.c',   # R654 (2026-10-10): 结构体字段 1024 上限 判别锚 (1025 字段 ⟹ 响亮退出)
 ]
 
 # R518 (2026-10-07 虾米 · 第 455 站第一百四十七轮 · B类攻坚 批L): **#46 编译器卡死 根治 (A6069)**
