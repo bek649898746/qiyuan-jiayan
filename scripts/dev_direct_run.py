@@ -142,8 +142,12 @@ def main():
         del av[i:i + 2]
     names = av if av else list(DEFAULT_ANCHORS)
 
-    blocked = [n for n in names if n in CONCURRENCY_BLOCKLIST]
-    names = [n for n in names if n not in CONCURRENCY_BLOCKLIST]
+    # 2026-10-10 (R648): 原实现**无条件**排除黑名单 —— 与模块头注释「需显式点名才跑」不符（量具 bug）。
+    #   改为: **显式点名 = 放行**（默认集仍排除）。理由: R648 根治「EXE 模式 导入表函数调用 未接通」后,
+    #   `feat_zh_ws61_ok.c` 已由「必然死锁」变为 5.9s 正常完成; 且本器已带 20s 运行超时 + taskkill 兜底。
+    blocked = [] if av else [n for n in names if n in CONCURRENCY_BLOCKLIST]
+    if not av:
+        names = [n for n in names if n not in CONCURRENCY_BLOCKLIST]
 
     print('# 开发级定向验证（直跑 · 无闸前置）')
     print('# 编译器: %s   锚数: %d' % (cc, len(names)))
