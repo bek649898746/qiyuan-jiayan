@@ -2883,15 +2883,15 @@ CORE_FEAT += [
     'scripts/feat_zh_fptrglobalkw_neg.c',         # 第 455 站 第一百二十三轮: 顶层 `整 (*跳)(整);` ⟹ A9001
     'scripts/feat_zh_range_ok.c',                 # 第 455 站 第一百二十四轮: `范围 名 于 …` 合法名 放行面
     'scripts/feat_zh_rangenamekw_neg.c',          # 第 455 站 第一百二十四轮: `范围 跳 于 …` 名位 撞语句关键字 ⟹ A9001
-    'feat_zh_structfield1024_neg.c',   # R654 (2026-10-10): 结构体字段 1024 上限 判别锚 (1025 字段 ⟹ 响亮退出)
-    'feat_zh_semaphore56_ok.c',        # R655 (2026-10-10 批次5 族3): #56 计数信号量（信号量/获取/放行）语义证据
-    'feat_zh_spinlock57_ok.c',         # R655: #57 自旋锁（互斥锁/锁住）临界区互斥性 —— 4 线程 × 100 次 non-atomic 读改写 ⟹ 恒 400
-    'feat_zh_dupfn_same_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（同参重复定义（C 语义即重定义错误））
-    'feat_zh_dupfn_diff_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（异参重复定义（#204 重载缺口））
-    'feat_zh_dupfn_zh_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 同参重复定义）
-    'feat_zh_dupfn_zh_diff_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 异参重复定义（p204 主形态））
+    'scripts/feat_zh_structfield1024_neg.c',   # R654 (2026-10-10): 结构体字段 1024 上限 判别锚 (1025 字段 ⟹ 响亮退出)
+    'scripts/feat_zh_semaphore56_ok.c',        # R655 (2026-10-10 批次5 族3): #56 计数信号量（信号量/获取/放行）语义证据
+    'scripts/feat_zh_spinlock57_ok.c',         # R655: #57 自旋锁（互斥锁/锁住）临界区互斥性 —— 4 线程 × 100 次 non-atomic 读改写 ⟹ 恒 400
+    'scripts/feat_zh_dupfn_same_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（同参重复定义（C 语义即重定义错误））
+    'scripts/feat_zh_dupfn_diff_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（异参重复定义（#204 重载缺口））
+    'scripts/feat_zh_dupfn_zh_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 同参重复定义）
+    'scripts/feat_zh_dupfn_zh_diff_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 异参重复定义（p204 主形态））
     'scripts/feat_zh_deref_base_multi_idx_ok.c',  # A9 (2026-10-10 虾米): 显式解引用 作 数组基 的 多级下标 `(*ppp)[0][k]` —— 整条寻址 少一次解引用 ⟹ 两格全 0 (原外层判据 `深乙>=2` 对 本形态 深乙==1 落空); 修后 20/30
-    'feat_zh_macro_comment_comma_ok.c',   # R680 (2026-10-10 批次3 T3-4): 宏实参里的注释(含逗号) 不得 拆参
+    'scripts/feat_zh_macro_comment_comma_ok.c',   # R680 (2026-10-10 批次3 T3-4): 宏实参里的注释(含逗号) 不得 拆参
 ]
 
 # R518 (2026-10-07 虾米 · 第 455 站第一百四十七轮 · B类攻坚 批L): **#46 编译器卡死 根治 (A6069)**
