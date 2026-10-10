@@ -2891,6 +2891,7 @@ CORE_FEAT += [
     'scripts/feat_zh_dupfn_zh_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 同参重复定义）
     'scripts/feat_zh_dupfn_zh_diff_neg.c',   # R663 (#204): 同名函数重复定义 ⟹ A6109（中文关键字 异参重复定义（p204 主形态））
     'scripts/feat_zh_deref_base_multi_idx_ok.c',  # A9 (2026-10-10 虾米): 显式解引用 作 数组基 的 多级下标 `(*ppp)[0][k]` —— 整条寻址 少一次解引用 ⟹ 两格全 0 (原外层判据 `深乙>=2` 对 本形态 深乙==1 落空); 修后 20/30
+    'scripts/feat_zh_scalar_index_neg.c',  # R695 (2026-10-10 虾米): 标量不能下标（既非数组亦非指针）⟹ A6110（原静默接受产错值）; 边界 b1-b9 零误伤
     'scripts/feat_zh_macro_comment_comma_ok.c',   # R680 (2026-10-10 批次3 T3-4): 宏实参里的注释(含逗号) 不得 拆参
 ]
 
