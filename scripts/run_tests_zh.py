@@ -3801,7 +3801,14 @@ def main():
         with Pool(args.parallel) as pool:
             results = pool.map(run_one_test, tests, chunksize=1)
     else:
-        results = [run_one_test(t) for t in tests]
+        # R630 (2026-10-10 虾米): **进度可观测性** —— 原 串行 分支 静默跑完才出结果，
+        #   本轮 实测 卡住时 日志 18 分钟无输出、CPU 近乎静止，却**无法判断卡在哪个锚**（量具缺陷）。
+        #   现 每 50 个 打一行 `[进度] i/N 当前锚`，卡住时 一眼 看出 停 在 谁 身上。
+        results = []
+        for _i, _t in enumerate(tests):
+            results.append(run_one_test(_t))
+            if (_i + 1) % 50 == 0 or (_i + 1) == len(tests):
+                print('  [进度] %d/%d  (刚跑完: %s)' % (_i + 1, len(tests), _t), flush=True)
 
     def summarize():
         pass_n = sum(1 for (n2, ok2, m2) in results if ok2 and not m2.startswith('SKIP:'))
