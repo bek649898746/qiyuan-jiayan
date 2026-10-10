@@ -3738,7 +3738,7 @@ def main():
     #   `--fast`（30 用例开发档）跳过，与闸① 不同档。
     if not args.fast:
         import importlib.util as _ilu2
-        for _tag, _scr, _what in (
+        for _tag, _scr, _what in [
                 ('闸②', 'check_c_mode_smoke.py', '`-c` 模式冒烟'),
                 ('闸④', 'check_dwarf289.py', '#289 调试信息 (DWARF) 行号/文件归属'),
                 ('闸③', 'check_neg_anchors.py', '负例锚有效性'),
@@ -3752,12 +3752,12 @@ def main():
                 #   由来: R593 只 做 了 语言面(`导出` 前缀 + `导出名数()`), 导出名 **从未 进 目标文件** ⟹ #248 挂账;
                 #   R597 补 COFF `.drectve` 段(内容 `/EXPORT:名\0`, MSVC 同款 通道) ⟹ 链接器 读 该 段 即 生成 PE 导出目录。
                 #   判据: ① 有 导出 ⟹ 节数 5 + `.drectve` 含 `/EXPORT:甲`;  ② 无 导出 ⟹ 节数 4 且 **无** 该 节(零回归)。
-                ('闸⑥', 'check_drectve248.py', '族12 #248 导出 指令 段 (`.drectve` / `/EXPORT:名`)',
+                ('闸⑥', 'check_drectve248.py', '族12 #248 导出 指令 段 (`.drectve` / `/EXPORT:名`)'),
                 # R630 (2026-10-10 虾米 · 进IR前 A1·槽3 残余 根治): **闸⑦** —— `内存地址()` 缺「rvalue(指针算术) 链基」分支。
                 #   由来: `(p ± k)->字段` 落 L5885 总兜底 `静默计(3)` ⟹ 链基地址被丢弃、上层回退标量读。
-                #   全语料最大单点 = lua `lvm.c` **344 次**（其中 337 次由真实站接管）；修后 0。
-                #   判据: 用 `QCC_DBG_SILENT=1` 编 lvm.c，数「内存地址.链未解析(兜底-1)」—— **344:0 判别**，父编必红。
-                ('闸⑦', 'check_r630_lvm.py', 'R630 「指针算术 作 链基」(槽3 兜底)'))):
+                #   全语料最大单点 = lua `lvm.c` **344 次**；修后 0（判据 344:0，父编必红）。
+                ('闸⑦', 'check_r630_lvm.py', 'R630 「指针算术 作 链基」(槽3 兜底)'),
+        ]:
             _p = os.path.join(root, 'scripts', _scr)
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
