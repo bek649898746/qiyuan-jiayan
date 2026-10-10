@@ -37,6 +37,27 @@ CASES = {
 }
 
 bad = []
+
+# R626 (2026-10-10 虾米 · 进IR前 槽0 根治) —— **判别性 用例**: 「已声明 但 无定义 的 内置名」在 `-c` 模式
+#   必须 发 **外部符号 调用**(交 链接器/msvcrt 解析), 不得 静默 生成「恒返 0」。
+#   病灶: `abort`(以及 `_exit` 等) 在 位非标 内建表 内(A1001 豁免) ⟹ 编译器 为它 登记 声明(函数表 有条目),
+#     但 `-c` 模式 不 含 运行库 qcc_rt.c、且 三张 IAT 表 也 没有 它 ⟹ 原 落 槽0 兜底 ⟹ `移即(0,0)`
+#     ⟹ **编译通过、运行期 静默 no-op**(真载体: lua `ldo.c:132 abort();` 致命路径)。
+#   判据: `-c` 编译 rc==0 **且** 目标文件 里 出现 该 外部符号名 —— 改前 实测 obj **无** `b'abort'` ⟹ 必红。
+EXTRA = {
+    'abort_extern': (H + '函数 整 主(空) { 格式化 "R626\\n"; abort(); 返 7; }\n', b'abort'),
+}
+for name, (src, need) in EXTRA.items():
+    p = os.path.join(OUT, name + '.c')
+    io.open(p, 'w', encoding='utf-8-sig', newline='\n').write(src)
+    obj = os.path.join(OUT, name + '.obj')
+    r = subprocess.run([CC, p, '-c', '-o', obj], capture_output=True, timeout=300)
+    blob = open(obj, 'rb').read() if os.path.exists(obj) else b''
+    ok = (r.returncode == 0) and (need in blob)
+    print('%-8s -c: %s%s' % (name, 'OK' if ok else 'FAIL',
+                             '' if ok else '  | rc=%d 含 %r=%s' % (r.returncode, need, need in blob)))
+    if not ok:
+        bad.append(name + '(外部符号)')
 for name, src in CASES.items():
     p = os.path.join(OUT, name + '.c')
     io.open(p, 'w', encoding='utf-8-sig', newline='\n').write(src)
@@ -49,7 +70,7 @@ for name, src in CASES.items():
         bad.append(name)
 
 print()
-print('[check_c_mode_smoke] %d 用例 · `-c` 失败 %d' % (len(CASES), len(bad)))
+print('[check_c_mode_smoke] %d 用例 · `-c` 失败 %d' % (len(CASES) + len(EXTRA), len(bad)))
 if bad:
     print('  ❌ 失败: %s' % ' '.join(bad))
     sys.exit(1)
