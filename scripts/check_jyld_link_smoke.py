@@ -14,6 +14,8 @@
 
 规则：① 单 .o 链接 运行 断言 退码；② 跨 .o（a.o 提供符号 + b.o 调用）断言 stdout；
       ③ **归档往返**（.o → `.a`（本脚本 自写 GNU ar 格式）→ jyld 链接）断言 stdout。
+      ④ **跨 .o 全局数据**（`extern` 只读全局）断言 **退码 = 真值 而非 映像地址**（R719 · 启元 D1）。
+      ⑤ **无初始化全局** 跨 .o（试探性定义）断言 链接成功 + 退码 0（R719 · 启元 D2）。
       任一 失败 ⟹ 判红（这类 缺陷 = 「闸 够不着 即 盲区」）。
 用法：python scripts/check_jyld_link_smoke.py [编译器]
 退出码：0 = 全过（或 jyld 不可用 = SKIP）；1 = 有 失败
@@ -160,8 +162,45 @@ if oka:
     if not good:
         bad.append('arch(link/run)')
 
+# ④ 跨 .o **全局数据**（读值 而 非 映像地址）—— R719 (2026-10-12 虾米 · 采纳 启元《多文件跨o缺陷复核》D1)
+#    历史: 启元 在一代快照上 实测 读到 0x4021F0（地址）而 非 7 ⟹ 本规则 把该场景 **钉进闸**（防再退）。
+pg = w('provg.c', '整 全局七 = 7;\n')
+ug = w('useg.c', '# 包含 <stdio.h>\nextern 整 全局七;\n函数 整 主(空) { 格式化 "GLOB %d\\n", 全局七; 返 全局七; }\n')
+og, ug_o = os.path.join(OUT, 'provg.o'), os.path.join(OUT, 'useg.o')
+okg, mg = comp(pg, og)
+oku, mu = comp(ug, ug_o)
+if not (okg and oku):
+    print('%-10s -c FAIL | %s %s' % ('glob', mg[:60], mu[:60]))
+    bad.append('glob(-c)')
+else:
+    ok, lm = link([og, ug_o], os.path.join(OUT, 'glob.exe'))
+    rc, out = run(os.path.join(OUT, 'glob.exe')) if ok else ('-', '')
+    good = ok and rc == 7 and out == 'GLOB 7'
+    print('%-10s 跨.o全局: %s (rc=%s out=%r, 期望 rc=7 out=GLOB 7 — **读值 不是 地址**)%s'
+          % ('glob', 'OK' if good else 'FAIL', rc, out, '' if good else '  | ' + lm[:90]))
+    if not good:
+        bad.append('glob(link/run)')
+
+# ⑤ **无初始化全局** 跨 .o（试探性定义；C 语义 = 合并、初值 0）—— R719 · 启元 D2
+pz = w('provz.c', '整 全局零;\n')
+uz = w('usez.c', '# 包含 <stdio.h>\nextern 整 全局零;\n函数 整 主(空) { 格式化 "ZERO %d\\n", 全局零; 返 全局零; }\n')
+oz, uz_o = os.path.join(OUT, 'provz.o'), os.path.join(OUT, 'usez.o')
+okz, mz = comp(pz, oz)
+okz2, mz2 = comp(uz, uz_o)
+if not (okz and okz2):
+    print('%-10s -c FAIL | %s %s' % ('zero', mz[:60], mz2[:60]))
+    bad.append('zero(-c)')
+else:
+    ok, lm = link([oz, uz_o], os.path.join(OUT, 'zero.exe'))
+    rc, out = run(os.path.join(OUT, 'zero.exe')) if ok else ('-', '')
+    good = ok and rc == 0 and out == 'ZERO 0'
+    print('%-10s 无初值全局跨.o: %s (rc=%s out=%r, 期望 rc=0 out=ZERO 0)%s'
+          % ('zero', 'OK' if good else 'FAIL', rc, out, '' if good else '  | ' + lm[:90]))
+    if not good:
+        bad.append('zero(link/run)')
+
 print()
-print('[check_jyld_link_smoke] 3 用例 · 失败 %d' % len(bad))
+print('[check_jyld_link_smoke] 5 用例 · 失败 %d' % len(bad))
 if bad:
     print('  ❌ 失败: %s' % ' '.join(bad))
     sys.exit(1)
