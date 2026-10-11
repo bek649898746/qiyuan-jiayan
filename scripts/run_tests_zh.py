@@ -3531,6 +3531,13 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_irlandslot_ok.c',    # 综合正锚: 细化/继承/循环/条件/窄转型 一次驱动 ⟹ 行为不变 (IRLANDSLOT 5 12 3)
 ]
+
+# R714 (2026-10-11 虾米 · IR 层 **全面接入** 批 N1/N2): 四项新落位位 综合锚
+#   达集(points-to ← 限止表/restrict 登记) · 性录(IR元数据 ← 属性登记) · 跃表(决策表 ← 判别登记) · 型达(类型表达式 ← 型定加)
+#   判据: **行为不变** (落位 = 旁写侧表); 落位真值 由 QCC_DUMP=ir 只读视图 留证
+CORE_FEAT += [
+    'scripts/feat_zh_irlandslot2_ok.c',    # 批N1/N2 综合正锚: 达集/性录/跃表/型达 一次驱动 ⟹ 行为不变 (IRLOT2 5 12 3 7)
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
