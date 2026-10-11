@@ -3559,6 +3559,11 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_irland_dict_ok.c',    # 刀二 正锚: 结构体数组字面量(中英名字段) + 字典载体形态 (PROBE 3 3 1012 减法 sub)
 ]
+
+# R715E (2026-10-11 虾米 · 刀五/刀六 四类全覆盖): L1 抽象指令 综合正锚
+CORE_FEAT += [
+    'scripts/feat_zh_irland_l1_ok.c',    # 刀五 正锚: 常量/转换/二元算术/装载存储 四类 一次驱动 (R715L1 7 44 42 50 336 5.000000 7 5 9)
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
