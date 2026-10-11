@@ -3524,6 +3524,13 @@ CORE_FEAT += [
     'scripts/feat_zh_macroovl613_ok.c',        # R613 正锚: 同名 `翻(x)`/`翻(x,y)` ⟹ 1 参走 1 参规则、2 参走 2 参规则
     'scripts/feat_zh_macroovl613_neg.c',       # R613 负锚（防过严）: 3 个实参 无匹配元数 ⟹ 仍 A6068（不静默落首个）
 ]
+
+# R710~R712 (2026-10-11 虾米 · **IR 层落位** · 真名对账表 唯一权威): 五个「一类」结构位 落位 + 值级属性位 + 落位可观察
+#   落位点: 细化(#123)→左戊一/半退三 · 单继承(#193)→度散 · 循环/条件→控式 · 窄转型→段双 · 溢出/空指针→实薄.现高 高 8 位
+#   本锚 断言 **行为不变** (IR 落位 是 旁写侧表, 预埋零侵入); 落位数据 真值 由 QCC_DUMP=ir 的 落位可观察 路径 留证
+CORE_FEAT += [
+    'scripts/feat_zh_irlandslot_ok.c',    # 综合正锚: 细化/继承/循环/条件/窄转型 一次驱动 ⟹ 行为不变 (IRLANDSLOT 5 12 3)
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
