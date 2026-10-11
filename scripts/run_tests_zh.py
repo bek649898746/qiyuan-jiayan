@@ -3056,6 +3056,7 @@ CORE_FEAT += [
     'scripts/feat_zh_fwd_global_neg.c',     # 刀四: 全局 声明 在 函数 **之后** ⟹ 函数体 引用 它 ⟹ 旧 生成 隐式局部槽 静默读 0 ⟹ 修后 A1001 响亮
     'scripts/feat_zh_nstrlen_neg.c',        # 刀五: `串长(字缓冲)` 旧 把 首字节 当 长度 (97='a') ⟹ 修后 A9001 响亮 (且 零 __ 前缀 泄漏)
     'scripts/feat_zh_paramkw_neg.c',        # 刀六: 形参名 撞 类型词 (`字 *短`) 旧 静默 串位 (303 vs 对照 301) ⟹ 修后 A9001 响亮 + 点名
+    'scripts/feat_zh_lenleak_neg.c',        # 刀五 补锚 (skeptic refute): **标识符形但非向量** 实参 (`长度 普通量`) 旧 落 __vec_*_id 生成路径 ⟹ 诊断泄漏 __ 前缀 ⟹ 修后 A9001 点名声参
 ]
 # R555 (2026-10-08 虾米 · C类攻坚 批C-I): **定案 S-21..S-24 证据锚** —— 7/161 栈展开 · 6/143 切片模式 · 12/245 异常 ABI
 CORE_FEAT += [
