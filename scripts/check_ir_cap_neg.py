@@ -12,7 +12,9 @@
   ① **控制组**（不设开关）: rc == 0（正锚语义成立 ⟹ 证明「失败 由 开关 引入, 非源本身错」）
   ② **实验组**（设开关）    : rc != 0 **且** stderr 含 `[ERR] IR-OVERFLOW` ⟹ 该负锚 **通过**
 
-用法: python scripts/check_ir_cap_neg.py [编译器]      (默认 qcc_zh_r715.exe)
+用法: python scripts/check_ir_cap_neg.py [编译器]      (默认 自动定位: QCC_TEST_BIN > qcc_zh_v7..v1 > seed)
+      R715J (2026-10-12 虾米): 原默认 `qcc_zh_r715.exe` 是**一次性发布名**，过期即 MISSING ⟹ 挂闸必假红。
+      改**自定位**（照 `check_dwarf289.py::find_qcc` 成例，与闸④ 同工艺）⟹ 无参调用可用 ⟹ 可进闸。
 退出码: 0 = 两负锚 4 条判据 全过; 1 = 有判据不成立
 """
 import os
@@ -25,7 +27,24 @@ os.chdir(ROOT)
 TMP = os.path.join(os.environ.get('TEMP', '.'), '_ir_cap_neg')
 os.makedirs(TMP, exist_ok=True)
 
-CC = sys.argv[1] if len(sys.argv) > 1 else 'qcc_zh_r715.exe'
+
+def find_qcc():
+    """自定位编译器（照 check_dwarf289.py 成例）。闸内 无参调用 必须 能自己找到。"""
+    env = os.environ.get('QCC_TEST_BIN')
+    if env and os.path.exists(env):
+        return env
+    for n in range(7, 0, -1):
+        p = os.path.join(ROOT, 'qcc_zh_v%d.exe' % n)
+        if os.path.exists(p):
+            return p
+    for nm in ('qcc_zh_seed.exe', 'qcc_x86.exe'):
+        p = os.path.join(ROOT, nm)
+        if os.path.exists(p):
+            return p
+    return os.path.join(ROOT, 'qcc_x86.exe')
+
+
+CC = sys.argv[1] if len(sys.argv) > 1 else find_qcc()
 CASES = [
     ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽'),
     ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链'),
