@@ -14,7 +14,12 @@
 无 @EXPECTED 时默认 exit:0
 """
 import sys, os, subprocess, re, argparse, shlex
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+# R715 仪器刀 (2026-10-11 虾米 · 递刀修法③): 兜底给所有 python 子进程 —— 默认控制台 GBK 时
+#   emoji(✅/❌) 会让子检查器 print 抛 UnicodeEncodeError ⟹ 假红 ⟹ 闸/套件中断。已用 setdefault, 不覆盖外部显式设定。
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+os.environ.setdefault('PYTHONUTF8', '1')
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
@@ -3548,6 +3553,11 @@ CORE_FEAT += [
 # R715 (2026-10-11 虾米 · 批 A1/A2) 行为综合锚(二): 纤则 + 跃表**子模式臂** (唯一两条行为敏感路径)
 CORE_FEAT += [
     'scripts/feat_zh_irland_a1a2_ok.c',    # R715 综合正锚(二): 结构化并发 + 一层子模式臂 + 道/资/组/性/达 (R715 42 30 2 7 7)
+]
+
+# R715B (2026-10-11 虾米 · 递刀三刀): 刀二 L1 抽象操作码字典 综合锚
+CORE_FEAT += [
+    'scripts/feat_zh_irland_dict_ok.c',    # 刀二 正锚: 结构体数组字面量(中英名字段) + 字典载体形态 (PROBE 3 3 1012 减法 sub)
 ]
 def build_tests(args):
     if args.zh_feat:

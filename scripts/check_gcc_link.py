@@ -18,6 +18,14 @@
 
 退出码: 0 = 通过 · 1 = 失败（含编译/链接/运行/断言 任一）
 """
+
+# R715 仪器刀 (2026-10-11 虾米): 默认控制台 GBK 时 emoji(✅/❌) 会让 print 抛 UnicodeEncodeError
+#   ⟹ 检查器 rc=1 假红 ⟹ 闸⑥/三套件 被中断。强推 UTF-8 输出（Python 3.7+，非 tty 管道下同样生效），
+#   不改任何 print 文本；调用侧（verify.ps1 / run_tests_zh.py）另设 PYTHONIOENCODING=utf-8 作兜底。
+import sys as _sys_utf8w
+for _stream_utf8w in (getattr(_sys_utf8w, 'stdout', None), getattr(_sys_utf8w, 'stderr', None)):
+    if _stream_utf8w is not None and hasattr(_stream_utf8w, 'reconfigure'):
+        _stream_utf8w.reconfigure(encoding='utf-8', errors='replace')
 import os
 import subprocess
 import sys
