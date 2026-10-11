@@ -3538,6 +3538,17 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_irlandslot2_ok.c',    # 批N1/N2 综合正锚: 达集/性录/跃表/型达 一次驱动 ⟹ 行为不变 (IRLOT2 5 12 3 7)
 ]
+
+# R715 (2026-10-11 虾米 · 「能接全接」批 A1/A2): 六项新落位 综合锚
+#   性录回填(属性→构体类型序) · 纤则(结构化线程) · 道腔(通道声明) · 资录(区域操作) · 组达(返回(甲,乙)) · 跃表臂级
+CORE_FEAT += [
+    'scripts/feat_zh_irlandslot3_ok.c',    # 批A1/A2 综合正锚: 六项新落位 一次驱动 ⟹ 行为不变 (IRLOT3 5 12 3 7)
+]
+
+# R715 (2026-10-11 虾米 · 批 A1/A2) 行为综合锚(二): 纤则 + 跃表**子模式臂** (唯一两条行为敏感路径)
+CORE_FEAT += [
+    'scripts/feat_zh_irland_a1a2_ok.c',    # R715 综合正锚(二): 结构化并发 + 一层子模式臂 + 道/资/组/性/达 (R715 42 30 2 7 7)
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
