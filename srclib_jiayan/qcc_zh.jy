@@ -1804,6 +1804,58 @@ __attribute__((原粗))
         若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
         返 尾联;
     }
+    若 (!比较字符串(串升, "sys/types.h")) { /* R769 (2026-10-12 虾米 · **12 套语料攻坚 · 真退步 一刀**): `<sys/types.h>` 内建 ——
+       依据 = sqlite `shell.c` 的 `STRUCT_STAT` (`#define STRUCT_STAT struct stat`) 需要 `mode_t`/`off_t`;
+       甲言 跳过 `<...>` 系统头 ⟹ 类型 不落地。与 既有 6 个 内建头 (limits/stdint/stdarg/time/errno) **同机制**。
+       只给 **最小必需** (mode_t/off_t/time_t/ssize_t), 用 宏守卫 防 重复 typedef。 */
+        常 字 *构一 =
+            "#ifndef _QCC_SYSTYPES_DEFINED\n"
+            "#define _QCC_SYSTYPES_DEFINED\n"
+            "typedef unsigned int mode_t;\n"
+            "typedef long off_t;\n"
+            "typedef long time_t;\n"
+            "typedef long ssize_t;\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
+    若 (!比较字符串(串升, "sys/stat.h")) { /* R769 续: `<sys/stat.h>` 内建 ——
+       sqlite shell.c:10310 `STRUCT_STAT sStat;` + 10419 `pCur->sStat.st_mode` ⟹ `struct stat` **必须有定义**
+       (否则 不完整类型 ⟹ A9001「字段不是结构体/联合」)。字段名 照 mingw (`st_mode`/`st_size`/`st_mtime`)。
+       `S_IFMT`/`S_IFDIR` 等 亦提供 (shell.c 的 `S_ISDIR` 依赖)。接受线 = 编译通过 (布局 差异 另行 挂账)。 */
+        常 字 *构一 =
+            "#ifndef _QCC_SYSSTAT_DEFINED\n"
+            "#define _QCC_SYSSTAT_DEFINED\n"
+            "#ifndef _QCC_SYSTYPES_DEFINED\n"
+            "typedef unsigned int mode_t;\n"
+            "typedef long off_t;\n"
+            "typedef long time_t;\n"
+            "#endif\n"
+            "#define S_IFMT  0170000\n"
+            "#define S_IFDIR 0040000\n"
+            "#define S_IFREG 0100000\n"
+            "#define S_IFLNK 0120000\n"
+            "struct stat {\n"
+            "  unsigned int st_dev;\n"
+            "  unsigned short st_ino;\n"
+            "  unsigned short st_mode;\n"
+            "  short st_nlink;\n"
+            "  short st_uid;\n"
+            "  short st_gid;\n"
+            "  unsigned int st_rdev;\n"
+            "  long st_size;\n"
+            "  long st_atime;\n"
+            "  long st_mtime;\n"
+            "  long st_ctime;\n"
+            "};\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
     若 (净厚 > 0 && 空七[净厚 - 1][0]) {
         字 整布[1024];
         复制字符串(整布, 空七[净厚 - 1]);
