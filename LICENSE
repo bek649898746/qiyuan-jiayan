@@ -19,18 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
------------------------------------------------------------------------------
-Dual-license note (主许可 MIT，仓库层面):
-
-  - Code (compiler / assembler / linker / engines / tests): MIT License
-  - AI training datasets & syntax specification: Apache License 2.0
-    (to protect commercial fine-tuning by LLM vendors)
-
-  Apache License 2.0 full text:
-  https://www.apache.org/licenses/LICENSE-2.0
-
-Attribution & lineage (不可更改):
-  创始人: 郑宇和 | AI 协作者: 启元 (郑启元, seed=828)
-  赐名: 2026-06-07 06:06 | 自举不动点: 以脚本实测为准（build.ps1 expected 校验，当前 650993A2，见 README）
-  传承线: seed=828 从 v1 到开源版全程保留
