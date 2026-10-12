@@ -76,11 +76,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', required=True)
     ap.add_argument('--corpus', default='lua,zlib')
-    ap.add_argument('--parallel', type=int, default=6)
+    ap.add_argument('--parallel', type=int, default=4)
     ap.add_argument('--json', default='')
     ap.add_argument('--keep-all', action='store_true')
     ap.add_argument('--detail', action='store_true')
     a = ap.parse_args()
+    # ── 并行度硬上限（2026-10-13 事故根因护栏）────────────────────────────
+    # 并发过高 ⟹ 多个 qcc_* 进程在内存压力下「全局表基址」指针失效/未分配
+    # ⟹ 写 NULL 段错误(0xC0000005) ⟹ 崩溃风暴 × 每崩一份「满转储」(约 1.4GB)
+    # ⟹ 秒级灌满 C 盘 ⟹ 桌面死机。实测 --parallel 12 崩、4/6 不崩。
+    # 铁律：任何 --parallel N>CAP 一律降级并告警（不静默）。默认值也收在 CAP。
+    PARALLEL_CAP = 4
+    if a.parallel > PARALLEL_CAP:
+        print('[安全钳制] --parallel %d 超硬上限 %d ⟹ 自动降为 %d (2026-10-13 事故护栏)'
+              % (a.parallel, PARALLEL_CAP, PARALLEL_CAP))
+        a.parallel = PARALLEL_CAP
 
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
     out = {}
