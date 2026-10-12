@@ -1789,6 +1789,21 @@ __attribute__((原粗))
         若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
         返 尾联;
     }
+    若 (!比较字符串(串升, "errno.h")) {
+        /* R735 (2026-10-12 虾米 · **12 套语料攻坚 · 族③ 续**): `<errno.h>` 内置 ——
+           原系统头 被 跳过 ⟹ `errno` 未声明; 实测 lua 5 个文件（lauxlib/liolib/loadlib/loslib/_ls）
+           **全部 卡在同一处** `errno = …` 赋值（A1001「被当赋值目标·静默丢弃」）⟹ 与 R5c(<time.h>) 同款先例。
+           ⚠️ `errno` 在 mingw 是 **宏** `#define errno (*_errno())`（线程局部）⟹ 内建 **必须给左值**：
+           `int * _errno(void);` + `#define errno (*_errno())` ⟹ 读/写 都落 真 errno（不引入 假全局）。
+           注: `_errno` 是 **原型声明** ⟹ 无需 进 `后聚[]` 豁免表。 */
+        常 字 *构一 =
+            "int * _errno(void);\n"
+            "#define errno (*_errno())\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
     若 (净厚 > 0 && 空七[净厚 - 1][0]) {
         字 整布[1024];
         复制字符串(整布, 空七[净厚 - 1]);
@@ -4875,6 +4890,14 @@ __attribute__((原粗))
        其 声明 不 进 函数表 ⟹ 调用 直接 A1001 (能力 缺口, 非 解析 bug: 同头文件 的 printf/malloc
        靠 本表 同一机制 放行). 清单 由 lua_run.py 33 件 基线 + r5b_probe.py 双重 确认. */
     "tmpnam","_pclose","_isatty","longjmp","FormatMessageA",
+    /* R733 (2026-10-12 虾米 · **12 套语料攻坚 · 族③ 一刀**): **ISO C 标准库 缺名 补全** ——
+       依据 = 本轮 采集（`_r728_collect.py`，5 套语料 逐文件 `-c` 收集）: lua `lauxlib.c` 卡 `freopen`、
+       lua `lua.c` 卡 `signal` —— 与 上面 C97b/C97c **同族**（甲言 跳过 `<...>` 系统头 ⟹ 声明不落地）。
+       ⚠️ **只补 ISO C（CRT 必有）**：`freopen`/`signal`/`raise`/`setvbuf`/`perror`/`setbuf`（stdio.h/signal.h）。
+       ⚠️ **不补**（本刀 特意 排除，理由 逐条）: `UINT64_C`/`RANGE_LIMIT`/`RIGHT_SHIFT` 等 是 **未展开的宏**
+         —— 补进白名单会 **编译过 而 生成「调用不存在函数」的错代码** ⟹ **保持 响亮 A1001 才是对的**；
+         `open`/`read`/`gettimeofday`/`setenv`/`strcasecmp` 等 POSIX 名 亦 **不补**（守 既有保守纪律）。 */
+    "freopen","signal","raise","setvbuf","perror","setbuf",
     /* C97c (2026-09-18 第 97 站, 续): C97b 修好后 逐层 暴露 的 下一批 (Lua 30/33 → ?):
        setjmp (ldo.c 经 LUAI_TRY 宏; mingw setjmp.h 的 #define setjmp(Buf) _setjmp(Buf)
        甲言 跳过系统头 ⟹ 宏未展开 ⟹ 直呼 setjmp 名字) · _popen (liolib.c) ·

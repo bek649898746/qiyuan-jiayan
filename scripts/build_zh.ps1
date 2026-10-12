@@ -232,7 +232,8 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '30AF08D4'  # R719 合批 (2026-10-12 虾米): 刀七A(读变量抽载)/刀八ABC(旧路禁令·def-use·SSA预埋)/刀七B(IR校验层 L0归类+影子对账)/多文件刀三(补名 外部·限制·不返回·类属 并 接上语义)
+$expected = '4EDC92E4'  # R733/R735 (2026-10-12 虾米 · 12 套语料攻坚 族③): 后聚[] 白名单 +6 ISO C 名（freopen/signal/raise/setvbuf/perror/setbuf）+ `<errno.h>` 内建替身（errno = (*_errno()) 左值）—— lua 45 → 48
+$expected_前 = '30AF08D4'  # 降级 (2026-10-12): 语料攻坚 前
 $expected_前 = 'B4C3900A'  # 降级 (2026-10-12): 合批 前 的 不动点
 $expected_R715R = '2C4FE7F7'  # 降级 (2026-10-12): 刀五 `间再` pass 框架 + 换代失效
 $expected_R715Q = 'B88252EE'  # 降级 (2026-10-12): 刀四 按 控式 发控制流类指令 + 刀六 容量校准/登记
