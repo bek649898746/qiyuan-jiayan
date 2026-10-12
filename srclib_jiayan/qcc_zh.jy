@@ -4898,6 +4898,21 @@ __attribute__((原粗))
          —— 补进白名单会 **编译过 而 生成「调用不存在函数」的错代码** ⟹ **保持 响亮 A1001 才是对的**；
          `open`/`read`/`gettimeofday`/`setenv`/`strcasecmp` 等 POSIX 名 亦 **不补**（守 既有保守纪律）。 */
     "freopen","signal","raise","setvbuf","perror","setbuf",
+    "open","read","write", /* R760 (2026-10-12 虾米 · **12 套语料攻坚 · 族③ 续**): POSIX 基础 I/O 三名 ——
+       依据 = 族⑦(R758) 修好后 zlib 的 **下一层** 症状 (实测 gzlib.c 报 open / gzread.c 报 read /
+       gzwrite.c 报 write)。三者 均 由 mingw CRT 提供 (<fcntl.h>/<io.h>/<unistd.h>), 真实可链接;
+       甲言 跳过 `<...>` 系统头 ⟹ 声明 不落地 ⟹ 与 printf/malloc/strlen **同族**, 走 内建 白名单 兜底。
+       ⚠️ 只补 这三个 (zlib 实证需要), 不 顺带 扩大 —— 守 R733 既有 保守纪律 (POSIX 名 从宽 会 掩盖
+       真正的 拼写 手误); 后续 按 实测 增量 补。
+       ⚠️ 风险 已记: 白名单 **只 放行, 不 提供 原型** ⟹ read/write 的 ssize_t 返回值 会 按 int 处理
+       (接受线 = 编译通过, 与 8-27 记录基线 同口径; 运行期 语义 差异 另行 挂账)。 */
+    "close","lseek","unlink","fstat","stat","fdopen","fileno","isatty", /* R762 (2026-10-12 虾米 · **12 套语料攻坚 · 族③ 三刀**): POSIX I/O 全族 一次补齐 ——
+       依据 = R760(open/read/write) 修好后 实测推进到的 **下一层**: gzlib.c 报 lseek · gzread/gzwrite.c 报 close;
+       并 按 **同族最近邻** 补齐 (zlib 的 gz*.c 必然用到的 POSIX I/O 成员: unlink/fstat/stat/fdopen/fileno/isatty),
+       免 每次自举 只推 一个名 (自举 ~11.5 分钟/轮)。
+       全部 由 mingw CRT 提供 (<unistd.h>/<sys/stat.h>/<stdio.h>) —— 与 open/read/write **同族同机制**。
+       ⚠️ 仍 只补 **zlib 实证族**, 不 顺带 扩大到 全部 61 个 POSIX 缺口 (守 保守纪律)。
+       ⚠️ 风险 同 R760: 只放行、不提供原型 ⟹ 返回值按 int 处理 (接受线 = 编译通过)。 */
     /* C97c (2026-09-18 第 97 站, 续): C97b 修好后 逐层 暴露 的 下一批 (Lua 30/33 → ?):
        setjmp (ldo.c 经 LUAI_TRY 宏; mingw setjmp.h 的 #define setjmp(Buf) _setjmp(Buf)
        甲言 跳过系统头 ⟹ 宏未展开 ⟹ 直呼 setjmp 名字) · _popen (liolib.c) ·
