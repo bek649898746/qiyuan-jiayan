@@ -1856,6 +1856,77 @@ __attribute__((原粗))
         若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
         返 尾联;
     }
+    若 (!比较字符串(串升, "poll.h")) { /* R770: `<poll.h>` 内建 —— redis `ae.c:474` `struct pollfd pfd;` 卡在 此。 */
+        常 字 *构一 =
+            "#ifndef _QCC_POLL_DEFINED\n#define _QCC_POLL_DEFINED\n"
+            "struct pollfd { int fd; short events; short revents; };\n"
+            "typedef unsigned long nfds_t;\n"
+            "#define POLLIN 0x001\n#define POLLPRI 0x002\n#define POLLOUT 0x004\n"
+            "#define POLLERR 0x008\n#define POLLHUP 0x010\n#define POLLNVAL 0x020\n"
+            "int poll(struct pollfd *, unsigned long, int);\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
+    若 (!比较字符串(串升, "unistd.h")) { /* R770 续: `<unistd.h>` 内建 (12 套里 416 处 引用, 最高频 POSIX 头)。 */
+        常 字 *构一 =
+            "#ifndef _QCC_UNISTD_DEFINED\n#define _QCC_UNISTD_DEFINED\n"
+            "typedef long ssize_t;\ntypedef long off_t;\ntypedef unsigned int mode_t;\ntypedef int pid_t;\n"
+            "int close(int);\nlong read(int, void *, unsigned long);\nlong write(int, const void *, unsigned long);\n"
+            "long lseek(int, long, int);\nint unlink(const char *);\nint access(const char *, int);\n"
+            "int isatty(int);\nint getpid(void);\nvoid _exit(int);\nint dup(int);\nint dup2(int, int);\n"
+            "int chdir(const char *);\nchar *getcwd(char *, unsigned long);\nunsigned int sleep(unsigned int);\n"
+            "int usleep(unsigned int);\nint rmdir(const char *);\n"
+            "#define STDIN_FILENO 0\n#define STDOUT_FILENO 1\n#define STDERR_FILENO 2\n"
+            "#define F_OK 0\n#define X_OK 1\n#define W_OK 2\n#define R_OK 4\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
+    若 (!比较字符串(串升, "fcntl.h")) { /* R770 续: `<fcntl.h>` 内建 (257 处)。 */
+        常 字 *构一 =
+            "#ifndef _QCC_FCNTL_DEFINED\n#define _QCC_FCNTL_DEFINED\n"
+            "#define O_RDONLY 0x0000\n#define O_WRONLY 0x0001\n#define O_RDWR 0x0002\n"
+            "#define O_CREAT 0x0100\n#define O_TRUNC 0x0200\n#define O_APPEND 0x0008\n"
+            "#define O_BINARY 0x8000\n#define O_EXCL 0x0400\n"
+            "int open(const char *, int, ...);\nint creat(const char *, unsigned int);\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
+    若 (!比较字符串(串升, "signal.h")) { /* R770 续: `<signal.h>` 内建 (167 处)。 */
+        常 字 *构一 =
+            "#ifndef _QCC_SIGNAL_DEFINED\n#define _QCC_SIGNAL_DEFINED\n"
+            "#define SIGINT 2\n#define SIGILL 4\n#define SIGABRT 6\n#define SIGFPE 8\n"
+            "#define SIGSEGV 11\n#define SIGTERM 15\n#define SIGBREAK 21\n"
+            "#define SIG_DFL 0\n#define SIG_IGN 1\n#define SIG_ERR ((void (*)(int))-1)\n"
+            "typedef void (*sighandler_t)(int);\n"
+            "sighandler_t signal(int, sighandler_t);\nint raise(int);\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
+    若 (!比较字符串(串升, "sys/time.h")) { /* R770 续: `<sys/time.h>` 内建。 */
+        常 字 *构一 =
+            "#ifndef _QCC_SYSTIME_DEFINED\n#define _QCC_SYSTIME_DEFINED\n"
+            "typedef long time_t;\n"
+            "struct timeval { long tv_sec; long tv_usec; };\n"
+            "struct timezone { int tz_minuteswest; int tz_dsttime; };\n"
+            "int gettimeofday(struct timeval *, void *);\n"
+            "#endif\n";
+        size_t 槽长 = 取字长(构一);
+        字 *尾联 = 内存分配(槽长 + 1);
+        若 (尾联) { 复制内存(尾联, 构一, 槽长); 尾联[槽长] = 0; }
+        返 尾联;
+    }
     若 (净厚 > 0 && 空七[净厚 - 1][0]) {
         字 整布[1024];
         复制字符串(整布, 空七[净厚 - 1]);
