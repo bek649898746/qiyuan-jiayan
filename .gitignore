@@ -185,3 +185,43 @@ scripts/mn_cmp.py
 scripts/mn_diff.py
 scripts/reorder_jy_case.py
 srclib/qcc_x86_dbg.c
+
+# ===== 残留规则（2026-10-13 启元 · 审计岗 · 大哥令「清的时候首先归档D盘先」）=====
+# 归档：D:\qiyuan_archive_20261013\（scratch_c1b2\ + repo_residue\）
+#       逐件 MD5 对账通过：15,598 件 / 2.27 GB 全等（清单 _manifest_*.tsv / _residue_list.tsv）
+# 目的：.gitignore 只对「未跟踪」文件生效 —— 加规则是为了防「将来首次误 add」重演 09-22 那类事故
+# 实验区
+scratch_c1b2/
+scratch_363_t12/
+scratch_363_trueprobe/
+scratch_a7/
+scratch_d289/
+scratch_gl/
+_nullck_tmp/
+_r606_tmp/
+_strike2_tmp/
+_t134_tmp/
+_t62_tmp/
+# 种子/编译器备份
+qcc_zh_seed_*.keep
+qcc_zh_seed.exe.*
+qcc_zh_v1.exe.*
+qcc_zh_v2.exe.*
+qcc_zh_v3.exe.*
+qcc_zh_v2_*.keep
+# 源码快照备份
+bak_qcc_zh_*.jy
+bak_*.jy
+bak_*.h
+_bak_*.jy
+_before_*.jy
+scr_before_*.jy
+srclib_jiayan/qcc_zh.jy.*bak
+# 其它临时件
+inst*.jy
+e5_*.S
+e5_*.S.asm
+fm*.txt
+ft_m9.txt
+# 交办件（内部 · 不入库）
+给虾米*.md
