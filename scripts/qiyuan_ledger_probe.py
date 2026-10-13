@@ -69,24 +69,30 @@ for nm, f in (('i22_infback', 'infback.c'), ('i22_inflate', 'inflate.c')):
     p = os.path.join(Z, f)
     rows.append(run_one(nm, '', srcpath=p, extra=['-I', Z]) if os.path.exists(p) else (nm, 'MISSING', '-', p))
 
-# ---- P1 探针表：直接 调 r799_verify.py（不 重实现）----
-r = subprocess.run([sys.executable, os.path.join(S, 'tools', 'r799_verify.py'), EXE],
-                   capture_output=True, cwd=S, timeout=600)
-txt = (r.stdout or b'').decode('utf-8', 'replace') + (r.stderr or b'').decode('utf-8', 'replace')
-for m in re.finditer(r'^(p1_\w+)\s+rc=(-?\d+)\s*(.*)$', txt, re.M):
-    nm, rc, rest = m.group(1), m.group(2), m.group(3)
-    codes = re.findall(r'A\d{4}', rest)
-    key = 'i16_' + nm.replace('p1_', '')
-    rows.append((key, rc, (codes[0] if codes else '-'), rest.strip()[:110]))
-# P0 三例 也 从 同一 探针表 取（p0_hang_a / p0_hang_a.r2 / p0_loud_c）
-for m in re.finditer(r'^(p0_\w+)\s+rc=(-?\d+)\s*(.*)$', txt, re.M):
-    nm, rc, rest = m.group(1), m.group(2), m.group(3)
-    codes = re.findall(r'A\d{4}', rest)
-    rows.append(('i14_' + nm.replace('p0_', '').replace('.', '_'), rc, (codes[0] if codes else '-'), rest.strip()[:110]))
+# ---- P1 探针表（**自足**：本脚本 内 直接 跑，不 依赖 任何 易失 工具）+ P0 三例 ----
+H = '#define UH(a,b,c) 0\n'
+P1 = {
+    'em1': H + 'void g(void) {\n#if 0\n    Call UH() x\n#endif\n}\n',
+    'de2': H + 'void g(void) {\n#if 0\n    UH() ;\n#endif\n}\n',
+    'de1': H + 'void g(void) {\n#if 3 != 3\n    UH() ;\n#endif\n}\n',
+    'em4': H + 'void g(void) {\n#ifdef NOTDEF\n    UH() ;\n#endif\n}\n',
+    'em8': H + 'void g(void) {\n#if 0\nint zz = UH(1);\n#endif\n}\n',
+    'em2': H + 'void g(void) {\n#if 0\n    Call plainname() x\n#endif\n}\n',
+    'em7': H + 'void g(void) {\n#if 0\n    if (1) { }\n#endif\n}\n',
+    'de5': H + 'void g(void) {\n#if 1\n    UH() ;\n#endif\n}\n',
+    'de4': H + 'void g(void) {\n#if 1\n    int zz = UH(1,2,3);\n#endif\n}\n',
+}
+for k, src in P1.items():
+    rows.append(run_one('i16_' + k, src))
+rows.append(run_one('i14_hang_a', 'int f(void) { return (int)sizeof(struct { _Static_assert(1, "x"); }); }\n'))
+rows.append(run_one('i14_hang_b', 'int g(void) { return (int)sizeof(struct { int a; _Static_assert(1, "x"); }); }\nint f(void){ return g(); }\n'))
+rows.append(run_one('i14_loud_c', 'int f(void) { return (int)sizeof(struct { _Static_assert(0, "boom"); }); }\n'))
 
+# ---- 落盘（机器可读 事实表）----
 io.open(OUT, 'w', encoding='utf-8', newline='').write(
     '# 递刀台账 · 逐条探针 实测（引擎 %s）\nkey\trc\tcode\tnote\n' % EXE +
     '\n'.join('\t'.join(x) for x in rows) + '\n')
 print('写了 %s（%d 行）' % (OUT, len(rows)))
 for x in rows:
     print('  %-18s rc=%-7s %-6s %s' % (x[0], x[1], x[2], x[3][:80]))
+
