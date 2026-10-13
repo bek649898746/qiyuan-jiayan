@@ -244,9 +244,14 @@ SHORT = r'(?<![A-Za-z0-9_])(em1|em2|em4|em7|em8|de1|de2|de4|de5|i\d\d_[a-z0-9_]+
 #   与 纯字母；且 两侧 不接 标识符字符。
 #   ⚠️ 左侧 **不得** 把 反引号 列入 排除集 —— 实测 `` `6CC7F2F1` ``（代码内嵌 哈希，最常见形态）会因
 #      反引号 被 挡掉 ⟹ 漏抓（本器 首版 即 犯此错）。
-HEXHASH = r'(?<![0-9A-Za-z_])(?=[0-9A-F]{8}(?![0-9A-Za-z_]))(?=[0-9A-F]*[A-F])(?=[0-9A-F]*[0-9])[0-9A-F]{8}'
+#   ⚠️ **必须 大小写不敏感**（`[0-9A-Fa-f]`）—— git 的 提交短哈希 常为 小写（`b5791c05`/`4c886e8`），
+#      只写 `[0-9A-F]` 会 漏抓（本器 第 2 版 即 犯此错，skeptic 以 `_DEBT_INDEX` L25/L32 为证）。
+HEXHASH = r'(?<![0-9A-Za-z_])(?=[0-9A-Fa-f]{7,8}(?![0-9A-Za-z_]))(?=[0-9A-Fa-f]{0,7}[A-Fa-f])(?=[0-9A-Fa-f]{0,7}[0-9])[0-9A-Fa-f]{7,8}'
 SCRATCHREF = r'\{SCRATCH\}[\\/]tools[\\/]'
-FREEFACT = re.compile('(%s)|(%s)' % (HEXHASH, SCRATCHREF))
+# gate-value 形态 的 事实（闸/门 的 计数值）—— 与 GEN 块（`gates`/`receipt02`）重复 即 非 单一来源。
+# 注意 `rc=-?\d+` 会 命中 散文里的「实测 rc=0」—— 这正是 要 抓 的（该值 应 指向 探针表/GEN）。
+GATEVAL = r'(?<![A-Za-z0-9_])(total=\d+|OK=\d+|FAIL=\d+|CRASH=\d+|rc=-?\d+|PASS=\d+|SKIP=\d+)(?![A-Za-z0-9_])'
+FREEFACT = re.compile('(%s)|(%s)|(%s)' % (HEXHASH, SCRATCHREF, GATEVAL))
 srcbad = []
 for p, enc in DOCS:
     s = rd(p)
@@ -260,7 +265,7 @@ for p, enc in DOCS:
         _m = FREEFACT.search(ln)
         if _m:
             srcbad.append(('自由事实 `%s`' % _m.group(0), os.path.basename(p), ln.strip()[:80]))
-out('⑤ 事实 单一来源: GEN/历史 之外 出现 事实（探针标识 / 内容哈希 / scratch 临时脚本 引用）%d 处' % len(srcbad))
+out('⑤ 事实 单一来源: GEN/历史 之外 出现 事实（探针标识 / 内容哈希 / gate 计数值 / scratch 临时脚本 引用）%d 处' % len(srcbad))
 for x in srcbad[:6]:
     out('   ✗ %s @ %s: %s' % x)
 if srcbad:

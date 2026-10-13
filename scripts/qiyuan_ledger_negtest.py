@@ -77,6 +77,16 @@ tamper(TSV, lambda t: t.replace('qiyuan_ledger_probe.py {SCRATCH}（探针 i13_j
 tamper(os.path.join(GB, '_HANDOVER_20261013.md'),
        lambda t: t.replace('\n', '\n> ZZZZ-围篱外-事实探针 DEAD1234 ZZZZ\n', 1),
        'N4', CHK, r'DEAD1234', 'N4 · 判据⑤ 围篱外事实（围篱/GEN 之外 写死 8 位哈希 必须 被 抓）')
+# N5/N6/N7：skeptic 3 指出的 三个 漏抓面（本器 曾 全 漏）
+tamper(os.path.join(GB, '_HANDOVER_20261013.md'),
+       lambda t: t.replace('\n', '\n> ZZZZ-小写-8位哈希 dead1234 ZZZZ\n', 1),
+       'N5', CHK, r'`dead1234`', 'N5 · 判据⑤ **小写** 8 位哈希（HEX 大小写敏感 会 漏抓）')
+tamper(os.path.join(GB, '_HANDOVER_20261013.md'),
+       lambda t: t.replace('\n', '\n> ZZZZ-7位-短哈希 4c886e8 ZZZZ\n', 1),
+       'N6', CHK, r'`4c886e8`', 'N6 · 判据⑤ **7 位** git 短哈希（原 只认 8 位 ⟹ 漏抓）')
+tamper(os.path.join(GB, '_HANDOVER_20261013.md'),
+       lambda t: t.replace('\n', '\n> ZZZZ-gate计数值 total=999 ZZZZ\n', 1),
+       'N7', CHK, r'`total=999`', 'N7 · 判据⑤ **gate 计数值**（与 GEN 重复 的 形态，原 无此模式）')
 
 _n = sum(1 for _l in L if _l.startswith('- 恢复后'))
 L.append('判定 = ' + ('✅ %d 条 判据 都 **能失败**（未篡改时 复绿 ⟹ 非恒真）' % _n if not fails
