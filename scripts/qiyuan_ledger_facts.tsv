@@ -4,7 +4,7 @@
 # 门 key(zlib/bootstrap/anchors/git/gitfam/launch/p0/p0loud) 由 qiyuan_ledger_check.py 从 {SCRATCH} 日志 逐字 提取。
 # ⚠️ 人读视图（权威台账 / _DEBT_INDEX / 交接 / 回执）**一律** 由 scripts\qiyuan_ledger_render.py 从 本文件 生成 —— 禁止 手抄。
 # 状态 计数 由 本文件 的 状态 列 派生: 已解决 16 / 部分 1 / 未解决 3 / 作废 3（待核 恒 0）。
-GLOBAL	（全轮 公共 门 · 不 计入 计数）	不动点/门锚/端到端/zlib/git	已解决	{SCRATCH}/bootstrap_final.log;{SCRATCH}/anchor_final.log;{SCRATCH}/launch.log;{SCRATCH}/zlib_rescan.log;{SCRATCH}/compile_par_result.txt	build_zh.ps1 -NoSeed · run_tests_zh.py --only <受影锚> · qiyuan_ledger_probe.py · _r790_scan.py zlib	bootstrap=6CC7F2F1 · PASS;anchors=PASS=32 FAIL=0;launch=LAUNCH 870 55 · rc=0 ×2;zlib=15/15;git=total=563 OK=537 FAIL=26 CRASH=0;gitfam=无上升;p0=rc=0 ×2 一致;p0loud=rc=1 · A6017
+GLOBAL	（全轮 公共 门 · 不 计入 计数）	不动点/门锚/端到端/zlib/git	已解决	{SCRATCH}/bootstrap_final.log;{SCRATCH}/anchor_final.log;{SCRATCH}/launch.log;{SCRATCH}/zlib_rescan.log;{SCRATCH}/compile_par_result.txt	build_zh.ps1 -NoSeed · run_tests_zh.py --only <受影锚> · qiyuan_ledger_probe.py · _r790_scan.py zlib	bootstrap=D8C6C919 · PASS;anchors=PASS=7 FAIL=0;launch=LAUNCH 870 55 · rc=0 ×2;zlib=15/15;git=total=563 OK=537 FAIL=26 CRASH=0;gitfam=无上升;p0=rc=0 ×2 一致;p0loud=rc=1 · A6017
 1	`20261011_刀_关键字赋值目标静默崩溃`	🔴静默 + 运行崩	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i01_kw_assign=rc1:A9001;i01b_ctrl=rc0
 2	`20261011_刀_未声明标识符赋值静默`	🔴静默丢写	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i02_undecl=rc1:A1001
 3	`20261011_刀_引用后声明全局静默`	🔴静默读 0/写丢	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i03_fwd=rc1:A1001
