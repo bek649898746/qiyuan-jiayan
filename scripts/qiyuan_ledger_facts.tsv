@@ -17,12 +17,12 @@ GLOBAL	（全轮 公共 门 · 不 计入 计数）	不动点/门锚/端到端/z
 10	`_C1-1_施工单.md`（9-25）	结构级施工单	已解决	{SCRATCH}/ledger_final.md	台账 C1 已闭环（探针矩阵 + 不动点链）	-
 11	`_C1B_施工单.md`（9-26）	C1/C2b/C7 同源主线	已解决	{SCRATCH}/ledger_final.md	台账 C1/C2b/C7 均记「已闭环 · 与 gcc 逐值一致」	-
 12	`20261011_刀_存储类关键词报错偏`	🟡报错方向引偏	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i12_kwvar=rc1:A9001;i12b_auto_ok=rc0;i12c_auto_kw=rc1:A9001;i12d_auto_ni=rc1:A6058
-13	`20261012_施工单v2_按甲言地基`	施工单（A 类收口 22 条 · 6 刀 IR）	未解决	{SCRATCH}/defect_evidence.log	主源 grep 内容锚（控式 39 / 段双 26 / 剩系 11 / 间再 6 / 隔系一 15）· **修法方向**（递刀 逐字）：按 `建节()` 唯一打标点 落位 + 容量 按 索引键 校准 + 可重入 复位 + `QCC_DUMP=ir` 只读视图	-
+13	`20261012_施工单v2_按甲言地基`	施工单（A 类收口 22 条 · 6 刀 IR）	未解决	{SCRATCH}/defect_evidence.log	主源 grep 内容锚（控式 39 / 段双 26 / 剩系 11 / 间再 6 / 隔系一 15）· **修法方向**（递刀 逐字）：按 `建节()` 唯一打标点 落位 + 容量 按 索引键 校准 + 可重入 复位 + `QCC_DUMP=ir` 只读视图 **（本轮 进展：四要件 已落 2 —— 「容量 按 索引键 校准」= 裁四[前驱槽容 32 / 实测入度 18] ；「`QCC_DUMP=ir` 只读视图」= R720/R720b + 三个检查器；剩 「按 `建节()` 唯一打标点 落位」 待核）**	-
 14	`20261012_递刀_真内核压测结果`	P0 新输入（内核 4144 文件）	已解决	{SCRATCH}/hang.log	python {SCRATCH}\tools\p0_final.py <终态引擎>	i14_p0=rc0;i14_hang_a=rc0;i14_hang_b=rc0;i14_loud_c=rc1:A6017;p0=rc=0 ×2 一致;p0loud=rc=1 · A6017
 15	`20261012_递刀_zlib回归与A6068定位`	🔴回归（15→9）	已解决	{SCRATCH}/zlib_rescan.log	python scripts\_r790_scan.py --cc <终态引擎> --parallel 4 zlib	zlib=15/15
 16	`20261012_递刀_假分支宏展开`	🔴同 #15 根因	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i16_em1=rc0;i16_de2=rc0;i16_de1=rc0;i16_em4=rc1:A6068;i16_em8=rc0;i16_em2=rc0;i16_em7=rc0;i16_de5=rc1:A6068;i16_de4=rc0
 17	`20261011_IR方案汇总递刀`	方案/阻塞清单	部分	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH} · **修法方向**（递刀 逐字）：阻塞 余项 = `Send位`/`枚举底层标志` 字段 未落（主源 0 命中）+ 4 个 IR 侧表读端（`源粗`/`空对`/`总子`/`计肆一`）按 `QCC_DUMP=ir` 复算	i17_vla=rc0
-18	`20261011_IR中端施工单v2合流版`	施工单（刀五/六…）	未解决	{SCRATCH}/defect_evidence.log	递刀 裁二「一节点多指令 表示法」未落定 ⟹ 刀五~刀七 不得动手 · **修法方向**（递刀 逐字）：先定 裁二 表示法（子指令链 / `剩十`(s3) / 其他）+ 三红线（L0 一行不动 · 不得静默丢弃 · 不得默默违反 v1.4 §5.4）	-
+18	`20261011_IR中端施工单v2合流版`	施工单（刀五/六…）	部分	{SCRATCH}/defect_evidence.log	**前置闸 已开**：裁二（一节点多指令 表示法）已落定 = **子指令链**（`子链[]` + `暂弊[].剩十` = 链头）⟹ 三红线守（L0 一行不动 · 不得静默丢弃 · 不违反 v1.4 §5.4）。证据（本轮）：`decisions.log` 裁二 + `ir_dump.log`/`knife.log` 的 dump 实测（`抽[N] 链头=k` → `子[k] … 后继=-1`）。**余项**：刀五 `Send位`/`枚举底层标志` 字段 + 读端（`总子`/`计肆一`）生产者 ⟹ 见 id 17 · `next_knives.log` D2/D4	-
 19	`20261011_刀_AI九项上台次序`	排期（8 刀 G~N）	作废	{SCRATCH}/ledger_final.md	递刀 逐字「未占源 · 未改 qcc_zh.jy 一字节」⟹ 非缺陷（排期图）	-
 20	`20261011_刀_LLM优化作业面与合格线`	方案（6 刀 + 依赖链）	作废	{SCRATCH}/ledger_final.md	递刀 逐字「批一 全部产出 为 文档/清单，零 编译器 改动」⟹ 非缺陷（方案）	-
 21	`20261011_施工单8刀复查`	复查报告	未解决	{SCRATCH}/defect_evidence.log	递刀 自带判定表：刀一 已做（R696 · 提交 `311c56da`）· 刀二~六 未做 · **修法方向**（递刀 逐字）：刀二/三 `-c` COFF 通道 + S-51 改判 · 刀四 `超级编译`→A6086（主源 0 命中）· 刀五 `类型表/变量表` 补真结构字段 · 刀六 补「IR 数据源 真伪」小节	-
