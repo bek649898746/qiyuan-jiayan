@@ -11,12 +11,12 @@
   launch      -> {SCRATCH}/launch.log               (端到端 发射 ×2)
   gitfam      -> {SCRATCH}/logs/gitfam.txt          (族表 对照 · 需 先有 compile_par_result.txt)
   anchors     -> {SCRATCH}/anchor_final.log         (受影响 IR 门锚 --only)
-  zlib        -> {SCRATCH}/zlib_rescan.log          (委托 _r790_scan.py zlib)
+  zlib        -> {SCRATCH}/zlib_rescan.log          (委托 qiyuan_ledger_zlib_scan.py zlib)
   bootstrap   -> {SCRATCH}/bootstrap_final.log      (自举 seed->v1->v2 · ~15 min)
   git         -> {SCRATCH}/compile_par_result.txt   (git 全量闸 · 需 语料 + 仪器 · ~5 min)
 
 设计：**所有 生成器 都在仓**（本文件 + 它委托的三个 + git_gate_par.ps1 + build_zh.ps1 +
-run_tests_zh.py + _r790_scan.py）⟹ 新 空 scratch 上 一条命令 就能 从零 重建 全部 门事实。
+run_tests_zh.py + qiyuan_ledger_zlib_scan.py）⟹ 新 空 scratch 上 一条命令 就能 从零 重建 全部 门事实。
 """
 import io, os, re, shutil, subprocess, sys
 
@@ -192,7 +192,7 @@ def gate_anchors(S):
 
 
 def gate_zlib(S):
-    argv = [sys.executable, os.path.join(SCRIPTS, '_r790_scan.py'), '--cc', EXE, '--parallel', '4', 'zlib']
+    argv = [sys.executable, os.path.join(SCRIPTS, 'qiyuan_ledger_zlib_scan.py'), '--cc', EXE, '--parallel', '4', 'zlib']
     rc, o = run(argv, timeout=900)
     write(os.path.join(S, 'zlib_rescan.log'), o)
     m = re.search(r'zlib\s+(\d+)/(\d+)\s*通过', o)

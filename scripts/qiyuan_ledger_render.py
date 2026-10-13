@@ -16,10 +16,17 @@ REC = os.path.join(QJ, r'_audit_inbox\20261013_虾米_递刀对账单一入口_�
 DEBT = os.path.join(GB, '_DEBT_INDEX.md')
 HAND = os.path.join(GB, '_HANDOVER_20261013.md')
 
-S = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('QCC_LEDGER_SCRATCH')
-if not S or not os.path.isdir(S):
-    sys.exit('用法: python scripts\\qiyuan_ledger_render.py <SCRATCH目录> (或 设 QCC_LEDGER_SCRATCH)')
-S = os.path.abspath(S)
+# ⚠️ gap3 修 (2026-10-14): 本模块被 `qiyuan_ledger_check.py` **import** 以复用 GENS。
+#   原先 顶层 无条件 `sys.exit` + 无条件 `apply()`（写盘）⟹ ① import 会让 check 直接退出；
+#   ② check 在 比较 GEN 块 **之前** 就把文档重写成与 GENS 一致 ⟹ 判据③「手改 GEN 块会被抓」
+#   变成 **自我实现**（永不 不符），且 校验器 每次都改写工作区（判定所依据的产物被自身修改）。
+#   修：S 解析 不 exit（import 友好）；写盘 归 `__main__`；新增 `--check-only` 只比对不写。
+S = None
+if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+    S = sys.argv[1]
+if not S:
+    S = os.environ.get('QCC_LEDGER_SCRATCH')
+S = os.path.abspath(S) if S else None
 
 
 # ---------------- 读 事实源 ----------------
@@ -221,10 +228,14 @@ def apply(path, enc, dry=False):
     return n
 
 
-total = 0
-for p, enc in ((LED, 'utf-8-sig'), (REC, 'utf-8-sig'), (DEBT, 'utf-8-sig'), (HAND, 'utf-8')):
-    c = apply(p, enc)
-    total += c
-    print('  %-28s 渲染 %d 个 GEN 块' % (os.path.basename(p), c))
-print('合计 渲染 %d 块（事实源: %s · %d 份 递刀）' % (total, os.path.basename(TSV), N))
-print('计数（派生）: ' + ' / '.join('%s %d' % (k, v) for k, v in sorted(CNT.items())))
+if __name__ == '__main__':          # gap3 修: 写盘 只在 直接运行时 发生 —— import 本模块 **不改** 任何文档
+    if not S or not os.path.isdir(S):
+        sys.exit('用法: python scripts\\qiyuan_ledger_render.py <SCRATCH目录> [--check-only]')
+    DRY = ('--check-only' in sys.argv) or ('--dry' in sys.argv)
+    total = 0
+    for p, enc in ((LED, 'utf-8-sig'), (REC, 'utf-8-sig'), (DEBT, 'utf-8-sig'), (HAND, 'utf-8')):
+        c = apply(p, enc, dry=DRY)
+        total += c
+        print('  %-28s %s %d 个 GEN 块' % (os.path.basename(p), '比对' if DRY else '渲染', c))
+    print('合计 %s %d 块（事实源: %s · %d 份 递刀）' % ('待判' if DRY else '渲染', total, os.path.basename(TSV), N))
+    print('计数（派生）: ' + ' / '.join('%s %d' % (k, v) for k, v in sorted(CNT.items())))

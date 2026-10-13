@@ -15,7 +15,11 @@
     （⟹ 事实 只能 来自 TSV⟹渲染）。
 退出码 0 = 全过；1 = 有 不一致。
 """
-import io, os, re, subprocess, sys, importlib.util
+import io, os, re, subprocess, sys, importlib.util, hashlib
+
+
+def sha_file(p):
+    return hashlib.sha256(io.open(p, 'rb').read()).hexdigest()
 
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 GB = r'C:\Users\Administrator\Desktop\grok-build'
@@ -106,7 +110,7 @@ def probe_val(k):
 def live_or_log_zlib():
     if not NOLIVE:
         p = os.path.join(S, 'logs', 'live_zlib.log')
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, '_r790_scan.py'), '--cc', EXE,
+        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, 'qiyuan_ledger_zlib_scan.py'), '--cc', EXE,
                             '--parallel', '4', 'zlib'], capture_output=True, cwd=QJ, timeout=600)
         txt = ((r.stdout or b'') + (r.stderr or b'')).decode('utf-8', 'replace')
         io.open(p, 'w', encoding='utf-8', newline='').write(txt)
@@ -183,14 +187,19 @@ if bad or missp:
     fails.append('② 事实 不符/证据 缺失')
 
 # ---------- ③ GEN 一致性（与 渲染器 现输出 逐字 比） ----------
+# ⚠️ gap3 修 (2026-10-14): 先 **记 4 份文档 的 sha256**，import render 之后 必须 逐字节不变。
+#   否则 = check 自己 把 文档 重写成 与 GENS 一致 ⟹ 判据③ 自我实现（手改 GEN 块 被抓不到），
+#   且 校验器 每次运行 都 改写 工作区（判定所依据的产物 被 自身 修改）—— 两者 都 是 真缺陷。
+_h_before = {p: (sha_file(p) if os.path.exists(p) else None) for p, _e in DOCS}
+os.environ['QCC_LEDGER_SCRATCH'] = S
 spec = importlib.util.spec_from_file_location('rnd', os.path.join(SCRIPTS, 'qiyuan_ledger_render.py'))
 rnd = importlib.util.module_from_spec(spec)
-sys.argv = [sys.argv[0], S, '--no-live'] if False else sys.argv
-os.environ['QCC_LEDGER_SCRATCH'] = S
-_saved = sys.argv
-sys.argv = [_saved[0], S]
-spec.loader.exec_module(rnd)
-sys.argv = _saved
+spec.loader.exec_module(rnd)      # render.py 顶层 有 `if __name__ == '__main__'` 保护 ⟹ 此处 **不写盘**
+_h_after = {p: (sha_file(p) if os.path.exists(p) else None) for p, _e in DOCS}
+_touched = [os.path.basename(p) for p in _h_before if _h_before[p] != _h_after[p]]
+out('③b 校验器 只读: import render 后 文档 被改写 的 份数 = %d %s' % (len(_touched), _touched))
+if _touched:
+    fails.append('③b 校验器 改写了 工作区（import render 触发 写盘 ⟹ ③ 自我实现）')
 genbad = 0
 for p, enc in DOCS:
     s = rd(p)
