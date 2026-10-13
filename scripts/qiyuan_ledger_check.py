@@ -235,8 +235,18 @@ for x in hisbad[:5]:
 if hisbad:
     fails.append('④ 历史 围篱 不合规')
 
-# ---------- ⑤ 事实 单一来源 ----------
+# ---------- ⑤ 事实 单一来源（探针标识 / 内容哈希 / scratch 临时脚本 引用） ----------
 SHORT = r'(?<![A-Za-z0-9_])(em1|em2|em4|em7|em8|de1|de2|de4|de5|i\d\d_[a-z0-9_]+|p0_hang|p0_loud)(?![A-Za-z0-9_])'
+# gap(skeptic 2) 修 (2026-10-14): 原 ⑤ 只抓 **探针 标识** ⟹ 围篱/GEN 之外 写死的 **内容哈希**
+#   （8 位 hex，形如 `D8C6C919`）与 **`{SCRATCH}/tools/` 临时脚本 引用** 都 漏网 ⟹
+#   判据「历史 围篱 之外 不出现 事实」= **假过**（实测：权威台账 标题 曾 写死 `6CC7F2F1`）。
+#   本版 补 两类 自由文本 事实。hex 形态 要求 **既含 A-F 又含数字** 以 排除 纯数字（日期 20261014）
+#   与 纯字母；且 两侧 不接 标识符字符。
+#   ⚠️ 左侧 **不得** 把 反引号 列入 排除集 —— 实测 `` `6CC7F2F1` ``（代码内嵌 哈希，最常见形态）会因
+#      反引号 被 挡掉 ⟹ 漏抓（本器 首版 即 犯此错）。
+HEXHASH = r'(?<![0-9A-Za-z_])(?=[0-9A-F]{8}(?![0-9A-Za-z_]))(?=[0-9A-F]*[A-F])(?=[0-9A-F]*[0-9])[0-9A-F]{8}'
+SCRATCHREF = r'\{SCRATCH\}[\\/]tools[\\/]'
+FREEFACT = re.compile('(%s)|(%s)' % (HEXHASH, SCRATCHREF))
 srcbad = []
 for p, enc in DOCS:
     s = rd(p)
@@ -246,12 +256,15 @@ for p, enc in DOCS:
     masked = re.sub(r'<!--GEN:BEGIN key=\w+-->.*?<!--GEN:END-->', '', masked, flags=re.S)
     for ln in masked.split('\n'):
         if re.search(SHORT, ln):
-            srcbad.append((os.path.basename(p), ln.strip()[:80]))
-out('⑤ 事实 单一来源: GEN/历史 之外 出现 探针 标识 %d' % len(srcbad))
+            srcbad.append(('探针标识', os.path.basename(p), ln.strip()[:80]))
+        _m = FREEFACT.search(ln)
+        if _m:
+            srcbad.append(('自由事实 `%s`' % _m.group(0), os.path.basename(p), ln.strip()[:80]))
+out('⑤ 事实 单一来源: GEN/历史 之外 出现 事实（探针标识 / 内容哈希 / scratch 临时脚本 引用）%d 处' % len(srcbad))
 for x in srcbad[:6]:
-    out('   ✗ %s: %s' % x)
+    out('   ✗ %s @ %s: %s' % x)
 if srcbad:
-    fails.append('⑤ GEN/历史 之外 有 探针 事实')
+    fails.append('⑤ GEN/历史 之外 有 事实（探针标识/内容哈希/scratch 引用）')
 
 out('')
 out('判定 = ' + ('✅ 台账 一致性 全过（事实 单一来源 · 逐格 可复算 · 历史 隔离）' if not fails else '❌ ' + str(fails)))

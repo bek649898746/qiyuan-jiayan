@@ -74,8 +74,13 @@ tamper(PROBES, lambda t: re.sub(r'^(i13_ji\t)0\t', r'\g<1>1\t', t, count=0, flag
 tamper(TSV, lambda t: t.replace('qiyuan_ledger_probe.py {SCRATCH}（探针 i13_ji',
                                 'no_such_script_zzz.py {SCRATCH}（探针 i13_ji', 1),
        'N3', TERM, r'无 \*\*在仓\*\*|未在仓最小复现=', 'N3 · 判据② 复算列 在仓（指向不在仓脚本 必须 被 抓）')
+tamper(os.path.join(GB, '_HANDOVER_20261013.md'),
+       lambda t: t.replace('\n', '\n> ZZZZ-围篱外-事实探针 DEAD1234 ZZZZ\n', 1),
+       'N4', CHK, r'DEAD1234', 'N4 · 判据⑤ 围篱外事实（围篱/GEN 之外 写死 8 位哈希 必须 被 抓）')
 
-L.append('判定 = ' + ('✅ 三条 判据 都 **能失败**（未篡改时 复绿 ⟹ 非恒真）' if not fails else '❌ ' + ' | '.join(fails)))
+_n = sum(1 for _l in L if _l.startswith('- 恢复后'))
+L.append('判定 = ' + ('✅ %d 条 判据 都 **能失败**（未篡改时 复绿 ⟹ 非恒真）' % _n if not fails
+                    else '❌ ' + ' | '.join(fails)))
 io.open(os.path.join(S, 'negtest.log'), 'w', encoding='utf-8', newline='').write('\n'.join(L) + '\n')
 print('\n'.join(L))
 sys.exit(0 if not fails else 1)
