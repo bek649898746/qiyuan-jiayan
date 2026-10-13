@@ -136,8 +136,10 @@ def gate_val(k):
         return '无上升' if '★ 上升的族: 无' in t else None
     if k == 'launch':
         if not NOLIVE:
+            # R802 (判据 4): live 生成器 改为 **仓内** 统一证据重建器（原先 指向 {SCRATCH}/tools/launch_test.py，
+            # scratch 一清空 就 失效 ⟹ 检查器 无法 在 干净环境 复跑）。
             p = os.path.join(S, 'logs', 'live_launch.log')
-            r = subprocess.run([sys.executable, os.path.join(S, 'tools', 'launch_test.py'), EXE],
+            r = subprocess.run([sys.executable, os.path.join(SCRIPTS, 'qiyuan_ledger_evidence.py'), S, 'launch'],
                                capture_output=True, cwd=QJ, timeout=300)
             io.open(p, 'w', encoding='utf-8', newline='').write((r.stdout or b'').decode('utf-8', 'replace'))
         t = rd(os.path.join(S, 'launch.log')) or ''
