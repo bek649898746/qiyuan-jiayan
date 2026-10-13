@@ -255,5 +255,9 @@ if srcbad:
 
 out('')
 out('判定 = ' + ('✅ 台账 一致性 全过（事实 单一来源 · 逐格 可复算 · 历史 隔离）' if not fails else '❌ ' + str(fails)))
-io.open(os.path.join(S, 'logs', 'ledger_check.txt'), 'w', encoding='utf-8', newline='').write('\n'.join(rep) + '\n')
+_txt = '\n'.join(rep) + '\n'
+# plan 验证步骤 1 点名 `{SCRATCH}/ledger_check.log`；同时保留 logs/ 下的历史位置（两处同内容）
+for _p in (os.path.join(S, 'ledger_check.log'), os.path.join(S, 'logs', 'ledger_check.txt')):
+    os.makedirs(os.path.dirname(_p), exist_ok=True)
+    io.open(_p, 'w', encoding='utf-8', newline='').write(_txt)
 sys.exit(0 if not fails else 1)

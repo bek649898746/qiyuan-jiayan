@@ -272,11 +272,38 @@ def gate_git(S):
         script = ext; print('  [WARN] 用 外部 副本 %s' % ext)
     else:
         print('  git: 无 仪器 ⟹ 跳过'); return False
-    rc, o = ps(script, '-Qcc', EXE, '-Jobs', '4', '-Out', os.path.join(S, 'git_objs'),
-               '-ResultFile', os.path.join(S, 'compile_par_result.txt'), timeout=3600)
+    _res = os.path.join(S, 'compile_par_result.txt')
+    _glog = os.path.join(S, 'git_gate.log')
+    if os.path.exists(_res) and os.path.exists(_glog) and not FORCE:
+        o = io.open(_glog, 'rb').read().decode('utf-8', 'replace')
+        print('  [复用] 已有 compile_par_result.txt + git_gate.log（不重跑 ~5 分钟闸；`--force` 可强制）')
+    else:
+        rc, o = ps(script, '-Qcc', EXE, '-Jobs', '4', '-Out', os.path.join(S, 'git_objs'),
+                   '-ResultFile', _res, timeout=3600)
+        write(_glog, o)
     m = re.search(r'total=(\d+)\s+OK=(\d+)\s+FAIL=(\d+)\s+CRASH=(\d+)', o)
-    write(os.path.join(S, 'git_gate.log'), o)
-    print('  compile_par_result.txt ⟹ %s' % (m.group(0) if m else 'FAIL'))
+    # plan 验证步骤 6（条件步）: **是否改了编译器产物** 由 git 实测判定（不看人写的话）
+    d = subprocess.run(['git', 'status', '--porcelain', '--', 'srclib_jiayan/qcc_zh.jy'],
+                       capture_output=True, cwd=QJ)
+    src_dirty = bool((d.stdout or b'').strip())
+    fam = os.path.join(S, 'logs', 'gitfam.txt')
+    famtxt = io.open(fam, 'rb').read().decode('utf-8', 'replace') if os.path.exists(fam) else '(先跑 gitfam 门)'
+    head = (['# plan 验证步骤 6（gating · **条件步**）· git 全量闸', '#',
+             '## 0. 本轮是否改了编译器产物？ —— **%s**（由 `git status --porcelain -- srclib_jiayan/qcc_zh.jy` 实测）'
+             % ('**是** ⟹ 须同步 `$expected` 并满足下述判据' if src_dirty else '**否** ⟹ 条件步 **不适用**（plan 逐字：未改产物则本步不适用，须在日志里写明）'),
+             '#', '## 1. 闸 结果', '```', o.strip()[-900:], '```', '',
+             '## 2. 族表 对照（判据：逐族 不高于 起点族表）', '```', famtxt.strip(), '```', '',
+             '## 3. 判定'])
+    if m:
+        fails_ok = int(m.group(3)) <= 26
+        crash_ok = int(m.group(4)) == 0
+        up_ok = '★ 上升的族: 无' in famtxt
+        head.append('- `FAIL = %s ≤ 26` %s · `CRASH = %s` %s · 逐族 %s'
+                    % (m.group(3), '✅' if fails_ok else '❌', m.group(4), '✅' if crash_ok else '❌',
+                       '✅ 无上升' if up_ok else '❌ 有上升'))
+        head.append('- ⟹ **%s**' % ('不回归' if (fails_ok and crash_ok and up_ok) else '有回归'))
+    write(os.path.join(S, 'git_gate_final.log'), '\n'.join(head) + '\n')
+    print('  compile_par_result.txt ⟹ %s (源码 改动=%s)' % (m.group(0) if m else 'FAIL', src_dirty))
     return bool(m)
 
 
