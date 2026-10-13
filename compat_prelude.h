@@ -940,10 +940,10 @@ typedef void *LPVOID;  /* C12 (2026-09-17): Windows 通用指针类型 — 真�
 typedef const void *LPCVOID;  /* C12: Windows 常量指针类型 (配套) */
 #define LPDWORD DWORD*  /* Windows 指针类型宏 (fix 2026-08-15: LPDWORD undefined) */
 #define LPSTR char*  /* Windows ANSI 字符串指针 (fix 2026-08-15: LPSTR undefined) */
-#define LPCSTR const char*  /* Windows ANSI 常量字符串指针 */
+typedef const char *LPCSTR;  /* R798r: 见 下文 `typedef ... LPCWSTR` 的 说明 —— 原 此处 是 `#define LPCSTR const char*` (已 移 到 wchar_t 定义 之后, 改 typedef 形) */
 #define LPTSTR wchar_t*  /* Windows 通用字符串指针 (UNICODE 构建按 wchar_t; fix 2026-08-15: ipc-win32.c) */
 #define LPWSTR wchar_t*  /* Windows 宽字符串指针 */
-#define LPCWSTR const wchar_t*  /* Windows 宽常量字符串指针 */
+/* R798r (2026-10-13 虾米 · git wincred A9006): LPCSTR/LPCWSTR 的 `#define 常量 X*` 形 **占位** 于此? 否 —— 定义 移 到 下文 `wchar_t` typedef 之后 (见 LPCWSTR typedef), 因为 typedef 形 需要 `wchar_t` 已 注册。 */
 #define PSID void*  /* Windows SID 指针 (fix 2026-08-15: PSID undefined) */
 #define PACL void*  /* Windows ACL 指针 */
 #define PSECURITY_DESCRIPTOR void*  /* Windows 安全描述符指针 */
@@ -1474,6 +1474,8 @@ typedef long long intptr_t;
 typedef int pid_t;  /* POSIX pid_t (fix 2026-08-15: pid_t undefined) */
 typedef unsigned long long timestamp_t; /* Git 专用 (cache.h) */
 typedef unsigned short wchar_t; /* <wchar.h> 宽字符 (MSVC 16 位) */
+typedef const char *LPCSTR;  /* R798r (2026-10-13 虾米 · git contrib/credential/wincred A9006): Windows 常量字符串指针。**必须 是 typedef 而 非 `#define 常量 字符*`** —— 声明说明符 `常量` 作用于 **声明符表 的 每个 声明符** (C 6.7): `LPCSTR res = 空, pos;` 用 宏形 展开 后 `pos` 也 带 `常量` ⟹ 甲言 判 它 常量对象 ⟹ 后续 `pos = wcsstr(...)` 假 A9006; 真 Windows SDK 是 `typedef const char *LPCSTR;` ⟹ res/pos 都是 **非 const 指针** ⟹ 合法。gcc 交叉核对 (本机 MinGW 5.x): 宏形 **error: assignment of read-only variable 'pos'** / typedef 形 **CLEAN** ⟹ 宏形 是 预置头 的 口径 偏差 (PRE)。 */
+typedef const wchar_t *LPCWSTR; /* R798r: 同 LPCSTR (宽字符版)。 */
 typedef int BOOL; /* Windows BOOL (int, 32 位) */
 #define SEC_ENTRY /* Windows 调用约定宏 (空) */
 

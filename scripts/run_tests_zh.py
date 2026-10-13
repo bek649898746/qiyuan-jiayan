@@ -3566,6 +3566,15 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_irland_l1_ok.c',    # 刀五 正锚: 常量/转换/二元算术/装载存储 四类 一次驱动 (R715L1 7 44 42 50 336 5.000000 7 5 9)
 ]
+
+# R798f/g (2026-10-13 虾米 · git 全量打磨): **函数类型别名 的 指针 是 函数指针** (A9010 18 文件族) 正锚
+#   真载体: git builtin/commit-graph.c `parse_opt_subcommand_fn *fn` · trace2/tr2_ctr.c `tr2_tgt_evt_counter_t *fn_apply`
+#   病灶: 型定加函数指 不区分「函数类型别名」与「函数指针别名」⟹ `F1 *p` 被 多 记 一层 层级 ⟹ 假 A9010
+#   修法: 型定表 增 `是否函类型` 位 + 声明侧 五 条 路径 统一 层级 记账 (函类型别名 减 1)
+#   探针: _audit_inbox\20261013_虾米_12套起点表_闭环脚手架\evidence\probes\r798f_a9010_fntype\ (6 个 .c + run.log)
+CORE_FEAT += [
+    'scripts/feat_zh_r798f_fntype_alias_ok.c',    # 正锚: `类型定义 空 F1(整,整); F1 *p = …; p(…)` 与 `(*F2)(…)` 别名 各 一 驱动 (R798F FNTYPE ALIAS OK)
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
