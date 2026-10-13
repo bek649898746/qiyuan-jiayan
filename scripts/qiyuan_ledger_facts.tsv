@@ -1,0 +1,30 @@
+# 递刀台账 · 事实（**单一事实源** · SINGLE SOURCE OF TRUTH）
+# 约定: TAB 分隔 七列 —— id / 递刀 / 性质 / 状态(已解决|部分|未解决|作废) / 证据 / 复算 / 事实(key=value;…)
+# 事实 值 一律 **机器可复算**: 探针 key 由 scripts\qiyuan_ledger_probe.py 现役引擎 实测落 {SCRATCH}/logs/item_probes.tsv;
+# 门 key(zlib/bootstrap/anchors/git/gitfam/launch/p0/p0loud) 由 qiyuan_ledger_check.py 从 {SCRATCH} 日志 逐字 提取。
+# ⚠️ 人读视图（权威台账 / _DEBT_INDEX / 交接 / 回执）**一律** 由 scripts\qiyuan_ledger_render.py 从 本文件 生成 —— 禁止 手抄。
+# 状态 计数 由 本文件 的 状态 列 派生: 已解决 16 / 部分 1 / 未解决 3 / 作废 3（待核 恒 0）。
+GLOBAL	（全轮 公共 门 · 不 计入 计数）	不动点/门锚/端到端/zlib/git	已解决	{SCRATCH}/bootstrap_final.log;{SCRATCH}/anchor_final.log;{SCRATCH}/launch.log;{SCRATCH}/zlib_rescan.log;{SCRATCH}/compile_par_result.txt	build_zh.ps1 -NoSeed · run_tests_zh.py --only <受影锚> · qiyuan_ledger_probe.py · _r790_scan.py zlib	bootstrap=6CC7F2F1 · PASS;anchors=PASS=32 FAIL=0;launch=LAUNCH 870 55 · rc=0 ×2;zlib=15/15;git=total=563 OK=537 FAIL=26 CRASH=0;gitfam=无上升;p0=rc=0 ×2 一致;p0loud=rc=1 · A6017
+1	`20261011_刀_关键字赋值目标静默崩溃`	🔴静默 + 运行崩	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i01_kw_assign=rc1:A9001;i01b_ctrl=rc0
+2	`20261011_刀_未声明标识符赋值静默`	🔴静默丢写	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i02_undecl=rc1:A1001
+3	`20261011_刀_引用后声明全局静默`	🔴静默读 0/写丢	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i03_fwd=rc1:A1001
+4	`20261011_刀_类型词作参数名`	🔴静默错值（参数串位）	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i04_twparam=rc1:A9001
+5	`20261011_施工单_刀六参数位`	同 #4（参数位）	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i04_twparam=rc1:A9001
+6	`20261011_刀_内建串长与长度`	🔴静默错值 + 🟠诊断泄漏	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i06a_strlen=rc1:A9001;i06b_len=rc1:A9001
+7	`20261011_刀_IR两套表并存`（启灵）	关系裁决 + 施工	已解决	{SCRATCH}/ledger_final.md	台账 R715 族 已闭环（非单刀缺陷 · 抽块 编译通过）	-
+8	`20261011_仪器刀_检查器emoji致GBK崩`	🟠仪器（闸⑥假红）	已解决	{SCRATCH}/ledger_final.md	台账 R715B「大哥裁后三刀 + 仪器刀」已闭环	-
+9	`20261013_施工单_git全量回归_R707误报族`	施工单（P0）	已解决	{SCRATCH}/compile_par_result.txt;{SCRATCH}/logs/gitfam.txt	python {SCRATCH}\tools\gitfam.py {SCRATCH}\logs\start_git_result.txt {SCRATCH}\compile_par_result.txt	git=total=563 OK=537 FAIL=26 CRASH=0;gitfam=无上升
+10	`_C1-1_施工单.md`（9-25）	结构级施工单	已解决	{SCRATCH}/ledger_final.md	台账 C1 已闭环（探针矩阵 + 不动点链）	-
+11	`_C1B_施工单.md`（9-26）	C1/C2b/C7 同源主线	已解决	{SCRATCH}/ledger_final.md	台账 C1/C2b/C7 均记「已闭环 · 与 gcc 逐值一致」	-
+12	`20261011_刀_存储类关键词报错偏`	🟡报错方向引偏	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i12_kwvar=rc1:A9001;i12b_auto_ok=rc0;i12c_auto_kw=rc1:A9001;i12d_auto_ni=rc1:A6058
+13	`20261012_施工单v2_按甲言地基`	施工单（A 类收口 22 条 · 6 刀 IR）	未解决	{SCRATCH}/defect_evidence.log	主源 grep 内容锚（控式 39 / 段双 26 / 剩系 11 / 间再 6 / 隔系一 15）	-
+14	`20261012_递刀_真内核压测结果`	P0 新输入（内核 4144 文件）	已解决	{SCRATCH}/hang.log	python {SCRATCH}\tools\p0_final.py <终态引擎>	i14_p0=rc0;i14_hang_a=rc0;i14_hang_b=rc0;i14_loud_c=rc1:A6017;p0=rc=0 ×2 一致;p0loud=rc=1 · A6017
+15	`20261012_递刀_zlib回归与A6068定位`	🔴回归（15→9）	已解决	{SCRATCH}/zlib_rescan.log	python scripts\_r790_scan.py --cc <终态引擎> --parallel 4 zlib	zlib=15/15
+16	`20261012_递刀_假分支宏展开`	🔴同 #15 根因	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i16_em1=rc0;i16_de2=rc0;i16_de1=rc0;i16_em4=rc1:A6068;i16_em8=rc0;i16_em2=rc0;i16_em7=rc0;i16_de5=rc1:A6068;i16_de4=rc0
+17	`20261011_IR方案汇总递刀`	方案/阻塞清单	部分	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i17_vla=rc0
+18	`20261011_IR中端施工单v2合流版`	施工单（刀五/六…）	未解决	{SCRATCH}/defect_evidence.log	递刀 裁二「一节点多指令 表示法」未落定 ⟹ 刀五~刀七 不得动手	-
+19	`20261011_刀_AI九项上台次序`	排期（8 刀 G~N）	作废	{SCRATCH}/ledger_final.md	递刀 逐字「未占源 · 未改 qcc_zh.jy 一字节」⟹ 非缺陷（排期图）	-
+20	`20261011_刀_LLM优化作业面与合格线`	方案（6 刀 + 依赖链）	作废	{SCRATCH}/ledger_final.md	递刀 逐字「批一 全部产出 为 文档/清单，零 编译器 改动」⟹ 非缺陷（方案）	-
+21	`20261011_施工单8刀复查`	复查报告	未解决	{SCRATCH}/defect_evidence.log	递刀 自带判定表：刀一 已做（R696 · 提交 311c56da）· 刀二~六 未做	-
+22	`20261012_施工单_A9001根因_函数体内include`	施工单	已解决	{SCRATCH}/logs/item_probes.tsv	python scripts\qiyuan_ledger_probe.py {SCRATCH}	i22_min=rc0;i22_infback=rc0;i22_inflate=rc0
+23	`20261012_施工单_A类收口`	施工单 v1	作废	{SCRATCH}/ledger_final.md	文档 自述「已 被 v2 取代（2026-10-12 03:3x）· 留底 不删」	-
