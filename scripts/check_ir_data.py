@@ -12,7 +12,8 @@ import io, os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-S = r'C:\Users\ADMINI~1\AppData\Local\Temp\grok-goal-bc44933af5ae\implementer'
+# 修（IR 打磨 goal）: 同 check_ir_shadow.py —— 原硬编码 已消失 goal 的 scratch ⟹ 改 **自足**。
+S = os.environ.get('QCC_IR_SCRATCH') or os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-shadow')
 os.makedirs(S, exist_ok=True)
 TBL = os.path.join(QJ, '_audit_inbox', '20261011_虾米回执_IR层落位_虾米', 'R716A_L0对应L1对照表.md')
 SRC = os.path.join(QJ, 'srclib_jiayan', 'qcc_zh.jy')

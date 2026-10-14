@@ -10,7 +10,9 @@ import io, os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-S = r'C:\Users\ADMINI~1\AppData\Local\Temp\grok-goal-bc44933af5ae\implementer'
+# 修（IR 打磨 goal）: 原 **硬编码 某 已消失 goal 的 scratch**（`grok-goal-bc44933af5ae`）⟹ 语料写不进、
+# 永远「缺件」⟹ 判据 3「自带检查器 全部退出码 0」**不可能满足**。改 **自足**（env 或 临时目录）。
+S = os.environ.get('QCC_IR_SCRATCH') or os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-shadow')
 os.makedirs(S, exist_ok=True)
 CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(QJ, 'qcc_zh_v2.exe')
 
