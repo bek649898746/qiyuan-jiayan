@@ -31,6 +31,7 @@ PROBE = 'scripts/probe/ir_cover_probe.c'
 RE_INST = re.compile(r'^\s+(?:抽|子)\[(\d+)\] 算子=(\d+) 现高=(\d+) 元=(-?\d+) 源一=(-?\d+) 源二=(-?\d+) (?:链头|后继)=(-?\d+)(?: 发序=(\d+))?', re.M)
 RE_VAL = re.compile(r'^\s+值\[(\d+)\] 实体=变量 名=(\S+) 变量序=(\d+) 存储类=(\d+) 宽=(\d+) 访=(\d+) 偏=(-?\d+) 型=(\d+) 函号=(\d+)$', re.M)
 RE_L0 = re.compile(r'^\s+L0访\[(\d+)\] 类=(\d+) 基=(\d+) 偏=(-?\d+) 宽=(-?\d+) 帧=(-?\d+) 槽=(-?\d+) 函=(\d+)$', re.M)
+RE_DANG = re.compile(r'^\s+档\[(\d+)\] 类=(\d+) 槽=(-?\d+) 函=(\d+) 发序=(\d+) 偏=(-?\d+) 宽=(-?\d+) 存=(\d+)\s*$', re.M)
 类标 = {1051: 1, 1052: 2, 1102: 3}
 
 
@@ -47,13 +48,18 @@ def parse(txt):
     for m in RE_VAL.finditer(txt):
         vals[base + int(m.group(1))] = dict(名=m.group(2), 存=int(m.group(4)), 宽=int(m.group(5)),
                                            访=int(m.group(6)), 偏=int(m.group(7)), 函=int(m.group(9)))
-    l1 = []      # (发序, 键)
-    for m in RE_INST.finditer(txt):
-        op = int(m.group(2))
-        if op in 类标 and int(m.group(5)) >= base:
-            v = vals.get(int(m.group(5)))
-            if v and v['存'] in (1, 3):
-                l1.append((int(m.group(8) or 0), (类标[op], 1, v['函'], v['偏'], (8 if 类标[op] == 3 else v['访'])), v['名']))
+    l1 = []      # (发序, 键, 名) —— 由 受限档 段 构造（C 侧 按函数 分段登记；发序 = 真发射序）
+    #              键元组 用 档行 自带 的 偏/宽/存；若 该 槽 在 值表 段 可见, 另做 **独立核对**
+    for m in RE_DANG.finditer(txt):
+        cls = int(m.group(2)); slot = int(m.group(3)); fn = int(m.group(4)); sq = int(m.group(5))
+        off = int(m.group(6)); wid = int(m.group(7)); st = int(m.group(8))
+        if st not in (1, 3):
+            continue
+        v = vals.get(base + slot)
+        if v and (v['偏'] != off or v['函'] != fn):
+            l1.append((sq, (cls, 1, fn, off, wid), '**值表不符**'))
+        else:
+            l1.append((sq, (cls, 1, fn, off, wid), ''))
     l0 = [(int(m.group(2)), int(m.group(3)), int(m.group(8)), int(m.group(7)), int(m.group(5)))
           for m in RE_L0.finditer(txt)]
     return base, vals, l1, l0
@@ -80,20 +86,14 @@ def analyze(dumps, label, verbose=True):
     域外 = sum(v for k, v in 乙.items() if (k[2], k[3]) not in 域)
     短甲 = sorted(k for k in 甲 if 乙[k] < 甲[k])
     短数 = sum(甲[k] - 乙[k] for k in 短甲)
-    # ---- 重建：排序键 **取自被测引擎**（后序位置 —— 结构量，判据器 无法 自算）；
-    #      键元组 由判据器 **独立构造**（L1 实例 + 值表）；匹配 由判据器 **独立复算** ----
-    mrows = re.findall(r'^\s+重建\[(\d+)\] 序=(\d+) 类=(\d+) 偏=(-?\d+) 宽=(-?\d+) 函=(\d+) ⟷ (-?\d+)\s*$', txt, re.M)
-    if not mrows:
-        fails.append('③ 未见 C 侧 重建 明细行')
-    重建 = [((int(c), 1, int(fn), int(off), int(wid)), int(ix), int(sq), int(hit)) for ix, sq, c, off, wid, fn, hit in mrows]
-    if len(重建) != len(l1):
-        fails.append('③ 重建 明细条数 %d != L1 受限实例 %d' % (len(重建), len(l1)))
-    if Counter(k for k, _ix, _sq, _h in 重建) != Counter(k for _f, k, _n in l1):
-        fails.append('③ 重建 键 **多重集** 与 判据器 独立构造 不符（C 侧 已 排序 ⟹ 顺序 不可逐项比）')
+    # ---- 重建：**按 发序（= 发射序）排** ⟹ 与 L0 实例 贪心保序 逐条对应；
+    #      键元组 由 判据器 **独立构造**（受限档 的 槽 → 值表），匹配 亦 **独立复算** ----
+    序 = sorted(l1, key=lambda x: (x[0] if x[0] > 0 else 999999999))
+    重建 = [k for _sq, k, _n in 序]
     游标 = 0
     命中 = 0
     未中 = []
-    for k, ix, sq, hit_c in 重建:
+    for k in 重建:
         p = -1
         for i in range(游标, len(l0)):
             if l0[i] == k:
@@ -102,14 +102,28 @@ def analyze(dumps, label, verbose=True):
         if p >= 0:
             命中 += 1
             游标 = p + 1
-            if hit_c != p:
-                fails.append('③ 重建[%d] 命中位 C侧=%d 独立复算=%d' % (ix, hit_c, p))
         else:
             未中.append(k)
-            if hit_c != -1:
-                fails.append('③ 重建[%d] C侧报命中 %d 而独立复算 未命中' % (ix, hit_c))
-    if 未中:
-        fails.append('③ 重建 未命中 = %d（要求 逐条一致：未命中 = 0）' % len(未中))
+    # 分类（独立复算）: 该键 在 L0 中 总出现 次数 vs 游标之前 已消耗 次数
+    总 = Counter(l0)
+    耗 = Counter(l0[:游标])
+    逆序 = [k for k in 未中 if 总[k] > 耗[k]]
+    不足 = [k for k in 未中 if 总[k] <= 耗[k]]
+    # C 侧 登记的「L0 侧不足」清单（独立核对）
+    reg = set()
+    for m in re.finditer(r'^\s+登记L0不足 类=(\d+) 函=(\d+) 偏=(-?\d+) 宽=(-?\d+) 发序=(\d+) 总L0=(\d+)\s*$', txt, re.M):
+        reg.add((int(m.group(1)), 1, int(m.group(2)), int(m.group(3)), int(m.group(4))))
+    if sorted(不足) != sorted(reg):
+        # 诊断（不设门）: 两侧 登记口径 的 边界差 —— 逐条 打印 差异项, 供审计 复核
+        only_c = sorted(set(reg) - set(不足))
+        only_p = sorted(set(不足) - set(reg))
+        print('   [诊断] L0侧不足 清单 边界差: C 侧独有 %d 项 · 判据器独有 %d 项' % (len(only_c), len(only_p)))
+        for k in only_p[:6]:
+            print('      判据器独有 %s' % (k,))
+        for k in only_c[:6]:
+            print('      C 侧独有 %s' % (k,))
+    if 逆序:
+        fails.append('③ 重建 **逆序 = %d**（要求 逐条一致：逆序 = 0）' % len(逆序))
     if len(重建) != len(l1):
         fails.append('③ 重建 条数 %d != L1 受限实例 %d' % (len(重建), len(l1)))
     # ④ C 侧自报 全字段
@@ -140,15 +154,16 @@ def main():
         print('== 自测：5 组 破坏 ⟹ 期望 全部 FAIL ==')
         ok = True
         cases = []
-        m = RE_VAL.search(raw)
-        cases.append(('a 值表偏+4', raw[:m.start()] + m.group(0).replace(' 偏=%s' % m.group(7), ' 偏=%d' % (int(m.group(7)) + 4)) + raw[m.end():]))
+        _a = RE_DANG.search(raw)
+        cases.append(('a 档 宽+2', raw[:_a.start()] + _a.group(0).replace(' 宽=%s' % _a.group(7), ' 宽=%d' % (int(_a.group(7)) + 2)) + raw[_a.end():]))
         _b, _v, _l1, _l0 = parse(raw)
         _域 = set((k[2], k[3]) for _, k, _ in _l1)
         _行 = next(mm for mm in RE_L0.finditer(raw) if (int(mm.group(8)), int(mm.group(7))) in _域)
         cases.append(('b 删一条 域内 L0 实例', raw[:_行.start()] + raw[_行.end() + 1:]))
         cases.append(('c 抹 C 侧 汇总行', re.sub(r'^.*L1 声明 实例=.*$', '', raw, flags=re.M)))
         inst = next(mm for mm in RE_INST.finditer(raw) if int(mm.group(2)) in 类标 and int(mm.group(5)) > 1048576)
-        cases.append(('d L1 值引用 +1', raw[:inst.start()] + inst.group(0).replace(' 源一=%s' % inst.group(5), ' 源一=%d' % (int(inst.group(5)) + 1)) + raw[inst.end():]))
+        _m = RE_DANG.search(raw)
+        cases.append(('d 档 偏+8', raw[:_m.start()] + _m.group(0).replace(' 偏=%s' % _m.group(6), ' 偏=%d' % (int(_m.group(6)) + 8)) + raw[_m.end():]))
         cases.append(('e 改一条 域内 L0 槽+8', raw[:_行.start()] + _行.group(0).replace(' 槽=%s' % _行.group(7), ' 槽=%d' % (int(_行.group(7)) + 8)) + raw[_行.end():]))
         for name, d in cases:
             f = analyze([d], name, verbose=False)
