@@ -68,8 +68,10 @@ if cnt['有码'] + cnt['无理由'] != len(A):
 # ---------- ② 读变量 ----------
 src = io.open(SRC, encoding='utf-8-sig', errors='replace').read()
 has_code = bool(re.search(r'#define\s+抽载\s+\d+', src))
-has_emit = '例 节点_变量: { ' in src and '发抽象(数, 抽载, 数, -1, 0);' in src
-print('② 读变量：`抽载` 有 #define = %s · `例 节点_变量` 有发射点 = %s %s' % (
+# 开炮 IR 层 (2026-10-14 虾米): 判据②-静态 的 **形态** 由 `源一 = -1`（无身份登记）**升级**为
+# **值引用**（`值节点引用(...)` ⟹ 值表 可反查 实体/存储类/宽/基偏移）—— 发射点 仍在，且 更强。
+has_emit = '例 节点_变量: { ' in src and '发抽象(数, 抽载, 数, 值节点引用(' in src
+print('② 读变量：`抽载` 有 #define = %s · `例 节点_变量` 有发射点(值引用形) = %s %s' % (
     has_code, has_emit, '✓' if (has_code and has_emit) else '✗'))
 if not (has_code and has_emit):
     fails.append('判据②-静态')
