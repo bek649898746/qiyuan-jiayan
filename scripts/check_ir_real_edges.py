@@ -22,7 +22,11 @@ QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-knives')      # 探针 目录（检查器 既有 约定）
 BLK = re.compile(r'块\[(\d+)\] 始=(-?\d+) 终一=(-?\d+) 后继数=(\d+) 后继0=(-?\d+) 回边=(\d+) 首控式=(\d+)'
                  r'(?: 前驱数=(\d+) 前驱0=(-?\d+))?'
-                 r'(?: 后继1=(-?\d+) 回边目标=(-?\d+) 断目标=(-?\d+) 继续目标=(-?\d+))?')
+                 r'(?: 后继1=(-?\d+) 断目标=(-?\d+) 继续目标=(-?\d+))?')
+# ⚠️ 字段序 必须与 qcc_zh.jy 的 块行 **逐字一致**：引擎 打
+#    `后继1=%d 断目标=%d 继续目标=%d`（**无** `回边目标` —— 回边 改由 独立 `IR CFG 回边表` 段 承载）。
+#    首版 正则 误把 `回边目标` 写进 可选组 ⟹ 真实 dump 上 整组 失配 ⟹ succ1/brk/cont **全 None**
+#    ⟹ 判据④ **从不评估** 任何 断/继续 目标 = 恒过（skeptic 以 「brk/cont 非 None 的块 = 0」 为证）。
 
 
 def parse(dump):
@@ -34,9 +38,8 @@ def parse(dump):
                          succ0=int(g[4]), backed=int(g[5]), ctrl=int(g[6]),
                          npred=(int(g[7]) if g[7] is not None else None),
                          succ1=(int(g[9]) if g[9] is not None else None),
-                         back_tgt=(int(g[10]) if g[10] is not None else None),
-                         brk=(int(g[11]) if g[11] is not None else None),
-                         cont=(int(g[12]) if g[12] is not None else None)))
+                         brk=(int(g[10]) if g[10] is not None else None),
+                         cont=(int(g[11]) if g[11] is not None else None)))
     seg = {}
     m = re.search(r'非落空边\(goto 真边\) = (\d+)', dump)
     seg['nonfall'] = int(m.group(1)) if m else None
@@ -44,8 +47,10 @@ def parse(dump):
     seg['nblk'] = int(m.group(1)) if m else None
     # 待回填 登记：**项级**（块号, 项）—— 段标题 与 块号 在 不同行 ⟹ 全 dump 搜；
     #   ⚠️ 粒度 = (块, 项)：块级集合 会 让「该块登记了 条件假路」**救回**「该块 继续 待回填」（自测 破坏④ 抓出）
-    seg['pending'] = set((int(a), b) for a, b in
-                         re.findall(r'块\[(\d+)\] (断|继续|条件假路) 目标 待回填', dump))
+    #   ⚠️ 措辞 必须与 引擎 dump **逐字对齐**：引擎 打 `块[N] 断目标 待回填` / `块[N] 继续目标 待回填`
+    #      （**"断目标" 连写**）与 `块[N] 条件假路 目标 待回填`（**有空格**）—— 两种 形态 都要 收。
+    seg['pending'] = set((int(a), ('条件假路' if b.startswith('条件假路') else b.rstrip('目标')))
+                         for a, b in re.findall(r'块\[(\d+)\] (断目标|继续目标|条件假路 目标) 待回填', dump))
     seg['has_pending_sec'] = ('IR 待回填 登记' in dump)
     # 回边表: `回边 块[u]→块[v]`（u = 源块 · v = 目标块）
     seg['back_edges'] = set((int(a), int(b)) for a, b in re.findall(r'回边 块\[(\d+)\]→块\[(\d+)\]', dump))
@@ -89,26 +94,45 @@ def judge(dump):
         else:
             rep.append('② 条件块（%d）后继数==2 或 显式登记 ✓（其中 显式登记 = %d）' % (len(cond), len(reg2)))
 
-    # ③ 循环块（首控式==1 = 循环头）必须 **有回边指回它** —— 且 回边源 在 它 **之后**（块号更大，
-    #    块号 按 节点序 递增 ⟹ 块号大 = 程序序 靠后）。语义：从 循环体末尾 回到 循环头。
+    # ③ 回边 —— **三层**（skeptic 指出 首版 ① 是 **构造性恒真** ⟹ 补 ②③ 使其 有 判别力）:
+    #   ① 每个 `控式==1`（循环头）块 必须 有回边指回 —— **构造性**（引擎 注入自环 满足；如实标注）
+    #   ② **非 `控式==1` 的块 不得有自环** —— 引擎 若 把 自环 错注入 到 普通块 ⟹ FAIL
+    #   ③ **回边表 每条 `u→v` 必须是 真实 CFG 边**（`v ∈ 块[u]` 的 后继集）—— 假表/错表 ⟹ FAIL
     loop = [b for b in blks if b['ctrl'] == 1]
+    succ_of = {}
+    for b in blks:
+        s = []
+        if b['nsucc'] > 0 and b['succ0'] is not None and b['succ0'] >= 0:
+            s.append(b['succ0'])
+        if b['succ1'] is not None and b['succ1'] >= 0:
+            s.append(b['succ1'])
+        if b['ctrl'] == 1:
+            s.append(b['n'])            # 引擎 注入的 循环头 自环（真边 ⟹ 也进 后继集）
+        succ_of[b['n']] = s
+    ctrl1 = set(b['n'] for b in loop)
     if not loop:
         bad.append('③ 无 首控式==1 的块（探针 含 循环 ⟹ 疑 dump 段缺）')
         rep.append('③ 循环块 = 0 ❌')
+    elif not seg['has_back_sec']:
+        bad.append('③ dump **无** `IR CFG 回边表` 段 ⟹ 回边 不可判（%d 个 循环头）' % len(loop))
+        rep.append('③ 回边表 **段缺失** ❌')
     else:
-        if not seg['has_back_sec']:
-            bad.append('③ dump **无** `IR CFG 回边表` 段 ⟹ 回边 不可判（%d 个 循环头）' % len(loop))
-            rep.append('③ 回边表 **段缺失** ❌')
-        else:
-            bad3 = [h for h in loop if not any(v == h['n'] for (u, v) in seg['back_edges'])]
-            if bad3:
-                h = bad3[0]
-                bad.append('③ 循环头 无 回边 指回：%d/%d 个（例：块[%d] 始=%d）'
-                           % (len(bad3), len(loop), h['n'], h['start']))
-                rep.append('③ 循环头（%d 个）有回边指回：%d 个不符 ❌' % (len(loop), len(bad3)))
-            else:
-                rep.append('③ 循环头（%d 个）均有回边指回 ✓（回边表 %d 条）'
-                           % (len(loop), len(seg['back_edges'])))
+        be = seg['back_edges']
+        bad3a = [h for h in loop if not any(v == h['n'] for (u, v) in be)]
+        bad3b = [(u, v) for (u, v) in be if u == v and u not in ctrl1]
+        bad3c = [(u, v) for (u, v) in be if v not in succ_of.get(u, [])]
+        if bad3a:
+            h = bad3a[0]
+            bad.append('③① 循环头 无回边指回：%d/%d（例 块[%d] 始=%d）' % (len(bad3a), len(loop), h['n'], h['start']))
+        if bad3b:
+            bad.append('③② **非循环块** 出现自环：%d 处（例 块[%d]→块[%d]）'
+                       % (len(bad3b), bad3b[0][0], bad3b[0][1]))
+        if bad3c:
+            bad.append('③③ 回边表 有 **非真实边**：%d 处（例 块[%d]→块[%d]，后者 不在 前者 后继集 %s）'
+                       % (len(bad3c), bad3c[0][0], bad3c[0][1], succ_of.get(bad3c[0][0])))
+        if not (bad3a or bad3b or bad3c):
+            rep.append('③ 回边 三层 ✓：循环头（%d）均有回边指回〔**构造性**〕· 非循环块 无自环 · 回边表 %d 条**全为真实边**'
+                       % (len(loop), len(be)))
 
     # ④ 断/继续 目标：已回填 或 显式登记
     #    语义（避免 歧义）: `-1` = 该块 **无** 该节点（跳过）· `-2` = 有该节点 但 **未回填**（须登记）· `>=0` = 已回填
@@ -168,9 +192,9 @@ def selftest():
             '-- IR CFG 回边表 --\n'
             '回边 块[1]→块[1]\n')
     ok = head + (
-        '  块[0] 始=0 终一=4 后继数=2 后继0=1 回边=0 首控式=2 前驱数=0 前驱0=-1 后继1=2 回边目标=-1 断目标=-1 继续目标=-1\n'
-        '  块[1] 始=5 终一=8 后继数=1 后继0=2 回边=1 首控式=1 前驱数=2 前驱0=0 后继1=-1 回边目标=-1 断目标=2 继续目标=-1\n'
-        '  块[2] 始=9 终一=9 后继数=1 后继0=1 回边=0 首控式=0 前驱数=2 前驱0=1 后继1=-1 回边目标=-1 断目标=-1 继续目标=-1\n')
+        '  块[0] 始=0 终一=4 后继数=2 后继0=1 回边=0 首控式=2 前驱数=0 前驱0=-1 后继1=2 断目标=-1 继续目标=-1\n'
+        '  块[1] 始=5 终一=8 后继数=2 后继0=2 回边=1 首控式=1 前驱数=2 前驱0=0 后继1=1 断目标=2 继续目标=-1\n'
+        '  块[2] 始=9 终一=9 后继数=1 后继0=1 回边=0 首控式=0 前驱数=2 前驱0=1 后继1=-1 断目标=-1 继续目标=-1\n')
     cases = [
         ('基线（合规）', ok, False),
         ('破坏① 非落空边=0', head.replace('= 2', '= 0', 1) + ok.split('\n', 7)[7], True),
@@ -183,6 +207,10 @@ def selftest():
         ('破坏④ 继续目标未回填且无登记',
          ok.replace('  块[1] 继续目标 待回填（源内 无 循环上下文）\n', '')
            .replace('继续目标=-1', '继续目标=-2', 1), True),
+        # 破坏⑤：**非循环块 自环**（`控式==1` 之外 出现自环 ⟹ ③② 必须 FAIL）
+        ('破坏⑤ 非循环块自环', ok.replace('回边 块[1]→块[1]', '回边 块[0]→块[0]', 1), True),
+        # 破坏⑥：回边表 写 **非真实边**（块[0] 的后继集 = [1,2]，不含 块[1] 之外的 … 用 块[2]→块[0] 造 假）
+        ('破坏⑥ 回边表 非真实边', ok + '回边 块[2]→块[0]\n', True),
     ]
     print('=== 内置 负向测试（判据 必须 能失败）===')
     allok = True
