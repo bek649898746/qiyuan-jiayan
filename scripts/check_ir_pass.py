@@ -50,7 +50,9 @@ o2 = dump_once('kw5_b.exe')
 
 
 def seg(t):
-    i = t.find('-- IR pass 失效尺')
+    # 刀九 (2026-10-14 虾米): 段 起点 由 `IR pass 失效尺` 上移到 **`IR L1 抽象指令`** ⟹ 可重入 判据
+    # 覆盖 **整个 IR 段**（L1 指令表 + 常量折叠 pass 段 + 影子对账 + def-use + 失效尺/记录表）。
+    i = t.find('-- IR L1 抽象指令')
     j = t.find('-- IR CG 块表') if '-- IR CG 块表' in t else t.find('-- IR CFG 块表')
     return t[i:j] if i >= 0 and j > i else ''
 
@@ -61,6 +63,25 @@ print('③ 可重入（两次编译 该段 逐字节相同）: %s' % ('✓' if o
 if not ok3:
     fails.append('判据③')
 
+# ④ 刀九 (2026-10-14 虾米): **首个真实 IR pass = L1 常量折叠** 必须真跑、真生效
+#    · dump 里有 `-- IR pass 常量折叠 … 生效条数=N` 且 N > 0（不是 恒等空变换）
+#    · 逐条 前后差异 行 数 == N（可复算：不是只报个数）
+#    · pass 记录表里 末丙=9101 的 结果数 == N（注册记录 与 实测 对上）
+m4 = re.search(r'-- IR pass 常量折叠 .*?生效条数=(\d+)', o1)
+if not m4:
+    print('④ 未见 常量折叠 段'); fails.append('判据④ 缺段')
+else:
+    nfold = int(m4.group(1))
+    rows4 = re.findall(r'^\s+折叠\[(\d+)\] 节=(\d+) 原码=(\d+) \(值甲=(-?\d+) 值乙=(-?\d+)\)', o1, re.M)
+    rec = re.search(r'pass\[(\d+)\] 末丙=9101 结果数=(-?\d+)', o1)
+    ok4 = (nfold > 0 and len(rows4) == nfold and rec is not None and int(rec.group(2)) == nfold)
+    print('④ 常量折叠 pass: 生效条数=%d 差异行=%d 注册(末丙=9101)结果数=%s %s'
+          % (nfold, len(rows4), rec.group(2) if rec else '缺', '✓' if ok4 else '✗'))
+    for r in rows4[:4]:
+        print('     差异: 节=%s 原码=%s (甲=%s 乙=%s)' % (r[1], r[2], r[3], r[4]))
+    if not ok4:
+        fails.append('判据④')
+
 print()
-print('[%s] R715R 刀五 判据 %s' % ('PASS' if not fails else 'FAIL', '' if not fails else fails))
+print('[%s] R715R 刀五 判据 + 刀九 判据④ %s' % ('PASS' if not fails else 'FAIL', '' if not fails else fails))
 sys.exit(0 if not fails else 1)
