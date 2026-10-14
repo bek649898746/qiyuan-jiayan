@@ -228,3 +228,32 @@ ft_m9.txt
 
 # 内部材料：缺口探针记录，不公开
 probes/
+# 施工期一次性脚本（2026-10-15 按上传SOP清出索引，本地保留）
+scripts/_find_*.py
+scripts/_calc_*.py
+scripts/_disasm_*.py
+scripts/_dump_*.py
+scripts/_diff_*.py
+scripts/_cmp_*.py
+scripts/_chk_*.py
+scripts/_dbg_*
+scripts/_qemu_*.sh
+scripts/_boot_qemu.sh
+scripts/_build_iso.sh
+scripts/_mtx509.ps1
+scripts/_bisect_*.py
+scripts/_bis_trigger.py
+scripts/_ctx_*.py
+scripts/_patch_*.py
+scripts/_copyr*.py
+scripts/_count_*.py
+scripts/_s2048*.py
+scripts/_gdb_*.py
+scripts/_list_*.py
+scripts/_missi*.py
+scripts/_fix_e*.py
+scripts/_mnemo*.py
+scripts/_retry*.py
+scripts/_strtb*.py
+scripts/_t10_*.c
+csmoke/
