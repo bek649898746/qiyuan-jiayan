@@ -84,15 +84,30 @@ def judge(dump):
         bad.append('② 无 首控式==2 的块（探针 含 条件 ⟹ 疑 dump 段缺）')
         rep.append('② 条件块 = 0 ❌')
     else:
-        reg2 = [b for b in cond if b['nsucc'] == 1 and (b['n'], '条件假路') in seg['pending']]
-        bad2 = [b for b in cond if b['nsucc'] != 2 and (b['n'], '条件假路') not in seg['pending']]
+        # ②a：`后继数==2` **且 后继1 必须 严格前向（> 块号）且 ≠ 后继0** —— 否则 必须 显式登记。
+        #   ⚠️ 首版 只查 `==2` ⟹ **11 个 伪自环**（`后继1 == 块号`）被 当 合规 ⟹ 「62 块真连」**虚高**
+        #      （skeptic 实测：`块[156] … 后继数=2 后继0=157 … 后继1=156`，亦 157/178/369）。
+        def ok2(b):
+            if b['nsucc'] != 2:
+                return False
+            s1 = b['succ1']
+            return (s1 is not None and s1 > b['n'] and s1 != b['succ0'])
+        reg2 = [b for b in cond if (b['n'], '条件假路') in seg['pending']]
+        bad2 = [b for b in cond if not ok2(b) and (b['n'], '条件假路') not in seg['pending']]
+        # ②b：**全局** —— 非 `控式==1` 的块 不得 有 **伪自环**（`后继1 == 自身`）
+        bad2c = [b for b in blks if b['succ1'] is not None and b['succ1'] == b['n'] and b['ctrl'] != 1]
         if bad2:
             b = bad2[0]
-            bad.append('② 条件块：%d 个 后继数!=2 **且 未登记**（例：块[%d] 后继数=%d）'
-                       % (len(bad2), b['n'], b['nsucc']))
-            rep.append('② 条件块（%d）后继数==2 或 显式登记：%d 个不符 ❌' % (len(cond), len(bad2)))
-        else:
-            rep.append('② 条件块（%d）后继数==2 或 显式登记 ✓（其中 显式登记 = %d）' % (len(cond), len(reg2)))
+            bad.append('② 条件块：%d 个 既非「后继数==2 且 后继1 严格前向且≠后继0」也**未登记**'
+                       '（例 块[%d] 后继数=%d 后继0=%s 后继1=%s）'
+                       % (len(bad2), b['n'], b['nsucc'], b['succ0'], b['succ1']))
+        if bad2c:
+            bad.append('②b **伪自环**：%d 个 非循环块 的 `后继1 == 自身`（例 块[%d]）'
+                       % (len(bad2c), bad2c[0]['n']))
+        if not (bad2 or bad2c):
+            real2 = [b for b in cond if ok2(b)]
+            rep.append('② 条件块（%d）：**%d 块 有 真两路**（后继1 严格前向且≠后继0）· %d 块 显式登记 · **伪自环 0** ✓'
+                       % (len(cond), len(real2), len(reg2)))
 
     # ③ 回边 —— **三层**（skeptic 指出 首版 ① 是 **构造性恒真** ⟹ 补 ②③ 使其 有 判别力）:
     #   ① 每个 `控式==1`（循环头）块 必须 有回边指回 —— **构造性**（引擎 注入自环 满足；如实标注）
@@ -211,6 +226,10 @@ def selftest():
         ('破坏⑤ 非循环块自环', ok.replace('回边 块[1]→块[1]', '回边 块[0]→块[0]', 1), True),
         # 破坏⑥：回边表 写 **非真实边**（块[0] 的后继集 = [1,2]，不含 块[1] 之外的 … 用 块[2]→块[0] 造 假）
         ('破坏⑥ 回边表 非真实边', ok + '回边 块[2]→块[0]\n', True),
+        # 破坏⑦：**伪自环** —— 条件块 的 `后继1` 设成 **自身**（skeptic 实测 的 11 处 形态）⟹ ② 与 ②b 必须 FAIL
+        ('破坏⑦ 条件块 后继1==自身（伪自环）', ok.replace('块[0] 始=0 终一=4 后继数=2 后继0=1 回边=0 首控式=2',
+                                                       '块[0] 始=0 终一=4 后继数=2 后继0=1 回边=0 首控式=2', 1)
+                                                  .replace('后继1=2 断目标=-1', '后继1=0 断目标=-1', 1), True),
     ]
     print('=== 内置 负向测试（判据 必须 能失败）===')
     allok = True
