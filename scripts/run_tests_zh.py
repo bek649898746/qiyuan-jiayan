@@ -3151,8 +3151,8 @@ CORE_FEAT += [
 # R568 (2026-10-08 虾米 · C类攻坚 批C-U): **12/247 调用约定控制** —— 定案(x64 单一约定) + 响亮拒绝 A6096
 CORE_FEAT += [
     'scripts/feat_zh_conv247_ok.c',             # 12/247 零误伤控制锚: 普通函数/调用照常 ⟹ CC247 7 (A6096 只拦调用约定词)
-    'scripts/feat_zh_conv247_stdcall_neg.c',    # 12/247 负锚: `__stdcall` ⟹ A6096
-    'scripts/feat_zh_conv247_fastcall_neg.c',   # 12/247 负锚: `__fastcall` ⟹ A6096
+    'scripts/feat_zh_conv247_stdcall_ok.c',   # C3 (2026-10-15 虾米): 定案反转 —— __stdcall **收下**（x64 唯一约定; zlib zconf.h __stdcall×9 ⟹ 拒绝会打断 7 套基线之一）    # 12/247 负锚: `__stdcall` ⟹ A6096
+    'scripts/feat_zh_conv247_fastcall_ok.c',  # C3: 同上（__fastcall 收下）; 中文词形 调用约定 仍 A6096（feat_zh_conv247_cdecl_neg.c 钉死）   # 12/247 负锚: `__fastcall` ⟹ A6096
     'scripts/feat_zh_conv247_cdecl_neg.c',      # 12/247 负锚: `调用约定`(中文词形) ⟹ A6096
 ]
 # R569 (2026-10-08 虾米 · C类攻坚 批C-V): **8/186 编译期哈希真接入** —— `编译期 哈希("文本")` ⟹ 编译期 FNV-1a 32 位常量
