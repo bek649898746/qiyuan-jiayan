@@ -13,6 +13,7 @@
 - [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)：C 子集支持矩阵与已知限制（勿把已知限制当 bug 报）
 - [AGENTS.md](AGENTS.md)：给 AI coding agent 的项目硬约束（编码铁律 / 自举判据 / 目录职责）
 - [manual/多语言实现.md](manual/多语言实现.md)：**用甲言写了九条语言线的解释器**（JS/JVM/Java/Python/Go/Rust/TS/C++/C#，329 用例 / 326 通过）+ 验收口径与局限
+- [manual/多语言实现方法.md](manual/多语言实现方法.md)：**怎么写** —— 19 条可复用手法 + 指令集跨线累积 + 3 条方法论教训 + 6 条流程铁律
 - [manual/数据口径与核验方法.md](manual/数据口径与核验方法.md)：本文所有数字的**口径与核验命令**，含「无法核验项」的诚实标注
 
 ## 关键事实

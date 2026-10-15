@@ -8,7 +8,8 @@
 > | **查中文关键字（42 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
 > | **用 AI 分析代码**（知识图谱 · 结构化诊断） | [`manual/AI快速上手.md`](manual/AI快速上手.md) |
 > | **核验本文所有数字**（口径 + 核验命令） | [`manual/数据口径与核验方法.md`](manual/数据口径与核验方法.md) |
-> | **看甲言写了哪九种语言** | [`manual/多语言实现.md`](manual/多语言实现.md) |
+> | **看甲言写了哪九种语言**（成果） | [`manual/多语言实现.md`](manual/多语言实现.md) |
+> | **看怎么写**（19 条可复用手法 + 流程铁律） | [`manual/多语言实现方法.md`](manual/多语言实现方法.md) |
 > | **给 AI coding agent 的项目约定** | [`AGENTS.md`](AGENTS.md) · [`llms.txt`](llms.txt) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
