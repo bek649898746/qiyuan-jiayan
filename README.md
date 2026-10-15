@@ -11,7 +11,8 @@
 > | **看甲言写了哪九种语言**（成果） | [`manual/多语言实现.md`](manual/多语言实现.md) |
 > | **看怎么写**（19 条可复用手法 + 流程铁律） | [`manual/多语言实现方法.md`](manual/多语言实现方法.md) |
 > | **查 290 项机制逐项清单**（✅/🟡/❌ 逐条标注） | [`manual/特性清单.md`](manual/特性清单.md) |
-> | **想用甲言的库 / 工具**（基础库 · 审计工具） | [`jylib/README.md`](jylib/README.md) · [`tools/jyaudit/README.md`](tools/jyaudit/README.md) |
+> | **想用甲言的库** | [`jylib/README.md`](jylib/README.md)（基础库：SHA-256 / HMAC / HKDF） |
+> | **想用甲言的开发者工具**（包管理器 · LSP · VSCode 扩展） | [`tools/README.md`](tools/README.md) |
 > | **给 AI coding agent 的项目约定** | [`AGENTS.md`](AGENTS.md) · [`llms.txt`](llms.txt) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
@@ -151,7 +152,11 @@ manual/            📖 面向使用者的公开手册（快速上手 / AI 快�
 scripts/           构建与校验脚本（使用者一般只需 build_zh.ps1 与 verify_all.ps1）
 error_codes/       错误码索引（A#### · 30 篇：触发场景 / 修复建议 / 示例）
 examples/          示例程序
-tools/jyaudit/     审计工具（代码结构与一致性检查）
+tools/             ★ 甲言开发者工具链（**全部用甲言写**，详见 tools/README.md）
+  jypkg/           包管理器（jy_pkg.jy · 8 条判据 · SHA-256 完整性校验）
+  jylsp/           LSP 语言服务器（jylsp.jy）+ 6 个配套工具
+  vscode-jiayan/   VSCode 扩展（语法高亮 + 中文诊断 + 语言服务）
+  jyaudit/         代码结构与一致性审计（PowerShell）
 releases/          验证产物压缩包（**不随仓库分发**，用户下载不到）
 ```
 

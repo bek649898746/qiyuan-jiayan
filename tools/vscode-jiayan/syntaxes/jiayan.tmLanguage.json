@@ -1,0 +1,49 @@
+{
+    "patterns":  [
+                     {
+                         "end":  "[*]/",
+                         "name":  "comment.block.jiayan",
+                         "begin":  "/[*]"
+                     },
+                     {
+                         "match":  "//.*$",
+                         "name":  "comment.line.jiayan"
+                     },
+                     {
+                         "patterns":  [
+                                          {
+                                              "match":  "\\\\.",
+                                              "name":  "constant.character.escape.jiayan"
+                                          }
+                                      ],
+                         "end":  "\"",
+                         "name":  "string.quoted.double.jiayan",
+                         "begin":  "\""
+                     },
+                     {
+                         "match":  "(?\u003c![\\u4e00-\\u9fa5A-Za-z0-9_])(若|否|遍|返|续|断|于|当|循环|选择|匹配|例|跳转|异步|等待|原子|线程|生成|协程|抛出|捕获|若错|导入|导出|重载|推导|区域)(?![\\u4e00-\\u9fa5A-Za-z0-9_])",
+                         "name":  "keyword.control.jiayan"
+                     },
+                     {
+                         "match":  "(?\u003c![\\u4e00-\\u9fa5A-Za-z0-9_])(常|字|字节|双|单|长|长整|短|整|无|无整|空|有符号|易失|限制|构|枚举|判别|契约|可空|内联|类型定义|外部|静|函数|抽象|线性|传送)(?![\\u4e00-\\u9fa5A-Za-z0-9_])",
+                         "name":  "storage.type.jiayan"
+                     },
+                     {
+                         "match":  "(?\u003c![\\u4e00-\\u9fa5A-Za-z0-9_])(_|__asm|__asm__|__attribute|__attribute__|__bare__|__builtin_constant_p|__builtin_types_compatible_p|__cdecl|__declspec|__extension__|__fastcall|__FILE__|__int16|__int32|__int64|__int8|__LINE__|__MINGW_EXTENSION|__restrict|__restrict__|__stdcall|__thiscall|__typeof__|__VA_ARGS__|__vectorcall|__volatile__|__watcall|__受约束|__特化|_Alignas|_BitInt|_Bool|_cdecl|_fastcall|_Static_assert|_stdcall|_System|_thiscall|actor|alloca|--annotations|--asm-trace|-bin|--budget|-c|--cache|--cache-verify|char|char8_t|--checkpoint|const|curl_off_t|--dag|defer|--diagnostics=json|--dj|double|enum|extern|FILE|float|for|futex|-g|-graph|--help|-I|if|int|int16_t|int64_t|int8_t|--interface|intptr_t|L|--lenient|long|--macro-expand|NULL|nullptr|-o|off_t|offsetof|ptrdiff_t|--recorder|ref_namespace_info|--refs|register|--repeat|restrict|return|-S|select|--selfcheck|--serve|short|signed|size_t|static|static_assert|struct|--test|time_t|timestamp_t|typedef|typeof|uint16_t|uint32_t|uint64_t|uint8_t|uintptr_t|unsigned|void|volatile|保证|背压|比较字符串|比前n|闭包|编译错误|编译期|编译期断言|变量|标记|不安全|不变|步进|部分应用|测试|查找|查找子串|查字符|拆分|产出|尝试|尝试锁|常量|超时|除零码|处理|传线程|串|串数据|串长|窗口|窗口平均|窗口最大|窗口最小|纯|从|存期|错|错误|错误流|打包|打开|打开文件|打乱|大小|单位阵|单元|弹|导出名数|到|倒带|倒序|等待池|等待子|等候|等条件|递归保护|点积|调用|调用约定|定位文件|定长|丢弃|丢前|动态数组|读格式|读取|读锁|读位|读写锁|读行|读字符|断言|对照|惰性|发布模式|翻位|反射|反向查|反转|返回|泛型|范围|范围值|方差|放单元|放还|放锁|放行|放字符|分配|峰值|复制|复制内存|复制字符串|覆盖|覆写|格式化|格式化打印|格式化到串|格式化限长|格式时间|工作窃取|公开|构建长度|谷值|关|关闭通道|关文件|归并|过程宏|过滤|哈希|哈希表|还块|合拼|宏|后置|互斥锁|唤醒|唤醒全部|恢复|汇合|或返|获取|挤压|计数|加载库|夹取|检查取消|交错|交换|阶乘|接口|接收|结构化并发|截断|解包|解构|借用|借用单元|静态|就绪|就绪送|矩阵乘|矩阵加|矩阵减|矩阵数乘|卷积|绝对长整|绝对值|均值|开|拷贝前n|可变|可变借用|可恢复错误|空合|空类型|空指针|空指针检查|恐慌|恐慌钩子|扩展|类型|类型取|累积|累积积|逻辑错误|枚|密封|名称空间|目标架构|目标字长|内存比较|内存池|内存分配|内存拷|内存设置|内存映射|内存置|排序|判空|判类型|判十六进制|判数字|判文件错误|判文件结束|判字母|判字母数字|跑|跑测试|拼接|拼前n|屏障|其他|启灵|启元|契约哈希|前置|嵌入|切片|切片后缀|切片前缀|清零分配|清位|穷尽|求和|求积|求时间差|区域比较|区域变换|取|取本地时间|取串|取单元|取格林威治|取函数|取环境|取块|取幂|取平方根|取前|取时间|取随机|取文件位置|取限长|取消|取消映射|取余数|取余弦|取元素|取正切|取正弦|取值|取指数|取字符|取字长|去重|缺省|让|让出|扫尾|上限|设|设种子|声明|时钟|实现|使用|试|视图长|释放|释放串|释放内存|收|守卫|输出|输出到文件|输出流|输入|输入流|属性数|属性值|数据流|刷新缓冲|顺序|私有|四舍五入|松散|送|锁住|提交|提交子|替换|填充|条件变量|通道|通道已关闭|投递|推|退出|忘记|尾调用优化|文档|文档数|文档文本|无符号|无论如何|析构|系统错误|细化|下限|下一个|线程安全|线程不安全|线程池|相邻差|效应|效应参|协程栈|写入|写时复制|写锁|写行|写字符|泄漏报告|信号量|旋转|选则|延迟|延时|依据|移动|移动内存|移入|溢出检查|引用|映射|用|用户错误|宇和|原串|原生|原生串|源位置|越界检查|再导出|则|择收|栅栏|展平|栈|长度|长长|找字符集|折叠|整数|执行|直到|致命错误|置位|中位数|终止程序|重导出|重分配|重复|重试|注解|注解数|注解值|转|转大写|转浮点|转换浮点串|转时间串|转时间串2|转小写|转长整|转整数|转置|追加|追加串|追加字符|自动|字比|字段重排|字符|字符串构建|字符串转无符号|字符串转长整|字拷|字长|组排|最大|最小)(?![\\u4e00-\\u9fa5A-Za-z0-9_])",
+                         "name":  "keyword.other.jiayan"
+                     },
+                     {
+                         "match":  "\\b(0[xX][0-9a-fA-F]+|[0-9]+(\\.[0-9]+)?)\\b",
+                         "name":  "constant.numeric.jiayan"
+                     },
+                     {
+                         "match":  "(?\u003c![\\u4e00-\\u9fa5A-Za-z0-9_])([\\u4e00-\\u9fa5A-Za-z_][\\u4e00-\\u9fa5A-Za-z0-9_]*)\\s*(?=\\()",
+                         "name":  "entity.name.function.jiayan"
+                     }
+                 ],
+    "fileTypes":  [
+                      ".jy"
+                  ],
+    "name":  "甲言",
+    "scopeName":  "source.jiayan"
+}

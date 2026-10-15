@@ -1,0 +1,42 @@
+{
+  "name": "jiayan",
+  "displayName": "甲言 Jiayan",
+  "description": "甲言语言支持：语法高亮 + 诊断。语言服务与工具链均由甲言自举编写（jylsp / jy_diag / jy_kw / jy_check）。",
+  "version": "0.1.0",
+  "publisher": "qiyuan",
+  "engines": { "vscode": "^1.60.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:jiayan"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "jiayan",
+        "aliases": ["甲言", "Jiayan"],
+        "extensions": [".jy"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jiayan",
+        "scopeName": "source.jiayan",
+        "path": "./syntaxes/jiayan.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "jiayan.compile", "title": "甲言: 编译当前文件（qcc --dj）" },
+      { "command": "jiayan.check", "title": "甲言: 显示诊断（jy_check 渲染成中文报告）" },
+      { "command": "jiayan.restartLsp", "title": "甲言: 重启语言服务（jylsp.exe）" }
+    ],
+    "configuration": {
+      "title": "甲言",
+      "properties": {
+        "jiayan.jylspPath": { "type": "string", "default": "", "description": "jylsp.exe 路径（留空则自动在扩展目录/PATH 中查找）" },
+        "jiayan.qccPath": { "type": "string", "default": "", "description": "qcc 编译器路径" },
+        "jiayan.rtPath": { "type": "string", "default": "", "description": "qcc_rt.c 路径（设置到环境变量 QCC_RT_PATH）" },
+        "jiayan.jyCheckPath": { "type": "string", "default": "", "description": "jy_check.exe 路径（用于中文诊断报告）" }
+      }
+    }
+  }
+}
