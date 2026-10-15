@@ -1,0 +1,50 @@
+# ============================================================
+# Gitee Go 流水线 —— 甲言 提交 / PR 自动校验
+#
+# 【为什么要有这个文件】
+#   本项目的 GitHub Actions 配置（.github/workflows/ci.yml）写在 GitHub 上，
+#   而 GitHub 在当前网络环境下不可达；真正对外发布的发布线是 **Gitee**，
+#   但 Gitee 侧此前没有任何 CI ⟹ 等于**完全没有守门**。
+#   后果（实测）：scripts/build.ps1 里写死的不动点滞后 44 天无人发现，
+#   导致任何用户 clone 后照文档跑都看到假 FAIL 并当场中断。
+#
+# 【等价本地入口】（不依赖任何 CI 平台，随时可跑）
+#   powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
+#
+# ⚠️ 注：Gitee Go 的流水线语法随版本演进，且执行环境以 Linux 为主。
+#    若本文件与当前 Gitee Go 版本不匹配（或需要 Windows runner），
+#    请在 Gitee 仓库「流水线」页面按向导重建，并保持调用同一个入口脚本
+#    scripts/verify_all.ps1 —— 校验逻辑只维护一处，平台配置只是外壳。
+# ============================================================
+version: 1.0
+name: qiyuan-ci
+displayName: 甲言 CI（编码闸 + 自举收敛 + 测试）
+
+triggers:
+  push:
+    branches:
+      include:
+        - main
+        - master
+  pull_request:
+    branches:
+      include:
+        - main
+        - master
+
+stages:
+  - stage:
+      name: verify
+      displayName: 全量校验
+      steps:
+        - step: execute
+          name: encoding_gate
+          displayName: 编码闸（.ps1 必须 UTF-8 BOM；源码须严格 UTF-8）
+          script: |
+            powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1 -NoTest
+
+        - step: execute
+          name: full_verify
+          displayName: 自举收敛 + 测试套件 + 行为断言
+          script: |
+            powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1

@@ -8,6 +8,7 @@
 > | **查中文关键字（39 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
+> | **一键全量校验（含编码闸，提交前/发布前用）** | `powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1` |
 >
 > ⚠️ **环境提醒（请先确认）**：跑「一键构建验证」需要
 > **Windows x64 + MinGW-w64（gcc）+ Python 3.x**。

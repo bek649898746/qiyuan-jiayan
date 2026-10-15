@@ -1,4 +1,4 @@
-# 完整回归: git_jiayan_v1.exe vs 原生 git 2.47 (测试仓库 _smoke_final_ok)
+﻿# 完整回归: git_jiayan_v1.exe vs 原生 git 2.47 (测试仓库 _smoke_final_ok)
 $GJ = "C:\Users\Administrator\Desktop\git-2.45.2\git_jiayan_v1.exe"
 $NG = "git"   # 原生 2.47.1
 $repo = "C:\Users\Administrator\Desktop\_smoke_final_ok"
