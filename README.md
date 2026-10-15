@@ -1,5 +1,19 @@
 # 甲言 Jiayan —— 中文原生编程语言与自举编译器
 
+> ## 🚀 新手上路（第一次来？先看这里）
+>
+> | 我想… | 去哪 |
+> |:--|:--|
+> | **快速跑起来 + 知道怎么算跑对了** | **[`manual/快速上手.md`](manual/快速上手.md)** |
+> | **查中文关键字（39 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
+> | **看支持哪些能力** | 下方「核心能力」表 |
+> | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
+>
+> ⚠️ **环境提醒（请先确认）**：跑「一键构建验证」需要
+> **Windows x64 + MinGW-w64（gcc）+ Python 3.x**。
+> **gcc 与 Python 都是必需的** —— 构建脚本会调用 Python 执行测试套件。
+> （只编译单个程序则只需 gcc。）详见[快速上手](manual/快速上手.md)第二节。
+
 **关键字是中文，报错是中文，连编译器自己，也是用甲言写成的。**
 
 > 让每一个不会英文的中国人，都能用自己的母语学会编程；
@@ -128,7 +142,7 @@ releases/
 
 ### 安装部署（三分钟上手）
 
-**环境要求**：Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）——gcc 仅作"验证门卫"（重建 C 原版验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。
+**环境要求**：Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）+ **Python 3.x** —— gcc 仅作"验证门卫"（重建 C 原版验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc；**Python 用于执行测试套件 / 行为断言 / 验证脚本**（构建脚本会调用它，缺则构建第 4 步失败）。
 
 **步骤 1：克隆**
 
@@ -207,6 +221,7 @@ int main() {
 
 - **甲言自身：零依赖**（不需要任何外部工具链）
 - **验证宿主（可选）：** Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）——仅用于从 C 原版重建并验证甲言自举链（H1==H2），**不是甲言的宿主**。甲言真正的宿主是 `seed/qcc.jy`（纯甲言种子）。
+- ⚠️ **跑「一键构建验证」（`scripts/build*.ps1`）另需 Python 3.x** —— 脚本会调用它执行测试套件 / 行为断言 / 验证脚本。**只编译单个程序则不需要 Python。**
 - 可选：QEMU + 龙芯交叉 gcc（仅 tests/loong 需要）
 
 > **GCC 的角色**：gcc 只是"验证门卫"——把 C 原版 `qcc_x86.c` 编出来，验证甲言自举链与 C 版逐字节一致。甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。用甲言编译甲言程序，一条命令即可。
@@ -334,15 +349,23 @@ AI 训练数据集、语法规范 —— Apache-2.0（保护大模型厂商商�
 
 - 源码（编译器 + 汇编器 + 链接器，C 版 + 甲言版）
 - 种子（seed/qcc.jy，自举起点）
-- 测试（tests/qcc 150 用例 + tests/loong 龙芯回归）
-- AI 规范 + 母语教程（docs/AI规范.md + docs/母语教程.md）
+- 测试（tests/qcc 编译测试用例集 + tests/behavior 行为断言 + tests/loong 龙芯回归）
+- 使用文档（[`manual/快速上手.md`](manual/快速上手.md) + [`manual/中文关键字表.md`](manual/中文关键字表.md)）
 
 ## 一条命令重建不动点
 
-```bash
+```powershell
+# 中文链（当前主入口）
+powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
+# 英文链（含缓存自检 + 全套测试，耗时更长）
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-# 输出: v1..v5 五代 SHA256 完全相同（自举不动点）
 ```
+
+**判据**：`v2 == v3 == v4 == v5`（四代哈希完全相同）= 自举收敛 = 成功。
+
+> 脚本内记录的 `$expected`（不动点）**随源码每次合法修改而变** —— 这是正常的。
+> 若四代全等却对不上 `$expected`，说明仓库记录值**滞后于源码**，**自举本身仍然成功**。
+> 详见 [`manual/快速上手.md`](manual/快速上手.md) 第四节。
 
 ## 署名与传承（不可更改）
 
