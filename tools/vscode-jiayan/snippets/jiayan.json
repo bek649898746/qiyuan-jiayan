@@ -1,0 +1,124 @@
+{
+  // 甲言 · 中文输入加速片段（snippets）
+  //
+  // 为什么有这一页：学编程的真实门槛之一是「打中文比打英文慢」——拼音输入法要选字。
+  // 只把关键字换成中文而不解决输入效率，用户会比原来更慢。本文件解决这件事。
+  //
+  // 两类前缀：
+  //   ① 完整拼音        ruo / xunhuan / zheng   好记，适合不熟悉的人
+  //   ② jy + 首字母     jyr / jyx / jyz         不误触发，极快，适合熟手
+  // 结构类写成骨架（带缩进与大括号），单关键字写成单字。
+
+  // ==================== 语句 ====================
+  "若": {
+    "prefix": ["ruo", "jyr"],
+    "body": ["若 ($1) {", "\t$0", "}"],
+    "description": "条件分支（if）"
+  },
+  "否": {
+    "prefix": ["fou", "jyf"],
+    "body": ["否 {", "\t$0", "}"],
+    "description": "否则分支（else）"
+  },
+  "若否": {
+    "prefix": ["ruofou", "jyif"],
+    "body": ["若 ($1) {", "\t$2", "} 否 {", "\t$0", "}"],
+    "description": "条件 + 否则（if/else）"
+  },
+  "若否若否": {
+    "prefix": ["ruofoufou", "jyifelse"],
+    "body": ["若 ($1) {", "\t$2", "} 否 若 ($3) {", "\t$4", "} 否 {", "\t$0", "}"],
+    "description": "条件 + 否则若 + 否则（if/else-if/else）"
+  },
+  "循环": {
+    "prefix": ["xunhuan", "jyx"],
+    "body": ["循环 ($1) {", "\t$0", "}"],
+    "description": "当型循环（while）"
+  },
+  "遍": {
+    "prefix": ["bian", "jyb"],
+    "body": ["遍 (整 $1 = 0; $1 < $2; $1++) {", "\t$0", "}"],
+    "description": "计数循环（for）"
+  },
+  "择": {
+    "prefix": ["ze", "jyz"],
+    "body": ["择 ($1) {", "\t例 $2:", "\t\t$3", "\t\t断;", "\t缺:", "\t\t$0", "}"],
+    "description": "分支选择（switch）"
+  },
+  "返": {
+    "prefix": ["fan", "jyrt"],
+    "body": ["返 $0;"],
+    "description": "返回（return）"
+  },
+  "断": {
+    "prefix": ["duan", "jybr"],
+    "body": ["断;"],
+    "description": "跳出（break）"
+  },
+  "续": {
+    "prefix": ["xu", "jycn"],
+    "body": ["续;"],
+    "description": "进入下一轮（continue）"
+  },
+
+  // ==================== 类型 ====================
+  "整": { "prefix": ["zheng", "jyi"], "body": ["整 $0"], "description": "整数（int）" },
+  "字": { "prefix": ["zi", "jyc"], "body": ["字 $0"], "description": "字符 / 字节（char）" },
+  "短": { "prefix": ["duan2", "jys"], "body": ["短 $0"], "description": "短整（short）" },
+  "长": { "prefix": ["chang", "jyl"], "body": ["长 $0"], "description": "长整（long）" },
+  "单": { "prefix": ["dan", "jyf2"], "body": ["单 $0"], "description": "单精度浮点（float）" },
+  "双": { "prefix": ["shuang", "jyd"], "body": ["双 $0"], "description": "双精度浮点（double）" },
+  "空": { "prefix": ["kong", "jyv"], "body": ["空 $0"], "description": "无类型（void）" },
+  "无": { "prefix": ["wu", "jyu"], "body": ["无 $0"], "description": "无符号（unsigned）" },
+  "构": {
+    "prefix": ["gou", "jyst"],
+    "body": ["构 $1 {", "\t$2 $3;", "};", "$0"],
+    "description": "结构体（struct）"
+  },
+  "联": {
+    "prefix": ["lian", "jyun"],
+    "body": ["联 $1 {", "\t$2 $3;", "};", "$0"],
+    "description": "联合体（union）"
+  },
+  "枚": {
+    "prefix": ["mei", "jyen"],
+    "body": ["枚 $1 {", "\t$2,", "};", "$0"],
+    "description": "枚举（enum）"
+  },
+
+  // ==================== 修饰 ====================
+  "常": { "prefix": ["changg", "jyconst"], "body": ["常 $0"], "description": "只读（const）" },
+  "静": { "prefix": ["jing", "jystatic"], "body": ["静 $0"], "description": "静态（static）" },
+  "易失": { "prefix": ["yishi", "jyvol"], "body": ["易失 $0"], "description": "易失（volatile）" },
+  "外部": { "prefix": ["waibu", "jyext"], "body": ["外部 $0"], "description": "外部链接（extern）" },
+  "不返回": { "prefix": ["bufanhui", "jynr"], "body": ["不返回 $0"], "description": "C11 _Noreturn" },
+  "类属": { "prefix": ["leishu", "jygen"], "body": ["类属($0)"], "description": "C11 _Generic 泛型选择" },
+  "大小": { "prefix": ["daxiao", "jysz"], "body": ["大小($0)"], "description": "取尺寸（sizeof）" },
+
+  // ==================== 常用骨架 ====================
+  "主函数": {
+    "prefix": ["zhuhanshu", "jymain"],
+    "body": ["整 主() {", "\t$0", "\t返 0;", "}"],
+    "description": "程序入口（整 主）"
+  },
+  "函数": {
+    "prefix": ["hanshu", "jyfn"],
+    "body": ["整 $1($2) {", "\t$0", "\t返 0;", "}"],
+    "description": "函数定义"
+  },
+  "头文件包含": {
+    "prefix": ["baohan", "jyinc"],
+    "body": ["#include <$0>"],
+    "description": "#include"
+  },
+  "输出": {
+    "prefix": ["shuchu", "jyout"],
+    "body": ["输出(\"$0\\n\");"],
+    "description": "输出（内建函数）"
+  },
+  "打印": {
+    "prefix": ["dayin", "jyprintf"],
+    "body": ["printf(\"$0\\n\");"],
+    "description": "printf"
+  }
+}

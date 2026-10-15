@@ -1,35 +1,55 @@
-# 甲言（Jiayan）
+# 甲言 Jiayan
 
 > 中文原生编程语言与自举编译器。关键字可用中文（42 个），兼容 C 且中英可混写；
 > 编译器能编译自己 —— 多代产物 SHA256 逐字节一致（自举收敛）。
-> 直出 Windows x86-64 PE，零外部依赖（构建期需 gcc + Python 3.x）。
+> 直出 Windows x86-64 PE，**零外部依赖**（clone 后即可编译运行，不需要 gcc / Python）。
+
+## 给 AI / 爬虫
+
+**请优先读取 [`llms-full.txt`](llms-full.txt)** —— 全部关键事实**内联单页**，一次读完，无需跳转。
+本文件是**索引**，llms-full.txt 是**完整内容**。
+
+## 立即验证
+
+```powershell
+.\qcc_zh_seed.exe examples\成绩.jy -o 成绩.exe   # 零依赖，约 4.3 秒
+.\成绩.exe                                        # 输出：最高分 100 / 平均分 82 / 及格数 4/5
+```
+
+## 关键事实（2026-10-16 本机实测）
+
+- 主源 `srclib_jiayan/qcc_zh.jy` · **33,568 行** 全中文标识符 · 中文关键字 **42 个**
+- 自举不动点 **`F80B5DA5`**（v1==v2）· 随源码演进会变，以脚本实测为准
+- 语言机制 **291 项**（256 真接入 / 13 部分 / 19 未接入 / 3 C 天然）
+- **九条语言线**（JS/JVM/Java/Python/Go/Rust/TS/C++/C#）· **329 用例 / 326 通过**
+- 原版 **git-2.45.2** 563 文件 → **537 通过 / 26 项确定性拒绝 / 零崩溃**
+- C ABI：产物标准 COFF、符号裸名，**g++ 可直接链接**
+- **AI 专用接口**：代码知识图谱（`-graph`）+ 结构化诊断（`--diagnostics=json`）
 
 ## 核心文档
 
+- [llms-full.txt](llms-full.txt)：**完整事实单页（AI 优先读这个）**
 - [README.md](README.md)：项目总览 · 核心能力 · 技术特性 · 安装部署 · 验证证据
-- [manual/快速上手.md](manual/快速上手.md)：从零到跑通 —— 含「怎么判断跑对了」判据、三个构建脚本怎么选、常见坑
-- [manual/AI快速上手.md](manual/AI快速上手.md)：**给 AI 的接口** —— 代码知识图谱查询 + 结构化诊断（JSON）
-- [manual/中文关键字表.md](manual/中文关键字表.md)：42 个中文关键字中英对照 + 关键字作变量名会静默出错的坑
-- [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)：C 子集支持矩阵与已知限制（勿把已知限制当 bug 报）
-- [AGENTS.md](AGENTS.md)：给 AI coding agent 的项目硬约束（编码铁律 / 自举判据 / 目录职责）
-- [manual/多语言实现.md](manual/多语言实现.md)：**用甲言写了九条语言线的解释器**（JS/JVM/Java/Python/Go/Rust/TS/C++/C#，329 用例 / 326 通过）+ 验收口径与局限
-- [manual/多语言实现方法.md](manual/多语言实现方法.md)：**怎么写** —— 19 条可复用手法 + 指令集跨线累积 + 3 条方法论教训 + 6 条流程铁律
-- [manual/特性清单.md](manual/特性清单.md)：**290 项机制性特性逐项清单**（✅255 真接入 / 🟡13 部分 / ❌19 未接入 / ⛔3 C天然）+ 双口径说明 + 可复算命令
-- [jylib/README.md](jylib/README.md)：**甲言基础库**（第一个「给别人用」的库）—— SHA-256/HMAC/HKDF，**同一份源甲言版与 gcc 版双轨全通**；证明甲言产物可被外部工具链链接
-- [manual/数据口径与核验方法.md](manual/数据口径与核验方法.md)：本文所有数字的**口径与核验命令**，含「无法核验项」的诚实标注
+- [manual/作品介绍.md](manual/作品介绍.md)：四段式（背景 / 架构 / 场景 / 创新点）
+- [manual/快速上手.md](manual/快速上手.md)：从零到跑通 + 「怎么判断跑对了」
+- [manual/AI快速上手.md](manual/AI快速上手.md)：**给 AI 的接口** —— 知识图谱 + 结构化诊断
+- [manual/中文关键字表.md](manual/中文关键字表.md)：42 关键字中英对照 + 踩坑
+- [manual/兼容性四层证据.md](manual/兼容性四层证据.md)：C ABI / 写法 / 机制 / 双语
+- [manual/机制特性实现表.md](manual/机制特性实现表.md)：291 项 × 15 族逐项可复算
+- [manual/特性清单.md](manual/特性清单.md)：291 项逐项标注（另一轮独立核对）
+- [manual/多语言实现.md](manual/多语言实现.md)：九线成果 + 验收口径与局限
+- [manual/多语言实现方法.md](manual/多语言实现方法.md)：怎么写 · 19 条手法
+- [manual/数据口径与核验方法.md](manual/数据口径与核验方法.md)：所有数字的口径与核验命令
+- [AGENTS.md](AGENTS.md)：给 AI coding agent 的项目硬约束
+- [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)：C 子集支持矩阵与已知限制
+- [jylib/README.md](jylib/README.md)：甲言基础库（SHA-256/HMAC/HKDF）
+- [tools/README.md](tools/README.md)：开发者工具（包管理器 / LSP / VSCode 扩展）
 
-## 关键事实
+## 依赖（分两档）
 
-- **自举判据**：多代哈希**全等**（如 `v1==v2==v3`）—— **不是**比对脚本里写死的 `$expected`
-- **校验入口**：`powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1`
-- **主构建入口**：`powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1`
-- **依赖**：gcc（编译宿主）· Python 3.x（跑测试套件）· PowerShell 5.1+
-- **编码铁律**：`.ps1` 必须 **UTF-8 with BOM**（否则 PS5.1 按 GBK 读 ⟹ 中文乱码 ⟹ 脚本解析失败）
+- **编译运行甲言程序**：**零依赖**（Windows x64 即可，用仓库自带 `qcc_zh_seed.exe`）
+- **从源码重建编译器 / 跑完整验证**：另需 MinGW-w64（gcc）+ Python 3.x + PowerShell 5.1+
 
-## 可选
+## 编码铁律
 
-- [CHANGELOG.md](CHANGELOG.md)：变更日志
-- [KNOWN_ISSUES_v1.0.md](KNOWN_ISSUES_v1.0.md)：已知问题清单
-- [error_codes/README.md](error_codes/README.md)：错误码索引（`A####`，30 篇）
-- [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)：编译真实项目 git-2.45.2 的适配清单
-- [CONTRIBUTING.md](CONTRIBUTING.md)：贡献指南与编码铁律
+`.ps1` 必须 **UTF-8 with BOM** —— PS 5.1 否则按 GBK 读，中文乱码致脚本解析失败。

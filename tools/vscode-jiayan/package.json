@@ -24,6 +24,12 @@
         "path": "./syntaxes/jiayan.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "jiayan",
+        "path": "./snippets/jiayan.json"
+      }
+    ],
     "commands": [
       { "command": "jiayan.compile", "title": "甲言: 编译当前文件（qcc --dj）" },
       { "command": "jiayan.check", "title": "甲言: 显示诊断（jy_check 渲染成中文报告）" },
