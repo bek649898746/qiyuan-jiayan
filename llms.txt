@@ -12,6 +12,7 @@
 - [manual/中文关键字表.md](manual/中文关键字表.md)：42 个中文关键字中英对照 + 关键字作变量名会静默出错的坑
 - [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)：C 子集支持矩阵与已知限制（勿把已知限制当 bug 报）
 - [AGENTS.md](AGENTS.md)：给 AI coding agent 的项目硬约束（编码铁律 / 自举判据 / 目录职责）
+- [manual/数据口径与核验方法.md](manual/数据口径与核验方法.md)：本文所有数字的**口径与核验命令**，含「无法核验项」的诚实标注
 
 ## 关键事实
 
