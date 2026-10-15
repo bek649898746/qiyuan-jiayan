@@ -8,6 +8,7 @@
 > | **查中文关键字（42 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
 > | **用 AI 分析代码**（知识图谱 · 结构化诊断） | [`manual/AI快速上手.md`](manual/AI快速上手.md) |
 > | **核验本文所有数字**（口径 + 核验命令） | [`manual/数据口径与核验方法.md`](manual/数据口径与核验方法.md) |
+> | **看甲言写了哪九种语言** | [`manual/多语言实现.md`](manual/多语言实现.md) |
 > | **给 AI coding agent 的项目约定** | [`AGENTS.md`](AGENTS.md) · [`llms.txt`](llms.txt) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
@@ -58,7 +59,7 @@
 | **真实项目** | **Git 2.45.2：563 个 C 文件全量编译，零崩溃**（⚠️ 具体通过数随源码演进，**以本机 `scripts/verify_all.ps1` 实测为准**；git 源码属第三方版权**不随仓库分发**，适配清单见 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)） |
 | **语料** | zlib 1.3.1 · Lua 5.4.7 **均已全绿**（⚠️ 语料不随仓库分发；按脚本可复现） |
 | **C ABI 互操作** | 产物是**标准 COFF**、符号**裸名**，**C++ 可直接链接调用**：`jy_add(20,22)=42`，退出码 0 —— 无需胶水代码 |
-| **多语言实现** | 用甲言实现**六种语言**的解释器（Rust / TypeScript / Go / Python / C++ / C#）（⚠️ **该部分不随本仓库分发**，故不在此处给出行数/用例数以免无法核验） |
+| **多语言实现** | **用甲言写了九条语言线的解释器**（JS · JVM 字节码 · Java · Python · Go · Rust · TypeScript · C++ · C#）· **329 用例 / 326 通过**（Java 17/17 · Python 35/35 · Go 44/44 · Rust 55/55 · C++ 95/96 · C# 25/25 …）<br>**验收口径与局限见 [manual/多语言实现.md](manual/多语言实现.md)**（含"无官方编译器交叉对照"的诚实标注） |
 | **适配 AI** | 编译时导出**代码知识图谱**（函数 / 类型 / 调用关系）· 8 种结构查询（callers · callees · chain · risk · fanout · fanin · funcs · isolated）· **结构化诊断**（`--diagnostics=json`）· 编译 DAG 重放证明 · 编译检查点<br>（**全部用法与实测输出见 [manual/AI快速上手.md](manual/AI快速上手.md)**） |
 
 ## 为什么不是"中文壳"
