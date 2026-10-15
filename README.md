@@ -69,7 +69,8 @@
 
 ## 技术特性
 
-- **中英双版本编译器**：`qcc_x86.c`（C 英文版，验证锚点/信任根）+ `srclib_jiayan/qcc_zh.jy`（甲言中文版，主版本/交付物）—— 同链自举，**H1==H2** 逐字节对等
+- **单一前端**：`srclib_jiayan/qcc_zh.jy` 是**唯一主源**（主版本 / 交付物）—— 中文原生关键字 + C 兼容别名，**一门语言同时写中文与英文**，不需要第二套前端
+- **引导宿主**：`srclib/qcc_x86.c`（C 版，与甲言版同步演进）—— 由 gcc 重建，用于**自举引导**与 **H1==H2** 逐字节对等验证。它不是"英文版前端"，而是自举链的**根**（甲言编译器不能跨版本自举：新语法旧编译器不认识，故需一个用 C 写、永随源码演进的引导宿主）
 - **零外部依赖，不依赖 gcc**：甲言由 `seed/` 纯甲言种子自举，整条自举链都是中文代码；gcc 仅作为可选的"验证门卫"出现，不是宿主
 - **自举不动点**：v1==v2==v3==v4==v5 五代 SHA256 全等（2026-10-15 实测 **`F80B5DA5`**；⚠️ **随源码演进，以脚本实测为准**）—— 编译器自举闭环，C 版和甲言版同链；**汇编器 asm_zh 同样全等**（编译器与汇编器双链数学闭环）
 - **H1==H2 中文对等**：同一 C 程序经甲言编译与经 gcc 编译产物逐字节一致 —— 中文关键字（若/整/返）不影响语义
@@ -391,7 +392,5 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
 
-> English: [WHITE_PAPER_EN.md](WHITE_PAPER_EN.md) — Qiyuan Project Vision White Paper
->
 > **Chinese programming language** / Chinese C compiler / Chinese assembler /
 > self-hosting compiler / 中文编程 / 中文编译器 / 中文汇编器 / 词元

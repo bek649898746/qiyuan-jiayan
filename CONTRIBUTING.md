@@ -49,7 +49,7 @@ asm_h12（H1==H2 三级中文栈）128/128
 ## 适合新贡献者的入口
 - 给 asm_zh 加新指令（汇编器每加一条 = 立即能验证）
 - 写单元测试（词法/解析/代码生成）
-- 写文档（`manual/` 下的使用手册；或补充 `SUPPORT_MATRIX.md` / `WHITE_PAPER_EN.md` / `KNOWN_ISSUES`）
+- 写文档（`manual/` 下的使用手册；或补充 `SUPPORT_MATRIX.md` / `KNOWN_ISSUES` / `AGENTS.md`）
 - 修 Quick Wins（魔数命名化等）
 
 ## 编码铁律（有事故教训支撑，不是品味之争）

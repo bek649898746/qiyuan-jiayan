@@ -23,7 +23,6 @@
 
 ## 可选
 
-- [WHITE_PAPER_EN.md](WHITE_PAPER_EN.md)：项目愿景白皮书（英文）
 - [CHANGELOG.md](CHANGELOG.md)：变更日志
 - [KNOWN_ISSUES_v1.0.md](KNOWN_ISSUES_v1.0.md)：已知问题清单
 - [error_codes/README.md](error_codes/README.md)：错误码索引（`A####`，30 篇）
