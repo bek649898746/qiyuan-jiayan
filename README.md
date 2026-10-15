@@ -21,10 +21,17 @@
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
 > | **一键全量校验（含编码闸，提交前/发布前用）** | `powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1` |
 >
-> ⚠️ **环境提醒（请先确认）**：跑「一键构建验证」需要
-> **Windows x64 + MinGW-w64（gcc）+ Python 3.x**。
-> **gcc 与 Python 都是必需的** —— 构建脚本会调用 Python 执行测试套件。
-> （只编译单个程序则只需 gcc。）详见[快速上手](manual/快速上手.md)第二节。
+> ✅ **零依赖，clone 即用**：仓库自带中文种子编译器 **`qcc_zh_seed.exe`** ——
+> **不需要 gcc，也不需要 Python**，一条命令就能编译并运行甲言程序：
+>
+> ```powershell
+> .\qcc_zh_seed.exe examples\成绩.jy -o 成绩.exe
+> .\成绩.exe
+> ```
+>
+> ⚠️ **只有「从源码重建编译器 / 跑完整自举验证」**（`scripts/build*.ps1`）才另需
+> **MinGW-w64（gcc）+ Python 3.x** —— gcc 在那里只作「验证门卫」，**不是甲言的宿主**。
+> 详见[快速上手](manual/快速上手.md)第二节。
 
 **关键字是中文，报错是中文，连编译器自己，也是用甲言写成的。**
 
@@ -108,7 +115,8 @@ Gate 9:   编译器裸机适配（printf→串口、read_file→内存）
           → 宿主编译器和甲言编译器的 bin 模式产物 23/23 BIN SAME ✅
 ```
 
-**三链闭环**：编译器 V2==V3==V4==V5（V1 是 GCC 种子，不参与收敛链） ✅ | 汇编器 V2==V3==V4==V5（V1 是 GCC 种子，不参与收敛链） ✅ | 内核 23/23 BIN SAME ✅
+**三链闭环**：编译器 V2==V3==V4==V5 ✅ | 汇编器 V2==V3==V4==V5 ✅ | 内核 23/23 BIN SAME ✅
+（链条起点 V1 由**引导宿主**产出一次；**仓库已自带种子编译器 `qcc_zh_seed.exe`**，故你不必从 gcc 起步 —— 直接用它即可无限自我复制）
 
 **核心创新**：
 - **单一地址空间**：无 MMU 隔离，Agent 间通信 = 函数调用（纳秒级，传统 IPC 500μs）
@@ -167,7 +175,8 @@ releases/          验证产物压缩包（**不随仓库分发**，用户下载
 
 ### 安装部署（三分钟上手）
 
-**环境要求**：Windows + [MinGW-w64](https://www.mingw-w64.org/)（gcc）+ **Python 3.x** —— gcc 仅作"验证门卫"（重建 C 原版验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc；**Python 用于执行测试套件 / 行为断言 / 验证脚本**（构建脚本会调用它，缺则构建第 4 步失败）。
+**环境要求**：**编译并运行甲言程序 = 零依赖** —— 只要 Windows，用仓库自带的 `qcc_zh_seed.exe` 即可，**不需要 gcc，也不需要 Python**。
+**仅当要从源码重建编译器**（`scripts/build*.ps1`）才另需 [MinGW-w64](https://www.mingw-w64.org/)（gcc）+ **Python 3.x** —— gcc 仅作"验证门卫"（重建 C 原版以逐字节验证自举链），甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc；**Python 用于执行测试套件 / 行为断言 / 验证脚本**。
 
 **步骤 1：克隆**
 
@@ -195,7 +204,8 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 > 若全等却对不上 `$expected`，说明记录值**滞后于源码**，**自举本身仍然成功**。
 > 详见 [`manual/快速上手.md`](manual/快速上手.md) 第四节。
 >
-> 注：仓库不含编译产物，脚本首次运行会自动用 C 宿主编译器现场生成种子（`qcc_boot.exe`），无需手动准备。
+> 注：仓库**已自带** `qcc_zh_seed.exe`（种子编译器）—— 只想编译程序的话**无需任何构建**；
+> 只有要从源码重建编译器时，脚本才会先用 C 宿主现场生成种子。
 >
 > **另**：`scripts/build.ps1`（英文链）额外包含编译缓存自检 + 测试套件 + 行为断言，
 > 但需要 **Python 3.x**（见下方[依赖](#依赖)）。
@@ -215,7 +225,7 @@ int main() {
 编译并运行：
 
 ```bash
-./qcc_x86.exe hello.jy -o hello.exe
+.\qcc_zh_seed.exe hello.jy -o hello.exe
 ./hello.exe
 # 输出: jiayan hello 123
 ```
@@ -224,25 +234,30 @@ int main() {
 
 ```c
 /* 中文版 hello —— 关键字是中文 */
-整 main() {
+整 主() {
     输出("你好，甲言！\n");
     返 0;
 }
 ```
 
 ```bash
-./qcc_x86.exe hello_zh.jy -o hello_zh.exe
+.\qcc_zh_seed.exe hello_zh.jy -o hello_zh.exe
 ./hello_zh.exe
 ```
 
 **步骤 5：零依赖用法（不用 gcc）**
 
-用已生成的甲言编译器直接编译自己（纯甲言链，无外部工具链）：
+仓库自带的种子编译器就是完整的甲言编译器 —— **不需要 gcc，也不需要 Python**：
 
 ```bash
-./v1.exe srclib_jiayan/qcc_work.jy -o self.exe   # 甲言编译自己
-./v1.exe hello.jy -o hello.exe                    # 甲言编译程序
+.\qcc_zh_seed.exe srclib_jiayan/qcc_work.jy -o self.exe   # 用它编译甲言编译器自己
+.\qcc_zh_seed.exe hello.jy -o hello.exe                    # 甲言编译程序
 ```
+
+> **零依赖实测（2026-10-15 · 本机）**：把 `gcc` / `g++` 从 `PATH` 中**完全移除**后，
+> `qcc_zh_seed.exe` 编译 `examples\成绩.jy` 成功（rc=0 · 4.3s · 328,192 B），运行 exit=0、输出正确
+> （最高分 100 / 平均分 82 / 及格 4/5）；纯甲言自举链 **v1 == v2 逐字节全等**（SHA256 `F80B5DA5…`）
+> ⟹ **语言自主权成立：不需要 gcc 也能编自己。**
 
 **步骤 6：验证"全量编译 Git"（大型工程承载能力）**
 
@@ -259,14 +274,14 @@ int main() {
 
 > **GCC 的角色**：gcc 只是"验证门卫"——把 C 原版 `qcc_x86.c` 编出来，验证甲言自举链与 C 版逐字节一致。甲言本身由 `seed/qcc.jy` 种子自举，不依赖 gcc。用甲言编译甲言程序，一条命令即可。
 
-### 构建甲言编译器（验证宿主）
+### 构建甲言编译器（可选 · 仅用于 H1==H2 逐字节对等验证）
 
 ```bash
 # gcc 仅用于重建验证宿主，验证甲言自举链 (H1==H2)
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
 ```
 
-### 用甲言编译一个程序
+### 用甲言编译一个程序（零依赖 —— 用仓库自带 `qcc_zh_seed.exe`）
 
 ```c
 /* hello.jy —— 其实和 C 一样，只是关键字可以是中文 */
@@ -277,7 +292,7 @@ int main() {
 ```
 
 ```bash
-./qcc_x86.exe hello.jy -o hello.exe   # 或 .c 扩展名
+.\qcc_zh_seed.exe hello.jy -o hello.exe   # 或 .c 扩展名
 ./hello.exe
 ```
 
