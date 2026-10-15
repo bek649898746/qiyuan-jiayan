@@ -1,0 +1,31 @@
+# 甲言（Jiayan）
+
+> 中文原生编程语言与自举编译器。关键字可用中文（42 个），兼容 C 且中英可混写；
+> 编译器能编译自己 —— 多代产物 SHA256 逐字节一致（自举收敛）。
+> 直出 Windows x86-64 PE，零外部依赖（构建期需 gcc + Python 3.x）。
+
+## 核心文档
+
+- [README.md](README.md)：项目总览 · 核心能力 · 技术特性 · 安装部署 · 验证证据
+- [manual/快速上手.md](manual/快速上手.md)：从零到跑通 —— 含「怎么判断跑对了」判据、三个构建脚本怎么选、常见坑
+- [manual/AI快速上手.md](manual/AI快速上手.md)：**给 AI 的接口** —— 代码知识图谱查询 + 结构化诊断（JSON）
+- [manual/中文关键字表.md](manual/中文关键字表.md)：42 个中文关键字中英对照 + 关键字作变量名会静默出错的坑
+- [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)：C 子集支持矩阵与已知限制（勿把已知限制当 bug 报）
+- [AGENTS.md](AGENTS.md)：给 AI coding agent 的项目硬约束（编码铁律 / 自举判据 / 目录职责）
+
+## 关键事实
+
+- **自举判据**：多代哈希**全等**（如 `v1==v2==v3`）—— **不是**比对脚本里写死的 `$expected`
+- **校验入口**：`powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1`
+- **主构建入口**：`powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1`
+- **依赖**：gcc（编译宿主）· Python 3.x（跑测试套件）· PowerShell 5.1+
+- **编码铁律**：`.ps1` 必须 **UTF-8 with BOM**（否则 PS5.1 按 GBK 读 ⟹ 中文乱码 ⟹ 脚本解析失败）
+
+## 可选
+
+- [WHITE_PAPER_EN.md](WHITE_PAPER_EN.md)：项目愿景白皮书（英文）
+- [CHANGELOG.md](CHANGELOG.md)：变更日志
+- [KNOWN_ISSUES_v1.0.md](KNOWN_ISSUES_v1.0.md)：已知问题清单
+- [error_codes/README.md](error_codes/README.md)：错误码索引（`A####`，30 篇）
+- [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md)：编译真实项目 git-2.45.2 的适配清单
+- [CONTRIBUTING.md](CONTRIBUTING.md)：贡献指南与编码铁律

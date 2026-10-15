@@ -5,7 +5,9 @@
 > | 我想… | 去哪 |
 > |:--|:--|
 > | **快速跑起来 + 知道怎么算跑对了** | **[`manual/快速上手.md`](manual/快速上手.md)** |
-> | **查中文关键字（39 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
+> | **查中文关键字（42 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
+> | **🆕 用 AI 分析代码**（知识图谱 · 结构化诊断） | [`manual/AI快速上手.md`](manual/AI快速上手.md) |
+> | **给 AI coding agent 的项目约定** | [`AGENTS.md`](AGENTS.md) · [`llms.txt`](llms.txt) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
 > | **一键全量校验（含编码闸，提交前/发布前用）** | `powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1` |
@@ -122,13 +124,13 @@ srclib/
 srclib_jiayan/
   qcc_work.jy      甲言编译器（中文源码，自举主体）
 tests/
-  qcc/             180 个编译测试
+  qcc/             编译测试用例集
   kernel/          甲言内核源码（裸机启动、Agent 调度器、NVMe 驱动）
   loong/           LoongArch 交叉编译回归（WSL+QEMU）
 
   > tests/compiler/（H1==H2 验证产物，391 个 .asm + 107 个 .c）不入仓库——
-  > 存种子不存果实。可在 releases/h1h2_验证产物_tests_compiler.zip 下载对照，
-  > 或运行 scripts/build.ps1 重新生成。
+  > 存种子不存果实；`releases/` 目录同样不随仓库分发（用户下载不到该压缩包）。
+  > 需要时请运行 `scripts/verify_all.ps1` 重新生成并验证。
 seed/
   qcc.jy           种子版甲言编译器源码（自举起点，纯甲言，不依赖任何 C 工具链）
   qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码（验证宿主重建用）
@@ -259,11 +261,16 @@ int main() {
 
 ### 自举验证（一条命令）
 
-```bash
-# Windows: scripts/build.ps1
-# 它执行: 编译宿主 → 自举五代 → 校验不动点 → 跑测试
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+```powershell
+# 中文链（当前主入口）
+powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
+
+# 或：一键全量校验（含编码闸，提交前 / 发布前推荐）
+powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 ```
+
+**判据**：连续代哈希**全等**（如 `v1==v2`，或 `v2==v3==v4==v5`）= 自举收敛 = 成功。
+脚本内记录的 `$expected` 会随源码每次合法修改而变化，**不要因为对不上 `$expected` 就以为失败**。
 
 手工验证：
 
