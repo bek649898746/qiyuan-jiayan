@@ -23,10 +23,10 @@
 #  判据：本工具只报告"可观测事实"，不做因果断言。每一行都有对应命令可复现。
 # =============================================================================
 param(
-    [string]$Src    = 'D:\.openclaw\workspace\compiler',
+    [string]$Src    = '',                                       # 留空 = 仓库内 tests\qcc
     [int]   $N      = 200,                                  # 0 = 全部（全量数千文件会跑数小时）
-    [string]$Work   = 'D:\qiyuan_home\jyaudit_build',       # 纯 ASCII 工作区
-    [string]$OutDir = 'D:\qiyuan_home\jyaudit_out',
+    [string]$Work   = '',                                       # 留空 = %TEMP%\jyaudit_build（纯 ASCII）
+    [string]$OutDir = '',                                       # 留空 = %TEMP%\jyaudit_out
     [string]$Qcc    = '',                                   # 留空则自动探测
     [switch]$Verbose
 )
@@ -35,7 +35,11 @@ $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 
 # ---------------------------------------------------------------- 环境准备
-$repo = 'C:\Users\Administrator\Desktop\qiyuan-jiayan'
+$repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)   # 仓库根 = tools\jyaudit 的上两级
+function Get-AsciiSafe([string]$p) { if ($p -match '[^\u0020-\u007E]') { return (Join-Path $env:SystemDrive (Split-Path $p -Leaf)) } return $p }
+if (-not $Src)    { $Src    = Join-Path $repo 'tests\qcc' }
+if (-not $Work)   { $Work   = Get-AsciiSafe (Join-Path $env:TEMP 'jyaudit_build') }
+if (-not $OutDir) { $OutDir = Get-AsciiSafe (Join-Path $env:TEMP 'jyaudit_out') }
 if (-not $Qcc) {
     $cands = @(
         (Join-Path $repo 'qcc_zh_v2.exe'),

@@ -42,7 +42,7 @@
 powershell -File jyaudit.ps1
 
 # 指定源目录与样本数
-powershell -File jyaudit.ps1 -Src D:\.openclaw\workspace\compiler -N 500
+powershell -File jyaudit.ps1 -Src <你自己的C源目录> -N 500
 
 # 单文件精查（打印反汇编片段）
 powershell -File jyaudit.ps1 -Src C:\path\to\module.c -Verbose
@@ -55,11 +55,11 @@ powershell -File jyaudit.ps1 -N 0
 
 | 参数 | 默认 | 说明 |
 |:--|:--|:--|
-| `-Src` | `D:\.openclaw\workspace\compiler` | 源文件或目录 |
+| `-Src` | 仓库内 `tests\qcc` | 源文件或目录（留空即用默认）|
 | `-N` | `200` | 抽样数；`0` = 全部 |
 | `-Qcc` | 自动探测 | 甲言编译器路径（优先 `qcc_zh_v2.exe`） |
-| `-Work` | `D:\qiyuan_home\jyaudit_build` | **纯 ASCII** 工作区（必须） |
-| `-OutDir` | `D:\qiyuan_home\jyaudit_out` | 报告输出 |
+| `-Work` | `%TEMP%\jyaudit_build` | **纯 ASCII** 工作区（必须；留空自动置于 `%TEMP%`，含中文时兜底到系统盘根）|
+| `-OutDir` | `%TEMP%\jyaudit_out` | 报告输出（留空同上）|
 | `-Verbose` | 关 | 打印缺陷样本的反汇编片段 |
 
 **输出**
