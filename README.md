@@ -11,6 +11,7 @@
 > | **看甲言写了哪九种语言**（成果） | [`manual/多语言实现.md`](manual/多语言实现.md) |
 > | **看怎么写**（19 条可复用手法 + 流程铁律） | [`manual/多语言实现方法.md`](manual/多语言实现方法.md) |
 > | **查 290 项机制逐项清单**（✅/🟡/❌ 逐条标注） | [`manual/特性清单.md`](manual/特性清单.md) |
+> | **想用甲言的库 / 工具**（基础库 · 审计工具） | [`jylib/README.md`](jylib/README.md) · [`tools/jyaudit/README.md`](tools/jyaudit/README.md) |
 > | **给 AI coding agent 的项目约定** | [`AGENTS.md`](AGENTS.md) · [`llms.txt`](llms.txt) |
 > | **看支持哪些能力** | 下方「核心能力」表 |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
@@ -60,7 +61,7 @@
 | **自举** | 主源 **33,568 行 / 3.92 MB** 全中文标识符 · **多代哈希全等即为收敛**：中文链 `scripts/build_zh.ps1`（`v1==v2`）· 英文链 `scripts/build.ps1`（`v1..v5`）· **编译器与汇编器双链闭环** |
 | **真实项目** | **Git 2.45.2：563 个 C 文件 → 537 通过 / 26 失败 / 0 崩溃**（**2026-10-15 独立复验**，4 并行 **331 秒**，与项目记录逐数一致）<br>**口径**：`OK` = 编译成功且 `rc=0`；26 个失败中**含确定性的语义拒绝**（如**非法 UTF-8 字节** → `A6085`、**常量被赋值** → `A9006`），非全部为缺陷。git 源码属第三方版权**不随仓库分发**，适配清单见 [GIT_RUN_ADAPTATIONS.md](GIT_RUN_ADAPTATIONS.md) |
 | **语料** | zlib 1.3.1 · Lua 5.4.7 **均已全绿**（⚠️ 语料不随仓库分发；按脚本可复现） |
-| **C ABI 互操作** | 产物是**标准 COFF**、符号**裸名**，**C++ 可直接链接调用**：`jy_add(20,22)=42`，退出码 0 —— 无需胶水代码 |
+| **C ABI 互操作** | 产物是**标准 COFF**、符号**裸名**，**C++ 可直接链接调用**：`jy_add(20,22)=42`，退出码 0 —— 无需胶水代码<br>**并已由真实库验证**：[`jylib`](jylib/README.md)（甲言第一个「给别人用」的库：SHA-256 / HMAC / HKDF）—— **同一份源**分别由甲言与 gcc 编译，**双轨全通**（`pass=6 fail=0`，标准向量全对）；此过程逼出并修复 **6 个「只有跨工具链才暴露」的缺陷**（甲言自链自跑时因映像基址低而恰好掩盖，改用 gcc/ld 链接后立刻现形） |
 | **多语言实现** | **用甲言写了九条语言线的解释器**（JS · JVM 字节码 · Java · Python · Go · Rust · TypeScript · C++ · C#）· **329 用例 / 326 通过**（Java 17/17 · Python 35/35 · Go 44/44 · Rust 55/55 · C++ 95/96 · C# 25/25 …）<br>**验收口径与局限见 [manual/多语言实现.md](manual/多语言实现.md)**（含"无官方编译器交叉对照"的诚实标注） |
 | **适配 AI** | 编译时导出**代码知识图谱**（函数 / 类型 / 调用关系）· 8 种结构查询（callers · callees · chain · risk · fanout · fanin · funcs · isolated）· **结构化诊断**（`--diagnostics=json`）· 编译 DAG 重放证明 · 编译检查点<br>（**全部用法与实测输出见 [manual/AI快速上手.md](manual/AI快速上手.md)**） |
 
@@ -142,8 +143,16 @@ seed/
   （种子构建产物 .exe 不入仓库——存种子不存果实；验证宿主可由 gcc 重建）
 jiayan_engines/
   *.jy             甲言化引擎（纯 C 整数引擎翻译，编译+运行验证通过）
-releases/
-  h1h2_验证产物_tests_compiler.zip   H1==H2 三级栈验证产物
+jylib/             ★ 甲言基础库 ——「第一个给别人用」的库
+  include/ src/    源码（零外部依赖，除 C 标准库）；lib/ 为构建产物
+  build.ps1        双轨构建：**同时产出「甲言编译版」与「gcc 编译版」**，便于交叉验证
+manual/            📖 面向使用者的公开手册（快速上手 / AI 快速上手 / 中文关键字表 /
+                   特性清单 / 多语言实现 / 多语言实现方法 / 数据口径与核验方法）
+scripts/           构建与校验脚本（使用者一般只需 build_zh.ps1 与 verify_all.ps1）
+error_codes/       错误码索引（A#### · 30 篇：触发场景 / 修复建议 / 示例）
+examples/          示例程序
+tools/jyaudit/     审计工具（代码结构与一致性检查）
+releases/          验证产物压缩包（**不随仓库分发**，用户下载不到）
 ```
 
 ## 快速开始
