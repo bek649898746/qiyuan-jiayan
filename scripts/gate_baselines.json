@@ -1,28 +1,32 @@
 {
- "fixed": "B6CD2EB9",
- "time": "2026-10-15 02:17:19",
+ "fixed": "6BD988C3",
+ "time": "2026-10-17 12:08:07",
  "gates": {
   "zh_feat": {
    "anchor_count": 1617,
-   "source": "run_tests_zh.py 的 CORE_FEAT 长度"
+   "source": "run_tests_zh.py 的 CORE_FEAT 长度",
+   "note": "刀三 (2026-10-17): 移出 2 条长期红锚 feat_rawstr_zh.c / feat_vartmpl.c；新锚入册前须至少过一次全量闸（该锚 PASS 且 FAIL=0）"
   },
   "lua": {
    "white_list": 33,
    "source": "lua_run.py 的 WHITE 白名单"
   },
   "zlib": {
-   "white_list": 15,
-   "source": "zlib_run.py 的 ALL 白名单"
+   "white_list": 12,
+   "known_fail": 3,
+   "source": "zlib_run.py 的 ALL 白名单（KNOWN_FAIL 单列，不计入 white_list）",
+   "note": "KNOWN_FAIL=3 件（deflate/infback/inflate，同码 A9010，既存真缺陷；B6CD2EB9 2026-10-15 同样 12/3）；runner 仍编仍报"
   },
   "git_quick": {
    "total": 51,
-   "ok": 40,
-   "fail": 11,
+   "ok": 37,
+   "fail": 14,
    "crash": 0,
-   "source": "scratch_gl/git563_quick_r238v.txt"
+   "source": "scratch_gl/git563_quick_20261017_shrimp.txt",
+   "note": "刀二 (2026-10-17): compat/winansi.c A1001 假阳修复后 36/15 -> 37/14（唯一差件转绿，与审计 git -1 交叉印证）"
   },
   "srclib": {
-   "detail_lines": 13,
+   "detail_lines": 1,
    "real_fail": 71,
    "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
   }

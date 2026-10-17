@@ -38,6 +38,10 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
     'behavior/b_printf.c', 'behavior/b_struct.c',
 ]
 
+# ⚠️ 入册规则 (2026-10-17 刀三 · 审计启元 递刀): 新锚加入 CORE_FEAT 前, 必须至少通过一次**全量闸**
+#    (`--zh-feat` 全跑, 该锚 PASS 且 FAIL=0)。根因: 开发阶段不跑全量, 「加入即红无人察觉」。
+#    先例: feat_rawstr_zh.c (FAIL raw3) / feat_vartmpl.c (A1001 'sum_int') 两条长期红锚 —— 已移出白名单,
+#    文件保留, 修好后重新入册 (入册时同样须过全量闸)。
 # 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
 CORE_FEAT = [
     'scripts/feat_zh_prelude_regmatch_ok.c',   # C66 (2026-09-17 第 66 站): 口径回归锚 — 兼容层**不得用对象宏做类型别名**; 注回 `#define regmatch_t int` 即变红 (台账 §66)
@@ -430,7 +434,7 @@ CORE_FEAT = [
     'scripts/feat_matadd_zh.c', 'scripts/feat_matmul_zh.c', 'scripts/feat_matscale_zh.c',
     'scripts/feat_meanvar_zh.c', 'scripts/feat_median_zh.c', 'scripts/feat_merge_zh.c',
     'scripts/feat_minmax_zh.c', 'scripts/feat_partition_zh.c', 'scripts/feat_peak_zh.c',
-    'scripts/feat_rawstr_zh.c', 'scripts/feat_repeat_zh.c', 'scripts/feat_replace_zh.c',
+    'scripts/feat_repeat_zh.c', 'scripts/feat_replace_zh.c',
     'scripts/feat_reverse_zh.c', 'scripts/feat_rotate_zh.c', 'scripts/feat_scan_zh.c',
     'scripts/feat_shuffle_zh.c', 'scripts/feat_slice_zh.c', 'scripts/feat_sort_zh.c',
     'scripts/feat_sumprod_zh.c', 'scripts/feat_take_zh.c', 'scripts/feat_wavg_zh.c',
@@ -464,7 +468,7 @@ CORE_FEAT = [
     'scripts/feat_thread.c', 'scripts/feat_transpose_zh.c', 'scripts/feat_tw_min.c',
     'scripts/feat_type_width.c', 'scripts/feat_typedef2.c', 'scripts/feat_union_dbl.c',
     'scripts/feat_unistruct2.c', 'scripts/feat_until_zh.c', 'scripts/feat_us_sz.c',
-    'scripts/feat_use_zh.c', 'scripts/feat_vartmpl.c', 'scripts/feat_volatile_zh.c',
+    'scripts/feat_use_zh.c', 'scripts/feat_volatile_zh.c',
     'scripts/feat_wx_zh.c',
 
     # ==== 地1 G4-1 (2026-09-11): 特性 ↔ 闸内锚 对照 后 补 锚 (「✅ 无 闸内锚」 归零 波一) ====
@@ -3584,6 +3588,20 @@ CORE_FEAT += [
 #   探针: _audit_inbox\20261013_虾米_12套起点表_闭环脚手架\evidence\probes\r798f_a9010_fntype\ (6 个 .c + run.log)
 CORE_FEAT += [
     'scripts/feat_zh_r798f_fntype_alias_ok.c',    # 正锚: `类型定义 空 F1(整,整); F1 *p = …; p(…)` 与 `(*F2)(…)` 别名 各 一 驱动 (R798F FNTYPE ALIAS OK)
+]
+
+# C4 族 (2026-10-15 虾米 · 台账 C4 两大项 根治): 两类 **同一语义 两套口径** 型 缺陷
+#   C4-a = typedef 名的 **遮蔽** —— 形参/局部 同名 遮蔽 后, 该名 不再是 类型名 (C11 6.2.1p4);
+#          原型形参 不参与 (C11 6.2.1p7 原型作用域); 判据以 块深度 门控 (文件作用域 无 遮蔽)。
+#          病灶: `(list)->len` 被误判 为 转型 (list) ⟹ 转型 解析 期待 操作数 而 实得 `->len`
+#                ⟹ 原级() 落空 返 -1 ⟹ 下游 以 -1 索引 平行数组 ⟹ **编译器自身 0xC0000005**。
+#          真载体: redis `adlist.c` / `redis-benchmark.c` (串行 可复现, 台账 C4-a)。
+#   C4-b = `typedef struct 标签 { T *T; } 别名;` 的 指针字段 **从未登记** —— typedef 类型分支
+#          不消费 `*` ⟹ 星号 跨轮 消费 (实丁 复位) ⟹ 字段名 被 **再当一次 类型** 吃掉。
+#          真载体: redis `struct client { user *user; }` ⟹ 全语料 `c->user` 报 A9001 (台账 C4-b 最大簇)。
+CORE_FEAT += [
+    'scripts/feat_zh_typedef_shadow_ok.c',       # C4-a 正锚: 形参/局部 遮蔽 typedef 名 + `(名)->字段` 括号成员访问 (SH=12 SH2=12 M=18)
+    'scripts/feat_zh_field_name_eq_type_ok.c',   # C4-b 正锚: 字段名 == 其 typedef 类型名 (含 逗号续声明符) (U=7 F=5 A=9 B=4)
 ]
 def build_tests(args):
     if args.zh_feat:
