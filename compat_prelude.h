@@ -463,8 +463,12 @@ typedef struct z_stream_s {
 #define uLong unsigned long
 #define uLongf unsigned long
 #define voidpf void*
-#define alloc_func void*
-#define free_func void*
+/* 刀七 (2026-10-17): 原 `#define alloc_func void*` / `free_func void*` 把「函数指针」降级成
+ * 数据指针 ⟹ zlib 的 ZALLOC/ZFREE（`(*((strm)->zalloc))(...)`）被判「`*` 解引用结果不是函数指针」
+ *  ⟹ A9010（deflate.c / infback.c / inflate.c 三件）。改为**同语义 typedef**：
+ *  git 语料只用 `(alloc_func)0` 转型（compat/zlib-uncompress2.c L60/61），zlib 树自身重复 typedef 同型。 */
+typedef void *(*alloc_func)(void *, unsigned, unsigned);
+typedef void (*free_func)(void *, void *);
 #define z_const const
 #define ZEXPORT
 #define Z_NO_FLUSH 0

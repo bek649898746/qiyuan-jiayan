@@ -44,6 +44,9 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
 #    文件保留, 修好后重新入册 (入册时同样须过全量闸)。
 # 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
 CORE_FEAT = [
+    'scripts/feat_zh_macro180_chain_ok.c',  # 净缺口 #180 **正锚** (2026-10-17 虾米): 合法宏链/宏内宏展开正常（B → (A+2) = 42；APPLY(41) → ADD(41) = 42）
+    'scripts/feat_zh_macro180_selfref_neg.c',  # 净缺口 #180 **负锚** (2026-10-17): 自引用宏 = C 6.10.3.4 p2 blue paint — 甲言 L804 防重入 ⟹ 不挂死 + A1001 响亮。判据 scripts/check_macro180_selfref.py（正锚运行 + 负锚 30s 内返回 + 正常宏对照 rc=0）
+    'scripts/feat_zh_inline280_ok.c',  # ⚠️ **仅语义锚（不证展开）**: 内联函数的调用语义正确。展开性判据 scripts/check_inline280.py 当前 **FAIL** ⟹ #280 **未闭环**（勿当闭环证据；skeptic 2026-10-17 驳回）
     'scripts/feat_zh_prelude_regmatch_ok.c',   # C66 (2026-09-17 第 66 站): 口径回归锚 — 兼容层**不得用对象宏做类型别名**; 注回 `#define regmatch_t int` 即变红 (台账 §66)
     'scripts/feat_zh_paren_ptr_array_ok.c',    # C72 (2026-09-17 第 72 站): `结构体 T *(名[N]);` 括号指针数组声明 — 漏设 型序标 ⟹ 成员访问整段不发射; 真实载体 pack-objects.c L1695 (台账 §72)
     'scripts/feat_zh_paren_ptr_array_local_ok.c',  # C74 (2026-09-17 第 74 站): **局部** 括号指针数组 — 漏设 指元素尺寸 ⟹ 元素赋值走结构体深拷贝 ⟹ 崩 0xC0000005 (仅 8 字节结构体触发); 真实载体 builtin/diff.c L175 / grep.c L707 (台账 §74)

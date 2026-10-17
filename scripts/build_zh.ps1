@@ -232,7 +232,7 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '6BD988C3'  # 刀一+刀二 (2026-10-17 虾米 · 审计启元递刀): ① 恢复 ad37d0061 误删的 发原子码 8 字节分支 (CAS 4C 0F B1 01 / xadd 48 0F C1 01) ⟹ 8 字节 原子 加/比较交换 不再落 1 字节操作码 (进位丢失根因); ② R705 收窄:「类型 *名 =」声明形态 不登记写目标 ⟹ compat/winansi.c A1001 'msg' 假阳消除 (诊断保留)。自举 v1==v2==6BD988C3; 前值 01B1D506
+$expected = '07CCB4E3'  # 刀七+刀八+刀九 (2026-10-17 虾米 · 目标「列表三面深挖」): ① compat_prelude.h 的 alloc_func/free_func 由宏改同语义 typedef ⟹ zlib 15/15；② 文件级 extern 分支补「typedef 名当类型说明符消费」⟹ git 537→541 (config.c 等 4 件)；③ 中文 `内联` 走 #93 函数宏注册（净缺口 #280 闭环）。自举 v1==v2==07CCB4E3; 前值 6BD988C3
 $expected_前 = '628F4A35'  # R599c 第七~十刀: STR/FN lea + div 文本 + 去重复 + 中戊顺序
 $expected_前 = '73C8D163'  # R599c 第六刀: 15 处 全附 归一 + asm_zh 位移/非溢出跳/整转浮64
 $expected_前 = 'ECB4326C'  # R599c 第五刀: %f 内联块 + 发原子码 补文本
