@@ -232,7 +232,7 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '07CCB4E3'  # 刀七+刀八+刀九 (2026-10-17 虾米 · 目标「列表三面深挖」): ① compat_prelude.h 的 alloc_func/free_func 由宏改同语义 typedef ⟹ zlib 15/15；② 文件级 extern 分支补「typedef 名当类型说明符消费」⟹ git 537→541 (config.c 等 4 件)；③ 中文 `内联` 走 #93 函数宏注册（净缺口 #280 闭环）。自举 v1==v2==07CCB4E3; 前值 6BD988C3
+$expected = 'FB086E5C'  # T6-4 错构 块号口径修正 (2026-10-17 虾米 · skeptic 打回): `构CFG` 在节点 0 无条件开块 ⟹ 块号 = `控式` 前缀计数, **不减 1**. 首版 377 实为 378 (node 6554 在 块[378] 始=6538 终一=6558). 判据 check_ir_errmap.py 升级为 **与 QCC_DUMP=ir 真实块表交叉验证**. 自举 v1==v2==FB086E5C; 前值 F23A2987
 $expected_前 = '628F4A35'  # R599c 第七~十刀: STR/FN lea + div 文本 + 去重复 + 中戊顺序
 $expected_前 = '73C8D163'  # R599c 第六刀: 15 处 全附 归一 + asm_zh 位移/非溢出跳/整转浮64
 $expected_前 = 'ECB4326C'  # R599c 第五刀: %f 内联块 + 发原子码 补文本

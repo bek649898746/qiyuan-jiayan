@@ -700,6 +700,9 @@ CORE_FEAT = [
     # P0-8 (2026-09-14): C 原型/声明 登记表 静默上限 256 → 8192 + 溢出响亮报错
     #   (400 条声明 + 末条调用; 确保 登记表 不静默截断)
     'scripts/feat_zh_decltab_ok.c',
+    # 刀六 (2026-10-17 虾米 · 启元递刀): `--diagnostics=json` 的 `loc.line` == 真实错误行
+    #   (错误在第 4 行; 修前报 "line":1 —— 码生成期 `词行表[词位]` 落空; 修后取节点源行)
+    'scripts/feat_zh_diag_json_line_neg.c',
     # P0-11 (2026-09-14): 局部「空维度数组 + 花括号初始化」长度推断
     #   (struct / typedef / 尾逗号 三形态; sizeof 断言; 与 gcc 逐字节对照)
     'scripts/feat_zh_local_array_infer_ok.c',
@@ -3639,6 +3642,11 @@ def find_qcc():
 def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
     qcc = find_qcc()
+    # 闸盲区修复 (2026-10-17 虾米 · 现场实证): Windows `--only scripts\x.c` 传反斜杠 ⟹
+    #   原判 `startswith('scripts/')` 失配 ⟹ src 落到 `tests/scripts\x.c`（不存在）⟹ head=''
+    #   ⟹ **@EXPECTED 全部静默**，负锚只要编译失败就 PASS（实测把 `err:"line":999` 也判绿）。
+    #   修：统一为正斜杠后再判（不影响既有正斜杠调用）。
+    name = name.replace('\\', '/')
     if name.startswith('scripts/'):
         src = os.path.join(root, name)
     else:
