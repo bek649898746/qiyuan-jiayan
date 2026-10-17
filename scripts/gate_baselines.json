@@ -1,10 +1,11 @@
 {
- "fixed": "B6CD2EB9",
- "time": "2026-10-15 02:17:19",
+ "fixed": "FB086E5C",
+ "time": "2026-10-17 20:32:49",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1617,
-   "source": "run_tests_zh.py 的 CORE_FEAT 长度"
+   "anchor_count": 1621,
+   "source": "run_tests_zh.py 的 CORE_FEAT 长度",
+   "note": "刀三 (2026-10-17): 移出 2 条长期红锚 feat_rawstr_zh.c / feat_vartmpl.c；新锚入册前须至少过一次全量闸（该锚 PASS 且 FAIL=0）"
   },
   "lua": {
    "white_list": 33,
@@ -12,17 +13,20 @@
   },
   "zlib": {
    "white_list": 15,
-   "source": "zlib_run.py 的 ALL 白名单"
+   "known_fail": 0,
+   "source": "zlib_run.py 的 ALL 白名单（KNOWN_FAIL 单列，不计入 white_list）",
+   "note": "KNOWN_FAIL=0 件（刀七 2026-10-17 已闭环：A9010 根因 = prelude 把 alloc_func/free_func 宏定义成 void* ⟹ 同语义 typedef 后 zlib 15/15）"
   },
   "git_quick": {
    "total": 51,
-   "ok": 40,
-   "fail": 11,
+   "ok": 38,
+   "fail": 13,
    "crash": 0,
-   "source": "scratch_gl/git563_quick_r238v.txt"
+   "source": "scratch_gl/git563_quick_SYNC3_07CCB4E3.txt",
+   "note": "刀二/刀八 (2026-10-17): winansi A1001 假阳修复 36/15→37/14；extern typedef 登记修复后 config.c 转绿 ⟹ 37/14→38/13"
   },
   "srclib": {
-   "detail_lines": 13,
+   "detail_lines": 1,
    "real_fail": 71,
    "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
   }

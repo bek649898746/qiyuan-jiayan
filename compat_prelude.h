@@ -5,6 +5,12 @@
 int *_errno(void);
 #define errno (*_errno())  /* qcc 不生成 extern 全局赋值/读取; errno 走 msvcrt _errno() 指针, 读写都是真 errno (fix 2026-08-15) */
 
+/* 2026-10-17 刀二: <wchar.h>/<stddef.h> 被 qcc 当系统头跳过 ⟹ `wchar_t` 未登记,
+ * `const wchar_t *msg = L"..."` 的声明被误解析为「对未声明名字的赋值」⟹ 出口 A1001 假阳
+ * (git compat/winansi.c L76-79 四行拼接 L"..." 实测)。补平台等价定义 (Windows wchar_t = 16 位无符号)。
+ * 同 prelude 既有 size_t 手法: 系统头内容由预置头补齐, 诊断本身不撤。 */
+typedef unsigned short wchar_t;
+
 /* Windows 平台标志 — fsmonitor daemon 后端可用 (fix 2026-08-14: fsmonitor-ipc.c 的 #ifndef HAVE_FSMONITOR_DAEMON_BACKEND stub 应被跳过, 否则与 fsm-ipc-win32.c 的 fsmonitor_ipc__get_path 重复) */
 #define __GNUC_MINOR__ 0 /* -D __GNUC__=5 但未给 __GNUC_MINOR__, #if 条件编译引用它 (fix 2026-08-15: __GNUC_MINOR__ undefined) */
 #define HAVE_FSMONITOR_DAEMON_BACKEND 1
@@ -457,8 +463,12 @@ typedef struct z_stream_s {
 #define uLong unsigned long
 #define uLongf unsigned long
 #define voidpf void*
-#define alloc_func void*
-#define free_func void*
+/* 刀七 (2026-10-17): 原 `#define alloc_func void*` / `free_func void*` 把「函数指针」降级成
+ * 数据指针 ⟹ zlib 的 ZALLOC/ZFREE（`(*((strm)->zalloc))(...)`）被判「`*` 解引用结果不是函数指针」
+ *  ⟹ A9010（deflate.c / infback.c / inflate.c 三件）。改为**同语义 typedef**：
+ *  git 语料只用 `(alloc_func)0` 转型（compat/zlib-uncompress2.c L60/61），zlib 树自身重复 typedef 同型。 */
+typedef void *(*alloc_func)(void *, unsigned, unsigned);
+typedef void (*free_func)(void *, void *);
 #define z_const const
 #define ZEXPORT
 #define Z_NO_FLUSH 0
