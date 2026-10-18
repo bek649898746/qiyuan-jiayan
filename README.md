@@ -8,7 +8,7 @@
 > | **查中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
 > | **看支持哪些特性** | [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
-> | **了解设计动机与架构** | 本页下方 · [`WHITE_PAPER_EN.md`](WHITE_PAPER_EN.md) |
+> | **了解设计动机与架构** | 本页下方（设计动机 · 架构 · 创新点） |
 >
 > ⚠️ **环境提醒（请先确认）**：跑「一键构建验证」需要
 > **Windows x64 + MinGW-w64（gcc）+ Python 3.x + PowerShell**。
@@ -352,7 +352,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 
 本项目全程使用 DeepSeek API 开发，推荐使用 DeepSeek 模型进行维护和扩展。
 
-> English: [WHITE_PAPER_EN.md](WHITE_PAPER_EN.md) — Qiyuan Project Vision White Paper
+> English white paper: not publicly distributed.
 >
 > **Chinese programming language** / Chinese C compiler / Chinese assembler /
 > self-hosting compiler / 中文编程 / 中文编译器 / 中文汇编器 / 词元
