@@ -5,10 +5,8 @@
    抛出 在 试 块内 → throw_ex + 跳转捕获标签 (同函数异常栈, 跳过中间语句)
    试体末尾 ex_pending 检查 → 跨函数传播 (嵌套函数 抛出 返回后调用点捕获)
    捕获 体后 ex_pending = 0 (异常已处理)
-   ex_pending/throw_ex 用户定义 (C 模拟约定, 与现有 抛出/若错/捕获 兼容) */
-
-static int ex_pending = 0;
-static void throw_ex(int type, int code, const char *msg) { (void)type; (void)code; (void)msg; ex_pending = 1; }
+   ex_pending/throw_ex 由运行时 qcc_rt.c 提供 (#148 真内建, 2026-10-18 起);
+   本锚不再自带定义（否则 A6109 重复定义）。 */
 
 int 除零(int b) { if (b == 0) { 抛出 7; return 0; } return 100 / b; }
 

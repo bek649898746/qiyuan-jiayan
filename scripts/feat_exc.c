@@ -8,14 +8,14 @@
 
 typedef struct { int type; int code; char msg[16]; } Ex;
 static Ex cur_ex;
-static int ex_pending = 0;
+static int ex_pending_user = 0;
 
 enum { EX_OK = 0, EX_DIV = 1, EX_OOB = 2, EX_DEEP = 3 };
 
-static void throw_ex(int type, int code, const char *msg) {
+static void throw_ex_user(int type, int code, const char *msg) {
     cur_ex.type = type;
     cur_ex.code = code;
-    ex_pending = 1;
+    ex_pending_user = 1;
     int i = 0;
     while (msg[i] != 0 && i < 15) { cur_ex.msg[i] = msg[i]; i++; }
     cur_ex.msg[i] = 0;
@@ -23,32 +23,32 @@ static void throw_ex(int type, int code, const char *msg) {
 
 /* 抛异常源 */
 static int divide(int a, int b) {
-    if (b == 0) { throw_ex(EX_DIV, 0, "div by zero"); return 0; }
-    if (a > 100) { throw_ex(EX_OOB, 7, "out of range"); return 0; }
+    if (b == 0) { throw_ex_user(EX_DIV, 0, "div by zero"); return 0; }
+    if (a > 100) { throw_ex_user(EX_OOB, 7, "out of range"); return 0; }
     return a / b;
 }
 
 /* 中间层: 不处理异常, 检查传播 (C 模拟栈回卷) */
 static int compute(int a, int b) {
     int r = divide(a, b);
-    if (ex_pending) return 0;
+    if (ex_pending_user) return 0;
     return r + 1;
 }
 
 /* 两层中间层: 异常跨多层回卷 */
 static int deep_compute(int a, int b) {
     int r = compute(a, b);
-    if (ex_pending) return 0;
+    if (ex_pending_user) return 0;
     return r * 2;
 }
 
 /* try/catch: 捕获匹配类型; 捕获后清除状态返回恢复值 */
 static int try_catch(int a, int b, int catch_type, int recover) {
-    ex_pending = 0;
+    ex_pending_user = 0;
     int r = deep_compute(a, b);
-    if (ex_pending) {
+    if (ex_pending_user) {
         if (cur_ex.type == catch_type) {
-            ex_pending = 0;
+            ex_pending_user = 0;
             return recover;
         }
         return -1000;                  /* 未捕获类型 */
@@ -66,9 +66,9 @@ int main(void) {
     if (r != -77) return 2;
 
     /* 3. 异常对象字段 (type/code/msg) */
-    ex_pending = 0;
+    ex_pending_user = 0;
     deep_compute(50, 0);
-    if (!ex_pending) return 3;
+    if (!ex_pending_user) return 3;
     if (cur_ex.type != EX_DIV) return 4;
     if (cur_ex.msg[0] != 'd' || cur_ex.msg[7] != 'z') return 5;  /* "div by zero": z 在 [7] */
 
@@ -84,14 +84,14 @@ int main(void) {
     {
         int cleanups = 0;
         int inner_success = 0;
-        ex_pending = 0;
+        ex_pending_user = 0;
         int rr = compute(7, 0);        /* 抛异常 */
-        if (ex_pending) {
+        if (ex_pending_user) {
             /* 回卷: 顶层统一清理 */
             cleanups = 1;
         }
-        if (!ex_pending) return 8;
-        ex_pending = 0;
+        if (!ex_pending_user) return 8;
+        ex_pending_user = 0;
         if (cleanups != 1) return 9;
     }
 

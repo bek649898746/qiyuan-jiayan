@@ -734,7 +734,9 @@ void __cow_mutate(int **pp, int idx, int val) {
 }
 
 /* 接入 2026-09-02 #80 异常ABI: 异常对象携带值 — 抛出 码, 值 → ex_val = 值; 试 { } 捕获 名 { } → 名 = ex_val (跨函数传播复用 #55 ex_pending/throw_ex 用户定义) */
+int ex_pending = 0; /* #148: 待定异常码 (0=无; 非零=有; 主源 若错/捕获 读) */
 int ex_val = 0;
+int cur_ex_code = 0; /* #148: 最近异常码 (捕获 名 绑定用) */
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
@@ -1487,3 +1489,40 @@ int async_step(int q, int rounds, int tick_ms) {
 }
 #endif
 
+
+/* #84 错误链 (2026-10-18 虾米 · 净缺口闭环): 链式错误节点 + 三个访问器.
+   语义: err_chain(源, 码, 文) 新建节点并挂到「源」上; err_src 取源; err_code/err_msg 取码/文.
+   主源 qcc_zh.jy 的 主薄() 已登记 4 名 ⟹ 用户无需声明, 直接调用 (同 timer_delay 族). */
+typedef struct qcc_err_node { int code; const char *msg; struct qcc_err_node *src; } qcc_err_node;
+void *err_chain(void *src, int code, const char *msg) {
+    qcc_err_node *e = (qcc_err_node *)malloc(sizeof(qcc_err_node));
+    if (!e) return (void *)0;
+    e->code = code;
+    e->msg = msg;
+    e->src = (qcc_err_node *)src;
+    return (void *)e;
+}
+void *err_src(void *e) { return e ? (void *)((qcc_err_node *)e)->src : (void *)0; }
+int err_code(void *e) { return e ? ((qcc_err_node *)e)->code : 0; }
+const char *err_msg(void *e) { return e ? ((qcc_err_node *)e)->msg : ""; }
+
+/* #63 数据并行 (2026-10-18 虾米 · 净缺口闭环): 标量展开基线 —— 逐元素加.
+   主源 qcc_zh.jy 的 主薄() 已登记 `向量加`；用户 无需声明, 直接调用. */
+void 向量加(void *a, void *b, void *c, int n) {
+    int *pa = (int *)a;
+    int *pb = (int *)b;
+    int *pc = (int *)c;
+    int i;
+    for (i = 0; i < n; i++) pc[i] = pa[i] + pb[i];
+}
+
+/* #148 异常真内建 (2026-10-18 虾米 · 300 轮第一刀):
+   `抛出 码, 值;` → `throw_ex(1, 码, "")` + `ex_val = 值` + (试块内) 跳转捕获标签.
+   运行时 真实现: 设置 ex_pending / cur_ex_code（码），ex_val 由生成码赋值.
+   原状: throw_ex 无运行时实现、无内建登记 ⟹ 用户必须自定义（C 模拟假特性）。 */
+int throw_ex(int gen, int code, const char *msg) {
+    ex_pending = gen ? code : 1;
+    cur_ex_code = code;
+    (void)msg;
+    return code;
+}

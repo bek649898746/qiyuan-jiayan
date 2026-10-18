@@ -1,15 +1,15 @@
-﻿// @EXPECTED out:THR 1 5
+﻿// @EXPECTED out:THR 5 0 9
 // @EXPECTED exit:0
-/* `抛出` 按 异常链 约定 定义 `throw_ex` 后 正锚 (2026-10-05 · 第 455 站·第六十五轮)。
-   形态: `抛出 5;`（非 试块）⟹ 编译为 `throw_ex(1, 5, "")` ⟹ 用户 throw_ex 置 ex_pending/ex_val。
-   覆盖: 抛出 后 继续执行, ex_pending=1 · ex_val=5。
-   本锚 锁 **放行面** —— 防 本轮 新增的 throw_ex 引导 分支 误伤 已定义 约定 的程序。 */
-整 ex_pending = 0;
-整 ex_val = 0;
-空 throw_ex(整 参甲, 整 参乙, 字 *消息) { ex_pending = 参甲; ex_val = 参乙; }
+/* `抛出` 正锚 (2026-10-05 · 第 455 站·第六十五轮; 2026-10-18 #148 后按真实运行时语义更新)。
+   形态: `抛出 5;` ⟹ `throw_ex(1, 5, "")` ⟹ 运行时置 `ex_pending = 5`（码）, `ex_val` 保持 0;
+        `抛出 5, 9;` ⟹ 追加 `ex_val = 9`（#80 异常携带值）。
+   2026-10-18: `throw_ex` / `ex_pending` / `ex_val` 已由运行时 qcc_rt.c 提供 (#148 真内建)，
+   本锚不再自带定义（否则与运行时实现 A6109 重复定义）。 */
 函数 整 主(空) {
     抛出 5;
-    格式化 "THR %d %d\n", ex_pending, ex_val;
-    若 (ex_pending != 1 || ex_val != 5) 返 1;
+    格式化 "THR %d %d ", ex_pending, ex_val;
+    抛出 5, 9;
+    格式化 "%d\n", ex_val;
+    若 (ex_pending != 5 || ex_val != 9) 返 1;
     返 0;
 }

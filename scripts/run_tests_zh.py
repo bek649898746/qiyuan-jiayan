@@ -700,6 +700,22 @@ CORE_FEAT = [
     # P0-8 (2026-09-14): C 原型/声明 登记表 静默上限 256 → 8192 + 溢出响亮报错
     #   (400 条声明 + 末条调用; 确保 登记表 不静默截断)
     'scripts/feat_zh_decltab_ok.c',
+    # #84 错误链 (2026-10-18 虾米 · 净缺口闭环): err_chain/err_src/err_code/err_msg 内建
+    'scripts/feat_zh_errchain84_ok.c',
+    'scripts/feat_zh_errchain84_neg.c',
+    # #148 异常真内建 (2026-10-18 虾米 · 300 轮第一刀): throw_ex 主薄 + 运行时 + A9007
+    'scripts/feat_zh_exception148_ok.c',
+    'scripts/feat_zh_exception148_neg.c',
+    # #220 数据流 (2026-10-18 虾米 · 净缺口闭环): 依赖图 词位级扫描 + 自环 A9011
+    'scripts/feat_zh_dataflow220_ok.c',
+    'scripts/feat_zh_dataflow220_neg.c',
+    # #63 数据并行 (2026-10-18 虾米 · 净缺口闭环): 向量加 标量展开基线
+    'scripts/feat_zh_simd63_ok.c',
+    'scripts/feat_zh_simd63_neg.c',
+    # #204 方法重载 (2026-10-18 虾米 · 净缺口闭环): 同名不同参数个数
+    'scripts/feat_zh_overload204_ok.c',
+    'scripts/feat_zh_overload204_order_ok.c',  # skeptic: 1参先/2参后 · 三重载升序 · 1参先/0参后
+    'scripts/feat_zh_overload204_neg.c',
     # 刀六 (2026-10-17 虾米 · 启元递刀): `--diagnostics=json` 的 `loc.line` == 真实错误行
     #   (错误在第 4 行; 修前报 "line":1 —— 码生成期 `词行表[词位]` 落空; 修后取节点源行)
     'scripts/feat_zh_diag_json_line_neg.c',
@@ -2725,6 +2741,28 @@ CORE_FEAT += [
     'scripts/feat_zh_doctest_fn_neg.c',            # 第455站第一百三十七轮 R507 (收 #192): `测试 "名" 用 123;` 函数位非标识符 ⟹ A6051
     'scripts/feat_zh_namespace_ok.c',              # 第455站第一百三十七轮 R507 (收 #279 名称空间): `名称空间 甲 {…}` + `甲_符号`/`甲::符号` 双拼写 ⟹ NS 7 9 (该特性首枚闸内锚)
     'scripts/feat_zh_namespace_neg.c',             # 第455站第一百三十七轮 R507 (收 #279): `名称空间 {…}` 缺名 ⟹ A6050 (原 只报 误导的「未找到 主 入口」)
+    # #279 嵌套名称空间 (2026-10-18 虾米 · 300轮): 递归 `名称空间块(起,止,前缀)`；内层先展开，前缀 甲_乙_
+    'scripts/feat_zh_ns279_nested_ok.c',           # 两层嵌套 + 结构体 + 限定引用 ⟹ NSNEST 42 49 9
+    'scripts/feat_zh_ns279_deep_ok.c',             # 三层嵌套 + 兄弟名称空间 ⟹ NSDEEP 5 8
+    'scripts/feat_zh_ns279_nested_neg.c',          # 内层缺名 ⟹ A6050（不得静默残留）
+    # #21 固定 pin 定案 S-53 (2026-10-18): 无移动式 GC ⟹ 活对象地址稳定（证据锚）
+    'scripts/feat_zh_pin21_stable_ok.c',           # &x 恒定 + 经旧指针可见写入 + 字段同理 ⟹ PIN21 1 2 1 2
+    # #282 变参完整 (2026-10-18 · 300轮第三刀): 变参函数不参与 arity 分派 ⟹ VAR282 30 12
+    'scripts/feat_zh_vararg282_ok.c',              # __qcc_va_start + 指针算术真取 vararg 槽
+    'scripts/feat_zh_vararg282_conflict_neg.c',    # 同名 变参+非变参 重载 ⟹ A6109（边界锁定）
+    # #96 泛型真单态化 (2026-10-18): 泛型函数 + 实例 ⟹ 真实 恒等_整 / 恒等_双 符号
+    'scripts/feat_zh_generic_mono_ok.c',           # MONO 5 2.5 1（两个真实例 + 取址不同）
+    'scripts/feat_zh_generic_mono_neg.c',          # 缺实例 长 ⟹ A1001（不静默回落）
+    'scripts/feat_zh_generic_mono_prefix_ok.c',    # 关键字前缀标识符（实例计数/泛型函数体/实例值）⟹ PREFIX 5 7 9
+    # #96 表达式泛型真单态化 (G-96b · 2026-10-18): 泛型函数+实例 ⟹ 取大_整/取大_双；旧无类型宏 nm ABSENT
+    'scripts/feat_zh_generic_expr_mono_ok.c',
+    'scripts/feat_zh_generic_expr_mono_neg.c',
+    # skeptic 2026-10-18: 泛型体字面量边界 —— 字符串里的类型形参不替换 / 字符串里的 { 不计深度
+    'scripts/feat_zh_generic_string_ok.c',         # LITSTR T=7（"T=%d" 逐字保留）
+    'scripts/feat_zh_generic_brace_str_ok.c',      # BRACE {7（"{%d" 不吞后续文件）
+    # D-DF 数据流求值顺序 (2026-10-18): 纯表达式拓扑重排；不纯仍 A1001
+    'scripts/feat_zh_dataflow_order_ok.c',
+    'scripts/feat_zh_dataflow_order_impure_neg.c',
     'scripts/feat_zh_visname_neg.c',               # 第455站第一百三十七轮 R507 (收 #284 可见性): `私有 123;` 名位非标识符 ⟹ A6049 (原 rc=0, 标记静默落空)
     'scripts/feat_zh_finally_stmt_ok.c',           # 第455站第一百三十八轮 R508 (收 #163 finally): `无论如何 语句;` = 延迟 同义拼写, 函数退出执行 (FB F)
     'scripts/feat_zh_finally_block_ok.c',          # 第455站第一百三十八轮 R508 (收 #163): **块体形** `无论如何 { … }` 同 handler 放行 (兄弟形护栏)
@@ -3874,6 +3912,7 @@ def main():
     #     闸③ 负例锚有效性 —— compile_fail 只要求「退出码 ≠ 0」⟹ **任何不相干错误都能让它"通过"**
     #        （假锚 = 闸给的是假绿灯 = 最大的不确定性）。
     #   `--fast`（30 用例开发档）跳过，与闸① 不同档。
+    gate_fails = []
     if not args.fast and not args.only:   # R701 刀八 (2026-10-11 虾米): `--only` 是 **单锚 诊断档**
         #   (与 L3889 `gate = not args.zh_feat_all and not args.only` 同义 —— `--only` 本来就不算闸)。
         #   ⚠️ 原 未豁免 ⟹ `--only 单锚` 仍 先 跑 6 个 闸检查器 ⟹ 实测 被拖 **8.5 分钟 无输出**
@@ -3920,13 +3959,16 @@ def main():
                 #   ⟹ 首版 600s 会**误杀**它 (2026-10-11 全量闸实测踩到: 闸③ 报"超600s卡死"= **假红**)。
             except subprocess.TimeoutExpired:
                 print('[%s %s] ❌ 检查器 超 1800s (卡死) —— 待查: scripts/%s' % (_tag, _what, _scr))
-                sys.exit(1)
+                gate_fails.append('%s %s (超时)' % (_tag, _what))
+                continue
             _o = (_r.stdout + _r.stderr).decode('utf-8', 'replace')
             for _l in [x for x in _o.strip().split('\n') if x.strip()][-5:]:
                 print('    ' + _l)
             if _r.returncode != 0:
                 print('[%s %s] ❌ 未通过 (rc=%d)' % (_tag, _what, _r.returncode))
-                sys.exit(1)
+                gate_fails.append('%s %s (rc=%d)' % (_tag, _what, _r.returncode))
+                continue        # 2026-10-18 审计 P1: **不再 早退** —— 闸红 也要 跑完 锚,
+                                #   否则 闸一红 ⟹ 1645 锚 零执行 ⟹「全绿」是假绿 (D32 现场)
             print('[%s %s] ✅' % (_tag, _what))
 
     # 确保编译器
@@ -4006,7 +4048,11 @@ def main():
     # 门槛纪律 (2026-09-07 收紧): 核心门槛 (fast/zh-feat/en 默认全量) 出现任何 SKIP = 红 (特性必须真测);
     # --zh-feat-all (诊断全量) 与 --only (单测) 只展示, 不硬红 (含显式标注的配套/多文件测试)
     gate = not args.zh_feat_all and not args.only
-    if fail_l or (gate and skip_l):
+    if fail_l or (gate and skip_l) or gate_fails:
+        if gate_fails:
+            print('--- 闸检查 未通过 (锚 已全部执行, 不再早退) ---')
+            for _g in gate_fails:
+                print('  ' + _g)
         sys.exit(1)
     print('==== 全绿 ====')
 

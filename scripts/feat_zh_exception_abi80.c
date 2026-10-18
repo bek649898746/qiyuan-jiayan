@@ -3,10 +3,7 @@
 
 /* #80 异常ABI: 抛出 码, 值 → ex_val (异常对象携带值, qcc_rt.c);
    试 { } 捕获 名 { } → 捕获体前 名 = ex_val (异常值提取);
-   跨函数传播复用 #55 ex_pending/throw_ex (用户定义) */
-
-static int ex_pending = 0;
-static void throw_ex(int type, int code, const char *msg) { (void)type; (void)code; (void)msg; ex_pending = 1; }
+   跨函数传播复用 #55 ex_pending/throw_ex（运行时 qcc_rt.c 提供; 2026-10-18 起不再自带定义） */
 
 int 取数(int b) { if (b == 0) { 抛出 7, 42; return 0; } return b; }
 

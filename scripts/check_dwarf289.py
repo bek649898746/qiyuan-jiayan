@@ -315,6 +315,13 @@ def main():
         src_lines = io.open(ANCHOR, encoding='utf-8-sig').read().split('\n')
     n_user = len(src_lines)
     n_rt = len(io.open(RT, encoding='utf-8', errors='replace').read().split('\n'))
+    rt_lines = io.open(RT, encoding='utf-8', errors='replace').read().split('\n')
+
+    def rt_line_of(needle):
+        for i, l in enumerate(rt_lines, 1):
+            if needle in l:
+                return i
+        return -1
     base = os.path.basename(ANCHOR)
 
     def line_of(needle):
@@ -350,8 +357,27 @@ def main():
 
     rt_dies = [d for d in dies if d['tag'] == 0x2e and d['attrs'].get(AT_DECL_FILE) == 2]
     ck(len(rt_dies) >= 20, '运行时函数 归 文件 2 (实得 %d 个)' % len(rt_dies))
-    ck(all(1 <= d['attrs'].get(AT_DECL_LINE, 0) <= n_rt for d in rt_dies),
-       '运行时函数 decl_line 落在 qcc_rt.c 行区间 1..%d' % n_rt)
+    # 2026-10-18 审计 D32: 前插运行时的 `#include` 展开会给**所有**运行时行号一个**恒定**偏移
+    #   (实测 +10: stdio/stdlib/string/time 展开的行)。这里不写死 10，而是用已知函数
+    #   (`void *realloc(`) 现场求偏移，并要求「偏移后全部落回 qcc_rt.c 原区间」+ 偏移恒定。
+    _rt_anchor = rt_line_of('void *realloc(')
+    _rt0 = next((d for d in rt_dies if d['attrs'].get(AT_NAME) == 'realloc'), None)
+    _off = None
+    if _rt_anchor > 0 and _rt0 is not None:
+        _off = _rt0['attrs'].get(AT_DECL_LINE, 0) - _rt_anchor
+    ck(_off is not None and _off >= 0,
+       '运行时 展开行偏 可现场求出 (realloc 源 %s 行, 实得偏移 %r)' % (_rt_anchor, _off))
+    if _off is not None:
+        _bad = [d for d in rt_dies if not (1 <= d['attrs'].get(AT_DECL_LINE, 0) - _off <= n_rt)]
+        ck(not _bad,
+           '运行时 decl_line 减 行偏 %d 后 落 1..%d (越界 %d 条 %r)' % (
+               _off, n_rt, len(_bad),
+               [(d['attrs'].get(AT_NAME), d['attrs'].get(AT_DECL_LINE)) for d in _bad[:3]]))
+        _thr = next((d for d in rt_dies if d['attrs'].get(AT_NAME) == 'throw_ex'), None)
+        if _thr is not None:
+            ck(_thr['attrs'].get(AT_DECL_LINE, 0) - _off == rt_line_of('int throw_ex('),
+               'throw_ex decl_line - 行偏 == 真源第 %d 行 (实得 %r - %d)' % (
+                   rt_line_of('int throw_ex('), _thr['attrs'].get(AT_DECL_LINE), _off))
     usr_dies = [d for d in dies if d['tag'] == 0x2e and d['attrs'].get(AT_DECL_FILE) == 1]
     ck(all(1 <= d['attrs'].get(AT_DECL_LINE, 0) <= n_user for d in usr_dies),
        '所有 用户文件 子程序 行号 落在 1..%d (锚文件 行数)' % n_user)
