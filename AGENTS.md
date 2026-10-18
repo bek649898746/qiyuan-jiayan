@@ -50,7 +50,7 @@ $t = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
 
 ### 3. 改编译器源码 = 双版同步
 
-`srclib/qcc_x86.c`（C 版）与 `srclib_jiayan/qcc_work.jy`（甲言版）是**逻辑镜像**。
+`srclib/qcc_x86.c`（C 版）与 `srclib_jiayan/qcc_zh.jy`（甲言版）是**逻辑镜像**。
 **只改一边 = PR 会被拒。**
 
 ### 4. 内部材料永不提交

@@ -17,7 +17,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 （2026-10-15 实测：`build.ps1` 的 `expected` 曾滞后 44 天，导致**任何用户 clone 后照文档跑都看到假 FAIL 并当场中断**。）
 
 ### 1. 双版镜像
-- `srclib/qcc_x86.c` 与 `srclib_jiayan/qcc_work.jy` 是逻辑镜像
+- `srclib/qcc_x86.c` 与 `srclib_jiayan/qcc_zh.jy` 是逻辑镜像
 - 改 C 版 = 同步甲言版；只改一边 = PR 会被拒
 - 甲言文件用 Python 写（UTF-8），不要用 PowerShell 写
 

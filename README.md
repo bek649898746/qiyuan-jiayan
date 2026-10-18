@@ -40,7 +40,7 @@
 
 甲言是一门**独立语言**（以中文为关键字、**兼容 C**）的**编译器**——每个中文关键字（`若/否/遍/整/字/输出`）都是一个**词元**（token）。它**自己编译自己**，并且：
 
-- **中英双版本编译器**：`qcc_x86.c`（C 英文版，验证锚点/信任根）+ `qcc_work.jy`（甲言中文版，主版本/交付物）——同链自举，H1==H2 逐字节对等
+- **一个编译器，中英混写**：`srclib_jiayan/qcc_zh.jy`（甲言源码 · 主版本 · 交付物）——同一份源码可用中文关键字、英文 C 关键字或**两者混写**（`整 甲 = 1;` 与 `int 甲 = 1;` 等价，`若/if`、`返/return`、`整/int` 随时互换）。⚠️ `srclib/qcc_x86.c`（C 原版）**仅是验证锚点/信任根**（用于 H1==H2 逐字节对等校验），**普通用户无需使用它，也不需要用 gcc 编译任何东西**
 - **零外部依赖，不依赖 gcc**：甲言由 `seed/qcc.jy` 纯甲言种子自举，整条自举链都是中文代码；gcc 仅作为可选的"验证门卫"出现，不是宿主
 - **自举不动点**：V1==V2==V3==V4==V5 五代全等，SHA256 全等（**以 `scripts/build_zh.ps1` 的 `$expected` 实测为准**；v1.0 封存时为 `650993A2`）——甲言编译器自举闭环，C 版和甲言版同链。**甲言汇编器 asm_zh 同样全等**——编译器与汇编器双链数学闭环
 - H1==H2 中文对等：同一 C 程序经甲言编译与经 gcc 编译产物逐字节一致——中文关键字（若/整/返）不影响语义。甲言产物与 gcc 种子产物（V1 vs V2）不同是正常（不同编译器，字迹不同内容一样）
@@ -101,13 +101,13 @@ Gate 9:   编译器裸机适配（printf→串口、read_file→内存）
 
 ```
 srclib/
-  qcc_x86.c        甲言编译器（C 原版，验证宿主 —— 仅用于 H1==H2 逐字节验证）
+  qcc_x86.c        甲言编译器（C 原版 · 仅作验证锚点/信任根，普通用户无需使用）
   qcc_rt.c         运行库
   asm_zh.c/.jy     中文汇编器（C 原版 / 甲言版）
   jyld.c           COFF 链接器（多文件 + C 库 + msvcrt 标准 C 库导入）
   jycc.c           编译驱动（jycc main.c lib.c -o app.exe）
 srclib_jiayan/
-  qcc_work.jy      甲言编译器（中文源码，自举主体）
+  qcc_zh.jy        甲言编译器（甲言源码，主版本/交付物 · 中英混写）
 tests/
   qcc/             180 个编译测试
   kernel/          甲言内核源码（裸机启动、Agent 调度器、NVMe 驱动）
@@ -198,7 +198,7 @@ int main() {
 用已生成的甲言编译器直接编译自己（纯甲言链，无外部工具链）：
 
 ```bash
-./v1.exe srclib_jiayan/qcc_work.jy -o self.exe   # 甲言编译自己
+./v1.exe srclib_jiayan/qcc_zh.jy -o self.exe   # 甲言编译自己
 ./v1.exe hello.jy -o hello.exe                    # 甲言编译程序
 ```
 
@@ -265,9 +265,9 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 ```bash
 # 第 1 步用 gcc 重建"验证宿主"（H1==H2 验证用，非甲言宿主）
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-./qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe
-./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe
-./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe
+./qcc_x86.exe srclib_jiayan/qcc_zh.jy -o v1.exe
+./v1.exe srclib_jiayan/qcc_zh.jy -o v2.exe
+./v2.exe srclib_jiayan/qcc_zh.jy -o v3.exe
 sha256sum v1.exe v2.exe v3.exe v4.exe v5.exe
 # v1..v5 五代应完全相同（甲言自举收敛链）
 ```
@@ -278,9 +278,9 @@ sha256sum v1.exe v2.exe v3.exe v4.exe v5.exe
 
 ```bash
 # 已有验证宿主 qcc_x86.exe 时（H1==H2 验证链）：
-./qcc_x86.exe srclib_jiayan/qcc_work.jy -o v1.exe   # 甲言编译器编自己
-./v1.exe srclib_jiayan/qcc_work.jy -o v2.exe         # 自己编自己
-./v2.exe srclib_jiayan/qcc_work.jy -o v3.exe         # 再编一次，SHA256 全等
+./qcc_x86.exe srclib_jiayan/qcc_zh.jy -o v1.exe   # 甲言编译器编自己
+./v1.exe srclib_jiayan/qcc_zh.jy -o v2.exe         # 自己编自己
+./v2.exe srclib_jiayan/qcc_zh.jy -o v3.exe         # 再编一次，SHA256 全等
 ```
 
 自举不动点意味着：**只要保住任何一个已知不动点产物，甲言就能无限自我复制**——这是"语言自主权"的工程证明。gcc 只出现在"验证宿主重建"这一可选环节。

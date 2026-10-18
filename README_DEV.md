@@ -1,4 +1,4 @@
-﻿# README_DEV — 开发者快速上手
+# README_DEV — 开发者快速上手
 
 > 面向想要修改/扩展甲言编译器的人。**先读这条**：本项目是**双版镜像 + 自举不动点**架构，改代码前必须理解下面的铁律。
 
@@ -6,17 +6,17 @@
 
 ```
 srclib/qcc_x86.c        ← 编译器 C 原版（验证宿主，gcc 编译，用于 H1==H2 验证）
-srclib_jiayan/qcc_work.jy ← 编译器甲言版（中文关键字，自举主体）
+srclib_jiayan/qcc_zh.jy ← 编译器甲言版（中文关键字，自举主体）
 ```
 
 **这两个文件是逐字节逻辑镜像**：同一份编译器，两种语言外壳。
-qcc_x86.c 由 gcc 编译成验证宿主 qcc_x86.exe；qcc_x86.exe 编译 qcc_work.jy 生成 v1；
+qcc_x86.c 由 gcc 编译成验证宿主 qcc_x86.exe；qcc_x86.exe 编译 qcc_zh.jy 生成 v1；
 v1 再编译生成 v2，v2 再编译生成 v3，v3 再编译生成 v4，v4 再编译生成 v5 —— 验收 v1 == v2 == v3 == v4 == v5（SHA 一致）= 自举不动点。
 甲言真正的宿主是 seed/qcc.jy 种子，gcc 只用于重建验证宿主（可选）。
 
 ## 2. 铁律（违反任何一条 = 破坏不动点）
 
-1. **改 C 必改甲言**：`qcc_x86.c` 的任何改动，必须同步到 `qcc_work.jy`（同逻辑，中文关键字版）。
+1. **改 C 必改甲言**：`qcc_x86.c` 的任何改动，必须同步到 `qcc_zh.jy`（同逻辑，中文关键字版）。
 2. **甲言文件用 Python 写**：绝对不用 PowerShell Set-Content（UTF-8/GBK 编码损坏历史教训）。
 3. **改完必验证**：跑完整闭环（见下）。
 4. **不动点不能动**：任何合理改动产生**新** SHA 是正常的，但五代必须一致（**含 v1**）+ H1==H2 逐字节一致。
@@ -30,11 +30,11 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 
 # 手工自举五代
 gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-.\qcc_x86.exe srclib_jiayan\qcc_work.jy -o v1.exe
-.\v1.exe srclib_jiayan\qcc_work.jy -o v2.exe
-.\v2.exe srclib_jiayan\qcc_work.jy -o v3.exe
-.\v3.exe srclib_jiayan\qcc_work.jy -o v4.exe
-.\v4.exe srclib_jiayan\qcc_work.jy -o v5.exe
+.\qcc_x86.exe srclib_jiayan\qcc_zh.jy -o v1.exe
+.\v1.exe srclib_jiayan\qcc_zh.jy -o v2.exe
+.\v2.exe srclib_jiayan\qcc_zh.jy -o v3.exe
+.\v3.exe srclib_jiayan\qcc_zh.jy -o v4.exe
+.\v4.exe srclib_jiayan\qcc_zh.jy -o v5.exe
 # v1..v5 SHA256 必须一致（含 v1！Get-FileHash v1.exe,v2.exe,v3.exe,v4.exe,v5.exe -Algorithm SHA256）
 
 # asm_zh 指令单元测试（110 条中文助记符 → 机器码逐字节断言）
@@ -49,7 +49,7 @@ python tests/unit/test_asm_zh.py   # 通过 110, 失败 0
 ```
 1. 在 C 版 qcc_x86.c 实现（最小改动，一行一行）
 2. gcc 编译 + 单独测试你的新功能
-3. 逐行镜像到 qcc_work.jy（用 Python 脚本做文本替换）
+3. 逐行镜像到 qcc_zh.jy（用 Python 脚本做文本替换）
 4. 跑验证闭环 → 新不动点 SHA
 5. 更新 README.md / CHANGELOG.md 的不动点
 6. 提交（含双版文件）
@@ -74,7 +74,7 @@ gcc -O2 srclib\asm_zh.c -o asm_zh.exe
 
 ```
 srclib/qcc_x86.c          编译器（C，~440KB 单文件）
-srclib_jiayan/qcc_work.jy 编译器（甲言，~390KB 单文件）
+srclib_jiayan/qcc_zh.jy 编译器（甲言，~390KB 单文件）
 srclib/asm_zh.c/.jy       中文汇编器（H1==H2 的 H2 路径）
 srclib/jyld.c             COFF 链接器
 srclib/jycc.c             编译驱动

@@ -31,7 +31,7 @@ fixpoint checksum=517
 sym_lookup("square")=8, sym_lookup("nope")=-1, sym_n=4
 eval(((1+2)+(3+4)))=10
 eval(((10+20)+(30+40)))=100
-qi_hash("qcc_work.jy")=2186245147185590010
+qi_hash("qcc_zh.jy")=2186245147185590010
 qi_hash("loongarch")=9053148468637691595
 arr sum=165
 ```
