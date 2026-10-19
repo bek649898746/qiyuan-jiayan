@@ -19,6 +19,7 @@
 > | **34,335 行源码怎么读** | [`manual/源码导航.md`](manual/源码导航.md) |
 > | **中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
 > | **编译期比 C 多拦什么**（可空/越界/未初始化/单赋值） | [`manual/编译期检查清单.md`](manual/编译期检查清单.md) —— 每条附实测报错原文 + gcc 对比 |
+> | **工程优势（可量化的）** | [`manual/工程优势清单.md`](manual/工程优势清单.md) —— 14.54MB vs rustc 1292MB · 接口摘要省 93.3% · 确定性构建 · fail-closed 自证 |
 > | **支持哪些特性** | [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) |
 > | **English / AI agent 入口** | [`README.en.md`](README.en.md) · [`llms.txt`](llms.txt) |
 > | **了解设计动机与架构** | 本页下方 |
