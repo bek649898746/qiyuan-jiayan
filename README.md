@@ -278,8 +278,8 @@ srclib/
   jycc.c           编译驱动（jycc main.c lib.c -o app.exe）
 srclib_jiayan/
   qcc_zh.jy        甲言编译器（甲言源码 · 主版本 · 交付物 · 中英混写）34,335 行
-  qcc_work.jy      英文链镜像（sinicize.py 从 qcc_x86.c 生成 · 22,571 行）
-                   ⚠️ 仅 scripts/build.ps1 英文链使用，与主源 qcc_zh.jy 是两条独立链
+  qcc_work.jy      ⚠️ **内部中间件，对外无用**：sinicize.py 从 C 版机械生成的镜像
+                   （22,571 行，中文字符仅 5.8%），仅历史英文链 build.ps1 使用
 tests/
   qcc/             353 个编译测试文件
   kernel/          甲言内核源码（裸机启动、Agent 调度器、NVMe 驱动）
@@ -287,7 +287,7 @@ tests/
 
   > tests/compiler/（v1.0 时期的 H1==H2 验证产物，391 个 .asm + 107 个 .c）不入仓库——
   > 存种子不存果实。可在 releases/h1h2_验证产物_tests_compiler.zip 下载**历史存档**对照，
-  > 或运行 scripts/build.ps1 重新生成（重新生成的是**当前**产物，与历史 zip 不再逐字节相同）。
+  > 该 zip 是**历史存档**，不再重新生成。
 seed/
   qcc.jy           种子版甲言编译器源码（自举起点，纯甲言，不依赖任何 C 工具链）
   qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码（历史信任根重建用）
@@ -323,7 +323,7 @@ cd qi-yuan--jia-yan
 
 **想跑完整自举验证（进阶）** —— 见下方「自举验证（一条命令）」段：命令是 `scripts/build_zh.ps1`，起点就是上面这个 `qcc_zh_seed.exe`，同样不碰 gcc。
 
-> 附：`scripts/build.ps1` 是**历史英文链** —— 它编译的是 `qcc_work.jy`（22,571 行的镜像版，由 sinicize 从 C 版生成），与中文主链**彼此独立、产物不互通**，仅用于考古与对照。**新手不必跑它。**
+**新手不必跑它。**
 
 **步骤 3：用甲言编译运行第一个程序**
 
@@ -411,20 +411,18 @@ int main() {
 
 ### 自举验证（一条命令）
 
-仓库里有三个构建脚本，用途不同 —— **新手直接用 `build_zh.ps1`**：
+仓库对外只有**一条验证路径**：`build_zh.ps1`。`build.ps1`（英文链）已知有问题且只编译废弃镜像，**已从对外路径撤出**（详见「已知问题」第 1、3 条）。
 
 | 脚本 | 链条 | 用途 |
 |:--|:--|:--|
 | **`scripts/build_zh.ps1`** | **中文链** | ⭐ **主入口**：甲言中文源码自举验证（`expected` 随最新提交更新） |
-| `scripts/build.ps1` | 英文链 | ⚠️ **历史英文链，已知有问题，不推荐**：它用 gcc 编的 C 版去编译 `qcc_work.jy`，**必须在仓库根目录运行** —— 换到别的目录时它会找不到 `srclib/qcc_rt.c` 而**静默产出缺运行库的残缺编译器**（rc 仍为 0，但产物一运行就 `0xC0000005` 段错误）。**想验证中文主线请用 `build_zh.ps1`**（实测无此问题） |
+
 | `scripts/build_rt.ps1` | 运行时 | 单独构建运行库 `qcc_rt.c` |
 
 ```powershell
 # 推荐：中文链自举验证（一条命令）
 powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 
-# 英文链（含全套测试 + 缓存自检；耗时更长）
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 ```
 
 **判据**：看到 `[通过 PASS] 中文自举链不动点 XXXXXXXX 达成 (收敛深度 N 段: vN-1==vN; 链耗时 Xs)` ⟹ **成功**。

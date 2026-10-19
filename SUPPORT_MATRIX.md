@@ -147,4 +147,4 @@
 | `jyld` | 链接器（多 .o → PE）|
 | `c_to_jy.py` | C 源 → 甲言镜像同步 |
 | `diff_gate.py` | gcc 差异测试台（400 轮 DIFF=0）|
-| `build.ps1` | 完整链验证（gcc 现编 → 自举 → expected 对账 → 回归）|
+| `build_zh.ps1` | **中文主链**：自举验证（seed → 收敛深度 → expected 对账）|

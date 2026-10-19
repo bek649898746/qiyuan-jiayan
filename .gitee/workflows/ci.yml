@@ -41,10 +41,13 @@ stages:
           name: encoding_gate
           displayName: 编码闸（.ps1 必须 UTF-8 BOM；源码须严格 UTF-8）
           script: |
-            powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1 -NoTest
+            # ⚠️ 历史英文链 build.ps1 / verify_all.ps1 已从对外验证路径撤出：
+            #    它们编译废弃镜像 qcc_work.jy，且在非仓库根目录会静默产出缺运行库的残缺编译器。
+            #    详见 README「已知问题与口径说明」第 1 条。
+            powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
 
         - step: execute
-          name: full_verify
-          displayName: 自举收敛 + 测试套件 + 行为断言
+          name: multilang
+          displayName: 九条语言线（85 文件 · 每线一个可执行内核）
           script: |
-            powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
+            powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1

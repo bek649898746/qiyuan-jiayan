@@ -56,8 +56,8 @@ python scripts/run_tests_zh.py
 .\v2.exe          srclib_jiayan\qcc_zh.jy -o v3.exe
 Get-FileHash v1.exe,v2.exe,v3.exe -Algorithm SHA256   # v2 == v3 即收敛
 
-# 英文链（历史，与中文主链彼此独立、产物不互通）
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+# ⚠️ 历史英文链 build.ps1 —— 已知有问题，不要用（编译废弃镜像 + 非仓库根会崩）
+#   详见 README「已知问题」第 1 条
 # 输出: [OK] 自举收敛达成: v2==v3==v4==v5 = XXXXXXXX
 ```
 
@@ -101,8 +101,8 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 
 ```
 srclib_jiayan/qcc_zh.jy   编译器主源（甲言 · 4,088 KB · 34,335 行）★
-srclib_jiayan/qcc_work.jy 英文链镜像（1,834 KB · 22,571 行，由 sinicize.py
-                          从 qcc_x86.c 生成；仅 scripts/build.ps1 使用）
+srclib_jiayan/qcc_work.jy ⚠️ 内部中间件（勿用）：C 版机械镜像 · 22,571 行 · 中文字符 5.8%
+                          （中文字符仅 5.8%），仅历史英文链 build.ps1 使用
 seed/qcc.jy               纯甲言种子（1,834 KB · 22,571 行）
 srclib/qcc_x86.c          历史信任根（C · 1,853 KB · 22,600 行）只读参考
 srclib/asm_zh.c/.jy       中文汇编器（C 61 KB / 甲言 108 KB）
@@ -113,7 +113,7 @@ scripts/feat_zh_*.c       中文特性锚（1,425 个）
 tests/qcc/                编译测试（353 个文件）
 tests/behavior/           行为断言（45 个文件）
 scripts/build_zh.ps1      ⭐ 中文链主入口
-scripts/build.ps1         英文链（历史）
+scripts/build.ps1         ⚠️ 已撤出（英文链，见 README 已知问题）
 ```
 
 ## 7. 常见坑
