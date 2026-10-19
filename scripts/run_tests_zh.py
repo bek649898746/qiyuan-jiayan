@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -3671,6 +3671,12 @@ def find_qcc():
     env = os.environ.get('QCC_TEST_BIN')
     if env and os.path.exists(env):
         return env
+    # 2026-10-20 修 (千问审计发现): clone 后仓库内无 qcc_zh_v*.exe（不入库）
+    #   ⟹ 原逻辑直接 fallback 到 qcc_x86.exe（gcc 编的 C 版）⟹ 测的**不是主链**。
+    #   改为：优先用仓库自带的 qcc_zh_seed.exe（真正的不动点产物，零依赖）。
+    seed = os.path.join(root, 'qcc_zh_seed.exe')
+    if os.path.exists(seed):
+        return seed
     for n in range(7, 0, -1):
         p = os.path.join(root, 'qcc_zh_v%d.exe' % n)
         if os.path.exists(p):
