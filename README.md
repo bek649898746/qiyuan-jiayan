@@ -1,18 +1,26 @@
 # 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
 
 > ## 🚀 新手上路（第一次来？先看这里）
->
+
+> **能直接跑的三条命令**（零依赖 · 零联网 · 都不需要 gcc / Python / 官方工具链）：
+
+> | # | 我想… | 命令 | 实测 |
+> |:--|:--|:--|:--|
+> | ① | **30 秒验真伪**（最推荐） | `powershell -File scripts/verify_90s.ps1` | **9.2 s** · 8 项全绿 |
+> | ② | **验「九条语言线」**（甲言写别的语言） | `powershell -File scripts/verify_multilang.ps1` | **31.6 s** · 9/9 通过 |
+> | ③ | **验自举收敛**（完整链） | `powershell -File scripts/build_zh.ps1 -NoSeed` | ≈20.8 min · `v1==v2==39C6FC81` |
+
+> **想读东西的**：
+
 > | 我想… | 去哪 |
 > |:--|:--|
-> | **快速跑起来 + 知道怎么算跑对了** | **[`manual/快速上手.md`](manual/快速上手.md)** |
-> | **查中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
-> | **看支持哪些特性** | [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) |
-> | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
-> | **了解设计动机与架构** | 本页下方（设计动机 · 架构 · 创新点） |
-> | **30 秒验真伪（推荐）** | **直接跑 `scripts/verify_90s.ps1`**（零依赖 · 零联网 · 本机 9.1 秒） |
-> | **English / AI agent 入口** | [`README.en.md`](README.en.md) |
+> | **九条语言线源码**（85 文件 / 69,497 行，可逐条编译） | [`examples/multilang/`](examples/multilang/) · 说明见 [`manual/多语言实现.md`](manual/多语言实现.md) |
+> | **快速上手 + 怎么算跑对了** | [`manual/快速上手.md`](manual/快速上手.md) |
 > | **34,335 行源码怎么读** | [`manual/源码导航.md`](manual/源码导航.md) |
-> | **九条语言线（甲言写别的语言）** | [`examples/multilang/`](examples/multilang/) —— 85 文件 / 69,497 行，`scripts/verify_multilang.ps1` 实测 9/9 |
+> | **中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
+> | **支持哪些特性** | [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) |
+> | **English / AI agent 入口** | [`README.en.md`](README.en.md) · [`llms.txt`](llms.txt) |
+> | **了解设计动机与架构** | 本页下方 |
 >
 > ⚠️ **环境提醒（请先确认）**：
 > - **编译甲言程序** → **Windows x64 + 零依赖**（clone 自带 `qcc_zh_seed.exe`，**不需要 gcc、不需要 Python**）
@@ -21,18 +29,7 @@
 >
 > 详见[快速上手](manual/快速上手.md)第二节。
 
-> ## ⚡ 30 秒判断这是不是真东西
->
-> ```powershell
-> git clone https://gitee.com/zheng-yuhe-from-guangdong/qi-yuan--jia-yan.git
-> cd qi-yuan--jia-yan
-> powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
-> ```
->
-> **判据**：末尾打印 `[PASS] 90 秒自证 全绿：8 项通过 / 0 失败` ⟹ 编译器真的能用。
-> **零依赖 · 零联网**：不需要 gcc，不需要 Python，不需要 Linux。本机实测 **9.1 秒**。
-> 它验的是：编译器自检 → 编译运行官方示例 → 中文关键字（整/函数/空/遍/若/返回）→ `-graph` 知识图谱 → `--dj` 结构化诊断。
->
+> ## ⚡ 六项硬数据（每项都附复算命令）
 > | 可当场复算的事实 | 值 | 怎么算 |
 > |:--|:--|:--|
 > | 中文主源 | `srclib_jiayan/qcc_zh.jy` · **34,335 行** · 全中文标识符 | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
