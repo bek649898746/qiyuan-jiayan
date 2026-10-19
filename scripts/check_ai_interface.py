@@ -174,12 +174,24 @@ def main():
     if b'[REPEAT]' not in (zh2.stderr + zh2.stdout) or b'[REPEAT]' not in (en2.stderr + en2.stdout):
         fails.append('--重复/--repeat 未输出 [REPEAT] 对账行')
 
+    # ⑤ --repeat 可重入梯度（2026-10-20 压测补：原判据只测 N=2，低于实际崩溃点）
+    #    实测：N=2/5 通过，N>=10 稳定 0xC0000005（千问审计发现，启元复验一致）。
+    #    N=5 设为硬判据；N=10 记为 KNOWN-GAP（修好前不阻塞，但每次打印实际结果）。
+    rep5 = run([cc, '--repeat', '5', src, '-o', out], w, timeout=300)
+    if rep5.returncode != 0:
+        fails.append('--repeat 5 rc=%d（N=5 为硬判据；0xC0000005 = 可重入崩）' % rep5.returncode)
+    rep10 = run([cc, '--repeat', '10', src, '-o', out], w, timeout=300)
+    repeat_gap = (rep10.returncode != 0)
+
     print('== AI 适配接口判据 ==')
     print('help 开关数: %d（断言列出 %d 项）' % (len(expected), len(expected)))
     print('graph 实体: %d · line=0: %d' % (len(graph.get('entities', [])), len(zeros)))
     print('错误字节: UTF-8/GBK 至少一种可读 = %s' % ('OK' if readable else 'FAIL'))
     print('中文开关等价: --自检=%d/--selfcheck=%d · --重复=%d/--repeat=%d'
           % (zh1.returncode, en1.returncode, zh2.returncode, en2.returncode))
+    print('--repeat 梯度: N=2=%d · N=5=%d · N=10=%d%s'
+          % (en2.returncode, rep5.returncode, rep10.returncode,
+             '  [KNOWN-GAP: N>=10 段错误，待修]' if repeat_gap else ''))
     if fails:
         print('FAIL=%d' % len(fails))
         for f in fails:
