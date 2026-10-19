@@ -48,10 +48,13 @@ $t = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
 > 实测教训：2026-10-15 发现 `scripts/build.ps1` 的 `$expected` 滞后 44 天，
 > 导致**任何用户 clone 后照文档跑都看到红色 FAIL 并当场中断** —— 而自举其实完全成功。
 
-### 3. 改编译器源码 = 双版同步
+### 3. 改编译器源码 = 只改甲言主源（2026-10-19 订正）
 
-`srclib/qcc_x86.c`（C 版）与 `srclib_jiayan/qcc_zh.jy`（甲言版）是**逻辑镜像**。
-**只改一边 = PR 会被拒。**
+**唯一的主源是 `srclib_jiayan/qcc_zh.jy`**（甲言 · 34,335 行）。新功能**只改甲言主源**。
+
+`srclib/qcc_x86.c`（C 版 · 22,600 行）**不再是与主源并行的镜像** —— 它停更于 2026-09-06，与主源相差 **11,735 行**，只作为可审计的**历史信任根**保留，不需要再同步。
+
+> 曾同步的「英文链镜像」`srclib_jiayan/qcc_work.jy`（22,571 行）仅 `scripts/build.ps1` 使用，与主链产物**不互通**。
 
 ### 4. 内部材料永不提交
 
@@ -66,7 +69,7 @@ $t = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
 powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 ```
 
-**正确性判据 = 自举链「多代哈希全等」**（如 `v1==v2==v3`），
+**正确性判据 = 自举链「末两代哈希全等」**（seed 与源码配套时通常**一步收敛** `v1==v2`；seed 落后时 `v1` 会带旧 codegen、需两段 `v1≠v2==v3`。2026-10-19 本机实测即 `v1==v2==39C6FC81`），
 **不是**比对脚本里写死的 `$expected`。必须 `FAIL=0` 才算过。
 
 ---
@@ -91,8 +94,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 
 | 接口 | 命令 | 用途 |
 |:--|:--|:--|
-| **代码知识图谱** | `qcc_x86.exe -graph 图谱.json <src>`<br>+ `python scripts/graph_query.py 图谱.json <8 种查询>` | 谁调谁 / 扇入扇出 / 孤立函数 / 结构体风险 |
-| **结构化诊断** | `qcc_x86.exe --diagnostics=json <src>`（简写 `--dj`） | 错误码 + 位置 + **修复建议** + **出错源码行** |
+| **代码知识图谱** | `qcc_zh_seed.exe -graph 图谱.json <src>`<br>+ `python scripts/graph_query.py 图谱.json <8 种查询>` | 谁调谁 / 扇入扇出 / 孤立函数 / 结构体风险 |
+| **结构化诊断** | `qcc_zh_seed.exe --diagnostics=json <src>`（简写 `--dj`） | 错误码 + 位置 + **修复建议** + **出错源码行** |
 
 详见 [`manual/AI快速上手.md`](manual/AI快速上手.md)。
 

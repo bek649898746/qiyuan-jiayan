@@ -33,7 +33,7 @@ labels: bug
 **编译命令**：
 
 ```powershell
-.\qcc_x86.exe your_file.jy -o out.exe
+.\qcc_zh_seed.exe your_file.jy -o out.exe
 ```
 
 ## 三、实际行为

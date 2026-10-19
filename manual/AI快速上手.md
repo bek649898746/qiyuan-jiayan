@@ -27,13 +27,13 @@
 ### 第 1 步 · 导出图谱
 
 ```powershell
-.\qcc_x86.exe -graph 图谱.json 你的源文件.jy
+.\qcc_zh_seed.exe -graph 图谱.json 你的源文件.jy
 ```
 
 > ### 🔴 参数顺序坑（**实测踩过，务必注意**）
 > `-graph` 后面紧跟的是 **输出文件名**，源文件要放在**更后面**。
 >
-> **如果写反**（例如 `qcc_x86.exe -graph 源码.jy`），编译器会把那个路径当作**输出目标**，
+> **如果写反**（例如 `qcc_zh_seed.exe -graph 源码.jy`），编译器会把那个路径当作**输出目标**，
 > **直接覆盖你的源码文件** —— 实测 `examples/成绩.jy` 从 1601 字节被写成 17KB 的 JSON。
 >
 > ✅ 正确：`-graph <输出.json> <源文件>`
@@ -85,7 +85,7 @@ top fanout:
 ## 三、接口二：结构化诊断
 
 ```powershell
-.\qcc_x86.exe --diagnostics=json 你的源文件.c     # 简写：--dj
+.\qcc_zh_seed.exe --diagnostics=json 你的源文件.c     # 简写：--dj
 ```
 
 正常编译无诊断时**不输出**（无错即无 JSON）；**有诊断时**输出到 stderr。
@@ -137,7 +137,7 @@ top fanout:
 ① 拿函数清单   python scripts/graph_query.py 图谱.json funcs
 ② 判影响面     ... callers <fn> / callees <fn>
 ③ 看结构风险   ... risk · fanout · fanin · isolated
-④ 编译取诊断   qcc_x86.exe --diagnostics=json <src>   → 直接读 fixes / codeLine
+④ 编译取诊断   qcc_zh_seed.exe --diagnostics=json <src>   → 直接读 fixes / codeLine
 ⑤ 改完自检     powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 ```
 
@@ -156,7 +156,7 @@ top fanout:
 ## 六、其他为 AI 设计的能力（本页未展开）
 
 README「核心能力」表还列有：**编译 DAG 重放证明** · **编译检查点**。
-这些的使用方式与上面两个接口不同，建议先用 `.\qcc_x86.exe`（无参数）看 Usage，
+这些的使用方式与上面两个接口不同，建议先用 `.\qcc_zh_seed.exe`（无参数）看 Usage，
 或直接查阅源码中的参数解析段（`srclib/qcc_x86.c` 的 main 参数循环）。
 
 ---

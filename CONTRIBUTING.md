@@ -16,29 +16,29 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 **判据是「自举链多代哈希全等」，不是比对写死在脚本里的 `expected`。**
 （2026-10-15 实测：`build.ps1` 的 `expected` 曾滞后 44 天，导致**任何用户 clone 后照文档跑都看到假 FAIL 并当场中断**。）
 
-### 1. 双版镜像
-- `srclib/qcc_x86.c` 与 `srclib_jiayan/qcc_zh.jy` 是逻辑镜像
-- 改 C 版 = 同步甲言版；只改一边 = PR 会被拒
-- 甲言文件用 Python 写（UTF-8），不要用 PowerShell 写
+### 1. 单一主源（2026-10-19 订正：双版镜像期已终止）
+- **唯一的源是 `srclib_jiayan/qcc_zh.jy`**（甲言 · 34,335 行）；`srclib/qcc_x86.c` 是**历史信任根**，已停更（2026-09-06），**不再是并行实现的第二份编译器**，两者相差 11,735 行
+- 改功能**只改甲言源**。不要再往 C 版镜像 —— 维持两份实现会让每处改动成本翻倍，且 C 版那一半无法用中文验证
+- `.jy` 文件**必须 UTF-8**：用能保证编码的编辑器。**绝不用 PowerShell 的 `Set-Content`/`Out-File` 写 `.jy`**（历史事故：UTF-8 被按 GBK 写坏）
 
 ### 2. 验证闭环全绿
 ```
-自举五代 v1==v2==v3==v4==v5（SHA 一致，含 v1）
+自举收敛：末两代 SHA 全等（配套时一步收敛 `v1==v2`；seed 落后时两段 `v1≠v2==v3`）
 direct128（C 编译器）PASS
 direct128_cf1（cf_1）PASS
-asm_h12（H1==H2 三级中文栈）128/128
+asm_h12（`qcc -S` 直发 vs `asm_zh` 汇编，三级中文栈逐字节一致）PASS
 ```
 新功能要附测试用例（`tests/qcc/*.c` 或单元测试）。
 
 ### 3. 不动点登记
-- 合理改动 → 新 SHA 是正常的，但必须五代一致（含 v1）
+- 合理改动 → 新 SHA 是正常的；判定成功看 `scripts/build_zh.ps1` 的**收敛深度**（末两代全等）+ `$expected` 对账
 - 更新 README.md、CHANGELOG.md 的不动点记录
 
 ## 代码风格
 - 4 空格缩进
 - gcc `-Wall -Werror` 零警告
 - 注释中文（项目语言是中文）
-- 新代码尽量镜像已有模式（本项目是"抄自己"风格）
+- 新代码尽量沿用已有模式（本项目是"抄自己"风格）—— 但**只抄甲言那一份**，不再维护 C 镜像
 
 ## 提交信息格式
 ```
