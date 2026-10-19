@@ -20,6 +20,7 @@
 > | ① | **30 秒验真伪**（最推荐） | `powershell -File scripts/verify_90s.ps1` | **9.2 s** · 8 项全绿 |
 > | ② | **验「九条语言线」**（甲言写别的语言） | `powershell -File scripts/verify_multilang.ps1` | **31.6 s** · 9/9 通过 |
 > | ③ | **验自举收敛**（完整链） | `powershell -File scripts/build_zh.ps1 -NoSeed` | ≈20.8 min · `v1==v2==39C6FC81` |
+> | ④ | **审计者：一键导事实基线** | `powershell -File scripts/audit_facts.ps1` | **1 秒** · 含 6 个常见误判提示 |
 
 > **想读东西的**：
 

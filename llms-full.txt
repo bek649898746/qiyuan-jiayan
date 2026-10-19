@@ -86,6 +86,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 | `manual/特性清单.md` | 291 项逐项标注（另一轮独立核对口径）|
 | `manual/多语言实现.md` | 九线：**85 文件 / 69,497 行源码在 `examples/multilang/`**，参数化验证 + 全量压测 87.5% + 验收口径与局限 |
 | `manual/多语言实现方法.md` | 怎么写：19 条可复用手法 + 流程铁律 |
+| `scripts/audit_facts.ps1` | **审计者一键入口**：1 秒导出全部事实基线 + 6 个常见误判提示 |
 | `manual/工程优势清单.md` | **可量化的工程优势**：14.54MB vs rustc 1292MB · 接口摘要省 93.3% · 确定性构建 · fail-closed 自证 · 33k 行信任根 |
 | `manual/编译期检查清单.md` | **比 C 多拦的编译期检查**（可空/越界/未初始化/单赋值/撞词诊断），每条附实测报错原文与 gcc 对比 |
 | `manual/源码导航.md` | **34,335 行怎么读**：流水线定位 + 5 个巨型函数（占 46%）+ 三个 AI 接口配方 |
