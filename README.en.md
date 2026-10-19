@@ -63,7 +63,7 @@ These are stated plainly rather than hidden:
 2. **Windows x64 only.** No Linux/macOS backend yet.
 3. **Slow full build.** ~20.8 min for the complete bootstrap chain; ~3 s for a single small program.
 4. **Two "mechanism count" conventions exist** (284 strict vs 269 inclusive). Both are published side by side; neither is hidden.
-5. **The "9 language lines" claim** (interpreters for JS/JVM/Java/Python/Go/Rust/TS/C++/C# written in Jiayan, 329 cases / 326 pass) — **the source for these is an internal audit archive and is NOT in this repo**, so it cannot be reproduced from a clone. Treat it as a self-reported result, not a verified one. What *is* verifiable in-repo: the 1,425 anchors, C ABI interop, and the 291-item ledger.
+5. **The "9 language lines" claim** (interpreters for JS/JVM/Java/Python/Go/Rust/TS/C++/C# written in Jiayan) — **source is now archived in `examples/multilang/` (85 files, 69,497 lines)**, and `scripts/verify_multilang.ps1` compiles and runs every line: **9/9 pass in 31.6 s** on Windows x64. The older "329 cases / 326 pass" *count* remains an internal audit figure and is not re-asserted here.
 6. **The C version (`srclib/qcc_x86.c`) is no longer maintained in parallel.** It stopped at 22,600 lines (2026-09-06) while the Chinese source grew to 34,335. It is kept as an auditable historical trust root, **not** as a second implementation. A previously advertised "H1==H2 byte-identical across C and Chinese chains" property **no longer holds** and has been retired from the docs.
 
 ## Where to look
