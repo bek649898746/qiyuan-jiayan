@@ -22,7 +22,10 @@
 powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 #   实测：末两代 SHA 全等即收敛（本仓当前记录值见 build_zh.ps1 的 $expected）
 
-# ③ 一键全量校验（含编码闸，提交/发布前用）
+# ③ 30 秒验真伪（零依赖零联网，实测 9.1s，8 项全绿）—— 推荐先跑这个
+powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
+
+# ④ 一键全量校验（含编码闸，提交/发布前用）
 powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 ```
 
@@ -83,7 +86,9 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 | `manual/特性清单.md` | 291 项逐项标注（另一轮独立核对口径）|
 | `manual/多语言实现.md` | 九线成果 + 验收口径与局限 |
 | `manual/多语言实现方法.md` | 怎么写：19 条可复用手法 + 流程铁律 |
+| `manual/源码导航.md` | **34,335 行怎么读**：流水线定位 + 5 个巨型函数（占 46%）+ 三个 AI 接口配方 |
 | `manual/数据口径与核验方法.md` | 所有数字的口径与核验命令，含「无法核验项」诚实标注 |
+| `README.en.md` | 英文总览（给非中文读者与 AI agent）|
 | `SUPPORT_MATRIX.md` | C 子集支持矩阵与已知限制（勿把已知限制当 bug 报）|
 | `AGENTS.md` | 项目硬约束（编码铁律 / 自举判据 / 目录职责）|
 | `jylib/README.md` | 甲言基础库（SHA-256/HMAC/HKDF），甲言版与 gcc 版双轨全通 |

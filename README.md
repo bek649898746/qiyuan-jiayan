@@ -9,6 +9,9 @@
 > | **看支持哪些特性** | [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) |
 > | **一条命令做自举验证** | `powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1` |
 > | **了解设计动机与架构** | 本页下方（设计动机 · 架构 · 创新点） |
+> | **30 秒验真伪（推荐）** | **直接跑 `scripts/verify_90s.ps1`**（零依赖 · 零联网 · 本机 9.1 秒） |
+> | **English / AI agent 入口** | [`README.en.md`](README.en.md) |
+> | **34,335 行源码怎么读** | [`manual/源码导航.md`](manual/源码导航.md) |
 >
 > ⚠️ **环境提醒（请先确认）**：
 > - **编译甲言程序** → **Windows x64 + 零依赖**（clone 自带 `qcc_zh_seed.exe`，**不需要 gcc、不需要 Python**）
@@ -17,17 +20,29 @@
 >
 > 详见[快速上手](manual/快速上手.md)第二节。
 
-> ## 🏆 封存版本 v1.0（jiayan-v1.0-stable · 2026-08-24）—— **历史里程碑**
+> ## ⚡ 30 秒判断这是不是真东西
 >
-> ⚠️ **以下 v1.0 是 2026-08-24 的封存快照**。主线此后持续迭代至今（机制台账 284/291 已实现，AI 适配接口落地），
-> **当前状态见下方「📊 当前状态」段**；不动点数值一律**以 `scripts/build_zh.ps1` 的 `$expected` 实测为准**。
+> ```powershell
+> git clone https://gitee.com/zheng-yuhe-from-guangdong/qi-yuan--jia-yan.git
+> cd qi-yuan--jia-yan
+> powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
+> ```
 >
-> **手搓自举中文编译器 · 编译并落地运行 git-2.45.2**
+> **判据**：末尾打印 `[PASS] 90 秒自证 全绿：8 项通过 / 0 失败` ⟹ 编译器真的能用。
+> **零依赖 · 零联网**：不需要 gcc，不需要 Python，不需要 Linux。本机实测 **9.1 秒**。
+> 它验的是：编译器自检 → 编译运行官方示例 → 中文关键字（整/函数/空/遍/若/返回）→ `-graph` 知识图谱 → `--dj` 结构化诊断。
 >
-> - **自举不动点**：`650993A2`（**封存当时** v1==v2==v3==v4==v5 五代 SHA256 全等、含 v1；主线迭代后 v1 不再与 v2 全等，现行判据见「当前状态」段；封存时刻 3B4002D2 → Phase2 优化1 B44E2DF8 → Phase3 IR 上主线 650993A2）
-> - **落地运行 Git**：原版 git-2.45.2（36.4 万行）→ 数百个 .o 链接为可执行文件 → `git version 2.45.2`
-> - **验证**：325/325 回归 + behavior 20/20 + git 对等回归 24/24 + H1==H2 双链合一（⚠️ H1==H2 是**当时的**记录；主线分叉后该判据已停用，见下方「双链口径」段）
-> - **安装部署**：见下方 [快速开始](#快速开始)（Windows x64 · **零依赖** · clone 即用）
+> | 可当场复算的事实 | 值 | 怎么算 |
+> |:--|:--|:--|
+> | 中文主源 | `srclib_jiayan/qcc_zh.jy` · **34,335 行** · 全中文标识符 | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
+> | 自举收敛 | **`v1 == v2 == 39C6FC81`**（一步收敛，全链 1,246.5 s） | `scripts/build_zh.ps1 -NoSeed` |
+> | 中文特性锚 | **1,425 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
+> | 语言机制台账 | **291 项**：✅284 / 🔴2 / ❌5 | `manual/机制特性实现表.md` |
+> | 中文关键字 | **38 个**（15 语句 + 23 类型修饰） | `manual/中文关键字表.md` |
+> | 编译测试 | **353** 个 | `(git ls-files tests/qcc).Count` |
+>
+> 📜 **历史里程碑 v1.0（2026-08-24 封存）见文末「附：v1.0 封存记录」**。
+>
 
 **让语言回到语言本身。让每一个不会英文的中国人，都能用自己的母语学会编程、用上 AI。**
 
@@ -142,7 +157,7 @@ tests/
 seed/
   qcc.jy           种子版甲言编译器源码（自举起点，纯甲言，不依赖任何 C 工具链）
   qcc_x86.c/asm_zh.c/qcc_rt.c/jyld.c   种子版 C 源码（历史信任根重建用）
-  （种子构建产物 .exe 不入仓库——存种子不存果实；历史信任根可由 gcc 重建）
+  （**仅 `qcc_zh_seed.exe` 一个产物入库**——它是刻意保留的不动点种子，为让 clone 后零依赖即可编译程序；其余任何 .exe 一律不入库；历史信任根可由 gcc 重建）
 jiayan_engines/
   *.jy             甲言化引擎（纯 C 整数引擎翻译，编译+运行验证通过）
 releases/
@@ -408,3 +423,23 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 >
 > **Chinese programming language** / Chinese C compiler / Chinese assembler /
 > self-hosting compiler / 中文编程 / 中文编译器 / 中文汇编器 / 词元
+
+---
+
+## 附：v1.0 封存记录（jiayan-v1.0-stable · 2026-08-24）—— 历史里程碑
+
+> ⚠️ **本节是 2026-08-24 的封存快照，非当前状态**。主线此后持续迭代（自举不动点已从 `650993A2` 演进到 `39C6FC81`，机制台账 284/291 已实现，AI 适配接口落地）。
+> 当前状态以上方「⚡ 30 秒判断」与「📊 当前状态」为准；不动点一律**以 `scripts/build_zh.ps1` 的 `$expected` 实测为准**。
+> ## 🏆 封存版本 v1.0（jiayan-v1.0-stable · 2026-08-24）—— **历史里程碑**
+>
+> ⚠️ **以下 v1.0 是 2026-08-24 的封存快照**。主线此后持续迭代至今（机制台账 284/291 已实现，AI 适配接口落地），
+> **当前状态见上方「📊 当前状态」段**；不动点数值一律**以 `scripts/build_zh.ps1` 的 `$expected` 实测为准**。
+>
+> **手搓自举中文编译器 · 编译并落地运行 git-2.45.2**
+>
+> - **自举不动点**：`650993A2`（**封存当时** v1==v2==v3==v4==v5 五代 SHA256 全等、含 v1；主线迭代后 v1 不再与 v2 全等，现行判据见「当前状态」段；封存时刻 3B4002D2 → Phase2 优化1 B44E2DF8 → Phase3 IR 上主线 650993A2）
+> - **落地运行 Git**：原版 git-2.45.2（36.4 万行）→ 数百个 .o 链接为可执行文件 → `git version 2.45.2`
+> - **验证**：325/325 回归 + behavior 20/20 + git 对等回归 24/24 + H1==H2 双链合一（⚠️ H1==H2 是**当时的**记录；主线分叉后该判据已停用，见下方「双链口径」段）
+> - **安装部署**：见上方 [快速开始](#快速开始)（Windows x64 · **零依赖** · clone 即用）
+
+> **v1.0 的意义**：它证明的是「手搓自举中文编译器**能编译并落地运行真实的 36.4 万行 C 项目**（git-2.45.2）」，这是当时的核心交付。此后的主线不再追求 feat 数量，而是补机制深度与 AI 适配。
