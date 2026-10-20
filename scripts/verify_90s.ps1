@@ -4,7 +4,13 @@
 # 目的: 让任何人（含 AI agent）在 90 秒内独立确认「这个编译器真的能用」，
 #       而不必跑 20 分钟的完整自举。失败时 exit 1。
 # ============================================================
-$ErrorActionPreference = 'Stop'
+# 2026-10-21 启元（大同步验证实测）：Stop -> Continue。
+#   原因：新编译器（种子 7B5D3CFB）把 `[graph]` 进度信息改写到 **stderr**
+#         （旧种子 39C6FC81 写在 stdout —— 新行为更正确：进度不污染 stdout）。
+#         而 `$ErrorActionPreference='Stop'` 配合 `2>&1` 会把这类 stderr 当成致命错误
+#         直接终止脚本，实测 90 秒自证从 8/8 全绿变成 3 项 FAIL（卡在关4）。
+#   本脚本本来就逐关检查退出码与输出内容（Chk / Test-Path / JSON 解析），不依赖 Stop。
+$ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -72,7 +78,19 @@ Chk "-graph 导出可解析且 relations>0" $gok $gmsg
 Write-Host "[5/5] --dj 结构化诊断 ..." -ForegroundColor Yellow
 $bad = Join-Path $work 'bad.jy'
 W $bad "函数 整 主(空) { 返 未声明变量; }`r`n"
-$dj = (& $qcc --dj $bad -o (Join-Path $work 'bad.exe') 2>&1 | Out-String)
+# 2026-10-21 启元：新编译器（种子 7B5D3CFB）把 `--dj` 的 JSON 写到 **stderr**
+#   （旧种子 39C6FC81 写 stdout —— 两者都是「纯 JSON、无前缀」，实测 stderr 328 字符、
+#    { } 各 6 个配对）。而 PowerShell 的 `2>file` 重定向会给 stderr 加 `程序名 : ` 前缀，
+#   正则截取又会被 JSON 内换行截断（实测两种都失败过）。
+#   ⟹ 用 cmd 重定向拿**原始流**，再「stdout 优先、stderr 兜底」选一个解析。新旧行为都兼容。
+$djOutFile = Join-Path $work 'dj_out.txt'
+$djErrFile = Join-Path $work 'dj_err.txt'
+$badExe    = Join-Path $work 'bad.exe'
+$null = cmd /c ('"{0}" --dj "{1}" -o "{2}" >"{3}" 2>"{4}"' -f $qcc, $bad, $badExe, $djOutFile, $djErrFile)
+$djOut = (Get-Content $djOutFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
+$djErr = (Get-Content $djErrFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
+if ($djOut -and $djOut.Trim().Length -gt 0) { $dj = $djOut } else { $dj = $djErr }
+if (-not $dj) { $dj = '' }
 $djok = $false; $djmsg = $dj.Trim()
 if ($dj -match '\{"diagnostics"') {
     try {
