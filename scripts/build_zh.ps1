@@ -8,7 +8,7 @@
 #
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
-param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed)
+param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed, [switch]$Fast)
 $ErrorActionPreference = 'Stop'
 # R576 (2026-10-08 虾米 · C类攻坚 批C-AC): **族9 #203 扩展方法 真接入** (新码 A6100) + 三 条 定案 (S-37/S-38/S-39)
 #   语言级 顶层 `扩展 构 类型 { 方法 = 函数, … };` —— 类型 外部 加 方法; 调用 `x.方法(实参…)` / `p->方法(实参…)`
@@ -232,8 +232,11 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '39C6FC81'  # AI 适配四刀: usage 27 项/中文开关/ -graph 真行号/可重入堆水位+移标复位 (2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==39C6FC81; 前值 8BF9C77B
-$expected_前 = '8BF9C77B'  # 审计 D34: #204 arity 失真回退 (2026-10-18 · 逐项闭环2): 锚 1647; 净缺口 0. 自举 v1==v2==8BF9C77B; 前值 9248BBAF
+$expected = '7B5D3CFB'  # 2026-10-21 (AUDIT-P0-1 ��β): �������� compress2���� compress/uncompress ͬ�壩��v1==v2==D7D66A5D
+$expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
+$expected_前 = '2DB0CC41'  # A9 指针地基三缺陷 (TYPEOF/PTRPTR/DEREFIDX) + --refs 预置段过滤 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==2DB0CC41; 前值 6099BEE6
+$expected_前 = '6099BEE6'  # D18 (#94): aligned(N) 类型级 满卯 + 同名 max 继承（匿名不参与）(2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==6099BEE6; 前值 39C6FC81
+$expected_前 = '39C6FC81'  # AI 适配四刀: usage 27/中文开关/-graph 真行号/--repeat 可重入 (2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==39C6FC81; 前值 8BF9C77B
 $expected_前 = '24078A97'  # #63 数据并行 (向量加 标量展开基线); 锚 1628; 净缺口 2. 自举 v1==v2==24078A97; 前值 D370F2C7
 $expected_前 = 'D370F2C7'  # -c 内建名豁免 (2026-10-18): A1001 检查 +!主薄; 自举 v1==v2==D370F2C7; 前值 CDE9AA07
 $expected_前 = 'CDE9AA07'  # #204 续 (skeptic): A9007 arity 改按分派条目 (查函数参有) + 顺序锚; 锚 1626; 净缺口 3. 自举 v1==v2==CDE9AA07; 前值 C44FF62E
@@ -4706,6 +4709,17 @@ if (-not (Test-Path qcc_zh_seed.exe)) { if (Test-Path qcc_zh_v7.exe) { Copy-Item
 # 小改默认 2 段; 只有 真不收敛 (v1!=v2) 时才自动续跑, 用最少的代 定位收敛深度。
 $chainT0 = Get-Date
 $prevExe = 'qcc_zh_seed.exe'; $prevName = 'seed'
+if ($Fast) {
+    # 2026-10-19: 开发期单代构建 —— 只产 v1，不跑 v2/收敛；提交前必须跑完整链验 v1==v2
+    $out = 'qcc_zh_v1.exe'
+    $t0 = Get-Date
+    & ".\$prevExe" srclib_jiayan\qcc_zh.jy -o $out
+    if ($LASTEXITCODE -ne 0) { throw "Fast: 第 1 代 编译失败 (由 $prevName)" }
+    $h = (Get-FileHash $out -Algorithm SHA256).Hash.Substring(0,8)
+    $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+    Write-Host "  [Fast] v1 = $h ($sec s, 由 $prevName 编译) — 单代; 未验 v1==v2; 提交前跑完整链"
+    exit 0
+}
 $hs = @(); $finalExe = ''; $convDepth = -1
 foreach ($n in 1..7) {
     $out = "qcc_zh_v$n.exe"

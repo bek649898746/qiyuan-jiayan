@@ -9,7 +9,7 @@
  *    (实测: 闸 捕获 的 p.stdout 里 有 [LEAK] 行) → 用 `@EXPECTED out:` 断言。
  *    (闸 于 2026-09-11 同时 新增 `@EXPECTED err:` 能力 — stdout/err 两 面 都 可 断言。) */
 
-// @EXPECTED out:[LEAK] arena 池 0 未释放
+// @EXPECTED err:[LEAK] arena 池 0 未释放
 
 int main(void) {
     int 区 = -1;

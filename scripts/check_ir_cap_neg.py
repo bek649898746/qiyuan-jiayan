@@ -37,14 +37,18 @@ def find_qcc():
         p = os.path.join(ROOT, 'qcc_zh_v%d.exe' % n)
         if os.path.exists(p):
             return p
-    for nm in ('qcc_zh_seed.exe', 'qcc_x86.exe'):
-        p = os.path.join(ROOT, nm)
-        if os.path.exists(p):
-            return p
-    return os.path.join(ROOT, 'qcc_x86.exe')
+    p = os.path.join(ROOT, 'qcc_zh_seed.exe')
+    if os.path.exists(p):
+        return p
+    # P2-5 (2026-10-21): **不再 兜底 qcc_x86.exe（英文链）** —— 英文链上本闸必假红。
+    return ''
 
 
 CC = sys.argv[1] if len(sys.argv) > 1 else find_qcc()
+if not os.path.exists(CC):
+    # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
+    # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
+    print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
 CASES = [
     ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽'),
     ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链'),

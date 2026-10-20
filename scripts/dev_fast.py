@@ -43,7 +43,11 @@ def parallel(jobs, workers=4):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--cc', default='qcc_zh_v2.exe', help='用于编译新源码的旧编译器')
+    # 2026-10-21: 默认 从 `qcc_zh_v2.exe` 改为 **`qcc_zh_seed.exe`** —— build_zh.ps1 每次
+    # 收尾都用 `$expected` 哈希**校验**种子，而 `qcc_zh_v2.exe` 没有任何校验、实测已静默落后
+    # **6 个提交**（CE46F0D5 vs 种子 ABBF2A4A）⟹ 用旧编译器编新源码，A/B 结论全废
+    # （本会话曾据旧 v2 误判「D39 让 -c 崩」，烧掉 ~1 小时）。
+    ap.add_argument('--cc', default='qcc_zh_seed.exe', help='用于编译新源码的旧编译器（默认 = 哈希校验过的种子）')
     ap.add_argument('--out', default=os.path.join('build', 'dev_fast.exe'))
     ap.add_argument('--gates', action='store_true', help='跳过编译，只跑并行判据')
     ap.add_argument('--only', default='compiler', choices=['compiler', 'ir', 'opt', 'all'],

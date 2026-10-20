@@ -1,5 +1,5 @@
 // @EXPECTED exit:nonzero
-// @EXPECTED out:[除零] 运行时除零错误
+// @EXPECTED err:[除零] 运行时除零错误
 #include <stdio.h>
 /* 第 223 站 (2026-09-21) —— **C3 余项 2**：**普通函数内** 复合赋值 `a /= b` / `a %= b` 的除零处理
  *

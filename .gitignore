@@ -55,10 +55,8 @@ out.txt
 qcc_test_*.txt
 seed/_BOOTSTRAP.md
 
-# 种子二进制（开源仓库只传种子：允许提交中文种子编译器）
-# ★ 2026-10-15 修正：build_zh.ps1 需要【根目录】的 qcc_zh_seed.exe 才能自举
-#   旧规则只放行 seed/*_seed.exe（白名单指错目录，导致种子从未进仓库）
-!qcc_zh_seed.exe
+# 种子二进制（开源仓库只传种子：允许提交 seed/*_seed.exe）
+!seed/*_seed.exe
 
 # 调试/测试工作目录（本地保留，不上传）
 scratch_test/
@@ -259,3 +257,4 @@ scripts/_retry*.py
 scripts/_strtb*.py
 scripts/_t10_*.c
 csmoke/
+jyldsmoke/

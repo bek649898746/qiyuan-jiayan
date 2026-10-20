@@ -29,7 +29,9 @@ static int r4(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((i
 typedef struct {
     char name[16];
     uint8_t *data;
-    int size;
+    int size;             /* SizeOfRawData（文件里真实存在的字节数） */
+    int vsize;            /* VirtualSize（节在内存里的完整尺寸；qcc -c 用它表达 .data 的零尾） */
+    int va;               /* VirtualAddress（对象文件里 qcc 用它表达 `.data` run 的**目标偏移提示**） */
     int out_off;          /* 在输出节内的偏移（布局时记录） */
     int rva;              /* 输出节基址 + out_off（布局时记录） */
     int chars;
@@ -86,6 +88,7 @@ static const char *k32_names[] = {
     "FormatMessageA","FormatMessageW","GetCurrentProcessId","GetDiskFreeSpaceA",
     "GetDiskFreeSpaceW","GetFileAttributesA","GetFileAttributesExW","GetFileAttributesW",
     "GetFileSize","GetFullPathNameA","GetFullPathNameW","GetLastError",
+    "GetModuleFileNameA", /* 2026-10-19: 对象模式自举 .o 需要 (原 undefined symbol) */
     "GetModuleHandleW","GetProcessHeap","GetSystemInfo","GetSystemTime",
     "GetSystemTimeAsFileTime","GetTempPathA","GetTempPathW","GetTickCount",
     "FindFirstFileW","FindNextFileW","FindClose", /* dirent (fix 2026-08-19): compat/win32/dirent.c 真实现 */
@@ -180,7 +183,9 @@ static int mdesc_off = 0;    /* msvcrt 导入描述符 .data 偏移 */
 static int g_pdata_rva = 0;  /* .pdata 异常表 RVA (Exception Directory) */
 static int g_pdata_len = 0;   /* .pdata 总大小 */
 static int g_heap_obj = -1;   /* __qcc_heap_counter 内置对象索引 */
-static int g_heap_counter_off = -1; /* 该对象 .data 节在 OUT_DATA 缓冲区中的偏移 */
+static int g_heap_counter_off = -1;
+static int g_self_heap = 0;      /* D-OBJ-HEAP: 本链接 含 自身宿主 __qcc_heap_counter (对象自带) */ /* 该对象 .data 节在 OUT_DATA 缓冲区中的偏移 */
+static int g_data_raw_end = 0;      /* D-OBJ (2026-10-20): OUT_DATA 中**真实有内容**的上界（尾部零区不落盘） */
 
 /* ---------- 读取文件 ---------- */
 static uint8_t *read_all(const char *path, int *len) {
@@ -264,6 +269,9 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
             s->name[8] = 0;
         }
         s->size = r4(sh + 16);
+        s->vsize = r4(sh + 8); /* 2026-10-20 (D-OBJ): .data 的 VirtualSize —— qcc -c 只落盘有内容 run */
+        if (s->vsize < s->size) s->vsize = s->size;
+        s->va = r4(sh + 12);   /* 2026-10-20 (D-OBJ): `.data$N` run 的目标偏移提示（0 = 顺序追加） */
         s->chars = r4(sh + 36); /* 节特征（fix 2026-08-07: 原读 +32 是重定位数域，节对齐取不到） */
         { int av = (s->chars >> 20) & 0xF; s->align = av > 0 ? (1 << (av - 1)) : 1; if (s->align > 0x10000) s->align = 0x10000; } /* fix 2026-08-07: COFF 对齐位20-23（.rdata=32, .bss=128, .text=64） */
         int praw = r4(sh + 20);
@@ -300,6 +308,21 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
     for (int i = 0; i < nsec; i++) {
         const uint8_t *sh = b + sec_off + i * 40;
         int nrel = r2(sh + 32);
+        /* D-OBJ16 (2026-10-20 虾米): COFF 节头 NumberOfRelocations 只有 16 位。
+           qcc 对 >= 0xFFFF 条的节 写逃逸码 0xFFFF, 真实条数放在
+           **该节首条重定位的 VirtualAddress** (合成哨兵条, 不参与重定位)。 */
+        if (nrel == 0xFFFF) {
+            int prel0 = r4(sh + 24);
+            if (prel0 < 0 || prel0 + 10 > len) {
+                fprintf(stderr, "jyld: %s: reloc count escape out of range\n", path);
+                return -1;
+            }
+            nrel = r4(b + prel0);
+            if (nrel < 0) {
+                fprintf(stderr, "jyld: %s: bad escaped reloc count\n", path);
+                return -1;
+            }
+        }
         o->nrel[i] = nrel;
         o->rel_off[i] = total_rel;
         total_rel += nrel;
@@ -310,13 +333,14 @@ static int parse_coff(const char *path, const uint8_t *b, int len) {
             const uint8_t *sh = b + sec_off + i * 40;
             int prel = r4(sh + 24);
             int nrel = o->nrel[i];
+            int skip = (r2(sh + 32) == 0xFFFF) ? 10 : 0; /* D-OBJ16: 跳过 计数哨兵条 */
             if (nrel > 0) {
-                if (prel < 0 || prel + nrel * 10 > len) {
+                if (prel < 0 || prel + skip + nrel * 10 > len) {
                     fprintf(stderr, "jyld: %s: reloc table out of range\n", path);
                     return -1;
                 }
                 for (int j = 0; j < nrel; j++) {
-                    const uint8_t *rp = b + prel + j * 10;
+                    const uint8_t *rp = b + prel + skip + j * 10;
                     o->rels[o->rel_off[i] + j].va = r4(rp);
                     o->rels[o->rel_off[i] + j].sym = r4(rp + 4);
                     o->rels[o->rel_off[i] + j].type = r2(rp + 8);
@@ -733,7 +757,7 @@ static int k32_slot(const char *name) {
 static const char *msvcrt_names[] = {
     "printf","fprintf","sprintf","_snprintf","scanf","fscanf","sscanf","puts","gets",
     "putchar","getchar","malloc","calloc","realloc","free","memcpy","memset",
-    "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strchr",
+    "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strncat","strchr", /* 2026-10-19: +strncat (对象模式自举 .o 需要; 原 undefined symbol) */
     "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
     "_strtoi64","_strtoui64","_putenv","_iob",
     "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
@@ -1476,6 +1500,16 @@ static int classify(const char *name) {
 static void layout(void) {
     int glob_off[NUM_OUT] = {0, 0, 0, 0, 0, 0};
     int max_align[NUM_OUT] = {0, 0, 0, 0, 0, 0}; /* fix 2026-08-07: 每类输出节的最大对齐 */
+    /* D-OBJ (2026-10-20): **合成对象**（CRT stub / thunk 预留）的节不是从文件解析的，
+       其 vsize 字段从未赋值（0）。布局若直接用 vsize 会让这些节「不占位」⟹ 后续节覆盖
+       CRT 桩 ⟹ 少 71 字节 + entry 偏移错 + 重链接产物启动即 0xC0000005。
+       这里给所有节兜底：vsize < size 时按 size。 */
+    for (int oi0 = 0; oi0 < obj_n; oi0++)
+        for (int si0 = 0; si0 < objs[oi0].nsec; si0++)
+            if (objs[oi0].secs[si0].vsize < objs[oi0].secs[si0].size)
+                objs[oi0].secs[si0].vsize = objs[oi0].secs[si0].size;
+    int data_base[MAX_OBJS]; /* D-OBJ: 每对象 `.data` 在本输出节里的基址（run 的 VirtualAddress 是**对象内**偏移） */
+    for (int di = 0; di < MAX_OBJS; di++) data_base[di] = -1;
     for (int oi = 0; oi < obj_n; oi++) {
         JObj *o = &objs[oi];
         if (getenv("JYLD_DEBUG")) {
@@ -1490,16 +1524,50 @@ static void layout(void) {
                基址对齐；拼接不补齐会使 .rdata 的 16B 常量落在非 16 对齐地址 → movdqa 崩 */
             int need = o->secs[si].align; if (need < 1) need = 1;
             if (need > max_align[which]) max_align[which] = need;
+            if (which == OUT_DATA && o->secs[si].va > 0) {
+                /* D-OBJ (2026-10-20): qcc 的 `.data$N` run —— 节头 VirtualAddress 是**本对象内**偏移。
+                   多 .o 合并时每个对象有独立 `.data` 空间，必须落到该对象的基址上（绝对不能当全局绝对偏移，
+                   否则第二个 .o 的 run 会覆盖第一个 —— 实测 check_jyld_link_smoke 的 arch 用例当场变红）。 */
+                int base = (data_base[oi] >= 0) ? data_base[oi] : glob_off[which];
+                int hof = base + o->secs[si].va;
+                if (hof + o->secs[si].size > out_len[which])
+                    out_pad(which, hof + o->secs[si].size - out_len[which]);
+                if (o->secs[si].data && o->secs[si].size > 0)
+                    memcpy(out_data[which] + hof, o->secs[si].data, o->secs[si].size);
+                o->secs[si].out_off = hof;
+                if (hof + o->secs[si].size > glob_off[which]) glob_off[which] = hof + o->secs[si].size;
+                if (o->secs[si].vsize > o->secs[si].size &&
+                    hof + o->secs[si].vsize > out_len[which])
+                    out_pad(which, hof + o->secs[si].vsize - out_len[which]);
+                if (hof + o->secs[si].size > g_data_raw_end) g_data_raw_end = hof + o->secs[si].size;
+                if (getenv("JYLD_DEBUG"))
+                    fprintf(stderr, "[sec] obj%d %s HINT base=%d hof=%d size=%d vsize=%d\n",
+                            oi, o->secs[si].name, base, hof, o->secs[si].size, o->secs[si].vsize);
+                continue;
+            }
             int off = (glob_off[which] + need - 1) & ~(need - 1);
             if (off > glob_off[which] && which != OUT_BSS) out_pad(which, off - glob_off[which]);
             o->secs[si].out_off = off;
+            if (which == OUT_DATA && data_base[oi] < 0) data_base[oi] = off; /* 本对象 `.data` 基址 */
             if (oi == g_heap_obj && which == OUT_DATA) g_heap_counter_off = off;
-            glob_off[which] = off + o->secs[si].size;
+            glob_off[which] = off + o->secs[si].vsize;
             if (which == OUT_BSS) {
-                total_stc_n += (o->secs[si].size + 3) / 4;
-            } else if (o->secs[si].data) {
-                out_append(which, o->secs[si].data, o->secs[si].size);
+                total_stc_n += (o->secs[si].vsize + 3) / 4;
+            } else {
+                if (o->secs[si].data && o->secs[si].size > 0)
+                    out_append(which, o->secs[si].data, o->secs[si].size);
+                /* D-OBJ: raw 之后的 [size, vsize) 是零尾 —— 只在布局里占位，缓冲区补零 */
+                if (o->secs[si].vsize > o->secs[si].size)
+                    out_pad(which, o->secs[si].vsize - o->secs[si].size);
             }
+            if (which == OUT_DATA) {
+                int end = off + o->secs[si].size;
+                if (end > g_data_raw_end) g_data_raw_end = end;
+            }
+            if (getenv("JYLD_DEBUG"))
+                fprintf(stderr, "[sec] obj%d %s which=%d off=%d size=%d vsize=%d glob=%d outlen=%d\n",
+                        oi, o->secs[si].name, which, o->secs[si].out_off, o->secs[si].size,
+                        o->secs[si].vsize, glob_off[which], out_len[which]);
         }
     }
 
@@ -1614,6 +1682,33 @@ static void layout(void) {
         heap_va = (heap_va + 7) & ~7LL;
         printf("[HV!] heap_va=%llx bss_rva_base=%x outbss=%d gco=%d outdatanull=%d\n", heap_va, bss_rva_base, out_len[OUT_BSS], g_heap_counter_off, out_data[OUT_DATA] == NULL);
         w8_at(out_data[OUT_DATA] + g_heap_counter_off, heap_va);
+    }
+    /* 2026-10-19 (D-OBJ-LINK 根治): 对象**自带** `__qcc_heap_counter` (普通静态槽, 4 字节) 时,
+       合成对象 路径 (g_heap_counter_off) 不生效 ⟹ 计数器 恒 0 ⟹ 链接产物首次 malloc 写地址 0 = 段错误。
+       这里按符号定位 (节 out_off + 符号 value), 用 **链接期** 堆基址 回填 4 字节。 */
+    {
+        long long heap_va2 = 0x400000LL + bss_rva_base + out_len[OUT_BSS] + 2560;
+        heap_va2 = (heap_va2 + 7) & ~7LL;
+        for (int oi3 = 0; oi3 < obj_n; oi3++) {
+            JObj *o3 = &objs[oi3];
+            for (int k3 = 0; k3 < o3->nsym; k3++) {
+                if (o3->syms[k3].sc != 2) continue;
+                if (strcmp(o3->syms[k3].name, "__qcc_heap_counter") != 0) continue;
+                int s3 = o3->syms[k3].sec;
+                if (s3 < 1 || s3 > o3->nsec) continue;
+                if (o3->sec_map[s3 - 1] != OUT_DATA) continue;
+                long off3 = (long)o3->secs[s3 - 1].out_off + o3->syms[k3].value;
+                if (off3 < 0) continue;
+                if (off3 + 4 > out_len[OUT_DATA]) { /* D-OBJ: 计数器落在最后 run 之后（纯零区）也要能回填 */
+                    int need2 = (int)off3 + 4 - out_len[OUT_DATA];
+                    out_pad(OUT_DATA, need2);
+                }
+                uint32_t hv3 = (uint32_t)heap_va2;
+                g_self_heap = 1;
+                memcpy(out_data[OUT_DATA] + off3, &hv3, 4);
+                fprintf(stderr, "[HV!] patched __qcc_heap_counter @%ld = %x\n", off3, hv3);
+            }
+        }
     }
     /* .pdata 异常表 RVA (fix 2026-08-07) */
     g_pdata_rva = 0; g_pdata_len = 0;
@@ -1978,11 +2073,38 @@ static void write_pe(FILE *f, int entry_rva) {
     if (text_size < need) text_size = need;
     int text_foff = 0x200;
     int data_rva = data_rva_base;
-    int data_vsize = 0x5000000;
-    int data_raw = msvcrt_end + out_len[OUT_DATA]; /* fix 2026-08-06 M5: 原硬编码 0x4000(16KB)，初始化数据超限静默丢失 */
+    /* 2026-10-20 (D-OBJ): 虚拟尺寸 必须 覆盖 静态区 + .bss + 堆起点（.bss 与 堆 都 嵌在 .data 的
+       虚拟跨度 内，PE 只有 .text/.data 两节）；文件 raw 尺寸 只到 **真实有内容** 的上界。 */
+    /* D-OBJ-LINK 根治 (2026-10-20 · gdb 实测): 运行时**堆基址** = 0x400000 + bss_rva_base，
+       它必须 (a) 落在 SizeOfImage 之内、(b) **不与 .data 的虚拟跨度重叠**。
+       曾经的两种错法都实测崩：
+         · 旧版 data_vsize=0x5000000 ⟹ 堆在 image 外 ⟹ 首次 malloc 写未映射页；
+         · 上一版把 512MB 堆预留塞进 .data vsize ⟹ 堆地址落在 .data 中间 ⟹ 堆分配覆盖静态表
+           ⟹ 函数指针被踩成数据地址（gdb: RIP=0x201d4d1，该处全 0；RSP=0x4507e880 也在 .data 内）。
+       正解：.data 只到静态区末尾；堆留在 .data 之后，由 SizeOfImage 单独覆盖。 */
+    int data_vsize = msvcrt_end + out_len[OUT_DATA];
+    if (data_vsize < 0x1000) data_vsize = 0x1000;
+    data_vsize = (data_vsize + 0xfff) & ~0xfff;
+    int data_raw = msvcrt_end + g_data_raw_end; /* D-OBJ: 只写真实内容上界（.data 的零尾由加载器清零） */
+    /* D-OBJ-HEAP (2026-10-20 虾米): 自身宿主对象的 **运行时堆** 基址 = 静态区末尾（自切栈顶），堆 向上 增长。
+       原先 只把 512MiB 预留 写进 SizeOfImage ⟹ **只保留地址空间、不提交页面** ⟹
+       首次 内存分配 写未提交页 → 0xC0000005
+       （gdb 实测: 写点 = &__qcc_heap_counter + 302）。
+       修: 把 预留 计入 .data 的 **VirtualSize**（raw 不变 ⟹ 文件大小不变），加载器 按节提交。
+       仅 对 带 __qcc_heap_counter 的 自身宿主对象 生效（普通小程序 不 背 512MiB）。 */
+    if (g_self_heap) data_vsize += 0x20000000;
+    if (data_raw < msvcrt_end) data_raw = msvcrt_end;
     data_raw = (data_raw + 511) & ~511;
     if (data_raw < 0x200) data_raw = 0x200; /* 文件对齐 512 */
     int image_size = data_rva + data_vsize + 0x1000;
+    /* D-OBJ-LINK: SizeOfImage 必须覆盖**运行时堆**（堆在 .data 之后、且不在任何节的 raw 里）。
+       堆预留与编译器自身 `上利()` 同口径 512MB；否则首次 malloc 落未映射页 → 0xC0000005。 */
+    {
+        long heap_rva = (long)bss_rva_base + out_len[OUT_BSS] + 2560; /* 与 heap_va 同式（去掉 image base） */
+        long need_img = heap_rva + 0x20000000;
+        if (need_img > image_size) image_size = (int)need_img;
+    }
+    image_size = (image_size + 0xfff) & ~0xfff;
 
     fputc('M', f); fputc('Z', f); pad(f, 58); w4(f, 64);
     fputc('P', f); fputc('E', f); fputc(0, f); fputc(0, f);
@@ -2136,7 +2258,10 @@ static void write_pe(FILE *f, int entry_rva) {
             fprintf(stderr, "\n");
         }
         fseek(f, data_foff + msvcrt_end, SEEK_SET);
-        fwrite(out_data[OUT_DATA], 1, out_len[OUT_DATA], f);
+        int dw = data_raw - msvcrt_end; /* D-OBJ: raw 之外的零尾 不写盘 */
+        if (dw > out_len[OUT_DATA]) dw = out_len[OUT_DATA];
+        if (dw < 0) dw = 0;
+        if (dw) fwrite(out_data[OUT_DATA], 1, dw, f);
         if (getenv("JYLD_DEBUG")) {
             fprintf(stderr, "[PEW] msvcrt_end=%d out_len=%d data_foff=0x%x fwrite_pos=0x%x data_raw=0x%x\n", msvcrt_end, out_len[OUT_DATA], data_foff, data_foff + msvcrt_end, data_raw);
             fflush(f);
@@ -2145,7 +2270,12 @@ static void write_pe(FILE *f, int entry_rva) {
         }
     }
     /* pad .data to raw size（从 .data 内容之后开始，勿覆盖） */
-    fseek(f, data_foff + msvcrt_end + out_len[OUT_DATA], SEEK_SET);
+    {
+        int dw2 = data_raw - msvcrt_end;
+        if (dw2 > out_len[OUT_DATA]) dw2 = out_len[OUT_DATA];
+        if (dw2 < 0) dw2 = 0;
+        fseek(f, data_foff + msvcrt_end + dw2, SEEK_SET);
+    }
     pos = (int)ftell(f);
     int data_end = data_foff + data_raw;
     while (pos < data_end) { fputc(0, f); pos++; }

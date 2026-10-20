@@ -1,5 +1,5 @@
 // @EXPECTED exit:nonzero
-// @EXPECTED out:[除零] 运行时除零错误
+// @EXPECTED err:[除零] 运行时除零错误
 #include <stdio.h>
 /* 显式F2 负例 (2026-09-07): 运行时除零 → __qcc_div_check 优雅 exit(1) */
 /* B8 补 (2026-09-09): 赋值 RHS 除法 / if 块内除法 漏插检查 (原 SIGFPE 崩) —

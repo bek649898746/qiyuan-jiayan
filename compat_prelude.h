@@ -919,9 +919,6 @@ static int inflateReset(z_stream *s) {
 static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
 static int compress2(void *d, unsigned long *dl, const void *s, unsigned long sl, int l) { (void)d; (void)dl; (void)s; (void)sl; (void)l; return Z_STREAM_ERROR; }
 static int uncompress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
-static int compress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
-static int compress2(void *d, unsigned long *dl, const void *s, unsigned long sl, int l) { (void)d; (void)dl; (void)s; (void)sl; (void)l; return Z_STREAM_ERROR; }
-static int uncompress(void *d, unsigned long *dl, const void *s, unsigned long sl) { (void)d; (void)dl; (void)s; (void)sl; return Z_STREAM_ERROR; }
 static void *gzopen(const char *p, const char *m) { (void)p; (void)m; return 0; }
 static int gzclose(void *f) { (void)f; return Z_OK; }
 static int gzread(void *f, void *b, unsigned n) { (void)f; (void)b; (void)n; return 0; }

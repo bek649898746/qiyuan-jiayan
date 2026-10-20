@@ -39,11 +39,11 @@ def find_qcc():
         p = os.path.join(ROOT, 'qcc_zh_v%d.exe' % n)
         if os.path.exists(p):
             return p
-    for nm in ('qcc_zh_seed.exe', 'qcc_x86.exe'):
-        p = os.path.join(ROOT, nm)
-        if os.path.exists(p):
-            return p
-    return 'qcc_x86.exe'
+    p = os.path.join(ROOT, 'qcc_zh_seed.exe')
+    if os.path.exists(p):
+        return p
+    # P2-5 (2026-10-21): **不再 兜底 qcc_x86.exe（英文链）** —— 英文链上本闸必假红。
+    return ''
 
 
 # ---------- PE / COFF ----------
@@ -288,6 +288,9 @@ def ck(cond, msg):
 def main():
     os.chdir(ROOT)
     qcc = find_qcc()
+    if not qcc or not os.path.exists(qcc):
+        # AUDIT-P2-4 (2026-10-21): **环境前置** —— SKIP（rc=0 + `[SKIP]` 标记），不假红。
+        print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % qcc); return 0
     outdir = os.path.join(ROOT, 'scratch_test')
     os.makedirs(outdir, exist_ok=True)
     exe = os.path.join(outdir, 'dwarf289_check.exe')

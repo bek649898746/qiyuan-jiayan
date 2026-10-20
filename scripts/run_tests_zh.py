@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -1942,6 +1942,11 @@ CORE_FEAT += [
     #   锚三关: gcc 逐值 ✓ (scripts/oracle/feat_zh_anon_union_field_ok_oracle.c)
     #           · 新 180A5F0F 逐字同 ✓ · 旧 8D7F3BB7 必红 ✓ (exit=1 `FAIL gA 8`)
     'scripts/feat_zh_anon_union_field_ok.c',
+    # D-ANONPTR (2026-10-19 round13): **匿名结构体 指针字段 步长** —— ④ 文件级匿名块 用 `行`
+    #   当 指针 基元素尺寸, 而 `*` 循环 把 行 覆盖成 8 ⟹ `struct { FR *p; } h; h.p[1]` 步长恒 8
+    #   (实测 off=8, 应 sizeof(FR)=104; `整 *p` 同样 8, 应 4)。修: `顶基尺` 在 `*` 之前快照基类型尺寸,
+    #   符肆/主挂 用 顶基尺。RED: seed 2421EAAB 与 80092E0D 均 `ANONPTR 104 0 0`; GREEN: `ANONPTR 104 7 9`。
+    'scripts/feat_zh_anonstruct_ptrfield_stride_ok.c',
     # R262 (2026-09-26 启元 · 第 364 站 round 4): **嵌套匿名体内的「逗号续声明符」不继承类型尺寸**
     #   病灶: `深进` 路径 (文件级具名 构/联 的字段循环里, 匿名体作字段) 的元素尺寸 `原升`
     #     **每轮迭代重置为 4** (原 L17728 `整 原升 = 4, ...`), 而逗号续行只继承了「结构体 类型序」
@@ -3588,6 +3593,11 @@ CORE_FEAT += [
     #   灵敏度: 正锚 改前报 A6068「期望 1 实得 2」⟹ 必红; 改后 MACROOVL 7 7 12。
     'scripts/feat_zh_macroovl613_ok.c',        # R613 正锚: 同名 `翻(x)`/`翻(x,y)` ⟹ 1 参走 1 参规则、2 参走 2 参规则
     'scripts/feat_zh_macroovl613_neg.c',       # R613 负锚（防过严）: 3 个实参 无匹配元数 ⟹ 仍 A6068（不静默落首个）
+    'scripts/feat_zh_declmacro178_neg.c',      # 2026-10-20 #178 负锚: `声明宏`/`宏规则`/`macro_rules` ⟹ A6086 专码（修前 A8002/顶层带偏/静默 rc=0）
+    'scripts/feat_zh_macrorec180_neg.c',       # 2026-10-20 #180 负锚: 宏自引用重入 ⟹ A6108（修前 误导 A1001「未声明函数」）
+    'scripts/feat_zh_offsetof_samefield_ok.c', # 2026-10-20 R584 正锚: `&((T*)0)->字段` 按转型目标构序 ⟹ OFF584 4 8（修前 4 4）
+    'scripts/feat_zh_variant120_neg.c',        # 2026-10-20 round18 #120 负锚: `多态变体` ⟹ A6086（修前 rc=0 静默）
+    'scripts/feat_zh_commadecl543_ok.c',       # 2026-10-20 round18 R543 正锚: `构 P a={1,2}, b={3,4};` ⟹ COMMA543 1 2 3 4
 ]
 
 # R710~R712 (2026-10-11 虾米 · **IR 层落位** · 真名对账表 唯一权威): 五个「一类」结构位 落位 + 值级属性位 + 落位可观察
@@ -3646,6 +3656,7 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_typedef_shadow_ok.c',       # C4-a 正锚: 形参/局部 遮蔽 typedef 名 + `(名)->字段` 括号成员访问 (SH=12 SH2=12 M=18)
     'scripts/feat_zh_field_name_eq_type_ok.c',   # C4-b 正锚: 字段名 == 其 typedef 类型名 (含 逗号续声明符) (U=7 F=5 A=9 B=4)
+    'scripts/feat_zh_nested_struct_arr_init_ok.c',  # P0-2 正锚 (2026-10-19): 嵌套 struct 数组 花括 初始化 (SZ 20 V 31 32 33 34 35); 修前 内层全 0 / 外层尾=31
 ]
 def build_tests(args):
     if args.zh_feat:
@@ -3671,17 +3682,17 @@ def find_qcc():
     env = os.environ.get('QCC_TEST_BIN')
     if env and os.path.exists(env):
         return env
-    # 2026-10-20 修 (千问审计发现): clone 后仓库内无 qcc_zh_v*.exe（不入库）
-    #   ⟹ 原逻辑直接 fallback 到 qcc_x86.exe（gcc 编的 C 版）⟹ 测的**不是主链**。
-    #   改为：优先用仓库自带的 qcc_zh_seed.exe（真正的不动点产物，零依赖）。
-    seed = os.path.join(root, 'qcc_zh_seed.exe')
-    if os.path.exists(seed):
-        return seed
     for n in range(7, 0, -1):
         p = os.path.join(root, 'qcc_zh_v%d.exe' % n)
         if os.path.exists(p):
             return p
-    return os.path.join(root, 'qcc_x86.exe')
+    # P2-5 (2026-10-21 · 审计递刀): **禁止静默退化到英文链**。
+    # 旧行为 `return qcc_x86.exe` ⟹ worktree/隔离环境没有 qcc_zh_v*.exe 时，
+    # 中文锚在英文链上**必然全红**（英文链无中文诊断码）⟹ 把「环境缺件」误判成「回归」。
+    print('[SKIP] 环境未就绪: 找不到中文自举产物 qcc_zh_v1..v7.exe —— **拒绝退化到英文链** qcc_x86.exe：\n'
+          '      中文锚在英文链上必然假红（无中文诊断码）。请先跑 scripts\\build_zh.ps1，\n'
+          '      或用 QCC_TEST_BIN=<中文编译器> 指定。', flush=True)
+    sys.exit(2)
 
 def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
@@ -3757,9 +3768,12 @@ def run_one_test(name):
     except OSError:
         pass
     try:
+        _env = dict(os.environ, QCC_SMALL_HEAP='1')  # 2026-10-19: 锚编译 256MiB 堆备留 ⟹ 8 路并行不打穿 commit
+        if expected_silent is not None:
+            _env['QCC_DBG_SILENT'] = '1'
         r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=120,   # R701 刀八: 编译期超时 (原 无 timeout= ⟹ 编译器 卡死 ⟹ 整轮 永久挂住 且 无现场)
-                           env=(dict(os.environ, QCC_DBG_SILENT='1') if expected_silent is not None else None))
+                           env=_env)
     except subprocess.TimeoutExpired as ce:
         # R701 刀八 (2026-10-11 虾米 · 启元 施工单 v2 §刀八 P1): **编译期 超时 留现场 + 计 FAIL**
         #   病灶: `run([qcc] ...)` 无 `timeout=` ⟹ 编译器 一旦卡死, 整轮全量闸 **永久挂住且无现场**
@@ -3876,12 +3890,32 @@ def run_one_test(name):
     return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}' err='{err[:60]}'")
 
 
+def 闸判(pass_n, skip_l, fail_l, gate_fails, gate):
+    """闸判决（D32 根治 · 2026-10-21）。
+
+    约定：返回 (退出码, 追加后的 gate_fails)。退出码 0 = 全绿。
+
+    审计递刀 D32（2026-10-18 · 隔离全量验收）：原判据只有
+        `fail_l or (gate and skip_l) or gate_fails`
+    —— 当**一个锚都没跑**（pass_n == 0，skip/fail/gate_fails 皆空）时整条为 False ⟹ 打印
+    「==== 全绿 ====」并 exit 0 ⟹ **假绿**（锚清单被清空/名字写错/CORE_FEAT 损坏都能骗过闸）。
+    量具错了，后面所有「全绿」都不作数，故此处**硬拒绝零锚**（gate 模式）。
+    """
+    gate_fails = list(gate_fails)
+    if gate and pass_n == 0:
+        gate_fails.append('零锚执行：闸没有跑到任何锚（假绿）—— 拒绝')
+    rc = 1 if (fail_l or (gate and skip_l) or gate_fails) else 0
+    return rc, gate_fails
+
+
 def main():
     ap = argparse.ArgumentParser(description='甲言行为断言测试')
     ap.add_argument('--fast', action='store_true', help='快速集 30 用例 (~1 分钟)')
     ap.add_argument('--zh-feat', action='store_true', help='核心确定性中文特性 (scripts/ CORE_FEAT 白名单: 所有权/借用/多态/copy 族)')
     ap.add_argument('--zh-feat-all', action='store_true', help='全量中文特性 (scripts/feat_zh_*; 依赖/无主库 skip, 其它诚实 FAIL)')
-    ap.add_argument('--parallel', type=int, default=0, help='并行 worker 数 (0=串行)')
+    ap.add_argument('--parallel', type=int, default=6,
+                    help='并行 worker 数 (默认 6；0=串行)。6 路 ≈ 15GB（按 2.5GB/进程 估），'
+                         '跑前会做内存预算预检，超限直接拒绝而不是静默降级')
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
 
@@ -3919,6 +3953,15 @@ def main():
     #        （假锚 = 闸给的是假绿灯 = 最大的不确定性）。
     #   `--fast`（30 用例开发档）跳过，与闸① 不同档。
     gate_fails = []
+    gate_skips = []
+    # AUDIT-P2-4 (2026-10-21): **先确认编译器存在，再跑闸** —— 闸检查器 默认 用 qcc_zh_v1.exe，
+    # 缺件时 会在 subprocess 里抛 FileNotFoundError（实测 隔离 worktree 里 闸②⑤⑥⑦ 因此「假红」）。
+    # 现在 ① 缺编译器 ⟹ find_qcc 打印 **[SKIP] 环境未就绪** 并 exit(2)（2 = 环境类，与 FAIL=1 可区分）；
+    #      ② 单个闸 缺自己的依赖（如 jyld）⟹ 检查器 打印 `[SKIP]` + rc=0 ⟹ 本处 记为 SKIP，不计红；
+    #      ③ 闸子进程 统一 继承 QCC_TEST_BIN ⟹ 与主跑 **同一份 编译器**（原来 各检查器 各自默认 v1）。
+    qcc = find_qcc()
+    _gate_env = dict(os.environ, QCC_TEST_BIN=os.path.abspath(qcc))
+
     if not args.fast and not args.only:   # R701 刀八 (2026-10-11 虾米): `--only` 是 **单锚 诊断档**
         #   (与 L3889 `gate = not args.zh_feat_all and not args.only` 同义 —— `--only` 本来就不算闸)。
         #   ⚠️ 原 未豁免 ⟹ `--only 单锚` 仍 先 跑 6 个 闸检查器 ⟹ 实测 被拖 **8.5 分钟 无输出**
@@ -3960,7 +4003,7 @@ def main():
             if not os.path.exists(_p):
                 print('[%s %s] ⚠️ 检查器缺失, 跳过' % (_tag, _what)); continue
             try:
-                _r = subprocess.run([sys.executable, _p], capture_output=True, timeout=1800)   # R701 刀八: 检查器 也须 有超时 (原 无 `timeout=` ⟹ 检查器 卡死 ⟹ 整轮 挂住 且 无现场)
+                _r = subprocess.run([sys.executable, _p], capture_output=True, timeout=1800, env=_gate_env)   # R701 刀八: 检查器 也须 有超时 (原 无 `timeout=` ⟹ 检查器 卡死 ⟹ 整轮 挂住 且 无现场)
                 # ⚠️ **1800s 是实测定的**(非拍脑袋): `check_neg_anchors.py` 验 1602 个负例锚 **实测 724s**
                 #   ⟹ 首版 600s 会**误杀**它 (2026-10-11 全量闸实测踩到: 闸③ 报"超600s卡死"= **假红**)。
             except subprocess.TimeoutExpired:
@@ -3970,6 +4013,11 @@ def main():
             _o = (_r.stdout + _r.stderr).decode('utf-8', 'replace')
             for _l in [x for x in _o.strip().split('\n') if x.strip()][-5:]:
                 print('    ' + _l)
+            if '[SKIP]' in _o and _r.returncode == 0:
+                # AUDIT-P2-4: 检查器 自报 环境未就绪 ⟹ SKIP（**不是** ❌，也 **不是** ✅）
+                print('[%s %s] ⏭ SKIP（环境未就绪）' % (_tag, _what))
+                gate_skips.append('%s %s' % (_tag, _what))
+                continue
             if _r.returncode != 0:
                 print('[%s %s] ❌ 未通过 (rc=%d)' % (_tag, _what, _r.returncode))
                 gate_fails.append('%s %s (rc=%d)' % (_tag, _what, _r.returncode))
@@ -4001,6 +4049,33 @@ def main():
         os.makedirs(st_dir, exist_ok=True)
 
     tests = build_tests(args)
+    if args.parallel > 1:
+        # 2026-10-20 (大哥定 6 核 + 全量事故复盘): 8 路 × 3.25GB 峰值 曾把机器 26GB 打满、
+        #   挤崩安卓模拟器两次。这里按 **2.5GB/进程**（实测混合负载均值上限）做预算预检：
+        #   超限 **响亮拒绝**（exit 2），绝不静默降级 —— 静默兜底 是本项目 反复踩过的坑。
+        try:
+            import ctypes
+            class _MS(ctypes.Structure):
+                _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong),
+                            ('ullTotalPhys', ctypes.c_ulonglong), ('ullAvailPhys', ctypes.c_ulonglong),
+                            ('ullTotalPageFile', ctypes.c_ulonglong), ('ullAvailPageFile', ctypes.c_ulonglong),
+                            ('ullTotalVirtual', ctypes.c_ulonglong), ('ullAvailVirtual', ctypes.c_ulonglong),
+                            ('ullAvailExtendedVirtual', ctypes.c_ulonglong)]
+            _st = _MS(); _st.dwLength = ctypes.sizeof(_MS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(_st))
+            _avail = _st.ullAvailPhys / float(1 << 30)
+        except Exception:
+            _avail = -1.0
+        if _avail >= 0:
+            _need = args.parallel * 2.5
+            _reserve = 6.0
+            print('[MEM] 并行 %d 路 · 预计 %.1fGB · 可用物理 %.1fGB · 系统预留 %.0fGB'
+                  % (args.parallel, _need, _avail, _reserve), flush=True)
+            if _need > _avail - _reserve:
+                print('[MEM] 拒绝执行: %.1fGB > 可用 %.1fGB - 预留 %.0fGB' % (_need, _avail, _reserve), flush=True)
+                print('[MEM] 请先关闭重负载（安卓模拟器/游戏/其它编译），或用 --parallel 降低并发；'
+                      '本脚本不会静默降级。', flush=True)
+                sys.exit(2)  # D32b (2026-10-21): 原来 `return 2` 没人接 ⟹ 拒绝执行时脚本 **退出码 0**（假绿）
     print(f'[RUN] {len(tests)} 个测试 (fast={args.fast} parallel={args.parallel})', flush=True)
 
     if args.parallel > 1:
@@ -4054,13 +4129,18 @@ def main():
     # 门槛纪律 (2026-09-07 收紧): 核心门槛 (fast/zh-feat/en 默认全量) 出现任何 SKIP = 红 (特性必须真测);
     # --zh-feat-all (诊断全量) 与 --only (单测) 只展示, 不硬红 (含显式标注的配套/多文件测试)
     gate = not args.zh_feat_all and not args.only
-    if fail_l or (gate and skip_l) or gate_fails:
+    rc, gate_fails = 闸判(pass_n, skip_l, fail_l, gate_fails, gate)
+    if gate_skips:
+        print('--- 闸 SKIP (环境未就绪, 非代码类) ---')
+        for _s in gate_skips:
+            print('  ' + _s)
+    if rc != 0:
         if gate_fails:
             print('--- 闸检查 未通过 (锚 已全部执行, 不再早退) ---')
             for _g in gate_fails:
                 print('  ' + _g)
         sys.exit(1)
-    print('==== 全绿 ====')
+    print('==== 全绿%s ====' % (('（含 %d 闸 SKIP）' % len(gate_skips)) if gate_skips else ''))
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
 {
- "fixed": "39C6FC81",
- "time": "2026-10-18 22:14:14",
+ "fixed": "E400B711",
+ "time": "2026-10-19 01:02:36",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1647,
+   "anchor_count": 1649,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度",
    "note": "刀三 (2026-10-17): 移出 2 条长期红锚 feat_rawstr_zh.c / feat_vartmpl.c；新锚入册前须至少过一次全量闸（该锚 PASS 且 FAIL=0）"
   },

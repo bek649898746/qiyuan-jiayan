@@ -1,5 +1,5 @@
 # 甲言源码是 UTF-8 文本；GitHub 不认识 .jy 后缀会猜错编码，这里显式声明。
-*.jy text encoding=UTF-8
+*.jy text eol=lf encoding=UTF-8
 
 # 常见文本文件（显式 UTF-8，防止边缘情况）
 *.c    text encoding=UTF-8
@@ -7,15 +7,3 @@
 *.txt  text encoding=UTF-8
 *.ps1  text eol=crlf
 *.asm  text encoding=UTF-8
-
-# ===== 🔴 PowerShell 脚本必须 UTF-8 with BOM（2026-10-15 事故教训 · 勿删）=====
-# PowerShell 5.1 对【无 BOM】的 .ps1 会按系统 ANSI(GBK) 解码 ⟹ 中文变乱码
-#   ⟹ 引号错位 ⟹ 整个脚本解析失败
-#   实测原文: Missing expression after unary operator '--'（--cache 的 -- 被当递减运算符）
-# 本项目已发生两次同类事故:
-#   · 2026-08-23  UTF-8 被按 GBK 读+写 ⟹ 双重编码（中文逐字变空格）
-#   · 2026-10-15  编辑工具剥掉 BOM ⟹ 语法都过不了的脚本被推上远端
-# ⚠️ git 无法自动补 BOM（working-tree-encoding=UTF-8-BOM 会与文件已有 BOM 冲突），
-#    故强制手段放在: scripts/verify_all.ps1 的编码闸 + PR 自检清单。
-#    任何 .ps1 被编辑工具改过之后，必须重新验证并规范化 BOM。
-*.ps1 -text

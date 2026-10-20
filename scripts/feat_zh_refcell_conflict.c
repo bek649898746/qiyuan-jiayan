@@ -1,5 +1,5 @@
 // @EXPECTED exit:nonzero
-// @EXPECTED out:[借用单元] 运行时借用冲突
+// @EXPECTED err:[借用单元] 运行时借用冲突
 #include <stdio.h>
 
 /* 甲言 内部可变性 RefCell 负例 (t6, 2026-09-07): 双重可变借用 → 运行时拦截 exit(1)

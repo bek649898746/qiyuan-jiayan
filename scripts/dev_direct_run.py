@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """dev_direct_run —— 开发级定向验证器（直跑）
 
@@ -23,6 +23,7 @@
   · 每锚编译 120s / 运行 20s 超时，超时即 taskkill 兜底
   · 并发类锚默认**排除**（黑名单见 CONCURRENCY_BLOCKLIST），需显式点名才跑
 """
+import concurrent.futures
 import io
 import os
 import re
@@ -66,7 +67,17 @@ def parse_expect(name):
     if not os.path.exists(p):
         return None
     full = io.open(p, encoding='utf-8-sig', errors='replace').read()
-    head = '\n'.join(full.splitlines()[:8])
+    # 2026-10-19: 只认 **行首** 的 `@EXPECTED` 指令行（`//` / `/*` / 裸行），并去掉尾部 `*/`。
+    # 旧版 取前 8 行 ⟹ 长头注释后的负锚被误当正锚；直接扩到 40 行又会把注释里 **提到** `@EXPECTED out:`
+    # 的说明文字当成期望（实测 feat_zh_member_arr_init_ok 第 17 行）。行首限定 + 全文件扫描两边都覆盖。
+    hdr = []
+    for raw in full.splitlines():
+        t = raw.strip()
+        if t.startswith('// @EXPECTED') or t.startswith('/* @EXPECTED') or t.startswith('@EXPECTED'):
+            if t.endswith('*/'):
+                t = t[:-2].rstrip()
+            hdr.append(t)
+    head = '\n'.join(hdr)
     d = {'cfail': '@EXPECTED compile_fail' in head, 'exit': None, 'out': None, 'err': None, 'args': []}
     m = re.search(r'@EXPECTED exit:(-?\d+)', head)
     if m:
@@ -88,20 +99,24 @@ def parse_expect(name):
 def run_one(name, cc):
     d = parse_expect(name)
     if d is None:
-        return name, 'MISSING', '文件不存在'
+        return name, 'SKIP', '文件不存在（历史锚清单残留，不计 PASS/FAIL）'
     exe = os.path.join(TMP, 'dev_' + os.path.splitext(name)[0] + '.exe')
     try:
         os.remove(exe)
     except OSError:
         pass
     try:
+        env = os.environ.copy()
+        env['QCC_SMALL_HEAP'] = '1'  # 2026-10-19: 锚编译 64MiB 堆备留 ⟹ 8 路并行不打穿 commit
         r = subprocess.run([cc] + d['args'] + [os.path.join('scripts', name), '-o', exe],
-                           capture_output=True, encoding='utf-8', errors='replace', timeout=120)
+                           capture_output=True, encoding='utf-8', errors='replace', timeout=120, env=env)
     except subprocess.TimeoutExpired:
         return name, 'FAIL', '编译超时 120s'
     cerr = (r.stdout or '') + (r.stderr or '')
 
-    if d['cfail']:
+    if d['cfail'] or d['err']:
+        # 2026-10-19: `@EXPECTED err:CODE`（无 compile_fail 字样）也是负锚 —— 与 run_tests_zh 同约定。
+        # 原判据只看 cfail ⟹ 这类锚被当正锚，编译失败一律报「编译失败 rc=1」假红。
         if r.returncode == 0:
             return name, 'FAIL', 'compile_fail 未满足（编译成功了）'
         if d['err'] and d['err'] not in cerr:
@@ -140,6 +155,11 @@ def main():
         i = av.index('--cc')
         cc = av[i + 1]
         del av[i:i + 2]
+    jobs = 4  # 2026-10-19: 默认 4（安全下限，本机 8 路曾因 1.34GB 镜像 WinError 1455）。0A421684 起镜像 1.22GB（静态 544MB），--jobs 8 实测 298 锚 118.8s 无 1455；默认仍保守，需 8 路请显式传参
+    if '--jobs' in av:
+        i = av.index('--jobs')
+        jobs = max(1, int(av[i + 1]))
+        del av[i:i + 2]
     names = av if av else list(DEFAULT_ANCHORS)
 
     # 2026-10-10 (R648): 原实现**无条件**排除黑名单 —— 与模块头注释「需显式点名才跑」不符（量具 bug）。
@@ -150,21 +170,30 @@ def main():
         names = [n for n in names if n not in CONCURRENCY_BLOCKLIST]
 
     print('# 开发级定向验证（直跑 · 无闸前置）')
-    print('# 编译器: %s   锚数: %d' % (cc, len(names)))
+    print('# 编译器: %s   锚数: %d   并行: %d' % (cc, len(names), jobs))
     if blocked:
         print('# ⚠️ 已排除并发类锚（需显式点名）: %s' % ', '.join(blocked))
     print()
     t0 = time.time()
     npass = nfail = nskip = 0
-    for n in names:
-        nm, st, det = run_one(n, cc)
-        if st == 'PASS':
-            npass += 1
-        elif st == 'SKIP':
-            nskip += 1
-        else:
-            nfail += 1
-        print('%-38s %-5s %s' % (nm, st, det))
+    if jobs <= 1:
+        results = (run_one(n, cc) for n in names)
+        pool = None
+    else:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=jobs)
+        results = pool.map(lambda n: run_one(n, cc), names)
+    try:
+        for nm, st, det in results:
+            if st == 'PASS':
+                npass += 1
+            elif st == 'SKIP':
+                nskip += 1
+            else:
+                nfail += 1
+            print('%-38s %-5s %s' % (nm, st, det))
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True)
     dt = time.time() - t0
     print()
     print('汇总: PASS=%d SKIP=%d FAIL=%d  用时 %.1fs' % (npass, nskip, nfail, dt))

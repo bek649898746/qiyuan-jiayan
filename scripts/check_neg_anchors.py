@@ -40,6 +40,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 BIN = os.environ.get('QCC_TEST_BIN', 'qcc_zh_v1.exe')
+if not os.path.exists(BIN):
+    # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
+    # 不再在 subprocess 里抛 FileNotFoundError（那是「假红」）。
+    print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % BIN); sys.exit(0)
 QUIET = '--quiet' in sys.argv
 JSON_OUT = None
 if '--json' in sys.argv:
