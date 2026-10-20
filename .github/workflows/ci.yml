@@ -71,7 +71,11 @@ jobs:
           if ($rc -ne 0) {
             $fails = ($out -split "`n" | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join ' ~ '
             if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ ') }
-            Write-Host "::error::verify_90s 失败 rc=$rc :: $fails"
+            # 诊断：单步复现「关2 编译 examples/成绩.jy」，把编译器真实报错带出来
+            $hasSrc = Test-Path 'examples/成绩.jy'
+            $diag = (& .\qcc_zh_seed.exe 'examples/成绩.jy' -o '_diag.exe' 2>&1 | Out-String).Trim()
+            $diagOne = ($diag -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 4) -join ' ~ '
+            Write-Host "::error::verify_90s 失败 rc=$rc :: $fails :: [诊断] 成绩.jy存在=$hasSrc CWD=$((Get-Location).Path) 种子存在=$(Test-Path 'qcc_zh_seed.exe') :: $diagOne"
             exit 1
           }
           Write-Host "90 秒自证通过"
@@ -124,14 +128,16 @@ jobs:
           # 2026-10-21 启元审计：捕获编译输出，失败时用 ::error:: 打 annotation
           # （annotation 可用公开 API 匿名读取，解决"失败只有 exit code 1"的取证盲区）
           $ErrorActionPreference = 'Continue'
+          $exeExists = Test-Path 'qcc_x86.exe'
           $out = (qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe 2>&1 | Out-String)
           $rc = $LASTEXITCODE
           Write-Host $out
-          Write-Host "qcc 退出码 = $rc"
+          Write-Host "qcc 退出码 = $rc ; qcc_x86.exe 存在=$exeExists ; CWD=$((Get-Location).Path)"
           if ($rc -ne 0 -or -not (Test-Path build_asmzh_v2.exe)) {
+            $exes = ((Get-ChildItem *.exe -ErrorAction SilentlyContinue | Select-Object -First 8 -ExpandProperty Name) -join ',')
             $tail = ($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ '
             if (-not $tail) { $tail = '(无输出)' }
-            Write-Host "::error::asm_zh.jy 自宿主编译失败 rc=$rc :: $tail"
+            Write-Host "::error::asm_zh.jy 自宿主编译失败 rc=$rc exe存在=$exeExists 产物=$(Test-Path build_asmzh_v2.exe) 根目录exe=[$exes] :: $tail"
             exit 1
           }
           Write-Host "asm_zh v2 编译 OK: $((Get-Item build_asmzh_v2.exe).Length) 字节"
