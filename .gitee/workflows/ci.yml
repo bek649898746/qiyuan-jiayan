@@ -48,6 +48,6 @@ stages:
 
         - step: execute
           name: multilang
-          displayName: 九条语言线（85 文件 · 每线一个可执行内核）
+          displayName: 九条语言线（85 文件归档 · 每线 1 个入口被编译运行 = 9/9）
           script: |
             powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1

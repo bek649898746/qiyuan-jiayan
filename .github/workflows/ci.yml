@@ -52,7 +52,7 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
 
-      - name: 九条语言线（85 文件 · 每线一个可执行内核）
+      - name: 九条语言线（85 文件归档 · 每线 1 个入口被编译运行 = 9/9）
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
