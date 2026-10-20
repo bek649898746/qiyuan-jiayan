@@ -33,8 +33,12 @@ jobs:
       - name: 编译器自检
         run: .\qcc_x86.exe --test
 
-      - name: 行为断言
-        run: python scripts/run_tests.py
+      # ── 行为断言：push/PR 只跑快速集，全量挪到 nightly ────────────────
+      # 2026-10-21：全量 377 个测试串行实测 969 秒（16.2 分钟），每次都跑偏重。
+      # 快速集 30 个关键用例 19 秒，覆盖类型/布局/变参/控制流/指针/字符串/数组。
+      # 全量在下方 nightly_full job（schedule / workflow_dispatch 才跑）。
+      - name: 行为断言（快速集 30 个 · 全量 377 个在 nightly）
+        run: python scripts/run_tests.py --fast
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
         run: python scripts/test_multifile.py
@@ -177,4 +181,40 @@ jobs:
             qcc_zh_v2.exe
           retention-days: 14
           if-no-files-found: warn
+
+  # ══════════════════════════════════════════════════════════
+  # 行为断言 · 全量 377 个 —— 与 bootstrap 并行跑（不同 runner，互不干扰）
+  #
+  # 为什么单独一个 job：全量实测 969 秒（16.2 分钟），塞进 push/PR 会把
+  # 每次提交都拖到 20 分钟以上 ⟹ push 只跑 --fast（30 个/19 秒）兜关键路径，
+  # 全量放到 nightly 兜回归。
+  #
+  # 2026-10-21 修复前这个 job 的形态是「跑不完」：
+  #   run_tests.py 用英文链 qcc_x86.exe 编 regress_adt_typed.c 挂死（CPU≈0），
+  #   且编译调用没有 timeout ⟹ CI 白跑 4 小时 20 分。
+  #   修完后中文链 377/377 全过，16.2 分钟。详见 scripts/run_tests.py 顶部注释。
+  # ══════════════════════════════════════════════════════════
+  nightly_full:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: 中文主链种子在位检查
+        shell: powershell
+        run: |
+          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "[FAIL] 缺 qcc_zh_seed.exe"; exit 1 }
+          Write-Host "种子在: $((Get-Item qcc_zh_seed.exe).Length) 字节"
+
+      - name: 行为断言全量（377 个 · 约 16.2 分钟）
+        run: python scripts/run_tests.py
+
+      - name: 多 .o 链接 + jycc 验收
+        run: python scripts/test_multifile.py
+
 
