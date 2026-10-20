@@ -7,6 +7,12 @@ on:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
   pull_request:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
+  # ── 完整自举（20.8 分钟）不适合每次 push 跑，改为 nightly + 手动 ──
+  #    这是全链唯一无法在 90 秒自证/九线/1,425 锚里覆盖的验收点：
+  #    「v1 == v2 == $expected」只有真跑完两代自举才能判。
+  schedule:
+    - cron: '0 18 * * *'                  # 每天 UTC 18:00 = 北京时间 02:00
+  workflow_dispatch:                       # 维护者手动触发（网页 Run workflow）
 
 jobs:
   tests:
@@ -122,3 +128,53 @@ jobs:
               print(f'  {src}: MATCH')
           print(f'asm_zh 自宿主对齐: {ok}/{len(files)} 一致')
           PY
+
+  # ══════════════════════════════════════════════════════════
+  # 完整自举链 —— 全链唯一没被机器守护的验收点
+  #
+  # 为什么单独一个 job：跑一次 ~20.8 分钟（两代编译 + 不动点比对），
+  # 塞进 push/PR 会把每次提交都拖到 20 分钟以上 ⟹ 只在 nightly/手动跑。
+  #
+  # 它验的是什么（90 秒自证 / 九线 / 1,425 锚全都覆盖不到）：
+  #   v1 = qcc_zh_seed.exe 编 qcc_zh.jy
+  #   v2 = qcc_zh_v1.exe   编 qcc_zh.jy
+  #   判据 = v1 == v2 == $expected（build_zh.ps1 内硬失败，不等即 exit 1）
+  #
+  # 前置：只需要仓库自带的 qcc_zh_seed.exe（15.2 MB）
+  #   —— 不需要 gcc 编宿主：`build_zh.ps1` 里 qcc_x86.exe 引用数 = 0，
+  #      头注释第 2 步「qcc_x86.exe (英文种子)」是 2026-08 的过时注释。
+  #   —— 默认跳过 sinicize.py（只有显式 -Regenerate 才从英文镜像重建主源）。
+  #
+  # 内存实测（本机 2026-10-21）：主源单代编译峰值 2,021 MB / 45 秒（-c），
+  #   windows-latest runner 有 7 GB ⟹ 够。public 仓库 Actions 时长不计费。
+  # ══════════════════════════════════════════════════════════
+  bootstrap:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 种子在位检查
+        shell: powershell
+        run: |
+          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "[FAIL] qcc_zh_seed.exe 不在仓库根目录"; exit 1 }
+          $len = (Get-Item qcc_zh_seed.exe).Length
+          $sha = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash
+          Write-Host "种子: $len 字节 / SHA256 $($sha.Substring(0,16))…"
+
+      - name: 完整自举链（两代 + 不动点比对 · 约 20.8 分钟）
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
+
+      - name: 两代产物取证（失败也上传，便于追因）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-v1-v2
+          path: |
+            qcc_zh_v1.exe
+            qcc_zh_v2.exe
+          retention-days: 14
+          if-no-files-found: warn
+
