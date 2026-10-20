@@ -60,7 +60,21 @@ jobs:
 
       - name: 中文链 90 秒自证（零依赖 · 不需要 gcc）
         shell: powershell
-        run: powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1
+        run: |
+          # 2026-10-21 启元审计：原先直接内联调用，失败时日志只有 "Process completed with exit code 1"，
+          # 审计方（无 token）读不到具体是哪一关 FAIL。改为捕获输出并用 ::error:: 打 annotation
+          # —— annotation 可通过公开 API 匿名读取，等于把失败原因"外化"。
+          $ErrorActionPreference = 'Continue'
+          $out = (powershell -ExecutionPolicy Bypass -File scripts/verify_90s.ps1 2>&1 | Out-String)
+          $rc = $LASTEXITCODE
+          Write-Host $out
+          if ($rc -ne 0) {
+            $fails = ($out -split "`n" | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join ' ~ '
+            if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ ') }
+            Write-Host "::error::verify_90s 失败 rc=$rc :: $fails"
+            exit 1
+          }
+          Write-Host "90 秒自证通过"
 
       - name: 九条语言线（85 文件归档 · 每线 1 个入口被编译运行 = 9/9）
         shell: powershell
@@ -107,11 +121,19 @@ jobs:
       - name: asm_zh.jy 自宿主 (qcc 编译甲言版 → v2)
         shell: powershell
         run: |
-          qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe
+          # 2026-10-21 启元审计：捕获编译输出，失败时用 ::error:: 打 annotation
+          # （annotation 可用公开 API 匿名读取，解决"失败只有 exit code 1"的取证盲区）
+          $ErrorActionPreference = 'Continue'
+          $out = (qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe 2>&1 | Out-String)
           $rc = $LASTEXITCODE
+          Write-Host $out
           Write-Host "qcc 退出码 = $rc"
-          if ($rc -ne 0) { Write-Host "[FAIL] asm_zh.jy 编译失败 rc=$rc"; exit 1 }
-          if (-not (Test-Path build_asmzh_v2.exe)) { Write-Host "[FAIL] 产物缺失"; exit 1 }
+          if ($rc -ne 0 -or -not (Test-Path build_asmzh_v2.exe)) {
+            $tail = ($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ '
+            if (-not $tail) { $tail = '(无输出)' }
+            Write-Host "::error::asm_zh.jy 自宿主编译失败 rc=$rc :: $tail"
+            exit 1
+          }
           Write-Host "asm_zh v2 编译 OK: $((Get-Item build_asmzh_v2.exe).Length) 字节"
 
       # 2026-10-21 启元审计 D41：原版是 `shell: powershell` + bash heredoc（python - <<'PY'）。
