@@ -71,11 +71,18 @@ jobs:
           if ($rc -ne 0) {
             $fails = ($out -split "`n" | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join ' ~ '
             if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ ') }
-            # 诊断：单步复现「关2 编译 examples/成绩.jy」，把编译器真实报错带出来
-            $hasSrc = Test-Path 'examples/成绩.jy'
-            $diag = (& .\qcc_zh_seed.exe 'examples/成绩.jy' -o '_diag.exe' 2>&1 | Out-String).Trim()
-            $diagOne = ($diag -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 4) -join ' ~ '
-            Write-Host "::error::verify_90s 失败 rc=$rc :: $fails :: [诊断] 成绩.jy存在=$hasSrc CWD=$((Get-Location).Path) 种子存在=$(Test-Path 'qcc_zh_seed.exe') :: $diagOne"
+            # 诊断：**纯 ASCII**，不写任何中文字面量
+            # —— 上一轮诊断因 ci.yml 里的中文被 GitHub 写成"无 BOM 的临时 .ps1"、
+            #    PS5.1 在英文 runner 上按 ANSI(1252) 解码而乱码，导致 `成绩.jy存在=False`
+            #    这个结论本身不可信（它查的是乱码路径）。本轮全部改用 Get-ChildItem 探测。
+            $jys = @(Get-ChildItem examples -Filter *.jy -ErrorAction SilentlyContinue)
+            $list = ($jys | ForEach-Object { $_.Name + ':' + $_.Length }) -join ','
+            $diagOne = ''
+            if ($jys.Count -gt 0) {
+              $diagRaw = (& .\qcc_zh_seed.exe $jys[0].FullName -o '_diag.exe' 2>&1 | Out-String).Trim()
+              $diagOne = ($diagRaw -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -First 3) -join ' ~ '
+            }
+            Write-Host "::error::verify_90s 失败 rc=$rc :: $fails :: [diag] examples_jy_count=$($jys.Count) list=[$list] CWD=$((Get-Location).Path) seed=$(Test-Path 'qcc_zh_seed.exe') :: $diagOne"
             exit 1
           }
           Write-Host "90 秒自证通过"
@@ -125,11 +132,14 @@ jobs:
       - name: asm_zh.jy 自宿主 (qcc 编译甲言版 → v2)
         shell: powershell
         run: |
-          # 2026-10-21 启元审计：捕获编译输出，失败时用 ::error:: 打 annotation
-          # （annotation 可用公开 API 匿名读取，解决"失败只有 exit code 1"的取证盲区）
+          # 2026-10-21 启元审计：根因 = PowerShell **不在当前目录搜索可执行文件**。
+          #   原版写裸名 `qcc_x86.exe ...` ⟹ CommandNotFoundException（实测本机：
+          #     "qcc_x86.exe : The term ... is not recognized as the name of a cmdlet"）
+          #   而 `| Out-Null` 把这条错误吞掉 ⟹ 日志只剩 exit 1 ⟹ 长期红且看不出原因。
+          #   修法：一律用 `.\` 前缀（tests job 里那句 `.\qcc_x86.exe --test` 本来就是对的）。
           $ErrorActionPreference = 'Continue'
           $exeExists = Test-Path 'qcc_x86.exe'
-          $out = (qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe 2>&1 | Out-String)
+          $out = (& .\qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe 2>&1 | Out-String)
           $rc = $LASTEXITCODE
           Write-Host $out
           Write-Host "qcc 退出码 = $rc ; qcc_x86.exe 存在=$exeExists ; CWD=$((Get-Location).Path)"
