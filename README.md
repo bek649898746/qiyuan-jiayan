@@ -26,7 +26,7 @@
 
 > | 我想… | 去哪 |
 > |:--|:--|
-> | **九条语言线源码**（85 文件 / 69,497 行，可逐条编译） | [`examples/multilang/`](examples/multilang/) · 说明见 [`manual/多语言实现.md`](manual/多语言实现.md) |
+> | **九条语言线源码**（85 文件 / 50,692 行，全量实测 **72/85 可独立编译**） | [`examples/multilang/`](examples/multilang/) · 说明见 [`manual/多语言实现.md`](manual/多语言实现.md) |
 > | **快速上手 + 怎么算跑对了** | [`manual/快速上手.md`](manual/快速上手.md) |
 > | **34,335 行源码怎么读** | [`manual/源码导航.md`](manual/源码导航.md) |
 > | **中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
@@ -507,7 +507,7 @@ gcc -O2 -Wall -Werror srclib/jycc.c -o jycc.exe
 
 | 验证 | 结果 |
 |:--|:--|
-| **九条语言线（2026-10-20 实测）** | ✅ 源码在 `examples/multilang/`（**85 文件 / 69,497 行**，9 线各一目录）。逐线编译并运行：**9/9 通过 / 31.6 s**（JS/JVM/Java/C++/C#/Go/Python/Rust/TS 全部输出正确首行） | `powershell -File scripts/verify_multilang.ps1` |
+| **九条语言线（2026-10-20 实测）** | ✅ 源码在 `examples/multilang/`（**85 文件 / 50,692 行**，9 线各一目录）。逐线编译并运行：**9/9 通过 / 31.6 s**（JS/JVM/Java/C++/C#/Go/Python/Rust/TS 全部输出正确首行） | `powershell -File scripts/verify_multilang.ps1` |
 | **可复现性实测（2026-10-19 本机）** | ✅ clone 后**零依赖**跑通：**当时自带的旧 seed**(`13ED24DF`) 编 `qcc_zh.jy`(34,335 行) → **v1 = v2 = `39C6FC81`**（**一步收敛**，链耗时 **1,246.5 s ≈ 20.8 分钟**）· 产物 **15,245,824 字节** · 全程 exit 0 | `powershell -File scripts/build_zh.ps1 -NoSeed` |
 | 自举不动点 V1==V2==V5 逐字节一致（自举闭环） | **以 `scripts/build_zh.ps1` 的 `$expected` 实测为准**（v1.0 封存时 `650993A2`；主线已连续迭代数十代，每轮 `build_zh` 都会打印实值）。判据是**收敛深度**：末两代全等即收敛，`v1` 常因携带上一轮 codegen 而与 `v2` 不同（「两段收敛」，属已接受先例） |
 | 自举链全量编译 Git 并落地运行 | ✅ 原版 git-2.45.2 源码（.c 317,714 行 + .h 45,954 行 ≈ 36.4 万行）编译 → 数百个 .o 链接成可执行文件 → **落地运行**输出 `git version 2.45.2`（非仅"能汇编出"，是真实可用的 Git，适配见 GIT_RUN_ADAPTATIONS.md） |

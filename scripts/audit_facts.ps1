@@ -52,7 +52,7 @@ Show-Item "中文关键字" "38 个（15 语句 + 23 类型修饰） -> manual/�
 Show-Item "机制台账" "291 项 = 284 已实现 / 2 表层 / 5 未实现 -> manual/机制特性实现表.md"
 Show-Item "中文特性锚" ("{0} 个 feat_zh_*.c" -f @(Get-ChildItem scripts\feat_zh_*.c -EA SilentlyContinue).Count)
 Show-Item "编译测试" ("{0} 个 <- git ls-files tests/qcc" -f @(git ls-files tests/qcc 2>$null).Count)
-Show-Item "九条语言线" "85 文件 / 69,497 行 -> examples/multilang/ （扩展名 .c，内容是甲言）"
+Show-Item "九条语言线" "85 文件 / 50,692 行 -> examples/multilang/ （扩展名 .c，内容是甲言）"
 Show-Item "当前不动点" "39C6FC81（以 scripts/build_zh.ps1 的 expected 为准）"
 
 Show-Sec "4. 三条自检命令（零依赖，都不需要 gcc/Python）"

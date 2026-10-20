@@ -33,7 +33,7 @@ $cases = @(
 )
 
 Write-Host "==== 甲言 九条语言线验证 ====" -ForegroundColor Cyan
-Write-Host "源: examples/multilang/ (85 文件 / 69,497 行)" -ForegroundColor DarkGray
+Write-Host "源: examples/multilang/ (85 文件 / 50,692 行)" -ForegroundColor DarkGray
 
 foreach ($c in $cases) {
     $src = Join-Path $root ("examples\multilang\" + $c.dir + "\" + $c.entry)
