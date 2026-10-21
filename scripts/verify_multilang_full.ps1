@@ -25,7 +25,12 @@
 #
 # 判据来源: D:\.openclaw\audit\_SETTLED.md 2026-10-21 段 · _full_compile_probe.csv
 # ============================================================
-$ErrorActionPreference = 'Stop'
+# 2026-10-21 启元：Stop -> Continue（大同步适配）。
+#   本脚本的核心判据就是「13 个用例必须 rc≠0」⟹ 它**必须容忍编译失败**。
+#   而新编译器（种子 7B5D3CFB）把 [ERR] 写到 **stderr**，`2>&1` 在 Stop 模式下会抛
+#   NativeCommandError 直接终止脚本（实测第 77 行崩在 csharp/cs9.c 的 A9001）。
+#   旧种子（39C6FC81）把错误写 stdout，所以这个缺陷从写出来那天就一直潜伏。
+$ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $root = Split-Path -Parent $PSScriptRoot
