@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -36,6 +36,37 @@ FAST_TESTS = [    'qcc/regress_char_incdec.c', 'qcc/regress_uchar_global.c', 'qc
     'qcc/regress_volatile.c', 'qcc/regress_enum.c', 'qcc/regress_preproc_ifdef.c',
     'qcc/regress_fn_macro_nest.c', 'qcc/regress_compound_scalar.c', 'qcc/regress_utf8_bom.c',
     'behavior/b_printf.c', 'behavior/b_struct.c',
+]
+
+# ──────────────────────────────────────────────────────────────────────────
+# MACRO_GUARD —— 宏族守卫（2026-10-21 启元 · 审计 D44 递刀）
+#
+# 为什么单独一个清单、而不是直接塞进 FAST_TESTS / CORE_FEAT：
+#   · CORE_FEAT 的入册规则要求「该锚 PASS 且全量闸 FAIL=0」才能进（见下方注释）；
+#     这 6 个当前是 **红** 的，硬塞进去会违反规则、也说不清是「入册」还是「挂账」。
+#   · 但它必须出现在 **--fast 开发档** 里 —— 事故教训：
+#     这 6 个宏锚在全量闸（--zh-feat）里红，而 --fast 只覆盖 30 个、
+#     verify_all 快档又默认 -NoTest ⟹ **两个开发自检面都看不见** ⟹
+#     这个洞从 2026-10-21 07:13（种子 7B5D3CFB）一直活到 14:38（种子 B466C81E），
+#     期间施工线提交了 4 次、做过一次 10 倍提速，**没有一次发现它**。
+#
+# 判据来源（受控对照 · 同目录同锚只换编译器）：
+#   旧种子 39C6FC81 ⟹ 6/6 rc=0 全绿
+#   新种子 7B5D3CFB ⟹ 6/6 rc=1 全红     ← 回归起点
+#   最新   B466C81E ⟹ 6/6 rc=1 仍全红    ← 至今未修（全量 1656 锚：PASS=1650 FAIL=6）
+# 统一报错：[ERR] 缺右括号: N 个未闭合 (首个括括号 '{' 行 1) (括号配对)
+#           （hygiene168 报「未找到 主 入口 — 顶层 解析 可能 中断」）
+# 共性：宏展开 / 卫生宏 / 宏可变参 / 宏嵌套 / 宏重载 ⟹ 宏展开后的括号配对检查误报。
+#
+# 处置：修好后这 6 个自然转绿，**保留在守卫里**防再回归。
+# ──────────────────────────────────────────────────────────────────────────
+MACRO_GUARD = [
+    'scripts/feat_zh_macro167_ok.c',
+    'scripts/feat_zh_hygiene168_ok.c',
+    'scripts/feat_zh_hygiene_deep181_ok.c',
+    'scripts/feat_zh_macro_va282_ok.c',
+    'scripts/feat_zh_macro_nest60_ok.c',
+    'scripts/feat_zh_macro179_overload_ok.c',
 ]
 
 # ⚠️ 入册规则 (2026-10-17 刀三 · 审计启元 递刀): 新锚加入 CORE_FEAT 前, 必须至少通过一次**全量闸**
@@ -113,6 +144,7 @@ CORE_FEAT = [
     'scripts/feat_zh_typedrop_movein.c', 'scripts/feat_zh_typedrop_decl_assign.c',
     'scripts/feat_zh_typedrop_array.c', 'scripts/feat_zh_typedrop_capacity.c',
     'scripts/feat_zh_typedrop_fieldglue.c', 'scripts/feat_zh_typedrop_recglue.c',
+    'scripts/feat_zh_typedrop_reg_after_scan.c', 'scripts/feat_zh_typedrop_two_after_prescan.c',
     'scripts/feat_zh_typedrop_paramglue.c', 'scripts/feat_zh_typedrop_expr_neg.c',
     'scripts/feat_zh_typedrop_partial_neg.c', 'scripts/feat_zh_typedrop_borrow_ok.c',
     'scripts/feat_zh_typedrop_copy_neg.c', 'scripts/feat_zh_typedrop_arrcomposite.c',
@@ -3666,7 +3698,11 @@ def build_tests(args):
                        if (f.startswith('feat_zh_') or f.endswith('_zh.c')) and f.endswith('.c'))
         return tests
     if args.fast:
-        return list(FAST_TESTS)
+        # 2026-10-21 启元（审计 D44）：fast 档一并跑宏族守卫。
+        # 这些锚当前是红的（见 MACRO_GUARD 注释），所以 --fast 会因此报红 —— **这是有意的**：
+        # 它们此前只在全量闸里红，而开发档看不见 ⟹ 洞活了一整天。
+        # 修好后自动转绿，此后长期防再回归。
+        return list(FAST_TESTS) + list(MACRO_GUARD)
     if args.only:
         return [t.strip() for t in args.only.split(',') if t.strip()]
     tests = sorted('qcc/' + f for f in os.listdir('tests/qcc') if f.endswith('.c'))

@@ -232,7 +232,7 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '7B5D3CFB'  # 2026-10-21 (AUDIT-P0-1 ��β): �������� compress2���� compress/uncompress ͬ�壩��v1==v2==D7D66A5D
+$expected = '43B302BF'  # 2026-10-21 D-OBJ-TRUNC: fixed-size tables -> static BSS (heap 512MB budget was exhausted); v1==v2==7B5D3CFB
 $expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
 $expected_前 = '2DB0CC41'  # A9 指针地基三缺陷 (TYPEOF/PTRPTR/DEREFIDX) + --refs 预置段过滤 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==2DB0CC41; 前值 6099BEE6
 $expected_前 = '6099BEE6'  # D18 (#94): aligned(N) 类型级 满卯 + 同名 max 继承（匿名不参与）(2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==6099BEE6; 前值 39C6FC81
