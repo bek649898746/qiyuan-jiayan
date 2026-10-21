@@ -85,15 +85,16 @@
 
 ---
 
-## 📊 当前状态（2026-10-19 实测，非 v1.0 快照）
+## 📊 当前状态（2026-10-21 实测，非 v1.0 快照）
 
 > v1.0 是 2026-08-24 的封存里程碑；主线此后持续迭代。以下为**当前实测**，全部可用仓内脚本复算。
 
 | 指标 | 当前值 | 复算命令 |
 |:--|:--|:--|
-| 自举不动点 | **以 `scripts/build_zh.ps1` 的 `$expected` 为准** | `powershell -File scripts/build_zh.ps1` |
-| 核心锚（CORE_FEAT） | **1300+**（含中英文双套） | `python scripts/run_tests_zh.py --zh-feat` |
-| 中文特性测试文件 | **1425 个** `feat_zh_*.c` | `ls scripts/feat_zh_*.c` |
+| 自举不动点 | **以 `scripts/build_zh.ps1` 的 `$expected` 为准**（当前 `43B302BF`） | `powershell -File scripts/build_zh.ps1` |
+| **自举链耗时** | **832 s ≈ 13.9 分**（2026-10-20 同机基线 **1,246.5 s ≈ 20.8 分** ⟹ **快 33%**） | 同一条命令，看输出末行 `链耗时` |
+| 核心锚（CORE_FEAT） | **1,656 个**（`--zh-feat` 实跑数；2026-10-21 实测 **PASS=1650 / FAIL=6**，见第 9 条已知问题） | `python scripts/run_tests_zh.py --zh-feat` |
+| 中文特性测试文件 | **1,436 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
 | 语言机制台账 | **291 项：已实现 284 / 表层 2 / 未实现 5**（含"定案"31 项） | `manual/机制特性实现表.md` |
 | 中文关键字 | **38 个**（15 语句 + 23 类型修饰） | `manual/中文关键字表.md` |
 | **AI 适配接口** | `--help` **27 项** · `-graph` **真行号** · 中文开关**中英等价** · `--repeat` 可重入 | `python scripts/check_ai_interface.py` |
