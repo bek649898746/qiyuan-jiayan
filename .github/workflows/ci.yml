@@ -1,5 +1,12 @@
 # 启元甲言 CI — 每次 push/PR 自动验证闭环
-# 验证: 宿主编译(gcc 零警告) → 行为断言 → 多文件链接 → 自举不动点 (v2==v3==v4)
+# 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
+#       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
+#
+# 2026-10-22 启元（审计）：全面脱离 C 版英文实现。
+#   · 不再 gcc 现编 qcc_x86.exe —— C 版已于 jiayan-v1.0-stable（2026-08-24）封存为历史信任根，
+#     原样留在该标签里可随时 checkout 复验，但不再进 CI、不再维护。
+#   · 一律使用仓库自带的中文自举种子 qcc_zh_seed.exe（15 MB，随仓库分发，零依赖）。
+#   · 删除了 asmzh job（其存在前提是「C 版汇编器 + C 版编译器」两套对拍，前提已失效）。
 name: qiyuan-ci
 
 on:
@@ -24,14 +31,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 编译宿主编译器 (gcc 零警告)
-        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-
+      # 2026-10-22 启元（审计）：不再 gcc 现编 C 版 qcc_x86.exe。
+      #   英文实现已于 jiayan-v1.0-stable（2026-08-24）封存 —— C 版 qcc_x86.c 原样留在该标签
+      #   作历史信任根，但不再维护：seed 切到自举不动点编译器后，它已无法编译当前规模的中文源。
+      #   仓库自带的中文自举种子 qcc_zh_seed.exe（15 MB，随仓库分发）直接可用。
       - name: 编码检查 (源文件必须严格 UTF-8)
         run: python scripts/check_encoding.py .
 
-      - name: 编译器自检
-        run: .\qcc_x86.exe --test
+      - name: 编译器自检（中文自举种子）
+        run: .\qcc_zh_seed.exe --test
 
       # ── 行为断言：push/PR 只跑快速集，全量挪到 nightly ────────────────
       # 2026-10-21：全量 377 个测试串行实测 969 秒（16.2 分钟），每次都跑偏重。
@@ -100,9 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: 编译宿主编译器
-        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-
+      # 2026-10-22 启元：删掉「gcc 编 C 版」—— 本 job 从不用它（内核验证走 WSL/QEMU）。
       - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
         continue-on-error: true
         run: wsl -e bash -c "sudo apt-get update && sudo apt-get install -y qemu-system-x86 binutils"
@@ -110,59 +116,6 @@ jobs:
       - name: QEMU 内核验证 (NVMe 环回 LOOPBACK-PASS)
         continue-on-error: true
         run: wsl -e bash scripts/_qemu_kernel.sh kernel_v36
-
-  asmzh:
-    runs-on: windows-latest
-    needs: tests
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: 编译宿主汇编器
-        run: gcc -O2 -Wall -Werror srclib/asm_zh.c -o asm_zh.exe
-
-      - name: 编译宿主编译器
-        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
-
-      # 2026-10-21 启元审计 D41：原版 `| Out-Null` 把编译输出全部吞掉，
-      # 一旦失败日志只剩一句 "exit 1"，无法追因（10-21 run 该步骤 3 秒即红）。
-      - name: asm_zh.jy 自宿主 (qcc 编译甲言版 → v2)
-        shell: powershell
-        run: |
-          # 2026-10-21 启元审计：根因 = PowerShell **不在当前目录搜索可执行文件**。
-          #   原版写裸名 `qcc_x86.exe ...` ⟹ CommandNotFoundException（实测本机：
-          #     "qcc_x86.exe : The term ... is not recognized as the name of a cmdlet"）
-          #   而 `| Out-Null` 把这条错误吞掉 ⟹ 日志只剩 exit 1 ⟹ 长期红且看不出原因。
-          #   修法：一律用 `.\` 前缀（tests job 里那句 `.\qcc_x86.exe --test` 本来就是对的）。
-          $ErrorActionPreference = 'Continue'
-          $exeExists = Test-Path 'qcc_x86.exe'
-          $out = (& .\qcc_x86.exe srclib/asm_zh.jy -o build_asmzh_v2.exe 2>&1 | Out-String)
-          $rc = $LASTEXITCODE
-          Write-Host $out
-          Write-Host "qcc 退出码 = $rc ; qcc_x86.exe 存在=$exeExists ; CWD=$((Get-Location).Path)"
-          if ($rc -ne 0 -or -not (Test-Path build_asmzh_v2.exe)) {
-            $exes = ((Get-ChildItem *.exe -ErrorAction SilentlyContinue | Select-Object -First 8 -ExpandProperty Name) -join ',')
-            $tail = ($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ '
-            if (-not $tail) { $tail = '(无输出)' }
-            Write-Host "::error::asm_zh.jy 自宿主编译失败 rc=$rc exe存在=$exeExists 产物=$(Test-Path build_asmzh_v2.exe) 根目录exe=[$exes] :: $tail"
-            exit 1
-          }
-          Write-Host "asm_zh v2 编译 OK: $((Get-Item build_asmzh_v2.exe).Length) 字节"
-
-      # 2026-10-21 启元审计 D41：原版是 `shell: powershell` + bash heredoc（python - <<'PY'）。
-      # PowerShell 不支持 heredoc，实测报：
-      #   Missing file specification after redirection operator.
-      #   The '<' operator is reserved for future use.
-      # ⟹ 该步骤必然红（与步骤6 是否修好无关）。改为调用独立脚本，不依赖任何 shell 特性。
-      - name: 自宿主对齐 (host vs v2 产物 SHA)
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8'
-          python scripts/check_asmzh_selfhost.py
-
   # ══════════════════════════════════════════════════════════
   # 完整自举链 —— 全链唯一没被机器守护的验收点
   #
@@ -241,11 +194,8 @@ jobs:
           if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "[FAIL] 缺 qcc_zh_seed.exe"; exit 1 }
           Write-Host "种子在: $((Get-Item qcc_zh_seed.exe).Length) 字节"
 
-      # 2026-10-21 启元审计 D41：scripts/test_multifile.py L30 硬写死 qcc_x86.exe，
-      # 而本 job 原先没有编译它的步骤 ⟹ 冷环境必然 FileNotFoundError（隔离复现 1 秒，exit=1）。
-      # 这正是「同一个脚本 tests 绿 / nightly_full 红」的唯一差别。
-      - name: 编译宿主编译器（test_multifile.py 依赖 qcc_x86.exe）
-        run: gcc -O2 -Wall -Werror srclib/qcc_x86.c -o qcc_x86.exe
+      # 2026-10-22 启元：test_multifile.py 已改用中文种子（QCC_TEST_BIN / qcc_zh_seed.exe 兜底），
+      #   不再需要 gcc 现编 C 版。昨天为 D41 加的这行随之删除。
 
       - name: 行为断言全量（377 个 · 约 16.2 分钟）
         run: python scripts/run_tests.py

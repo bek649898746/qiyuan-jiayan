@@ -72,11 +72,19 @@ def group(tag, cc, src, runs, out_dir, env):
     for i in range(runs):
         load, ncpu = cpu_load()
         loads.append(round(load, 1))
-        ms = one_run(cc, src, os.path.join(out_dir, '%s_%d.o' % (tag.replace('/', '_'), i)), env)
+        try:
+            ms = one_run(cc, src, os.path.join(out_dir, '%s_%d.o' % (tag.replace('/', '_'), i)), env)
+        except RuntimeError as e:
+            # 例如「改前」二进制在 34k -c 上崩 0xC0000005（D-OBJ-TRUNC 那个洞）⟹ 记为 CRASH，不当作读数
+            print('[RUN] %-6s #%d  CRASH  load=%.1f%%  %s' % (tag, i + 1, load, e), flush=True)
+            times.append(None)
+            continue
         times.append(round(ms, 1))
         print('[RUN] %-6s #%d  %10.1f ms   load=%.1f%%  (%d 逻辑核)' % (tag, i + 1, ms, load, ncpu), flush=True)
-    med = statistics.median(times)
-    print('[MED] %-6s n=%d  runs=%s  median=%.1f ms  load=%s' % (tag, runs, times, med, loads), flush=True)
+    ok_times = [t for t in times if t is not None]
+    med = statistics.median(ok_times) if ok_times else None
+    print('[MED] %-6s n=%d  runs=%s  median=%s  load=%s'
+          % (tag, runs, times, ('%.1f ms' % med) if med is not None else 'CRASH', loads), flush=True)
     return {'tag': tag, 'cc': cc, 'src': src, 'runs': times, 'median_ms': med, 'load_pct': loads}
 
 
@@ -131,21 +139,27 @@ def main():
     ok = True
     if 'lcode' in after:
         m = after['lcode']['median_ms']
-        verdict = 'PASS' if m <= CRIT_LCODE_MS else 'FAIL'
-        ok = ok and m <= CRIT_LCODE_MS
-        print('[JUDGE] lcode 中位 %.1f ms  <= %d ms : %s' % (m, CRIT_LCODE_MS, verdict))
+        verdict = 'PASS' if m is not None and m <= CRIT_LCODE_MS else 'FAIL'
+        ok = ok and verdict == 'PASS'
+        print('[JUDGE] lcode 中位 %s ms  <= %d ms : %s'
+              % (('%.1f' % m) if m is not None else 'CRASH', CRIT_LCODE_MS, verdict))
     if '34k' in after:
         m = after['34k']['median_ms']
-        verdict = 'PASS' if m <= CRIT_34K_MS else 'FAIL'
-        ok = ok and m <= CRIT_34K_MS
-        print('[JUDGE] 34k   中位 %.1f ms  <= %d ms : %s' % (m, CRIT_34K_MS, verdict))
+        verdict = 'PASS' if m is not None and m <= CRIT_34K_MS else 'FAIL'
+        ok = ok and verdict == 'PASS'
+        print('[JUDGE] 34k   中位 %s ms  <= %d ms : %s'
+              % (('%.1f' % m) if m is not None else 'CRASH', CRIT_34K_MS, verdict))
     if args.before:
         before = {r['tag'].split('/')[1]: r for r in rows if r['who'] == 'before'}
         for k in ('lcode', '34k'):
             if k in before and k in after:
-                print('[AB] %-5s before=%.1f ms  after=%.1f ms  比值=%.2f×'
-                      % (k, before[k]['median_ms'], after[k]['median_ms'],
-                         before[k]['median_ms'] / after[k]['median_ms'] if after[k]['median_ms'] else 0))
+                b, a = before[k]['median_ms'], after[k]['median_ms']
+                if b is None or a is None:
+                    print('[AB] %-5s before=%s  after=%s  （一方 CRASH，比值无意义）'
+                          % (k, ('%.1f ms' % b) if b is not None else 'CRASH',
+                             ('%.1f ms' % a) if a is not None else 'CRASH'))
+                else:
+                    print('[AB] %-5s before=%.1f ms  after=%.1f ms  比值=%.2f×' % (k, b, a, b / a))
     if args.json:
         with open(args.json, 'w', encoding='utf-8', newline='\n') as f:
             json.dump({'rows': rows, 'load_before': load0, 'load_after': load1,

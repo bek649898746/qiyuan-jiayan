@@ -12,6 +12,21 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
 os.makedirs('scratch_test', exist_ok=True)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-10-22 启元（审计）：不再硬编码英文链 qcc_x86.exe。
+#
+#   英文链已于 jiayan-v1.0-stable（2026-08-24）封存 —— C 版 qcc_x86.c 原样留在该标签里
+#   作为历史信任根，但不再进 CI、不再维护（seed 切到自举不动点编译器后，它已无法
+#   编译当前规模的中文源，会死循环）。
+#
+#   本脚本原写死 qcc_x86.exe ⟹ 倒逼 CI 的 tests / nightly_full 每次都要 gcc 现编
+#   一个用不到的英文链（每次白烧约 60 秒）。
+#
+#   现改为：默认用仓库自带的中文自举种子，允许 QCC_TEST_BIN 覆盖（与 run_tests_zh.py 同口径）。
+#   ⟹ CI 不再需要 gcc 编英文链，且验证的是真正在用的链。
+# ─────────────────────────────────────────────────────────────────────────────
+QCC = os.environ.get('QCC_TEST_BIN') or 'qcc_zh_seed.exe'
+
 # 确保 jyld
 if not os.path.exists('jyld.exe'):
     r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/jyld.c', '-o', 'jyld.exe'])
@@ -27,7 +42,7 @@ def check(name, srcs, expect_out):
         f = f'scratch_test/mf_{i}.c'
         open(f, 'w', encoding='utf-8').write(src)
         o = f'scratch_test/mf_{i}.o'
-        r = subprocess.run(['qcc_x86.exe', '-c', f, '-o', o], capture_output=True, text=True, encoding='utf-8', errors='replace')
+        r = subprocess.run([QCC, '-c', f, '-o', o], capture_output=True, text=True, encoding='utf-8', errors='replace')
         if r.returncode != 0 or not os.path.exists(o):
             fail_n += 1; fails.append(f'{name}: {i}.c 编译失败'); return
         objs.append(o)
@@ -76,20 +91,28 @@ if fails:
     sys.exit(1)
 print('==== 全绿 ====')
 
-# ---- Task 5.2: jycc 编译驱动 ----
-print('\n=== Task 5.2: jycc 编译驱动 ===')
+# ---- Task 5.2: 多文件直接编译（原 jycc C 驱动已退役）----
+# 2026-10-22 启元（审计）：jycc.c 是 C 写的驱动，内部硬编码 "qcc_x86.exe -c ..."（英文链组件）。
+#   英文链已于 jiayan-v1.0-stable（2026-08-24）封存 ⟹ jycc 无编译器可调，必然 rc=1。
+#   实测甲言编译器**本身就能多文件编译**：
+#     qcc_zh_seed.exe -o out.exe lib.jy main.jy  ⟹ rc=0，运行输出 [5] 正确
+#   ⟹ 直接调 QCC，**功能点（多文件编译）一个不丢**，C 驱动不再维护。
+print('\n=== Task 5.2: 多文件直接编译（甲言编译器）===')
 os.makedirs('scratch_test', exist_ok=True)
-for exe in ['jyld.exe', 'jycc.exe']:
-    if not os.path.exists(exe):
-        r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', f'srclib/{exe[:-4]}.c', '-o', exe])
-        assert r.returncode == 0
+if not os.path.exists('jyld.exe'):
+    r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/jyld.c', '-o', 'jyld.exe'])
+    assert r.returncode == 0
 
 def jycc_case(name, files, expect_out):
+    """多文件编译用例（名字沿用 jycc_case，减少调用处改动）。"""
     global pass_n, fail_n
     exe = 'scratch_test/jycc_app.exe'
-    r = subprocess.run(['jycc.exe', '-o', exe] + files, capture_output=True, timeout=60)
+    if os.path.exists(exe):
+        try: os.remove(exe)
+        except OSError: pass
+    r = subprocess.run([QCC, '-o', exe] + files, capture_output=True, timeout=60)
     if r.returncode != 0 or not os.path.exists(exe):
-        fail_n += 1; fails.append(f'{name}: jycc 失败 rc={r.returncode}')
+        fail_n += 1; fails.append(f'{name}: 多文件编译失败 rc={r.returncode}')
         return
     r = subprocess.run([exe], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
     out = (r.stdout or '').strip()

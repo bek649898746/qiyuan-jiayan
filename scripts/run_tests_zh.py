@@ -3950,7 +3950,7 @@ def main():
     ap.add_argument('--zh-feat', action='store_true', help='核心确定性中文特性 (scripts/ CORE_FEAT 白名单: 所有权/借用/多态/copy 族)')
     ap.add_argument('--zh-feat-all', action='store_true', help='全量中文特性 (scripts/feat_zh_*; 依赖/无主库 skip, 其它诚实 FAIL)')
     ap.add_argument('--parallel', type=int, default=6,
-                    help='并行 worker 数 (默认 6；0=串行)。6 路 ≈ 15GB（按 2.5GB/进程 估），'
+                    help='并行 worker 数 (默认 6；0=串行)。6 路 ≈ 9GB（按实测 1.5GB/进程 估），'
                          '跑前会做内存预算预检，超限直接拒绝而不是静默降级')
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
@@ -4103,7 +4103,12 @@ def main():
         except Exception:
             _avail = -1.0
         if _avail >= 0:
-            _need = args.parallel * 2.5
+            # PERF-PAR (2026-10-22 虾米): 2.5GB/进程 是 D-OBJ-TRUNC/COMMIT-8 之前 的 量具口径
+            #   （当时 镜像 1.28GB + 堆 512MB）。现 实测：`QCC_SMALL_HEAP=1` 下 单锚 峰值 working set
+            #   = **1.28GB**（8 路 并行 合计 9.98GB，全部 rc 符合预期，见 _evidence 的 PERF-PAR 现场）。
+            #   ⟹ 改用 1.5GB/进程（实测 + 17% 余量）。**这不是放宽判据**：判据（拒绝超预留即退 2）不变，
+            #   只是把过时的 估算常数 校正到实测值。
+            _need = args.parallel * 1.5
             _reserve = 6.0
             print('[MEM] 并行 %d 路 · 预计 %.1fGB · 可用物理 %.1fGB · 系统预留 %.0fGB'
                   % (args.parallel, _need, _avail, _reserve), flush=True)
