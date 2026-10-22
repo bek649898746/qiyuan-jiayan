@@ -120,7 +120,19 @@ jobs:
           $par = [math]::Floor(($freeGB - 6.5) / 1.5)
           if ($par -lt 1) { $par = 1 }
           Write-Host "[INFO] free=${freeGB}GB -> --parallel $par"
-          python scripts/run_tests_zh.py --zh-feat --parallel $par
+          $out = (python scripts/run_tests_zh.py --zh-feat --parallel $par 2>&1 | Out-String)
+          $rc = $LASTEXITCODE
+          Write-Host $out
+          if ($rc -ne 0) {
+            # Surface which anchors failed through ::error:: so it is readable via the
+            # public annotations API without a token (same trick as the 90s verify step).
+            # Keep every line ASCII-safe: annotation payload is fine, run-block source is not.
+            $fails = ($out -split "`n" | Where-Object { $_ -match 'FAIL|\[ERR\]' } | Select-Object -First 15 | ForEach-Object { $_.Trim() }) -join ' ~ '
+            if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ ') }
+            if ($fails.Length -gt 3500) { $fails = $fails.Substring(0, 3500) }
+            Write-Host "::error::zh-feat rc=$rc :: $fails"
+            exit 1
+          }
 
   qemu:
     runs-on: windows-latest
