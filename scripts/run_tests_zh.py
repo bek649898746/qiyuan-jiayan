@@ -3725,7 +3725,20 @@ def find_qcc():
     # P2-5 (2026-10-21 · 审计递刀): **禁止静默退化到英文链**。
     # 旧行为 `return qcc_x86.exe` ⟹ worktree/隔离环境没有 qcc_zh_v*.exe 时，
     # 中文锚在英文链上**必然全红**（英文链无中文诊断码）⟹ 把「环境缺件」误判成「回归」。
-    print('[SKIP] 环境未就绪: 找不到中文自举产物 qcc_zh_v1..v7.exe —— **拒绝退化到英文链** qcc_x86.exe：\n'
+    #
+    # P2-5 补正 (2026-10-22 · 启元审计 · CI run #180 实测): 上一条修得过头了。
+    #   `qcc_zh_v1..v7` 是 **build_zh.ps1 的自举链产物**，只有跑过完整自举才有；
+    #   而 **CI runner 与 git worktree 里根本不生成它们**，仓库只分发一个
+    #   `qcc_zh_seed.exe`（中文种子）。旧版找不到 v1..v7 直接 sys.exit(2) ⟹
+    #   CI 的 zh_chain job 恒红（实测 run #180：失败步骤 = 中文特性锚）。
+    #   **关键区分**：`qcc_zh_seed.exe` 是**中文链**（中文诊断码齐全），
+    #   与要禁的英文链 `qcc_x86.exe` 是两回事 —— 旧守卫把中文种子一起拒了。
+    #   修：v1..v7 之外再认中文种子（仍不碰 qcc_x86.exe，不违反本意）。
+    seed = os.path.join(root, 'qcc_zh_seed.exe')
+    if os.path.exists(seed):
+        return seed
+    print('[SKIP] 环境未就绪: 找不到中文自举产物 qcc_zh_v1..v7.exe，也没有 qcc_zh_seed.exe —— '
+          '**拒绝退化到英文链** qcc_x86.exe：\n'
           '      中文锚在英文链上必然假红（无中文诊断码）。请先跑 scripts\\build_zh.ps1，\n'
           '      或用 QCC_TEST_BIN=<中文编译器> 指定。', flush=True)
     sys.exit(2)

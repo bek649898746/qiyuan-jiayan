@@ -99,8 +99,24 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
-      - name: 中文特性锚（1,425 个 feat_zh_*.c）
-        run: python scripts/run_tests_zh.py --zh-feat
+      - name: 中文特性锚（CORE_FEAT 1,038 锚）
+        shell: powershell
+        run: |
+          # 2026-10-22 启元审计：本条此前恒红（CI run #180 失败步骤即此）。
+          # 两个原因都不在锚本身，而在线束：
+          #   ① find_qcc() 只认 qcc_zh_v1..v7.exe（build_zh.ps1 的自举链产物），
+          #      而 runner 只分发 qcc_zh_seed.exe ⟹ 旧守卫 sys.exit(2) 直接判红。
+          #      已在 scripts/run_tests_zh.py 补正：v1..v7 之外再认中文种子
+          #      （qcc_zh_seed.exe 是中文链，与要禁的英文链 qcc_x86.exe 是两回事）。
+          #   ② --parallel 默认 6 路 ≈ 9GB，脚本内存守卫要求 need <= 可用 - 6GB；
+          #      runner 物理内存小 ⟹ 必被拒并 exit 2。
+          #      这里按实际可用内存动态选并发，保持在守卫判据之内
+          #      （不是静默降级——越界的那个组合本来就跑不动；--parallel 1 时脚本不查内存）。
+          $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
+          $par = [math]::Floor(($freeGB - 6.5) / 1.5)
+          if ($par -lt 1) { $par = 1 }
+          Write-Host "[INFO] 可用物理 ${freeGB}GB -> --parallel $par"
+          python scripts/run_tests_zh.py --zh-feat --parallel $par
 
   qemu:
     runs-on: windows-latest
