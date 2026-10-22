@@ -56,7 +56,7 @@ def run_one_test(name):
         qcc = os.path.join(root, 'qcc_x86.exe')
 
     src = os.path.join('tests', name)
-    expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
+    expected = '0'; expected_out = None; expected_err = None; expect_cfail = False; stdin_in = None
     # 2026-10-21 补: @ARG <编译器选项> —— 原框架只会传固定 [qcc, src, -o, out],
     #   带 @ARG 的测试拿不到它的编译选项 ⟹ 编译出的是另一种配置 ⟹ 断言必然失配。
     #   实测受害者: tests/qcc/regress_stat_layout.c 头 `// @ARG -I compat_prelude.h`,
@@ -74,6 +74,15 @@ def run_one_test(name):
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
+        # 2026-10-23 启元审计: 新增 `@EXPECTED err:<str>` —— 断言 **stderr** 含该字符串。
+        #   起因: `tests/qcc/regress_star_precision.c`（2026-08-18 8ca9cfe7 引入）用
+        #   `fprintf(stderr, "%shint:%s%.*s%s\n", ...)` 输出，断言却写 `@EXPECTED out:...`
+        #   ⟹ 只查 stdout 永远匹配不到 ⟹ 恒红。该测试只在 nightly_full（schedule 触发）
+        #   里跑，长期被掩盖（run #186 实测 377 个里唯一 FAIL）。
+        #   编译器行为本身**完全正确**（stdout='OK'，stderr='hint: Using \'master\' as the name'），
+        #   所以不该改测试源去迁就框架 —— 而是让框架能断言 stderr。
+        m = re.search(r'//\s*@EXPECTED\s+err:(.+)$', line)
+        if m: expected_err = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True
@@ -119,8 +128,9 @@ def run_one_test(name):
             out_s, err_s = p.communicate(input=stdin_in, timeout=15)
             rc = p.returncode
             out = (out_s or '').strip()
+            err = (err_s or '').strip()
         except subprocess.TimeoutExpired:
-            rc = 'TIMEOUT'; out = ''
+            rc = 'TIMEOUT'; out = ''; err = ''
             try:
                 subprocess.run(['taskkill', '/F', '/T', '/PID', str(p.pid)],
                                capture_output=True, timeout=10)
@@ -135,7 +145,7 @@ def run_one_test(name):
             except Exception:
                 pass
     except Exception as e:
-        rc = 'ERR'; out = str(e)
+        rc = 'ERR'; out = str(e); err = ''
     try:
         os.remove(h1); os.remove(out_file); os.remove(err_file)
     except OSError:
@@ -148,10 +158,12 @@ def run_one_test(name):
         ok = (str(rc) == expected)
     if ok and expected_out:
         ok = expected_out in out
+    if ok and expected_err:
+        ok = expected_err in err
 
     if ok:
         return (name, True, '')
-    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}'")
+    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}' err='{err[:40]}'")
 
 
 def main():
