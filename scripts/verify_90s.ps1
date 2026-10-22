@@ -40,7 +40,15 @@ Chk "selftest 通过" ($o -match 'selftest\s*(通过|PASS)') $o.Trim()
 # ---- 关 2: 官方示例 编译 + 运行 ----
 Write-Host "[2/5] 编译并运行 examples/成绩.jy ..." -ForegroundColor Yellow
 $ex = Join-Path $work 'cj.exe'
-& $qcc (Join-Path $root 'examples\成绩.jy') -o $ex 2>&1 | Out-Null
+# ==== D43 绕行（2026-10-22 启元审计 · CI run #179 zh_chain 唯一红线）====
+#   GitHub windows-latest runner 的 ANSI 代码页 = 1252，中文文件名经 argv 传给
+#   编译器会退化成 '??.jy' ⟹ 编译器 fopen 打不开（本源另一处 ANSI 通道，见施工单修法 B）。
+#   这里用 .NET（Unicode 安全）先把示例复制成 ASCII 名，再编译 ——
+#   **内容与语义完全不变**，只避开 argv 的 ANSI 通道。开发机（936）不受影响。
+$srcAscii = Join-Path $work 'score.jy'
+Copy-Item -LiteralPath (Join-Path $root 'examples\成绩.jy') -Destination $srcAscii -Force
+if (-not (Test-Path -LiteralPath $srcAscii)) { Write-Host "[FAIL] D43 前置：示例复制成 ASCII 名失败" -ForegroundColor Red; $script:fail++ }
+& $qcc $srcAscii -o $ex 2>&1 | Out-Null
 $rc = $LASTEXITCODE
 $out = if (Test-Path $ex) { (& $ex 2>&1 | Out-String) } else { '' }
 Chk "编译 rc=0" ($rc -eq 0) "rc=$rc"
