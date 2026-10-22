@@ -102,20 +102,24 @@ jobs:
       - name: 中文特性锚（CORE_FEAT 1,038 锚）
         shell: powershell
         run: |
-          # 2026-10-22 启元审计：本条此前恒红（CI run #180 失败步骤即此）。
-          # 两个原因都不在锚本身，而在线束：
-          #   ① find_qcc() 只认 qcc_zh_v1..v7.exe（build_zh.ps1 的自举链产物），
-          #      而 runner 只分发 qcc_zh_seed.exe ⟹ 旧守卫 sys.exit(2) 直接判红。
-          #      已在 scripts/run_tests_zh.py 补正：v1..v7 之外再认中文种子
-          #      （qcc_zh_seed.exe 是中文链，与要禁的英文链 qcc_x86.exe 是两回事）。
-          #   ② --parallel 默认 6 路 ≈ 9GB，脚本内存守卫要求 need <= 可用 - 6GB；
-          #      runner 物理内存小 ⟹ 必被拒并 exit 2。
-          #      这里按实际可用内存动态选并发，保持在守卫判据之内
-          #      （不是静默降级——越界的那个组合本来就跑不动；--parallel 1 时脚本不查内存）。
+          # 2026-10-22 audit: this step was permanently red (run #180/#181).
+          # Two wiring bugs, neither in the anchors:
+          #   1) find_qcc() only accepted qcc_zh_v1..v7.exe (build_zh.ps1 bootstrap
+          #      artifacts). The runner only ships qcc_zh_seed.exe, so the old guard
+          #      called sys.exit(2). Fixed in scripts/run_tests_zh.py: accept the
+          #      Chinese seed too (it IS a Chinese-chain compiler; the English-chain
+          #      qcc_x86.exe is what the guard must keep rejecting).
+          #   2) --parallel default 6 workers ~ 9GB, and the script's memory guard
+          #      requires need <= free - 6GB. Runner RAM is small, so it refused with
+          #      exit 2. Here we derive parallelism from actual free RAM, staying
+          #      inside that guard (at --parallel 1 the script skips the memory check).
+          # NOTE (keep this run block pure ASCII): GitHub writes this block to a
+          #   BOM-less temp .ps1 and PS5.1 decodes it as ANSI(1252) on the English
+          #   runner, so any non-ASCII byte here is corrupted and breaks parsing.
           $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
           $par = [math]::Floor(($freeGB - 6.5) / 1.5)
           if ($par -lt 1) { $par = 1 }
-          Write-Host "[INFO] 可用物理 ${freeGB}GB -> --parallel $par"
+          Write-Host "[INFO] free=${freeGB}GB -> --parallel $par"
           python scripts/run_tests_zh.py --zh-feat --parallel $par
 
   qemu:
