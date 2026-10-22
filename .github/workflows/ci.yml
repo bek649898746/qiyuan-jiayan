@@ -99,6 +99,38 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
+      - name: 诊断闸8 IR 容量守卫（独立跑，约 10s，不判红）
+        shell: powershell
+        run: |
+          # 2026-10-22 audit diagnostic. run #183 reported:
+          #   "[FAIL] 2 criteria failed" -> CONTROL group rc=1 with EMPTY output
+          #   (expected rc=0 and 'CAPM 42'), while the behaviour assertions reported
+          #   PASS=1656 SKIP=0 FAIL=0 -- i.e. every single anchor passed!
+          # So only gate 8 (check_ir_cap_neg) fails on the runner, and it fails in the
+          # CONTROL group (knob unset): a plain compile of a tiny source fails with no
+          # diagnostic at all. Locally the same seed passes in 7.9s.
+          # This step isolates that gate so we get fast feedback (~10s) instead of a 71min
+          # full run. It never fails the job -- findings go to ::warning:: (public API readable).
+          # KEEP THIS RUN BLOCK PURE ASCII.
+          $env:QCC_TEST_BIN = (Resolve-Path qcc_zh_seed.exe).Path
+          Write-Host "TEMP=$env:TEMP"
+          Write-Host "CWD=$((Get-Location).Path)"
+          Write-Host "seed=$env:QCC_TEST_BIN exists=$(Test-Path qcc_zh_seed.exe)"
+          Write-Host "srcA=$(Test-Path scripts/feat_zh_irland_l1cap_main_neg.c)"
+          Write-Host "srcB=$(Test-Path scripts/feat_zh_irland_l1cap_chain_neg.c)"
+          Write-Host "--- direct compile of control-group source ---"
+          $raw = (& $env:QCC_TEST_BIN scripts/feat_zh_irland_l1cap_main_neg.c -o "$env:TEMP\_dg.exe" 2>&1 | Out-String)
+          $rawRc = $LASTEXITCODE
+          Write-Host "direct rc=$rawRc"
+          Write-Host "direct output=[$raw]"
+          Write-Host "--- check_ir_cap_neg.py ---"
+          $g = (python scripts/check_ir_cap_neg.py 2>&1 | Out-String)
+          $gRc = $LASTEXITCODE
+          Write-Host $g
+          $flat = ($g -split "\r?\n" | Where-Object { $_.Trim() -ne '' }) -join ' ~ '
+          if ($flat.Length -gt 3000) { $flat = $flat.Substring(0, 3000) }
+          Write-Host "::warning::diag gate8 rc=$gRc direct_rc=$rawRc direct_out=[$raw] :: $flat"
+
       - name: 中文特性锚（CORE_FEAT 1,038 锚）
         shell: powershell
         run: |
