@@ -47,29 +47,36 @@ foreach ($s in $srcs) {
     }
 }
 
+# 当前不动点：运行时从 build_zh.ps1 的 $expected 读取（2026-10-24 修：原写死 39C6FC81 已过期）
+$curFix = '(读取失败)'
+try {
+    $m = Select-String -Path scripts\build_zh.ps1 -Pattern "^\`$expected\s*=\s*'([0-9A-Fa-f]{8})'" -EA SilentlyContinue | Select-Object -First 1
+    if ($m) { $curFix = ([regex]::Match($m.Line, "'([0-9A-Fa-f]{8})'")).Groups[1].Value }
+} catch { }
+
 Show-Sec "3. 关键数字（每个都附复算方式）"
 Show-Item "中文关键字" "38 个（15 语句 + 23 类型修饰） -> manual/中文关键字表.md"
 Show-Item "机制台账" "291 项 = 284 已实现 / 2 表层 / 5 未实现 -> manual/机制特性实现表.md"
 Show-Item "中文特性锚" ("{0} 个 feat_zh_*.c" -f @(Get-ChildItem scripts\feat_zh_*.c -EA SilentlyContinue).Count)
 Show-Item "编译测试" ("{0} 个 <- git ls-files tests/qcc" -f @(git ls-files tests/qcc 2>$null).Count)
 Show-Item "九条语言线" "85 文件 / 50,692 行 -> examples/multilang/ （扩展名 .c，内容是甲言）"
-Show-Item "当前不动点" "39C6FC81（以 scripts/build_zh.ps1 的 expected 为准）"
+Show-Item "当前不动点" ("{0}（运行时读自 scripts/build_zh.ps1 的 `$expected）" -f $curFix)
 
 Show-Sec "4. 三条自检命令（零依赖，都不需要 gcc/Python）"
 Write-Host "  powershell -File scripts/verify_90s.ps1        -> 9.2s  / 8 项" -ForegroundColor Green
 Write-Host "  powershell -File scripts/verify_multilang.ps1  -> 31.6s / 9 条线" -ForegroundColor Green
-Write-Host "  powershell -File scripts/build_zh.ps1 -NoSeed  -> 约 20.8 分钟 / 完整自举收敛" -ForegroundColor Green
+Write-Host "  powershell -File scripts/build_zh.ps1 -NoSeed  -> 约 830s（8核）/ 1,528s（低配） / 完整自举收敛" -ForegroundColor Green
 
 Show-Sec "5. !! 审计者最常见的 6 个误判（先看这里，能省你 20 步）"
 $pit = @(
     '1) 别用 *.jy 搜九线源码 —— 它们在 examples/multilang/*.c',
     '   甲言兼容 C、源码存成 .c。只按 .jy 搜会得出「源码不存在」的错误结论。',
     '',
-    '2) qcc_work.jy 不是主源，是英文链镜像（中文字符仅 5.8%）',
-    '   真正的手工中文化主源是 srclib_jiayan/qcc_zh.jy（中文 29.3%）。',
+    '2) qcc_work.jy 不是主源，是英文链镜像（中文字符仅 5.87%，2026-10-24 实测）',
+    '   真正的手工中文化主源是 srclib_jiayan/qcc_zh.jy（中文 29.8%，2026-10-24 实测）。',
     '',
     '3) 「v1==v2==v3==v4==v5 五代全等」是 v1.0 封存（2026-08-24）的历史。',
-    '   现行是 v1 == v2 == 39C6FC81（一步收敛，只有两代）。',
+    "   现行是 v1 == v2 == $curFix（一步收敛，只有两代）。",
     '',
     '4) 「格式化到串」「复制字符串」是编译器内建，仓库里没有定义。',
     '   搜到 852 处全是调用点 —— 不要据此判定「找不到定义 = 不安全」。',
@@ -87,7 +94,9 @@ $known = @(
     '[未修] 英文链静默降级 —— 找不到 srclib/qcc_rt.c 时 rc 仍为 0，',
     '        却产出少 3.18MB 运行库的残缺编译器。需改编译器源码。',
     '[风险] 固定缓冲 + sprintf 式格式化（错缓冲[256] 等），未全量穷举。',
-    '[缺口] 完整自举判据（约 20.8 分钟）未进 CI，全链唯一没被机器守护的验收点。',
+    '[已守护] 完整自举判据已进 CI —— .github/workflows/ci.yml 的 bootstrap job',
+    '         （schedule + workflow_dispatch 触发，跑 build_zh.ps1 两代 + 不动点比对）。',
+    '         本地实测 830s（8 核）/ 1,528s（低配机）—— 耗时依机器而定，非固定值。',
     '[文档] CHANGELOG 曾停更近 2 个月（2026-08-27 -> 10-20，已补记）。'
 )
 $known | ForEach-Object { Write-Host ("  " + $_) -ForegroundColor DarkYellow }
