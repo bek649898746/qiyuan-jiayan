@@ -28,7 +28,7 @@
 #   ④ 【不重复实现】本脚本只做**编排**，各步骤的真实逻辑在专门脚本里。
 # ============================================================
 param(
-    [switch]$Full,     # 加完整自举链（build_zh.ps1，约 20.8 分钟）
+    [switch]$Full,     # 加完整自举链（build_zh.ps1，约 830s（8核）/ 1,528s（低配））
     [switch]$Legacy,   # 加英文链验证（历史信任根，已停更）
     [switch]$NoTest    # 跳过中文特性锚（CI 里另有独立步骤时可关）
 )
@@ -121,7 +121,7 @@ if ($NoTest) {
 }
 
 # ------------------------------------------------------------
-Step '6/7' '完整自举链（v1 == v2 == $expected · 约 20.8 分钟）'
+Step '6/7' '完整自举链（v1 == v2 == $expected · 约 830s（8核）/ 1,528s（低配））'
 if (-not $Full) {
     Warn '未指定 -Full，跳过（对外发布前请务必跑一次）'
     Write-Host '         命令: powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1' -ForegroundColor DarkGray

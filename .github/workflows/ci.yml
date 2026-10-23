@@ -1,4 +1,4 @@
-# 启元甲言 CI — 每次 push/PR 自动验证闭环
+﻿# 启元甲言 CI — 每次 push/PR 自动验证闭环
 # 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
@@ -14,7 +14,7 @@ on:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
   pull_request:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
-  # ── 完整自举（20.8 分钟）不适合每次 push 跑，改为 nightly + 手动 ──
+  # ── 完整自举（~830s 8核 / 1,528s 低配）不适合每次 push 跑，改为 nightly + 手动 ──
   #    这是全链唯一无法在 90 秒自证/九线/1,425 锚里覆盖的验收点：
   #    「v1 == v2 == $expected」只有真跑完两代自举才能判。
   schedule:
@@ -131,7 +131,7 @@ jobs:
           if ($flat.Length -gt 3000) { $flat = $flat.Substring(0, 3000) }
           Write-Host "::warning::diag gate8 rc=$gRc direct_rc=$rawRc direct_out=[$raw] :: $flat"
 
-      - name: 中文特性锚（CORE_FEAT 1,038 锚）
+      - name: 中文特性锚（CORE_FEAT 1,656 锚）
         shell: powershell
         run: |
           # 2026-10-22 audit: this step was permanently red (run #180/#181).
@@ -183,7 +183,7 @@ jobs:
   # ══════════════════════════════════════════════════════════
   # 完整自举链 —— 全链唯一没被机器守护的验收点
   #
-  # 为什么单独一个 job：跑一次 ~20.8 分钟（两代编译 + 不动点比对），
+  # 为什么单独一个 job：跑一次 ~830s（8核）/ 1,528s（低配）（两代编译 + 不动点比对），
   # 塞进 push/PR 会把每次提交都拖到 20 分钟以上 ⟹ 只在 nightly/手动跑。
   #
   # 它验的是什么（90 秒自证 / 九线 / 1,425 锚全都覆盖不到）：
@@ -214,7 +214,7 @@ jobs:
           $sha = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash
           Write-Host "种子: $len 字节 / SHA256 $($sha.Substring(0,16))…"
 
-      - name: 完整自举链（两代 + 不动点比对 · 约 20.8 分钟）
+      - name: 完整自举链（两代 + 不动点比对 · 约 830s / 1,528s）
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 
