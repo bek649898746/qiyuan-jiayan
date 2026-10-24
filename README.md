@@ -1,5 +1,29 @@
 ﻿# 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
 
+<!-- GEN:STATUS:BEGIN - 由 scripts/gen_readme_status.ps1 自动生成, 请勿手改 -->
+> ### 你读到的是哪个状态
+>
+> | 项 | 值 |
+> |:--|:--|
+> | 生成时间 | **2026-10-24 08:31** |
+> | HEAD | `9a4aa860`（分支 `fix-d43-20261022`） |
+> | 自举不动点 | **`BA7A8849`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **34880 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 特性锚 | **1436 个** `feat_zh_*.c` |
+> | 种子指纹 | `BA7A8849`（`qcc_zh_seed.exe` SHA256 前 8 位） |
+>
+> **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
+> 想知道**现在**的准确值，跑：
+>
+> ```
+> powershell -File scripts/audit_facts.ps1      # 1 秒导出全基线
+> powershell -File scripts/verify_90s.ps1       # 8 秒验真
+> ```
+>
+> 若你手里的快照与上表不符，**一律以仓库最新提交为准**。
+> 重生成本块的命令：`powershell -File scripts/gen_readme_status.ps1`
+<!-- GEN:STATUS:END -->
+
 > ### 📌 版本提示
 >
 > 本文档是 **2026-10-21 当前主线**。若你在别处看到下面这些旧说法，按现行口径替换：
