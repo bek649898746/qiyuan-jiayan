@@ -1,4 +1,4 @@
-﻿# 启元甲言 CI — 每次 push/PR 自动验证闭环
+# 启元甲言 CI — 每次 push/PR 自动验证闭环
 # 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
@@ -165,7 +165,7 @@ jobs:
 
       - name: 两代产物取证（失败也上传，便于追因）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bootstrap-v1-v2
           path: |
