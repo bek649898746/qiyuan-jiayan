@@ -1,0 +1,62 @@
+# CodeQL — 静态应用安全测试（SAST）
+#
+# 为什么要有这个文件：
+#   ① OpenSSF Scorecard 的 `SAST` 项要求「在所有 commit 上跑静态分析工具」，
+#      此前该项得 0 分（"SAST tool is not run on all commits"）
+#   ② 更重要的是：本项目的产出是**编译器**，安全缺陷会直接进到每个使用者的产物里。
+#      机器能查出来的问题，不应该靠人眼盯。
+#
+# ⚠️ 扫描范围**有意收窄**：见 `.github/codeql/codeql-config.yml` 顶部说明 ——
+#    本仓库 .c 有两种方言（标准 C 与甲言中文关键字），CodeQL 只认标准 C，
+#    因此只扫 `srclib/ seed/ scripts/ tests/` 里的标准 C 部分。
+#
+# 结果位置：仓库 Security → Code scanning alerts
+# 徽章：https://github.com/bek649898746/qiyuan-jiayan/security/code-scanning
+
+name: CodeQL
+
+on:
+  push:
+    branches: [ "publish" ]
+  pull_request:
+    branches: [ "publish" ]
+  # 每周一 03:00 UTC 定期重扫（与 Scorecard 的 01:30 错开）
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+# 顶层最小权限；analysis job 按需提权
+permissions: read-all
+
+jobs:
+  analyze:
+    name: Analyze C/C++
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      security-events: write   # 上传 SARIF 到 Code scanning 必需
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # build-mode: none = 不做编译，直接静态分析源码。
+      #   ⚠️ 这是**有意选择**，不是偷懒：本项目的编译链是甲言自举链
+      #   （qcc_zh_seed.exe → v1 → v2），不是标准 C 工具链，
+      #   CodeQL 的自动构建器无法驱动它；而我们只需要对标准 C 部分做语义分析。
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          languages: c-cpp
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          category: "/language:c-cpp"

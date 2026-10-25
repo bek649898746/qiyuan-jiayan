@@ -1,0 +1,43 @@
+# CodeQL 配置 —— 限定扫描范围
+#
+# 为什么需要这个文件：
+#   本仓库的 .c 文件**有两种方言**：
+#     ① 英文 C（standard C）—— `srclib/` `seed/` 以及 `scripts/` `tests/` 里多数文件
+#     ② **甲言**（中文关键字：整/字/构/枚/若/循环/遍/返/空/常/静 …）—— 扩展名仍是 .c
+#
+#   CodeQL 的 C/C++ 前端只认标准 C，碰到中文关键字会解析失败。
+#   若全仓扫描，绝大多数文件会产生解析错误噪音，把真正的安全问题淹没。
+#
+#   ⟹ 本配置**只扫标准 C**，把甲言专有目录排除掉。
+#   Scorecard 的 SAST 判据是「CodeQL 在所有 commit 上运行」，不是「解析成功率」，
+#   因此限定范围不影响该项得分，同时保证扫描结果**有信噪比**。
+
+name: "CodeQL config (standard C only)"
+
+# 只扫标准 C —— 甲言源码（中文关键字）不在 CodeQL 能力范围内
+paths:
+  - srclib
+  - seed
+  - scripts
+  - tests
+
+paths-ignore:
+  # 甲言写的多语言实现（85 个文件全部是中文关键字）
+  - examples/multilang
+
+  # 中文特性锚（1443 个，绝大多数含甲言中文关键字）
+  # ⚠️ 只排除 feat_zh_*，**不能**用 feat_* 通配 —— 实测 feat_* 里另有 237 个文件，
+  #    其中 219 个是纯标准 C 且应当被扫描（排除掉会把覆盖范围砍掉一大半）。
+  - scripts/feat_zh_*
+
+  # 构建产物与归档
+  - '**/*.bak*'
+  - '**/_bak_*'
+  - '**/scratch_*'
+  - '**/quarantine'
+
+queries:
+  - uses: security-and-quality
+
+# 甲言相关的 .jy 主源不是标准 C 编译单元，显式不纳入
+# （CodeQL 的 c-cpp 前端本身也不会主动收 .jy）
