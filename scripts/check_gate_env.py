@@ -10,9 +10,9 @@
 ## 判据（三条，双向）
 1. **整体档**：无编译器的树里跑 `run_tests_zh.py` ⟹ rc=**2**（环境类，区别于 FAIL=1）
    + stdout 含 `[SKIP] 环境未就绪` + **不得**出现 `FileNotFoundError`。
-2. **单闸档**：七个闸检查器 各自 在缺件的树里 独立跑 ⟹ rc=**0**（SKIP 不算失败）
-   + stdout 含 `[SKIP]` 标记（可区分：既不是 ❌ 也不是 ✅）。
-3. **就绪档**（反向：防止「一律 SKIP」变成新的假绿）：
+2. **单闸档**：七个闸检查器 各自 在缺件的树里 独立跑 ⇹ **不得 rc=1**（假红），且 stdout 必须含 `[SKIP]` 标记；
+   已迁移到新口径的检查器（`MUST_RC2`）必须 **rc=2**（环境未就绪，不判绿也不判红）。
+   由来（2026-10-24 判据方打回）：原来「缺件 rc=0」会让「环境没装」冒充「闸已过」。
    真树 + 真编译器 ⟹ 单锚跑 rc=0 **且输出不得含 `[SKIP]`**；闸⑥ 真跑 rc=0 且无 `[SKIP]`。
 
 用法: python scripts/check_gate_env.py
@@ -84,11 +84,13 @@ d2root = os.path.join(TMP, 'no_qcc')
 d2 = os.path.join(d2root, 'scripts')
 shutil.rmtree(d2root, ignore_errors=True)
 os.makedirs(d2)
+MUST_RC2 = {'check_jyld_link_smoke.py'}   # 2026-10-24: 已迁移到 rc=2 口径（环境未就绪 ≠ 绿）
 for c in CHECKERS:
     shutil.copy2(os.path.join(ROOT, 'scripts', c), d2)
     r = run([sys.executable, os.path.join(d2, c)], cwd=d2root, env=clean_env(), timeout=180)
     o = out_of(r)
-    ok = (r.returncode == 0 and SK in o and 'FileNotFoundError' not in o)
+    rc_ok = (r.returncode == 2) if c in MUST_RC2 else (r.returncode in (0, 2))
+    ok = (rc_ok and SK in o and 'FileNotFoundError' not in o)
     check(ok, '%-26s rc=%d %s' % (c, r.returncode, (SK + ' 已标注') if SK in o else '**无 SKIP 标记**'))
     if not ok:
         print('      ' + '\n      '.join([x for x in o.strip().split('\n') if x.strip()][-4:]))

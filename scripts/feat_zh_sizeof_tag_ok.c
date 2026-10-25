@@ -1,3 +1,4 @@
+// @EXPECTED out:SIZEOF TAG 12 8 8 12
 #include <stdio.h>
 
 /* T1 (2026-09-13) 正锚: 带 `构`/`联` 词头 的 大小 必须 照常 工作 (与 负锚 配对, 保证

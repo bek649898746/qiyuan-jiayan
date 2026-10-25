@@ -1128,7 +1128,9 @@ struct Rc 克隆(struct Rc r) {
     (*cnt) = (*cnt) + 1;
     return r;
 }
-void 释放(struct Rc r) {
+void __qcc_rc_release(struct Rc r) { /* R821d: 原名 `释放` 会被词法器 映射成 `free`（中文别名）⇹
+   与 libc `free` **同名重定义**，as 末条胜 ⇹ libc free 被 Rc 引用计数体 遮蔽 ⇹ 对普通指针 递归减计数 → 0xC0000005。
+   改名 ⇹ 两个符号 分家；`释放(…)` 仍是 libc free 的中文别名（与 `释放内存` 同）。 */
     if (!r.p) return;
     int *cnt = (int *)r.p - 1;
     (*cnt) = (*cnt) - 1;

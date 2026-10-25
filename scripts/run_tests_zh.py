@@ -3353,7 +3353,12 @@ CORE_FEAT += [
 #   修法: 拆 `常量优先级(算子)` 表 + `常量二项(数值, 最低)`（自递归 · 左结合）+ 入口 复位状态 (平铺 → 优先级 爬升);
 #     算子 集合 与 各级 语义 **逐字 保留**（只 改 结合顺序）。⚠️ 该 求值器 被 **编译器 自身** 的 数组 维度 使用
 #     ⟹ 修 后 内部 维度 可能 变小（原 靠 错值 撑大）⟹ **自举 v1==v2 是 主要 检验**（潜在 越界 会 当场 暴露）。
+# R811 (2026-10-24 虾米): 「逗号续声明符 + 指针数组」元素元数据 —— 父编 2E7840B8 上必红
+#   （PTRARR 10 0 0 10 50 30, rc=1），修后 PTRARR 10 50 30 10 50 30, rc=0。
 CORE_FEAT += [
+    'scripts/feat_zh_ptrarr811_ok.c',
+    'scripts/feat_zh_ptrarr812_ok.c',   # R812: int/长整长整/字 三形态 × 内存+读回 双通道（父编 MEMC/GETI/GETL 红）
+    'scripts/feat_zh_ptrarr813_ok.c',   # R813: 结构体指针数组 `构 S *p[N]; p[i][j].f = v;` 内存+读回 双通道 + 2D（父编 9A75E995: SMEM 0 5 0 / SGET 10 10 10 / M2 0, rc=1）           # 三连指针数组 a/b/c 的第 2/3 声明符读回值 + 三数组互不污染
     'scripts/feat_zh_constprec582_ok.c',        # 正锚+控制 7 格: 常量 优先级 14 / 左结合 5 / 控制 10·20 / **维度 11** / 控制 5 / 合成判 1 ⟹ CONSTPREC582 14 5 10 20 11 5 1 (父编 20 5 10 20 20 5 0 必红)
 ]
 # R625 (2026-10-10 虾米 · 进IR前 槽1 根治 —— 两 个 形态):
@@ -3626,7 +3631,7 @@ CORE_FEAT += [
     'scripts/feat_zh_macroovl613_ok.c',        # R613 正锚: 同名 `翻(x)`/`翻(x,y)` ⟹ 1 参走 1 参规则、2 参走 2 参规则
     'scripts/feat_zh_macroovl613_neg.c',       # R613 负锚（防过严）: 3 个实参 无匹配元数 ⟹ 仍 A6068（不静默落首个）
     'scripts/feat_zh_declmacro178_neg.c',      # 2026-10-20 #178 负锚: `声明宏`/`宏规则`/`macro_rules` ⟹ A6086 专码（修前 A8002/顶层带偏/静默 rc=0）
-    'scripts/feat_zh_macrorec180_neg.c',       # 2026-10-20 #180 负锚: 宏自引用重入 ⟹ A6108（修前 误导 A1001「未声明函数」）
+    'scripts/feat_zh_macrorec180_neg.c',       # 2026-10-20 #180 负锚；2026-10-22 蓝漆纠正后期望改 A1001（残留调用指向未声明函数 = 标准 C 的正确诊断），仍要求响亮失败
     'scripts/feat_zh_offsetof_samefield_ok.c', # 2026-10-20 R584 正锚: `&((T*)0)->字段` 按转型目标构序 ⟹ OFF584 4 8（修前 4 4）
     'scripts/feat_zh_variant120_neg.c',        # 2026-10-20 round18 #120 负锚: `多态变体` ⟹ A6086（修前 rc=0 静默）
     'scripts/feat_zh_commadecl543_ok.c',       # 2026-10-20 round18 R543 正锚: `构 P a={1,2}, b={3,4};` ⟹ COMMA543 1 2 3 4
@@ -3690,6 +3695,17 @@ CORE_FEAT += [
     'scripts/feat_zh_field_name_eq_type_ok.c',   # C4-b 正锚: 字段名 == 其 typedef 类型名 (含 逗号续声明符) (U=7 F=5 A=9 B=4)
     'scripts/feat_zh_nested_struct_arr_init_ok.c',  # P0-2 正锚 (2026-10-19): 嵌套 struct 数组 花括 初始化 (SZ 20 V 31 32 33 34 35); 修前 内层全 0 / 外层尾=31
 ]
+
+# R799–R801 (2026-10-23 虾米 · SQLITE 攻关): **数组维度 / sizeof 求值** 四锚 ——
+# 修前两红（A9001 `sizeof` 误报 + 解析器 HANG >20s），现四绿；
+# 其中两支是**布局断言**（sizeof(struct Bit)==520 / struct Holder==8），不只「能编译」。
+# 入册纪律：四锚已在多轮定向运行与本轮收尾全绿；全量复核仍归审计。
+CORE_FEAT += [
+    'scripts/feat_zh_union_dim_sizeof.c',        # R799a: `尺寸(unsigned int)` 多型词 + 维度表达式
+    'scripts/feat_zh_union_dim_hang.c',          # R799b/c: `[(8/sizeof(int))*sizeof(int)]` 不再死循环
+    'scripts/feat_zh_union_dim_typedef.c',       # R800: `尺寸(<不完整 typedef> *)` 消费词位 + 布局 520
+    'scripts/feat_zh_dim_typedef_sizeof.c',      # R800b: typedef 尺寸快照回填 + 布局 8
+]
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
@@ -3725,20 +3741,7 @@ def find_qcc():
     # P2-5 (2026-10-21 · 审计递刀): **禁止静默退化到英文链**。
     # 旧行为 `return qcc_x86.exe` ⟹ worktree/隔离环境没有 qcc_zh_v*.exe 时，
     # 中文锚在英文链上**必然全红**（英文链无中文诊断码）⟹ 把「环境缺件」误判成「回归」。
-    #
-    # P2-5 补正 (2026-10-22 · 启元审计 · CI run #180 实测): 上一条修得过头了。
-    #   `qcc_zh_v1..v7` 是 **build_zh.ps1 的自举链产物**，只有跑过完整自举才有；
-    #   而 **CI runner 与 git worktree 里根本不生成它们**，仓库只分发一个
-    #   `qcc_zh_seed.exe`（中文种子）。旧版找不到 v1..v7 直接 sys.exit(2) ⟹
-    #   CI 的 zh_chain job 恒红（实测 run #180：失败步骤 = 中文特性锚）。
-    #   **关键区分**：`qcc_zh_seed.exe` 是**中文链**（中文诊断码齐全），
-    #   与要禁的英文链 `qcc_x86.exe` 是两回事 —— 旧守卫把中文种子一起拒了。
-    #   修：v1..v7 之外再认中文种子（仍不碰 qcc_x86.exe，不违反本意）。
-    seed = os.path.join(root, 'qcc_zh_seed.exe')
-    if os.path.exists(seed):
-        return seed
-    print('[SKIP] 环境未就绪: 找不到中文自举产物 qcc_zh_v1..v7.exe，也没有 qcc_zh_seed.exe —— '
-          '**拒绝退化到英文链** qcc_x86.exe：\n'
+    print('[SKIP] 环境未就绪: 找不到中文自举产物 qcc_zh_v1..v7.exe —— **拒绝退化到英文链** qcc_x86.exe：\n'
           '      中文锚在英文链上必然假红（无中文诊断码）。请先跑 scripts\\build_zh.ps1，\n'
           '      或用 QCC_TEST_BIN=<中文编译器> 指定。', flush=True)
     sys.exit(2)
@@ -3755,8 +3758,8 @@ def run_one_test(name):
         src = os.path.join(root, name)
     else:
         src = os.path.join('tests', name)
-    expected = '0'; expected_out = None; expect_cfail = False; stdin_in = None
-    expected_err = None
+    expected = '0'; expected_out = []; expect_cfail = False; stdin_in = None
+    expected_err = []  # 2026-10-24: 多条 out/err 断言**全部**校验（原标量 = 最后一条胜 ⟹ 前面静默失效）
     expected_warn = None; expected_silent = None   # 闸 (2026-09-17 第 84 站): `@EXPECTED silent:N` —— 静默兜底 槽计数 断言.
                              #   C266/C292/C299 这一类缺陷 的 **签名就是静默兜底**, rc=0 不等于没缺陷;
                              #   声明了才查 (未声明的不受影响, 零回归风险).
@@ -3782,9 +3785,9 @@ def run_one_test(name):
         m = re.search(r'//\s*@EXPECTED\s+exit:\s*(\S+)', line)
         if m: expected = m.group(1); explicit_run = True
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
-        if m: expected_out = m.group(1).strip()
+        if m and m.group(1).strip(): expected_out.append(m.group(1).strip())
         m = re.search(r'//\s*@EXPECTED\s+err:(.+)$', line)   # G0 (2026-09-11): stderr 断言 —
-        if m: expected_err = m.group(1).strip()              #   运行时诊断 (如 [LEAK]/[ERR]) 走 stderr, stdout 断言 覆盖 不到
+        if m and m.group(1).strip(): expected_err.append(m.group(1).strip())              #   运行时诊断 (如 [LEAK]/[ERR]) 走 stderr, stdout 断言 覆盖 不到
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+silent:\s*(\d+)', line)   # 第 84 站: 静默兜底 槽计数 断言
@@ -3809,7 +3812,7 @@ def run_one_test(name):
     #   原判据把「加了 err: 断言」误当成「这是一条运行期锚」⟹ 给 `_neg` 锚补 err: 断言会**静默反转**
     #   它的语义 (从「必须编译失败」变成「必须编译成功」) ⟹ 实测 **49 个锚** 因此 FAIL (闸 949/47)。
     #   判据修正为「有纯运行期断言才算运行期锚」; 带 err: 的 `_neg` 锚仍按负例 (compile_fail 分支) 校验 err。
-    if (not expect_cfail) and (not explicit_run) and (expected_out is None) and ("_neg" in os.path.basename(name)):
+    if (not expect_cfail) and (not explicit_run) and (not expected_out) and ("_neg" in os.path.basename(name)):
         expect_cfail = True
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
     try:
@@ -3862,10 +3865,12 @@ def run_one_test(name):
             # (既有 `err:A1001` 类 断言 因此 是 装饰). 现: 合并 编译器 两 路 输出 后 逐条 校验 断言。
             # ⚠️ 注意 甲言 编译器 的 诊断 实测 落 **stdout** (非 stderr) ⟹ 两 路 合并 检查。
             cerr_all = (r.stderr or '') + (r.stdout or '')
-            if expected_out and expected_out not in cerr_all:
-                return (name, False, 'compile_fail 期望 out 含 %r 实际=%r' % (expected_out, cerr_all.strip()[:150]))
-            if expected_err and expected_err not in cerr_all:
-                return (name, False, 'compile_fail 期望 err 含 %r 实际=%r' % (expected_err, cerr_all.strip()[:150]))
+            for _eo in expected_out:
+                if _eo not in cerr_all:
+                    return (name, False, 'compile_fail 期望 out 含 %r 实际=%r' % (_eo, cerr_all.strip()[:150]))
+            for _ee in expected_err:
+                if _ee not in cerr_all:
+                    return (name, False, 'compile_fail 期望 err 含 %r 实际=%r' % (_ee, cerr_all.strip()[:150]))
             return (name, True, 'compile_fail(期望)')
         err = (r.stderr or '') + (r.stdout or '')
         # 收紧 2026-09-07 (启元递刀 RefCell伪PASS): 不再按错误文本嗅探 '未声明/未定义函数' 等当依赖 skip —
@@ -3929,10 +3934,16 @@ def run_one_test(name):
         ok = (rc != 0)
     else:
         ok = (str(rc) == expected)
-    if ok and expected_out:
-        ok = expected_out in out
-    if ok and expected_err:
-        ok = expected_err in err
+    if ok:
+        for _eo in expected_out:
+            if _eo not in out:
+                ok = False
+                break
+    if ok:
+        for _ee in expected_err:
+            if _ee not in err:
+                ok = False
+                break
 
     if ok:
         return (name, True, '')
@@ -4157,7 +4168,10 @@ def main():
 
     # 防环境偶发 (2026-08-28 大哥指令): 失败测试自动重试一次 —
     # 真回归重跑必再挂 (不放过), Windows 环境抖动 (杀软扫新 exe/启动时序) 重跑即过 (不误伤)
-    if fail_l:
+    # 2026-10-24: QCC_NO_RETRY=1 关闭「失败自动重试一次」。
+    #   用于刻意变异的自检（锚灵敏度审计）：那里失败是**预期结果**，
+    #   重试只会把审计时间翻倍；环境抖动的保护在正常跑时仍然生效。
+    if fail_l and not os.environ.get('QCC_NO_RETRY'):
         retry_names = [n for n, ok, _ in results if not ok]
         # R435 (2026-09-30 虾米 · 第 435 站): **首轮失败锚名也落日志** ——
         #   原状只打数量, 而 `--- 失败 ---` 段仅在「重试后仍失败」时打印 ⟹

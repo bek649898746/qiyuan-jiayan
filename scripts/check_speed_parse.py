@@ -59,15 +59,17 @@ def main():
     ap.add_argument('--runs', type=int, default=3)
     a = ap.parse_args()
     if not os.path.isdir(CORPUS):
-        print('[SKIP] 环境未就绪: 语料目录 %s 不存在 —— 本判据需真实语料（本地开发机 / 审计机）' % CORPUS)
-        return 0
+        print('[FAIL] 环境未就绪: 语料目录 %s 不存在 —— 本判据需真实语料（本地开发机 / 审计机）' % CORPUS)
+        return 2
     bad = 0
     total_wall = 0.0
     print('%-12s %10s %10s %8s' % ('文件', '解析中位ms', '墙钟中位ms', '预算ms'))
     for f, budget in BUDGET.items():
         src = os.path.join(CORPUS, f)
         if not os.path.exists(src):
-            print('%-12s %s' % (f, '[SKIP] 缺文件'))
+            # 2026-10-24: 缺输入文件 = 判据不完整，计失败（原 continue 会让必要项缺失而仍判 PASS）
+            print('%-12s %s' % (f, '[FAIL] 缺文件'))
+            bad += 1
             continue
         wall, parse, rc = measure(a.cc, src, a.runs)
         total_wall += wall or 0

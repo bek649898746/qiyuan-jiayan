@@ -1,3 +1,4 @@
+// @EXPECTED out:OK
 #include <stdio.h>
 #include <string.h>
 

@@ -1,4 +1,4 @@
-﻿# compile_git_par.ps1 -- PARALLEL git corpus gate (the 563-file sweep).
+# compile_git_par.ps1 -- PARALLEL git corpus gate (the 563-file sweep).
 #
 # ASCII only.
 #

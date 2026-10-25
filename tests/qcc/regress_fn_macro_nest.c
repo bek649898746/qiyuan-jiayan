@@ -1,5 +1,6 @@
 // @EXPECTED exit:0
 // 函数式宏嵌套回归 — CHANGELOG 8fb282e0 声称支持单层递归展开但无测试
+// @EXPECTED out:macros 5 12 14
 #define ADD(a, b) ((a) + (b))
 #define MUL(a, b) ((a) * (b))
 #define TWICE(x) ADD(x, x)

@@ -17,7 +17,7 @@
   ⑧ `-graph`       —— JSON 合法；用户函数/结构体实体行号与源码一致
 
 用法:
-  python scripts/check_ai_outputs.py --cc qcc_zh_v2.exe
+  python scripts/check_ai_outputs.py --cc qcc_zh_seed.exe
 退出码: 0 全过；1 有失败（逐项打印 FAIL 原因）
 """
 import argparse
@@ -87,7 +87,9 @@ def line_of(src, needle):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--cc', default='qcc_zh_v2.exe')
+    # 2026-10-24: 默认改为 **哈希校验过的种子**。`qcc_zh_v2.exe` 无任何校验，
+    # 实测静默落后（本轮它甚至不存在 ⇹ rc=2）；用它当判据输入 = 拿旧产物判新代码。
+    ap.add_argument('--cc', default='qcc_zh_seed.exe')
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
     if not os.path.exists(cc):

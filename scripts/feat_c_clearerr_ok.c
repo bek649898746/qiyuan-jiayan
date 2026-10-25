@@ -1,3 +1,4 @@
+// @EXPECTED out:ok
 /* A1005 (2026-09-16): 内置/导入表 豁免表 (后聚[]) 缺 clearerr —— 语料闸 (git pack-objects) 根治锚。
    病灶: `builtin/pack-objects.c` 调 `clearerr(stdin)` ⟹ A1001 未声明函数 (C99 废隐式声明后,
          不在 原型表/内置豁免表 里的 标准库 函数 一律 拒收)。clearerr 是 msvcrt 导出的 标准 stdio 函数,

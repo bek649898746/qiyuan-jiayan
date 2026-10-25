@@ -7,7 +7,7 @@
      跳(1041)/条件跳(1042) · 局部栈对象(1081) · 取址(1102)
   ② 四类**必发**：位运算 · 条件跳 · 调用 · 返回 —— 缺一 ⟹ FAIL
   ③ 零发射项（码表「项码」中 dump 里 0 条者）**逐条 有登记理由**（本文件 `登记` 表）；
-     且 零发射项数 **< 基线**（刀九 前 实测 = 15）
+     且 零发射项数 **< 基线**（R821 起 基线 = 1；刀九前 = 14）
 ④ 计数自洽（**弱式 · 实测量具口径**）：`现序一` 是**写口计数**（主槽 首写 + 子链 每次追加），
      dump 是**存活记录**（每节点一条；子链 走 `链头`）。⚠️ 已知：节点被**再次** `发抽象` 时
      `剩十 = -1` 会**弃链**（旧子链成孤儿 ⟹ 不打印但 已 计数）⟹ 严格等式**不成立**（本刀前后
@@ -29,7 +29,8 @@ T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-cover')
 os.makedirs(T, exist_ok=True)
 CC = os.path.join(QJ, 'qcc_zh_v2.exe')
 
-PROBES = ['scripts/probe/ir_cover_probe.c', 'scripts/probe/ir_cfg_probe.c', 'scripts/probe/ir_probe.c']
+PROBES = ['scripts/probe/ir_cover_probe.c', 'scripts/probe/ir_cfg_probe.c', 'scripts/probe/ir_probe.c',
+          'scripts/probe/ir_fp2fp_probe.c']  # R821: fp2fp(1066) 首个 真实发射探针
 
 # ---- ③ 零发射项 登记表（逐条 理由 + 触发条件；**禁中间态、禁静默丢弃**）----
 登记 = {
@@ -42,7 +43,8 @@ PROBES = ['scripts/probe/ir_cover_probe.c', 'scripts/probe/ir_cfg_probe.c', 'scr
            'C 语言 无「不可达」语句形态（对照表 表B G6 登记: 为 后续 pass 预留）；'
            '触发条件: 常量折叠 / 分支剪枝 pass 落地 后，由 pass 自身 发射（本层 不 硬塞）。'),
 }
-基线零发射 = 14   # 刀九 前 实测（复现 plan 快照「起点 = 14」）: 1021–1026 · 1064 · 1065 · 1066 · 1071 · 1072 · 1081 · 1101 · 1121
+基线零发射 = 2   # R821 改动前 实测 = 2 (1066 fp2fp + 1121 不可达)。现实测 = 1 ⇹ 1 < 2 通过；去掉 1066 发射回到 2 ⇹ 2 < 2 不成立 ⇹ 负控变红。
+               # 去掉 1066 发射 (回到 旧编译器) ⇹ 零发射回 2 ≥ 本基线 ⇹ 判据 变红 (负控)。
 
 类覆盖 = [
     ('位运算', [1021, 1022, 1023, 1024, 1025, 1026]),
@@ -115,6 +117,8 @@ def report(fails, cnt, defs, title):
     for cls, codes in 必发类码.items():
         if sum(cnt.get(c, 0) for c in codes) < 1:
             fails.append('② 必发类缺失: %s' % cls)
+    if cnt.get(1066, 0) < 1:
+        fails.append('② 1066 fp2fp 零发射 (R821 探针 未命中)')
     zero = sorted(c for c in defs if cnt.get(c, 0) == 0)
     print('    零发射项 %d 个: %s' % (len(zero), zero))
     for c in zero:

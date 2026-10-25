@@ -1,4 +1,4 @@
-﻿# 启元甲言 CI — 每次 push/PR 自动验证闭环
+# 启元甲言 CI — 每次 push/PR 自动验证闭环
 # 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
@@ -14,7 +14,7 @@ on:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
   pull_request:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
-  # ── 完整自举（~830s 8核 / 1,528s 低配）不适合每次 push 跑，改为 nightly + 手动 ──
+  # ── 完整自举（20.8 分钟）不适合每次 push 跑，改为 nightly + 手动 ──
   #    这是全链唯一无法在 90 秒自证/九线/1,425 锚里覆盖的验收点：
   #    「v1 == v2 == $expected」只有真跑完两代自举才能判。
   schedule:
@@ -99,72 +99,8 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
-      - name: 诊断闸8 IR 容量守卫（独立跑，约 10s，不判红）
-        shell: powershell
-        run: |
-          # 2026-10-22 audit diagnostic. run #183 reported:
-          #   "[FAIL] 2 criteria failed" -> CONTROL group rc=1 with EMPTY output
-          #   (expected rc=0 and 'CAPM 42'), while the behaviour assertions reported
-          #   PASS=1656 SKIP=0 FAIL=0 -- i.e. every single anchor passed!
-          # So only gate 8 (check_ir_cap_neg) fails on the runner, and it fails in the
-          # CONTROL group (knob unset): a plain compile of a tiny source fails with no
-          # diagnostic at all. Locally the same seed passes in 7.9s.
-          # This step isolates that gate so we get fast feedback (~10s) instead of a 71min
-          # full run. It never fails the job -- findings go to ::warning:: (public API readable).
-          # KEEP THIS RUN BLOCK PURE ASCII.
-          $env:QCC_TEST_BIN = (Resolve-Path qcc_zh_seed.exe).Path
-          Write-Host "TEMP=$env:TEMP"
-          Write-Host "CWD=$((Get-Location).Path)"
-          Write-Host "seed=$env:QCC_TEST_BIN exists=$(Test-Path qcc_zh_seed.exe)"
-          Write-Host "srcA=$(Test-Path scripts/feat_zh_irland_l1cap_main_neg.c)"
-          Write-Host "srcB=$(Test-Path scripts/feat_zh_irland_l1cap_chain_neg.c)"
-          Write-Host "--- direct compile of control-group source ---"
-          $raw = (& $env:QCC_TEST_BIN scripts/feat_zh_irland_l1cap_main_neg.c -o "$env:TEMP\_dg.exe" 2>&1 | Out-String)
-          $rawRc = $LASTEXITCODE
-          Write-Host "direct rc=$rawRc"
-          Write-Host "direct output=[$raw]"
-          Write-Host "--- check_ir_cap_neg.py ---"
-          $g = (python scripts/check_ir_cap_neg.py 2>&1 | Out-String)
-          $gRc = $LASTEXITCODE
-          Write-Host $g
-          $flat = ($g -split "\r?\n" | Where-Object { $_.Trim() -ne '' }) -join ' ~ '
-          if ($flat.Length -gt 3000) { $flat = $flat.Substring(0, 3000) }
-          Write-Host "::warning::diag gate8 rc=$gRc direct_rc=$rawRc direct_out=[$raw] :: $flat"
-
-      - name: 中文特性锚（CORE_FEAT 1,656 锚）
-        shell: powershell
-        run: |
-          # 2026-10-22 audit: this step was permanently red (run #180/#181).
-          # Two wiring bugs, neither in the anchors:
-          #   1) find_qcc() only accepted qcc_zh_v1..v7.exe (build_zh.ps1 bootstrap
-          #      artifacts). The runner only ships qcc_zh_seed.exe, so the old guard
-          #      called sys.exit(2). Fixed in scripts/run_tests_zh.py: accept the
-          #      Chinese seed too (it IS a Chinese-chain compiler; the English-chain
-          #      qcc_x86.exe is what the guard must keep rejecting).
-          #   2) --parallel default 6 workers ~ 9GB, and the script's memory guard
-          #      requires need <= free - 6GB. Runner RAM is small, so it refused with
-          #      exit 2. Here we derive parallelism from actual free RAM, staying
-          #      inside that guard (at --parallel 1 the script skips the memory check).
-          # NOTE (keep this run block pure ASCII): GitHub writes this block to a
-          #   BOM-less temp .ps1 and PS5.1 decodes it as ANSI(1252) on the English
-          #   runner, so any non-ASCII byte here is corrupted and breaks parsing.
-          $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
-          $par = [math]::Floor(($freeGB - 6.5) / 1.5)
-          if ($par -lt 1) { $par = 1 }
-          Write-Host "[INFO] free=${freeGB}GB -> --parallel $par"
-          $out = (python scripts/run_tests_zh.py --zh-feat --parallel $par 2>&1 | Out-String)
-          $rc = $LASTEXITCODE
-          Write-Host $out
-          if ($rc -ne 0) {
-            # Surface which anchors failed through ::error:: so it is readable via the
-            # public annotations API without a token (same trick as the 90s verify step).
-            # Keep every line ASCII-safe: annotation payload is fine, run-block source is not.
-            $fails = ($out -split "`n" | Where-Object { $_ -match 'FAIL|\[ERR\]' } | Select-Object -First 15 | ForEach-Object { $_.Trim() }) -join ' ~ '
-            if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 6) -join ' ~ ') }
-            if ($fails.Length -gt 3500) { $fails = $fails.Substring(0, 3500) }
-            Write-Host "::error::zh-feat rc=$rc :: $fails"
-            exit 1
-          }
+      - name: 中文特性锚（1,425 个 feat_zh_*.c）
+        run: python scripts/run_tests_zh.py --zh-feat
 
   qemu:
     runs-on: windows-latest
@@ -183,7 +119,7 @@ jobs:
   # ══════════════════════════════════════════════════════════
   # 完整自举链 —— 全链唯一没被机器守护的验收点
   #
-  # 为什么单独一个 job：跑一次 ~830s（8核）/ 1,528s（低配）（两代编译 + 不动点比对），
+  # 为什么单独一个 job：跑一次 ~20.8 分钟（两代编译 + 不动点比对），
   # 塞进 push/PR 会把每次提交都拖到 20 分钟以上 ⟹ 只在 nightly/手动跑。
   #
   # 它验的是什么（90 秒自证 / 九线 / 1,425 锚全都覆盖不到）：
@@ -214,7 +150,7 @@ jobs:
           $sha = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash
           Write-Host "种子: $len 字节 / SHA256 $($sha.Substring(0,16))…"
 
-      - name: 完整自举链（两代 + 不动点比对 · 约 830s / 1,528s）
+      - name: 完整自举链（两代 + 不动点比对 · 约 20.8 分钟）
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 

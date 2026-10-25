@@ -1,3 +1,4 @@
+// @EXPECTED out:A=010000 B=110 C=111
 /* A71-续9 (2026-09-15): 浮点比较的 NaN (无序) 语义 —— 族 C 根治锚。
    病灶: 双精度比较 (`例 总优一`) 用 comisd 后直接 setcc:
          setb(CF) / setbe(CF|ZF) / sete(ZF) / setne(!ZF) —— **均不看 PF**;

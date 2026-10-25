@@ -12,7 +12,7 @@
   // @EXPECTED out:<str>        stdout 包含该字符串 (可选)
 无 @EXPECTED 时默认 exit:0
 """
-import sys, os, subprocess, re, argparse, time, shlex
+import sys, os, subprocess, re, argparse
 sys.stdout.reconfigure(encoding='utf-8')
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,26 +43,35 @@ def build_tests(args):
     return tests
 
 
+def find_qcc():
+    """定位编译器（2026-10-23 启元审计 · 脱链补正）。
+
+    原逻辑硬编码 `qcc_x86.exe` + 用 gcc 现编 C 版宿主，但 2026-10-22 已全面脱链
+    （提交 5341e2c5 删掉所有 gcc 编宿主，仓库不再产出 qcc_x86.exe）⟹ CI 的
+    nightly_full「行为断言全量」恒红（run #186 实测：exit 1）。
+
+    现改为与 run_tests_zh.py / test_multifile.py 同口径：
+      QCC_TEST_BIN 优先 → 中文自举种子 qcc_zh_seed.exe（或 v1..v7）→ 实在没有才 gcc 现编。
+    tests/ 下 465 个用例都是标准 C（@EXPECTED 断言），甲言完全能编。
+    """
+    env = os.environ.get('QCC_TEST_BIN')
+    if env and os.path.exists(env):
+        return env
+    for n in range(7, 0, -1):
+        p = os.path.join(root, 'qcc_zh_v%d.exe' % n)
+        if os.path.exists(p):
+            return p
+    p = os.path.join(root, 'qcc_zh_seed.exe')
+    if os.path.exists(p):
+        return p
+    return os.path.join(root, 'qcc_x86.exe')
+
+
 def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
-    # ── 2026-10-21 修 CI 跑 4 小时 20 分的根因 ──────────────────────────
-    # 原来写死 'qcc_x86.exe'（英文链，停更于 2026-09-06）。
-    # 实测 qcc_x86.exe 编 tests/qcc/regress_adt_typed.c **挂死**（25 秒+ 不返回，
-    # CPU≈0 纯阻塞），而同一文件 qcc_zh_seed.exe 3 秒编过并输出 OK。
-    # 该测试（#97 判别类型化载荷）是新特性，只存在于中文端 ⟹ 英文链根本没有这条路径。
-    # 故改为优先中文主链种子；英文链仅在种子缺失时兜底。
-    qcc = os.path.join(root, 'qcc_zh_seed.exe')
-    if not os.path.exists(qcc):
-        qcc = os.path.join(root, 'qcc_x86.exe')
-
+    qcc = find_qcc()
     src = os.path.join('tests', name)
     expected = '0'; expected_out = None; expected_err = None; expect_cfail = False; stdin_in = None
-    # 2026-10-21 补: @ARG <编译器选项> —— 原框架只会传固定 [qcc, src, -o, out],
-    #   带 @ARG 的测试拿不到它的编译选项 ⟹ 编译出的是另一种配置 ⟹ 断言必然失配。
-    #   实测受害者: tests/qcc/regress_stat_layout.c 头 `// @ARG -I compat_prelude.h`,
-    #   缺 -I ⟹ struct stat 走默认布局 ⟹ st_atime_off=24 而期望 32 (该目录仅此 1 个带 @ARG)。
-    #   实现照 run_tests_zh.py L3738（shlex 切分，`-D A=1` 与 `-DA=1` 两形皆可）。
-    arg_extra = []
     try:
         # R561 (2026-09-30 虾米 · 第 429 站): 同 `run_tests_zh.py` —— **read(600) 截断 ⟹ 长头注释锚的
         #   `@EXPECTED` 静默失效**（实测: tests/qcc 下 307 个含断言锚里 2 个落 600 之后）。改读全文。
@@ -74,20 +83,14 @@ def run_one_test(name):
         if m: expected = m.group(1)
         m = re.search(r'//\s*@EXPECTED\s+out:(.+)$', line)
         if m: expected_out = m.group(1).strip()
-        # 2026-10-23 启元审计: 新增 `@EXPECTED err:<str>` —— 断言 **stderr** 含该字符串。
-        #   起因: `tests/qcc/regress_star_precision.c`（2026-08-18 8ca9cfe7 引入）用
-        #   `fprintf(stderr, "%shint:%s%.*s%s\n", ...)` 输出，断言却写 `@EXPECTED out:...`
-        #   ⟹ 只查 stdout 永远匹配不到 ⟹ 恒红。该测试只在 nightly_full（schedule 触发）
-        #   里跑，长期被掩盖（run #186 实测 377 个里唯一 FAIL）。
-        #   编译器行为本身**完全正确**（stdout='OK'，stderr='hint: Using \'master\' as the name'），
-        #   所以不该改测试源去迁就框架 —— 而是让框架能断言 stderr。
+        # 2026-10-23 启元审计: 新增 `@EXPECTED err:<str>` —— 断言 stderr 含该串。
+        #   与 publish 分支同步（那边 tests/qcc/regress_star_precision.c 用 fprintf(stderr,...)
+        #   输出却写 out: 断言 ⟹ 恒红，是 nightly_full 唯一失败项）。
         m = re.search(r'//\s*@EXPECTED\s+err:(.+)$', line)
         if m: expected_err = m.group(1).strip()
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True
-        m = re.search(r'//\s*@ARG\s+(.+)$', line)
-        if m: arg_extra += shlex.split(m.group(1).strip())
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -95,8 +98,8 @@ def run_one_test(name):
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc, src, '-o', h1] + arg_extra, capture_output=True, text=True,
-                       encoding='utf-8', errors='replace', timeout=60)
+    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
             return (name, True, 'compile_fail(期望)')
@@ -111,39 +114,18 @@ def run_one_test(name):
         pass
     try:
         # cmd /c 启动: Python 直接 CreateProcess qcc 生成 PE 会 0xC0000005 (fix 2026-08-08)
-        # ── 2026-10-21 修死锁 + te.pid ──────────────────────────────────────
-        # 原写法 subprocess.run(..., timeout=15) 有两处缺陷:
-        #   ① subprocess.TimeoutExpired **没有 pid 属性** ⟹ 超时处理里 str(te.pid) 抛
-        #      AttributeError，而 except 子句内抛的异常不会被同一 try 的后续 except 捕获
-        #      ⟹ 整条断言崩掉，而非记 TIMEOUT。
-        #   ② run() 超时后内部仍要 communicate() 收管道；若 cmd 派生的孙进程继承了管道
-        #      句柄且未退出，communicate 会一直等 ⟹ **超时形同虚设，进程静默挂死**。
-        #      这正是 CI `tests` job 跑 4 小时 20 分的形态（CPU 占用≈0 的纯阻塞）。
-        # 改法: Popen 显式持有 pid → 超时先 taskkill /F /T 杀整棵进程树 → 再 kill 兜底，
-        #       之后 communicate(timeout=5) 收尾，拿不到就当作空输出，绝不无限等。
-        p = subprocess.Popen(['cmd', '/c', h1], stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, encoding='utf-8', errors='replace')
+        p = subprocess.run(['cmd', '/c', h1], capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=15, input=stdin_in)
+        rc = p.returncode
+        out = (p.stdout or '').strip()
+        err = (p.stderr or '').strip()
+    except subprocess.TimeoutExpired as te:
         try:
-            out_s, err_s = p.communicate(input=stdin_in, timeout=15)
-            rc = p.returncode
-            out = (out_s or '').strip()
-            err = (err_s or '').strip()
-        except subprocess.TimeoutExpired:
-            rc = 'TIMEOUT'; out = ''; err = ''
-            try:
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(p.pid)],
-                               capture_output=True, timeout=10)
-            except Exception:
-                pass
-            try:
-                p.kill()
-            except Exception:
-                pass
-            try:
-                p.communicate(timeout=5)
-            except Exception:
-                pass
+            te.kill()
+        except Exception:
+            pass
+        rc = 'TIMEOUT'; out = ''; err = ''
+        subprocess.run(['taskkill', '/F', '/T', '/PID', str(te.pid)], capture_output=True, timeout=10)
     except Exception as e:
         rc = 'ERR'; out = str(e); err = ''
     try:
@@ -163,7 +145,7 @@ def run_one_test(name):
 
     if ok:
         return (name, True, '')
-    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}' err='{err[:40]}'")
+    return (name, False, f"期望exit={expected} 实际={rc} out='{out[:40]}'")
 
 
 def main():
@@ -173,19 +155,13 @@ def main():
     ap.add_argument('--only', help='只跑指定测试 (逗号分隔)')
     args = ap.parse_args()
 
-    # 确保编译器 —— 2026-10-21 改：优先中文主链种子（理由见 run_one_test 注释）
-    qcc = os.path.join(root, 'qcc_zh_seed.exe')
-    if os.path.exists(qcc):
-        print(f'[编译器] 中文主链种子: qcc_zh_seed.exe', flush=True)
-    else:
-        qcc = os.path.join(root, 'qcc_x86.exe')
-        if not os.path.exists(qcc):
-            print('[1] 无中文种子，编译英文链宿主 qcc_x86 ...')
-            r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/qcc_x86.c', '-o', qcc])
-            if r.returncode != 0:
-                print('[FAIL] 编译宿主失败'); sys.exit(1)
-        else:
-            print(f'[编译器] 英文链兜底: qcc_x86.exe', flush=True)
+    # 确保编译器（2026-10-23 启元审计 · 脱链补正，见 find_qcc 说明）
+    qcc = find_qcc()
+    if not os.path.exists(qcc):
+        print('[1] 无中文种子，尝试用 gcc 编译宿主 qcc_x86 ...')
+        r = subprocess.run(['gcc', '-O2', '-Wall', '-Werror', 'srclib/qcc_x86.c', '-o', qcc])
+        if r.returncode != 0:
+            print('[FAIL] 编译宿主失败'); sys.exit(1)
 
     # 清理 scratch_test (并行/串行都只清一次)
     import shutil
@@ -210,19 +186,7 @@ def main():
         with Pool(args.parallel) as pool:
             results = pool.map(run_one_test, tests, chunksize=1)
     else:
-        # 2026-10-21: 加进度输出。原写法 `[run_one_test(t) for t in tests]` 全程静默 ——
-        # 377 个测试跑几分钟只印一行开头，一旦卡住完全无法定位（CI 那次 4 小时就是这样白等）。
-        # 现每 25 个印一次进度，且任何 FAIL / TIMEOUT 立刻印，卡住时能一眼看出停在哪一个。
-        results = []
-        _t0 = time.time()
-        for _idx, _t in enumerate(tests, 1):
-            _r = run_one_test(_t)
-            results.append(_r)
-            _name, _ok, _msg = _r
-            if not _ok:
-                print(f'  [{_idx}/{len(tests)}] FAIL {_name}  ({_msg})', flush=True)
-            if _idx % 25 == 0 or _idx == len(tests):
-                print(f'  [{_idx}/{len(tests)}] 累计 {time.time()-_t0:.0f}s', flush=True)
+        results = [run_one_test(t) for t in tests]
 
     pass_n = sum(1 for _, ok, _ in results if ok)
     fail_n = len(results) - pass_n

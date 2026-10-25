@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""分类普查判据器（镜像判据 × 出厂工具 两路互证；覆盖 8 条 pass）
+"""分类普查判据器（镜像判据 × 出厂工具 两路互证；覆盖 9 条 pass）
 
 做法（两条独立路径互证，非循环）：
   (甲) **驱动出厂工具**：跑 `opt_zh <in.asm> -o <out.asm>`，解析其收尾行的**逐类计数**。
-  (乙) **镜像判据独立复算**：按 8 条 pass 的判据在**输入**上重新数一遍。
+  (乙) **镜像判据独立复算**：按 9 条 pass 的判据在**输入**上重新数一遍。
   ⟹ 断言「(乙) 逐类计数 == (甲) 出厂工具逐类计数」（逐类，不是只看总量）。
 
 注：自「实测缩短量通道」落地后，优化器**不再输出任何字节常量**（`.缩 N`/`.缩总` 已删），
@@ -18,7 +18,9 @@ import io, os, re, sys, collections, subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 OPT = 'opt_zh.exe'
-CLS = ['栈spill', '栈合并', '抵消对', '不可达跳转', '不可达返回', '复制传播', '跳落到下一行', '帧栈存取同址', '死值写覆盖']
+# R821: 负控入口 —— 指向改动前的优化器时必须变红。
+if '--opt' in sys.argv: OPT = sys.argv[sys.argv.index('--opt') + 1]
+CLS = ['栈spill', '栈合并', '抵消对', '不可达跳转', '不可达返回', '复制传播', '跳落到下一行', '帧栈存取同址', '死值写覆盖', '零栈调整']
 NUM = {'rax': 0, 'rcx': 1, 'rdx': 2, 'rbx': 3, 'rsp': 4, 'rbp': 5, 'rsi': 6, 'rdi': 7,
        'eax': 0, 'ecx': 1, 'edx': 2, 'ebx': 3, 'esp': 4, 'ebp': 5, 'esi': 6, 'edi': 7,
        'al': 0, 'cl': 1, 'dl': 2, 'bl': 3, 'ax': 0, 'cx': 1, 'dx': 2, 'bx': 3,
@@ -76,6 +78,9 @@ def mirror(lines):
         if not done and a.startswith('加栈 ') and b.startswith('减栈 ') \
                 and a.split(' ', 1)[1].strip() == b.split(' ', 1)[1].strip():
             c['抵消对'] += 1; k += 2; done = True
+        # ⑨ 零栈调整：整行 逐字 `加栈 0` / `减栈 0`（工具侧 该 pass 在 ③ 后，镜像同序）
+        if not done and (a == '加栈 0' or a == '减栈 0'):
+            c['零栈调整'] += 1; k += 1; done = True
         # ④ 跳转 X + 跳转/返回
         if not done and a.startswith('跳转 '):
             if b.startswith('跳转 '):
@@ -178,9 +183,19 @@ if '--selftest' in sys.argv:
         print('   -', f)
     sys.exit(0 if not fails else 1)
 
-SRC = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('-') else os.path.join('build', 'opt_t10b', 'Z.exe.asm')
+SRC = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('-') else os.path.join('build', 'opt_census', 'Z.exe.asm')
 if not os.path.exists(SRC):
-    print('[SKIP] 输入不存在: %s' % SRC); sys.exit(1)
+    # R821e: 原 默认输入 = build/opt_t10b/Z.exe.asm（未跟随仓，清理 build/ 后 ⇹ 假红/SKIP）。
+    # 改为 **当场 用 仓内源 编出** asm（输入随仓走，不再依赖 历史工作目录）。
+    os.makedirs(os.path.join('build', 'opt_census'), exist_ok=True)
+    _cc = os.path.join(ROOT, 'qcc_zh_v2.exe')
+    _s = os.path.join(ROOT, 'scripts', 'probe', 'ir_cfg_probe.c')
+    _o = os.path.join('build', 'opt_census', 'Z.exe')
+    _r = subprocess.run([_cc, '-S', _s, '-o', _o], capture_output=True)
+    if _r.returncode != 0 or not os.path.exists(_o + '.asm'):
+        print('[FAIL] 无法生成输入 asm（qcc -S rc=%d）' % _r.returncode); sys.exit(1)
+    SRC = _o + '.asm'
+    print('[gen] 输入 asm 已从仓内源生成: %s' % SRC)
 print('== 优化器分类普查（镜像判据 × 出厂工具 逐类互证）==')
 fails = check(SRC, 'corpus')
 print('== 结果: %s ==' % ('逐类一致（分类统计可复算）' if not fails else 'FAIL=%d' % len(fails)))

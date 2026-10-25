@@ -1,3 +1,4 @@
+// @EXPECTED out:PA 1 1 1 | 2 2
 /* feat_zh_ptrarr_addr_ok.c -- 指针数组元素的【取址赋值】+ 地址相等 + 指针差归一
    判据 (三态): ① 甲言输出与 gcc oracle 逐字相同 ② 取址赋值后 gsp[i] == &gsa[j] 为真
                 ③ 指针差按元素宽归一 (构 三 = 12, 整 = 4)

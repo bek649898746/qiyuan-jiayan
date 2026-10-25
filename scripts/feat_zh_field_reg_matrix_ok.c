@@ -1,4 +1,5 @@
 // @EXPECTED out=PASS
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* R234 (T5) 补锚 — **结构体字段登记「形态矩阵」（漏登矩阵锚）**

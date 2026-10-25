@@ -2,6 +2,7 @@
 // 回归: enum 常量注册 + 本地 enum 变量 (fix 2026-08-09)
 // 此前 enum 声明跳过常量体 {A,B,C}, 常量未注册 → 使用崩溃 0xC0000005
 // 注: enum 负值 (= -2) 边角待修, 已记台账
+// @EXPECTED silent:0
 enum Color { RED, GREEN, BLUE };
 enum Suit { HEART = 1, DIAMOND = 5, CLUB };
 int main(void) {

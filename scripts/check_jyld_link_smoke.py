@@ -16,6 +16,7 @@
       ③ **归档往返**（.o → `.a`（本脚本 自写 GNU ar 格式）→ jyld 链接）断言 stdout。
       ④ **跨 .o 全局数据**（`extern` 只读全局）断言 **退码 = 真值 而非 映像地址**（R719 · 启元 D1）。
       ⑤ **无初始化全局** 跨 .o（试探性定义）断言 链接成功 + 退码 0（R719 · 启元 D2）。
+      ⑥ **堆符号跨 .o**（G-D46/G-D47）：两个 .o 都调 malloc ⇹ 链接 rc=0 且 运行退码=2 / out=HEAP 1。
       任一 失败 ⟹ 判红（这类 缺陷 = 「闸 够不着 即 盲区」）。
 用法：python scripts/check_jyld_link_smoke.py [编译器]
 退出码：0 = 全过（或 jyld 不可用 = SKIP）；1 = 有 失败
@@ -35,7 +36,8 @@ CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'qcc_zh_v1.exe')
 if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
-    print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
+    # 2026-10-24（判据方打回）: 缺编译器 ⇹ **rc=2**（环境未就绪，不判绿），不再 rc=0。
+    print('[SKIP] 环境未就绪: 找不到 编译器 %s —— rc=2，未执行本闸，不判绿' % CC); sys.exit(2)
 JYLD = os.path.join(ROOT, 'srclib', 'jyld.exe')
 OUT = os.path.join(ROOT, 'scratch_c1b2' if os.path.isdir(os.path.join(ROOT, 'scratch_c1b2')) else '.', 'jyldsmoke')
 os.makedirs(OUT, exist_ok=True)
@@ -203,8 +205,28 @@ else:
     if not good:
         bad.append('zero(link/run)')
 
-print()
-print('[check_jyld_link_smoke] 5 用例 · 失败 %d' % len(bad))
+# ⑥ **堆符号 跨 .o**（G-D46 / G-D47）：两个 .o **都** 调 malloc
+#    历史（2026-10-24 现场）：每个 -c 产物 各定义一份 scl=2 的 `__qcc_heap_counter`
+#    ⇹ jyld `duplicate symbol`；5 个旧用例 **源码里 malloc/calloc 出现 0 次** ⇹ 该维度恒绿。
+#    修法：-c 只发未定义外部引用，由 jyld 内置唯一定义。本用例把该维度 **钉进闸**。
+ph = w('provh.c', '空 *malloc(无符号 长 长);\n整 取丙() { 空 *p = malloc(16); 返 p ? 1 : 0; }\n')
+uh = w('useh.c', '# 包含 <stdio.h>\n空 *malloc(无符号 长 长);\n整 取丙();\n函数 整 主(空) { 空 *q = malloc(32); 格式化 "HEAP %d\\n", 取丙(); 若 (q) { 返 2; } 返 3; }\n')
+oh, uh_o = os.path.join(OUT, 'provh.o'), os.path.join(OUT, 'useh.o')
+okh, mh = comp(ph, oh)
+okh2, mh2 = comp(uh, uh_o)
+if not (okh and okh2):
+    print('%-10s -c FAIL | %s %s' % ('heap', mh[:60], mh2[:60]))
+    bad.append('heap(-c)')
+else:
+    ok, lm = link([oh, uh_o], os.path.join(OUT, 'heap.exe'))
+    rc, out = run(os.path.join(OUT, 'heap.exe')) if ok else ('-', '')
+    good = ok and rc == 2 and out == 'HEAP 1'
+    print('%-10s 堆符号跨.o: %s (rc=%s out=%r, 期望 rc=2 out=HEAP 1)%s'
+          % ('heap', 'OK' if good else 'FAIL', rc, out, '' if good else '  | ' + lm[:90]))
+    if not good:
+        bad.append('heap(link/run)')
+
+print('[check_jyld_link_smoke] 6 用例 · 失败 %d' % len(bad))
 if bad:
     print('  ❌ 失败: %s' % ' '.join(bad))
     sys.exit(1)

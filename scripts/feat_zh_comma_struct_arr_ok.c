@@ -1,3 +1,4 @@
+// @EXPECTED out:ok 步长 p2
 /* feat_zh_comma_struct_arr_ok.c — 局部「逗号续声明符 + 结构体数组」登记三件套
  *
  * R354 第 355 站（2026-09-25）· 挂账 5b / 5c 根治 · 新编译器 PASS / 旧编译器必红

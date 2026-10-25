@@ -232,7 +232,7 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = 'BA7A8849'  # 2026-10-21 D-OBJ-TRUNC: fixed-size tables -> static BSS (heap 512MB budget was exhausted)
+$expected = '2D94D829'  # 2026-10-23 刀3A/3B STATIC-SILENT 闭环: PE 分配器 64 位 + 512MiB 竞技场(堆+自切栈) 移出镜像 走 VirtualAlloc; SizeOfImage 1069.8 -> 557.9 MiB; 退出不切回加载器栈 (rsp 与 TEB 同源); v2==v3==7E43F061
 $expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
 $expected_前 = '2DB0CC41'  # A9 指针地基三缺陷 (TYPEOF/PTRPTR/DEREFIDX) + --refs 预置段过滤 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==2DB0CC41; 前值 6099BEE6
 $expected_前 = '6099BEE6'  # D18 (#94): aligned(N) 类型级 满卯 + 同名 max 继承（匿名不参与）(2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==6099BEE6; 前值 39C6FC81
@@ -4698,7 +4698,7 @@ if ($Regenerate) {
     if (-not (Test-Path srclib_jiayan\qcc_zh.jy)) { throw "qcc_zh.jy 不存在, 请先 -Regenerate 生成" }
 }
 
-Write-Host "== [2/2] 中文自举链 (早停: 连续两代全等 = 不动点; 小改通常 2 段，实测两代合计约 830s（8 核）/ 1,528s（低配）; -Full 强制 7 段) =="
+Write-Host "== [2/2] 中文自举链 (早停: 连续两代全等 = 不动点; 小改通常 2 段 ~2.5min; -Full 强制 7 段) =="
 foreach ($n in 1..7) { Remove-Item "qcc_zh_v$n.exe" -ErrorAction SilentlyContinue }
 
 # S2b-2 (2026-09-09): seed 从 qcc_x86 切换 自举不动点编译器 — qcc_x86 (旧 frozen 英文) 已无法编译当前规模中文源 (死循环), 仅作 oracle/独立验证

@@ -1,4 +1,5 @@
 // @EXPECTED out=PASS
+// @EXPECTED out:PASS
 #include <stdio.h>
 
 /* R242 补锚 — **文件级 `typedef float` 别名**（第三条声明路径）

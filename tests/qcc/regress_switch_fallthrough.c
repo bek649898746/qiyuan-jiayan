@@ -1,3 +1,4 @@
+// @EXPECTED out:OK
 /* Regression: switch case-with-body fallthrough to next case (case '\\': C; then default: D)
    Root cause: only EMPTY fall-through cases shared the next case's body; a case WITH a body
    and no break lost the next case's statements -> write_pair escaping wrote one backslash

@@ -1,3 +1,4 @@
+// @EXPECTED out:PASS
 /* 锚: 嵌套内联结构体 的 字段类型序 (毛利) 登记 — 「R2 嵌套体」家族
    四个形态各锁一处解析块:
      ① `typedef union N1 { struct NK1 { V key_val; ... } u; } N1;`  → 内联具名体 块 (δ/17544)

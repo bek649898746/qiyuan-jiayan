@@ -1,3 +1,4 @@
+// @EXPECTED out:ref=refs/heads/%s
 #include <stdio.h>
 #include <string.h>
 

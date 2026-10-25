@@ -39,7 +39,8 @@ def main():
     a = ap.parse_args()
     cc = a.cc
     if not os.path.exists(cc):
-        print('[SKIP] 编译器不存在: %s' % cc); return 0
+        # 2026-10-24: 缺主体 不得当绿（rc=2 = 环境未就绪）
+        print('[FAIL] 编译器不存在: %s（未执行，不判绿）' % cc); return 2
     tmp = tempfile.mkdtemp(prefix='d39_')
     fails = []
     src = os.path.join(tmp, 't.jy')

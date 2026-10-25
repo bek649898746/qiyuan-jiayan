@@ -50,21 +50,14 @@ if not os.path.exists(CC):
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
 CASES = [
-    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽', 'main'),
-    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链', 'chain'),
+    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽'),
+    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链'),
 ]
 
 fails = []
 print('[check_ir_cap_neg] 编译器 = %s' % CC)
-for src, knob, tag, slug in CASES:
-    # D43 族 (2026-10-22 启元审计 · CI run #183 实测): 输出文件名 **必须 ASCII**。
-    #   原写法 'capneg_%s.exe' % tag 里 tag 是 '主槽'/'子链' ⟹ -o 路径含中文 ⟹
-    #   GitHub windows-latest runner 的 ANSI 代码页 = 1252 ⟹ 中文经 argv 传给甲言
-    #   退化成 '??' ⟹ 编译器打不开输出文件 ⟹ **静默 rc=1 且零输出**（特征：
-    #   控制组 rc=1 '' 而实验组恰好因为自己先报 IR-OVERFLOW 才「看起来正常」）。
-    #   开发机 936 下完全正常，只有 1252 runner 才暴露 —— 同 D43/examples 成绩.jy。
-    #   修: 文件名用 ASCII slug，中文 tag 只用于显示。
-    exe = os.path.join(TMP, 'capneg_%s.exe' % slug)
+for src, knob, tag in CASES:
+    exe = os.path.join(TMP, 'capneg_%s.exe' % tag)
     # ① 控制组
     env0 = dict(os.environ)
     env0.pop(knob, None)
@@ -78,7 +71,7 @@ for src, knob, tag, slug in CASES:
         fails.append('%s 控制组 rc=%d (应 0): %s' % (tag, r0.returncode, t0.strip()[:120]))
     # ② 实验组
     env1 = dict(os.environ, **{knob: '1'})
-    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % slug)],
+    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % tag)],
                         capture_output=True, cwd=ROOT, env=env1)
     t1 = ((r1.stdout or b'') + (r1.stderr or b'')).decode('utf-8', 'replace')
     hit = '[ERR] IR-OVERFLOW' in t1

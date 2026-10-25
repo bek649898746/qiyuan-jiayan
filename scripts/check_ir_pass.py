@@ -9,7 +9,7 @@ import os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-T = os.path.join(os.environ['TEMP'], 'qiyuan-ir-knives')
+T = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probe')  # R821e: 探针 随仓走（原 只读 %TEMP%/qiyuan-ir-knives ⇹ 目录被清理后 假红）
 CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(QJ, 'qcc_zh_v2.exe')
 # 2026-10-15 (虾米): 判据④「常量折叠 pass 真生效」需要**两侧都是整常量**的表达式，
 # 而 TEMP 里的 `kw3_h.c` 只有「变量 ⊗ 常量」（永远折不出 ⟹ 判据④ 从落地起即空转）。

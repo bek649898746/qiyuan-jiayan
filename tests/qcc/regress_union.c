@@ -1,4 +1,5 @@
 // @EXPECTED exit:0
+// @EXPECTED silent:0
 /* ⚠️ 本锚兼作「裸 char 无符号语义守卫」（2026-09-25 标注 · 审计岗建议）
  *   `if (gu.c[0] != 0xDD) return 4;` 钉死：甲言的裸 `char` 必须按**无符号**读。
  *   定案见 `memory/atlas/_SETTLED.md` S-1（C 标准里 char 符号性实现定义；甲言选无符号 ≡ gcc -funsigned-char）。

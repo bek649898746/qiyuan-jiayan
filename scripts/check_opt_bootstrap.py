@@ -29,6 +29,9 @@ if FULL:
     pass
 
 OPT = 'opt_zh.exe'
+# R821c: 负控入口 —— 指向改动前的 8 类优化器时，分支自检（9 类断言）必须变红。
+if '--opt' in sys.argv: OPT = sys.argv[sys.argv.index('--opt') + 1]
+if '--asm' in sys.argv: ASM = sys.argv[sys.argv.index('--asm') + 1]
 ASM = 'asm_zh.exe'
 if '--opt' in sys.argv:          # 允许指向待装的临时构建（用于装前自检）
     OPT = sys.argv[sys.argv.index('--opt') + 1]
@@ -207,6 +210,11 @@ NEG_TEXT = (
     '    移动 r0, 2\n'
     '.L961:\n'
     '    移64 r0, r1\n'              # 负向: 标号介入 ⟹ 原样
+    # ---- ⑨ 零栈调整：加栈 0 / 减栈 0 ⇹ 声明删（隔离行 避开 ③ 抵消对）----
+    '加栈 0\n'                 # 正向: 零栈调整 ⇹ 声明删
+    '存帧32 [rbp-4], r0\n'       # 隔离行（① 负向）
+    '减栈 0\n'                 # 正向: 另一形态
+    '加栈 4\n'                 # 负向: 非 0 ⇹ 原样
 )
 io.open(NEG, 'w', encoding='utf-8', newline='\n').write(NEG_TEXT)
 r = sh([OPT, NEG, '-o', NEG_OUT]) if os.path.exists(OPT) else None
@@ -277,18 +285,21 @@ else:
         ('    移动 r0, 4\n    移64 r9, r1' in got, '负向31 后条写别的寄存器 ⟹ 原样'),
         ('    移动 r5, 3\n    移64 r5, [rbp-8]' in got, '负向32 别名(rbp==r5) 后条源读 rX ⟹ 原样'),
         ('    移动 r0, 2\n.L961:\n    移64 r0, r1' in got, '负向33 标号介入 ⟹ 原样'),
+        # —— ⑨ 零栈调整 ——
+        ('.删 加栈 0' in got, '阳性14 零栈调整 ⇹ 声明删'),
+        ('加栈 4\n' in got, '负向 34 加栈 4 ⇹ 原样'),
     ]
-    # ---- 分支自检：7 条 pass **每条**都必须在本用例里至少命中一次（否则判据器没覆盖到该 pass）----
+    # ---- 分支自检：9 条 pass **每条**都必须在本用例里至少命中一次（否则判据器没覆盖到该 pass）----
     rep = re.search(r'优化 \d+ 处 \[([^\]]*)\]', (r.stdout + r.stderr).decode('utf-8', 'replace'))
     if not rep:
         fails.append('分支自检: 未取到 opt_zh 的分类计数行')
     else:
         segs = [x.strip() for x in rep.group(1).split('/')]
         nums = [int(re.search(r'(\d+)$', s).group(1)) for s in segs if re.search(r'(\d+)$', s)]
-        if len(nums) != 8 or any(x == 0 for x in nums):
-            fails.append('分支自检: 分类计数 %s 未覆盖全部 7 条 pass' % nums)
+        if len(nums) != 9 or any(x == 0 for x in nums):
+            fails.append('分支自检: 分类计数 %s 未覆盖全部 9 条 pass' % nums)
         else:
-            print('    [自检] 8 条 pass 分支计数 = %s ⟹ 全部被本用例覆盖 ✓' % nums)
+            print('    [自检] 9 条 pass 分支计数 = %s ⟹ 全部被本用例覆盖 ✓' % nums)
     ok = all(c[0] for c in checks)
     print('  负向/正向用例: %s' % ('全过' if ok else 'FAIL'))
     for good, name in checks:

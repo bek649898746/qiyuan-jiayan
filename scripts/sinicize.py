@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import re as _re
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(r'C:\Users\Administrator\Desktop\qiyuan-jiayan')
 
 def load_map(path):
     m = {}

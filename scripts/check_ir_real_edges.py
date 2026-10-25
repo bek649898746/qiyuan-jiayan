@@ -19,7 +19,7 @@ import io, os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-knives')      # 探针 目录（检查器 既有 约定）
+T = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probe')  # R821e: 探针 随仓走（原 只读 %TEMP%/qiyuan-ir-knives ⇹ 目录被清理后 假红）
 BLK = re.compile(r'块\[(\d+)\] 始=(-?\d+) 终一=(-?\d+) 后继数=(\d+) 后继0=(-?\d+) 回边=(\d+) 首控式=(\d+)'
                  r'(?: 前驱数=(\d+) 前驱0=(-?\d+))?'
                  r'(?: 后继1=(-?\d+) 断目标=(-?\d+) 继续目标=(-?\d+))?')

@@ -10,9 +10,8 @@
 $ErrorActionPreference = 'Continue'
 
 $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repo  = Split-Path -Parent $here                          # 仓库根 = jylib 的父目录
-$work  = Join-Path $env:TEMP 'jylib_build'               # 纯 ASCII 工作区（甲言拒收中文路径）
-if ($work -match '[^\u0020-\u007E]') { $work = Join-Path $env:SystemDrive 'jylib_build' }   # 用户名含中文时兜底
+$work  = 'D:\qiyuan_home\jylib_build'          # 纯 ASCII 工作区
+$repo  = 'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 $qccCands = @(
     (Join-Path $repo 'qcc_zh_v2.exe'),
     (Join-Path $repo 'qcc_zh_seed.exe'),

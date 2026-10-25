@@ -14,6 +14,9 @@ import io, os, re, struct, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 OPT, ASM = 'opt_zh.exe', 'asm_zh.exe'
+# R821: 允许指向待测优化器 —— 负控（用改动前的优化器）时必须变红。
+if '--opt' in sys.argv: OPT = sys.argv[sys.argv.index('--opt') + 1]
+if '--asm' in sys.argv: ASM = sys.argv[sys.argv.index('--asm') + 1]
 W = os.path.join('build', 'per_pass')
 os.makedirs(W, exist_ok=True)
 
@@ -28,6 +31,7 @@ CASES = [
     ('⑥ 跳落到下一行', '    跳转 .Ld\n.Ld:\n    返回\n'),
     ('⑦ 帧栈存取同址', '    存帧64 [rbp-8], r0\n    取帧64 r3, [rbp-8]\n    返回\n'),
     ('⑧ 死值写覆盖', '    移动 r0, 5\n    移64 r0, r1\n    返回\n'),
+    ('⑨ 零栈调整', '    加栈 0\n    返回\n'),
 ]
 
 

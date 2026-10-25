@@ -23,7 +23,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, 'scratch_static')
-LIMIT_MB = 1270
+LIMIT_MB = 640
 LABELS = 300
 
 

@@ -1,3 +1,4 @@
+// @EXPECTED out:PS 1 1 | 2 2
 /* feat_zh_ptrarr_smallptr.c -- 全局结构体指针数组, 结构体尺寸 == 指针宽(8) 的【取址赋值】+ 指针差
    期望: PS 1 1 | 2 2   (exit=0)
 
