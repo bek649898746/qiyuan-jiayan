@@ -3,7 +3,7 @@
 > 用**甲言（中文 C 方言编译器）**编译的通用 C 库，产物可被任意 C ABI 兼容工具链（gcc / clang / msvc）链接调用。
 > 语料来自旧壳武库中挑选的通用件，经改造为库形态（公开化 / 统一前缀 / 补头文件 / 剥离 main）。
 
-**版本** 1.0.0 · **锚定编译器** `646FC353`（启元 Q10 后）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（`pass=6 fail=0`）
+**版本** 1.1.0 · **锚定编译器** `646FC353`（启元 Q10 后）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（`jylib_sha256` `pass=6 fail=0` · `jylib_result` `fails=0`）
 
 ---
 
@@ -12,6 +12,7 @@
 | 模块 | 头文件 | 内容 | 标准 | 状态 |
 |:--|:--|:--|:--|:--|
 | `jylib_sha256` | `include/jylib_sha256.h` | SHA-256 / HMAC-SHA256 / HKDF | FIPS 180-4 · FIPS 198-1 · RFC 5869 | ✅ 已验 |
+| `jylib_result` | `include/jylib_result.h` | 错误联合（值/错误二选一 + 显式传播宏） | — | ✅ 已验 |
 | `jylib_arena` | *(待补)* | 内存竞技场（O(1) 分配 + 快照回滚 + 子竞技场） | — | 规划中 |
 | `jylib_pool` | *(待补)* | 对象池（无锁空闲链 + 线程本地缓存） | — | 规划中 |
 
@@ -29,6 +30,49 @@ HKDF-RFC5869-TC1      = 3CB25F25FAACD57A90434F64D0362F2A2D2D0A90CF1A5A4C5DB02D56
 ```
 
 > 判据 R 说明：真值未知处**不写期望值**。块边界测试采用「乱步长分段 == 一次性」的**内部自洽**比对，而非编造十六进制常量。
+
+### jylib_result — 已验证
+
+同一份源分别用甲言与 gcc 编译，自测 21 项断言全过（`fails=0`，两条链 `exit=0`）：
+
+```
+[gcc] exit=0  [OK] jylib_result selftest: all passed
+[jy]  exit=0  [OK] jylib_result selftest: all passed
+```
+
+对外是纯 C89 结构体，不要求调用方懂甲言：
+
+```c
+jy_res_i32 safe_div(int a, int b);   /* 返回 {tag, value, code} */
+
+int two_level(int a, int b, int c, int *out) {
+    int mid = 0, fin = 0;
+    jy_res_i32 r1 = safe_div(a, b);
+    JY_TRY_I32(r1, mid, fail);       /* 失败直接 goto fail，不用手写 if */
+    {
+        jy_res_i32 r2 = safe_div(mid, c);
+        JY_TRY_I32(r2, fin, fail);
+    }
+    *out = fin;
+    return JY_OK;
+fail:
+    return JY_EDIV0;
+}
+```
+
+**这模块暴露的编译器行为（写它时撞到的真问题）**
+
+甲言对**按值传递的结构体**按 Move 语义处理 —— 传进函数后源变量失效。所以下面这段**编译不过**：
+
+```c
+jy_res_ptr r = jy_ok_ptr(p);
+jy_is_ok_ptr(r);      /* r 在这里被 Move */
+jy_unwrap_ptr(r);     /* A3101 所有权错误：r 已移动，不能读取 */
+```
+
+这不是缺陷，是编译器在挡住"用完再读"的歧义。代价是同一份源码要过两条链时只能取交集 —— **一次构造、一次使用**。真实代码里 `JY_TRY` 宏本来就只用一次，不受影响。
+
+`unwrap` 在结果非 OK 时**不崩也不静默**：返回零值，同时把内部违例标志置 1（`jy_last_unwrap_violation()`）。库不替调用方决定"失败要不要终止进程"。
 
 ---
 
@@ -65,6 +109,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 |:--|:--|:--|
 | `jylib_sha256.jy.obj` | 甲言 `qcc_x86` | 本库的主交付物 |
 | `jylib_sha256.gcc.obj` | gcc | 可信基准 / 交叉验证 |
+| `jylib_result.jy.obj` | 甲言 `qcc_x86` | 同上 |
+| `jylib_result.gcc.obj` | gcc | 同上 |
 
 **注意**：构建脚本会把源复制到纯 ASCII 工作路径 —— **甲言拒收中文路径参数**（实测传中文目录名会收到乱码）。
 
@@ -134,14 +180,19 @@ jylib/
 ├── build.ps1                          双轨构建脚本
 ├── include/
 │   ├── jylib.h                        总入口（版本 + jy_selftest）
-│   └── jylib_sha256.h                 公开 API
+│   ├── jylib_sha256.h                 SHA-256 / HMAC / HKDF 公开 API
+│   └── jylib_result.h                 错误联合公开 API
 ├── src/
 │   ├── jylib_sha256.c                 核心（零字符串字面量）
-│   └── jylib_sha256_selftest.c        标准向量自测（含 printf）
+│   ├── jylib_sha256_selftest.c        标准向量自测（含 printf）
+│   ├── jylib_result.c                 错误联合实现
+│   └── jylib_result_selftest.c        行为自测（21 项断言）
 ├── lib/                               构建产物
 └── tests/
     └── selftest_main.c                自测驱动
 ```
+
+> 源文件一律**纯 C89 语法**（注释可以是中文）—— 这是双轨的前提：出现一个中文关键字，gcc 那条链就断了。
 
 ---
 

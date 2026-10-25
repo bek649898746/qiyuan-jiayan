@@ -72,31 +72,37 @@ foreach ($s in $sources) {
     $results += [pscustomobject]@{ Module=$base; JY=$(Test-Path (Join-Path $here "lib\$jyObj")); GCC=$(Test-Path (Join-Path $here "lib\$gccObj")) }
 }
 
-# ---- 自测（gcc 编自测模块 + 驱动，分别链接两种库）----
+# ---- 自测（每个 *_selftest.c 一套：gcc 编自测，分别链接两种库产物）----
 Write-Host ''
 Write-Host '[selftest]'
-$st = Join-Path $work 'jylib_sha256_selftest.c'
-$drv = Join-Path $work 'selftest_main.c'
-@"
-#include <stdio.h>
-#include "jylib_sha256.h"
-int main(void){ int f = jy_sha256_selftest(); return f; }
-"@ | Set-Content -Path $drv -Encoding UTF8
+$stList = @(Get-ChildItem $work -Filter 'jylib_*_selftest.c' -File | ForEach-Object { $_.BaseName -replace '_selftest$','' })
+if ($stList.Count -eq 0) { Write-Host '  （无 *_selftest.c）' -ForegroundColor Yellow }
 
-if (Test-Path $st) {
-    & gcc -w -I $work -c $st -o (Join-Path $work 'st.obj') 2>&1 | Out-Null
+foreach ($mod in $stList) {
+    $stName = "${mod}_selftest.c"
+    $drv    = Join-Path $work "driver_$mod.c"
+    @"
+#include <stdio.h>
+#include "$mod.h"
+int main(void) { int f = $(${mod} -replace '^jylib_','jy_')_selftest(); printf("RESULT fails=%d\n", f); return f; }
+"@ | Set-Content -Path $drv -Encoding ASCII
+
+    & gcc -w -I $work -c (Join-Path $work $stName) -o (Join-Path $work "st_$mod.obj") 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "  [$mod] 自测模块 gcc 编译失败" -ForegroundColor Red; continue }
+    & gcc -w -I $work -c $drv -o (Join-Path $work "drv_$mod.obj") 2>&1 | Out-Null
+
+    $line = "  $mod :"
     foreach ($tag in @('gcc','jy')) {
-        $obj = Join-Path $work "jylib_sha256.$tag.obj"
-        if (-not (Test-Path $obj)) { continue }
-        $exe = Join-Path $work "selftest_$tag.exe"
-        & gcc -w -I $work -o $exe $drv $obj (Join-Path $work 'st.obj') 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { Write-Host "  [$tag] 链接失败" -ForegroundColor Red; continue }
-        $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $work "st_$tag.txt")
-        $code = $p.ExitCode
-        $txt = (Get-Content (Join-Path $work "st_$tag.txt") -ErrorAction SilentlyContinue | Where-Object { $_ -match 'pass=' }) -join ''
-        $color = if ($code -eq 0) { 'Green' } else { 'Red' }
-        Write-Host ("  [{0}] exit={1}  {2}" -f $tag, $code, $txt) -ForegroundColor $color
+        $obj = Join-Path $work "$mod.$tag.obj"
+        if (-not (Test-Path $obj)) { $line += "  [$tag]=缺产物"; continue }
+        $exe = Join-Path $work "selftest_${mod}_$tag.exe"
+        & gcc -w -I $work -o $exe (Join-Path $work "drv_$mod.obj") (Join-Path $work "st_$mod.obj") $obj 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { $line += "  [$tag]=链接失败"; continue }
+        $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $work "st_${mod}_$tag.txt")
+        $line += "  [$tag]=exit$($p.ExitCode)"
     }
+    $color = if ($line -match 'exit0' -and $line -notmatch '失败|缺产物') { 'Green' } else { 'Red' }
+    Write-Host $line -ForegroundColor $color
 }
 
 # ---- 汇总 ----
