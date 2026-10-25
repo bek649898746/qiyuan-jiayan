@@ -1,4 +1,4 @@
-﻿# 启元甲言 CI — 每次 push/PR 自动验证闭环
+# 启元甲言 CI — 每次 push/PR 自动验证闭环
 # 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
@@ -105,8 +105,23 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
-      - name: 中文特性锚（1,425 个 feat_zh_*.c）
-        run: python scripts/run_tests_zh.py --zh-feat
+      - name: 中文特性锚（1,443 个 feat_zh_*.c）
+        shell: powershell
+        run: |
+          # 2026-10-25 启元审计：原先直接 `python scripts/run_tests_zh.py --zh-feat`
+          #   ⟹ find_qcc() 要在仓库根找 qcc_zh_v1..v7.exe，而那是 bootstrap job 的产物；
+          #   bootstrap 的 if 是 `schedule || workflow_dispatch` ⟹ push/PR 时被 skip
+          #   ⟹ 本步骤必然报「环境未就绪: 找不到中文自举产物」而红。
+          #   （该 step 名此前还写着旧数 1,425，一并修正为 1,443）
+          #
+          # 修法：push/PR 用仓库自带种子当测试编译器（它就是自举不动点产物，
+          #   零依赖、无需先跑 bootstrap）。QCC_TEST_BIN 是 run_tests_zh.py 的官方开关，
+          #   显式指定优先于自动探测 ⟹ 与 schedule/dispatch 时 bootstrap 的产物不冲突。
+          $env:QCC_TEST_BIN = (Join-Path $PWD 'qcc_zh_seed.exe')
+          if (-not (Test-Path $env:QCC_TEST_BIN)) { Write-Host "::error::缺 qcc_zh_seed.exe，无法跑中文锚"; exit 1 }
+          Write-Host "[info] QCC_TEST_BIN = $env:QCC_TEST_BIN"
+          python scripts/run_tests_zh.py --zh-feat
+          exit $LASTEXITCODE
 
   qemu:
     runs-on: windows-latest
