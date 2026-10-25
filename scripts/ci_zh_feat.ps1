@@ -42,11 +42,37 @@ $v1sha = (Get-FileHash 'qcc_zh_v1.exe' -Algorithm SHA256).Hash.Substring(0,8)
 Write-Host "[1/2] v1 = $v1sha  ($([math]::Round($sw.Elapsed.TotalSeconds,1))s)"
 
 # ---------- [2/2] 用 v1 跑全量中文特性锚 ----------
-Write-Host "[2/2] Running full zh-feat anchor suite with v1..."
+#
+# ⚠️ 必须**显式**传 --parallel（2026-10-26 启元审计 · CI zh_chain 红的第二个根因）
+#   run_tests_zh.py 的 --parallel 默认 6，内存守卫算 6 × 1.5GB = 9.0GB，
+#   要求 (可用物理 - 6GB 预留) >= 9.0GB。
+#   windows-latest 可用物理约 13.3GB ⟹ 13.3 - 6.0 = 7.3GB < 9.0GB
+#   ⟹ 守卫 **响亮拒绝**（exit 2）⟹ 1,447 个锚 **一个都没跑**，job 却报「失败」。
+#   这不是放宽判据：4 路 = runner 的 vCPU 数，预算 6.0GB，守卫逻辑照旧生效。
+$PARALLEL = 4
+Write-Host "[2/2] Running full zh-feat anchor suite with v1 (parallel=$PARALLEL)..."
 $env:QCC_TEST_BIN = (Join-Path $PWD 'qcc_zh_v1.exe')
+$env:PYTHONIOENCODING = 'utf-8'
 Write-Host "[2/2] QCC_TEST_BIN = $env:QCC_TEST_BIN"
 
-python scripts/run_tests_zh.py --zh-feat
+$log = Join-Path $PWD '_ci_zh_feat.log'
+python scripts/run_tests_zh.py --zh-feat --parallel $PARALLEL *> $log
 $rc2 = $LASTEXITCODE
+Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue | Write-Host
 Write-Host "[2/2] anchor suite rc=$rc2"
+
+if ($rc2 -ne 0) {
+    # 把失败原因**外化**成 annotation。
+    # 判据行（[FAIL] / ❌ / [MEM] 拒绝 / [SKIP]）走公开 API 匿名可读，
+    # 审计方不必再要 token 才能判断红在哪一关 —— 这正是上一轮把 verify_90s
+    # 改成 ::error:: 外化的同一条理由，本轮轮到本文件。
+    $bad = (Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '\[FAIL\]|❌|\[MEM\] 拒绝|\[SKIP\] 环境' } |
+            Select-Object -First 4) -join ' ~ '
+    if (-not $bad) {
+        $bad = (Get-Content $log -Encoding UTF8 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Trim() -ne '' } | Select-Object -Last 4) -join ' ~ '
+    }
+    Write-Host "::error::zh-feat anchor suite failed rc=$rc2 :: $bad"
+}
 exit $rc2
