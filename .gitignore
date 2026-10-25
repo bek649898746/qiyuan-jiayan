@@ -262,3 +262,6 @@ scripts/_strtb*.py
 scripts/_t10_*.c
 csmoke/
 jyldsmoke/
+
+# 编译探针临时目录（不提交 · 2026-10-26）
+drectve248/
