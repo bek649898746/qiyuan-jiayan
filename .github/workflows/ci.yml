@@ -105,41 +105,25 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
+      # 2026-10-25 启元审计（第三轮修正，前两轮都错在别处）：
+      #
+      # 【第一轮】直接跑 run_tests_zh.py --zh-feat
+      #   find_qcc() 找 qcc_zh_v1..v7.exe（bootstrap 的产物），而 bootstrap 的 if 是
+      #   schedule || workflow_dispatch ⟹ push 时被 skip ⟹ 报「环境未就绪」。
+      #
+      # 【第二轮】改用 QCC_TEST_BIN=qcc_zh_seed.exe
+      #   种子是上个里程碑的编译器，主源已是新版本 ⟹ 1663 锚里
+      #   feat_zh_specialization50.c 稳定假红（本地对照：v1 PASS / 种子 FAIL）。
+      #
+      # 【第三轮·本轮】把逻辑抽到 scripts/ci_zh_feat.ps1，run: 块只留一行纯 ASCII 调用。
+      #   ⟹ 真正根因是**编码**：原先把含中文的 PowerShell 直接写在 run: 块里，
+      #     GitHub 把它写成无 BOM 的临时 .ps1，windows-latest 的 PS5.1 在英文 locale
+      #     下按 ANSI(CP1252) 解码 ⟹ 中文乱码 ⟹ ParserError: UnexpectedToken ⟹ 崩在第一行。
+      #   ⟹ 铁律：ci.yml 的 run: 块里不写任何中文；要中文逻辑就抽成 .ps1 文件
+      #     （存为 UTF-8 with BOM）。详见 scripts/ci_zh_feat.ps1 头部注释。
       - name: 中文特性锚（1,443 个 feat_zh_*.c）
         shell: powershell
-        run: |
-          # 2026-10-25 启元审计（两轮才定位准）：
-          #
-          # 【第一轮误判】原先直接 `python scripts/run_tests_zh.py --zh-feat`
-          #   ⟹ find_qcc() 找 qcc_zh_v1..v7.exe（那是 bootstrap 的产物），
-          #     而 bootstrap 的 if 是 `schedule || workflow_dispatch` ⟹ push 时被 skip
-          #   ⟹ 报「环境未就绪: 找不到中文自举产物」而红。
-          #
-          # 【第一轮的修法不够】改成 QCC_TEST_BIN=qcc_zh_seed.exe 后步骤确实跑起来了，
-          #   但**种子是旧编译器**（2D94D829），而主源已是新版本（B50E5C60）
-          #   ⟹ 实测 1663 锚里 feat_zh_specialization50.c 稳定失败（期望 exit=0 实际=1）。
-          #   本地对照验证：同一锚 用 v1(B50E5C60) PASS=1 / 用种子(2D94D829) FAIL=1
-          #   ⟹ 失败根源是**编译器版本与主源不配套**，不是锚本身坏了。
-          #
-          # 【本轮修法】先用种子生成 v1（= 当前主源的产物，约 3.7 分钟），再拿 v1 跑锚。
-          #   这样 CI 测的是「新代码 + 配套编译器」，与开发时一致。
-          #   代价：本步骤 ~34 秒 → ~5 分钟（可接受：只在 zh_chain job，且仅 push/schedule 触发）。
-          Write-Host "[1/2] 用种子生成 v1（当前主源的产物）…"
-          $sw = [Diagnostics.Stopwatch]::StartNew()
-          & .\qcc_zh_seed.exe srclib_jiayan\qcc_zh.jy -o qcc_zh_v1.exe 2>&1 | Write-Host
-          $rc1 = $LASTEXITCODE
-          $sw.Stop()
-          if ($rc1 -ne 0 -or -not (Test-Path qcc_zh_v1.exe)) {
-            Write-Host "::error::v1 生成失败（rc=$rc1）—— 自举链第一代不成立，无法跑锚"
-            exit 1
-          }
-          $v1sha = (Get-FileHash qcc_zh_v1.exe -Algorithm SHA256).Hash.Substring(0,8)
-          Write-Host "[1/2] v1 = $v1sha  ($([math]::Round($sw.Elapsed.TotalSeconds,1))s)"
-
-          Write-Host "[2/2] 用 v1 跑全量中文特性锚…"
-          $env:QCC_TEST_BIN = (Join-Path $PWD 'qcc_zh_v1.exe')
-          python scripts/run_tests_zh.py --zh-feat
-          exit $LASTEXITCODE
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
 
   qemu:
     runs-on: windows-latest
