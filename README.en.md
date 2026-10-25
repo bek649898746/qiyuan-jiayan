@@ -37,7 +37,7 @@ It checks: compiler selftest → compile & run the bundled example → Chinese k
 |---|---|---|
 | Chinese main source | `srclib_jiayan/qcc_zh.jy` · **35,264 lines**, all-Chinese identifiers | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
 | Bootstrap convergence | **`v1 == v2 == 39C6FC81`** (one-step, 1,246.5 s full chain) | `scripts/build_zh.ps1 -NoSeed` |
-| Chinese feature anchors | **1,425** files `scripts/feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
+| Chinese feature anchors | **1,443** files `scripts/feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
 | Language mechanism ledger | **291 items**: 284 implemented / 2 surface-only / 5 missing | `manual/机制特性实现表.md` |
 | Chinese keywords | **38** (15 statements + 23 type modifiers) | `manual/中文关键字表.md` |
 | Compiler test cases | **353** | `(git ls-files tests/qcc).Count` |
@@ -53,7 +53,7 @@ It checks: compiler selftest → compile & run the bundled example → Chinese k
   - `--refs` — "who references X" as JSON.
   - `--dj / --diagnostics=json` — structured errors with `code`, `location`, `fixes[]`, and the offending `codeLine`.
 - **Real-world scale**: the v1.0 milestone compiled and ran **git-2.45.2** (≈364k lines of C) with this self-hosted chain. That source is not redistributed (third-party license), so it is documented rather than reproducible in-repo — see `GIT_RUN_ADAPTATIONS.md`.
-- **Zero TODO markers in 34k lines**, 35% comment density, 1,425 regression anchors.
+- **Zero TODO markers in 34k lines**, 35% comment density, 1,443 regression anchors.
 
 ## Honest limitations
 
