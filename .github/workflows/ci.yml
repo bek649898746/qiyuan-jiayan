@@ -1,4 +1,4 @@
-# 启元甲言 CI — 每次 push/PR 自动验证闭环
+﻿# 启元甲言 CI — 每次 push/PR 自动验证闭环
 # 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
@@ -8,6 +8,12 @@
 #   · 一律使用仓库自带的中文自举种子 qcc_zh_seed.exe（15 MB，随仓库分发，零依赖）。
 #   · 删除了 asmzh job（其存在前提是「C 版汇编器 + C 版编译器」两套对拍，前提已失效）。
 name: qiyuan-ci
+
+# 顶层最小权限（OpenSSF Scorecard 的 `Token-Permissions` 项要求显式声明且不是读写全开）。
+# 未声明时 GITHUB_TOKEN 的权限取决于仓库默认设置，可能过宽 —— 显式写死更安全。
+# 需要写权限的 job 单独提权，见下方 bootstrap（上传产物需要 actions: write）。
+permissions:
+  contents: read
 
 on:
   push:
@@ -139,6 +145,9 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write        # 末尾 upload-artifact 需要
     steps:
       - uses: actions/checkout@v5
 

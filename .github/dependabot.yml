@@ -1,0 +1,25 @@
+# Dependabot — 依赖与 GitHub Actions 的自动更新
+#
+# 为什么要有这个文件：
+#   ① 开源评估的 `Dependency-Update-Tool` 项需要「项目声明了自动依赖更新机制」这一可验证信号
+#   ② 本项目的唯一「依赖」是 GitHub Actions 的 action 版本 —— 让它自动跟着升级，
+#      比人工盯着 changelog 更不容易漏掉安全修复
+#
+# 注意：甲言编译器本身**零外部依赖**（不需 gcc、不需 Python 运行编译器），
+#      所以这里只登记 github-actions 生态。Python 脚本仅用于测试与校验，不在编译器运行路径上。
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -1,0 +1,69 @@
+# OpenSSF Scorecard — 供应链安全评分（自动跑分并公开发布）
+#
+# 为什么要有这个文件：
+#   开源评估面板上的「安全」「合规」等项，在没有真实数据源时显示的是**占位 mock 值**。
+#   本工作流把评分变成**可复现的公开事实**：定期扫描本仓库的供应链实践，
+#   结果发布到 OpenSSF 公共 API（api.securityscorecards.dev），任何人可独立查询。
+#
+# 评分维度（各自独立，可逐条改进）：
+#   Binary-Artifacts · Branch-Protection · CII-Best-Practices · Code-Review · Contributors
+#   Dangerous-Workflow · Dependency-Update-Tool · Fuzzing · License · Maintained
+#   Pinned-Dependencies · Packaging · SAST · Security-Policy · Signed-Releases
+#   Token-Permissions · Vulnerabilities · Webhooks
+#
+# ⚠️ 本项目在 Binary-Artifacts 一项上**有意扣分**：仓库自带 `qcc_zh_seed.exe`（15 MB），
+#    这是「零依赖自举」的设计前提（clone 即用，不需 gcc、不需先编一个编译器）。
+#    该扣分是设计取舍，不是疏漏。
+#
+# 徽章：https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge
+
+name: Scorecard supply-chain security
+
+on:
+  # 分支保护规则变更时重跑（Branch-Protection 项的实时性）
+  branch_protection_rule:
+  # 每周一 01:30 UTC 定期重扫
+  schedule:
+    - cron: '30 1 * * 1'
+  # 默认分支（对外发布线 publish）每次推送都重扫
+  push:
+    branches: [ "publish" ]
+
+# 顶层最小权限：只读。下面 analysis job 按需单独提权。
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # 上传 SARIF 到 Code scanning
+      id-token: write          # 发布结果到 OpenSSF 公共 API 需要 OIDC
+      actions: read
+      contents: read
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: "Run analysis"
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # 公开发布结果 ⟹ 徽章与 API 可查（这是本工作流存在的核心目的）
+          publish_results: true
+
+      - name: "Upload artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: "Upload to code-scanning"
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

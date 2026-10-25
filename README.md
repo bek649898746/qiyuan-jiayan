@@ -1,5 +1,21 @@
 # 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
+[![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
+![自举](https://img.shields.io/badge/%E8%87%AA%E4%B8%BE-v1%3D%3Dv2%3D%3D%24expected-brightgreen)
+![零依赖](https://img.shields.io/badge/%E9%9B%B6%E4%BE%9D%E8%B5%96-%E4%B8%8D%E9%9C%80%20gcc%20%2F%20Python-brightgreen)
+![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-35%2C198%20%E8%A1%8C-blue)
+![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64-lightgrey)
+
+> **徽章怎么看**（避免误读）
+> - **License / Security Policy**：静态事实，指向对应文件。
+> - **OpenSSF Scorecard**：由 [`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml) 定期实跑并公开发布，
+>   点进去可看**逐项**得分与扣分理由 —— 分数是机器算的，不是自评的。
+>   ⚠️ 其中 **Binary-Artifacts 一项有意扣分**：仓库自带 `qcc_zh_seed.exe`（≈15 MB），
+>   这是「零依赖自举」的设计前提（clone 即用，不必先编一个编译器）。该扣分是**取舍**，不是疏漏。
+> - **自举 / 零依赖 / 主源规模**：静态徽章，数值随主线推进变化，**权威值见下方状态块与 `$expected`**。
+
 <!-- GEN:STATUS:BEGIN - 由 scripts/gen_readme_status.ps1 自动生成, 请勿手改 -->
 > ### 你读到的是哪个状态
 >

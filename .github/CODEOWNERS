@@ -1,0 +1,41 @@
+# CODEOWNERS — 甲言（qiyuan-jiayan）
+#
+# 用途：
+#   ① 让 PR 自动请求对应领域的复查者（开源评估的「代码审查比率」等指标依赖此信号）
+#   ② GitHub / Gitee 的「必需审查」分支保护规则按此文件生效
+#
+# 语法说明：最后匹配的规则优先。
+# 维护者：郑宇和（@zheng-yuhe-from-guangdong / GitHub: @bek649898746）
+
+# 默认：全部路径归维护者
+*                                   @zheng-yuhe-from-guangdong
+
+# ── 语言前端与自举（最高敏感度：任何改动都可能改变不动点）──
+/srclib_jiayan/                     @zheng-yuhe-from-guangdong
+/qcc_zh_seed.exe                    @zheng-yuhe-from-guangdong
+/scripts/build_zh.ps1               @zheng-yuhe-from-guangdong
+/scripts/run_tests_zh.py            @zheng-yuhe-from-guangdong
+
+# ── 运行时与链接（产物正确性直接相关）──
+/srclib/qcc_rt.c                    @zheng-yuhe-from-guangdong
+/srclib/asm_zh.jy                   @zheng-yuhe-from-guangdong
+/srclib/opt_zh.jy                   @zheng-yuhe-from-guangdong
+/jylib/                             @zheng-yuhe-from-guangdong
+
+# ── 校验与 CI（守门逻辑本身必须被复查）──
+/scripts/verify_all.ps1             @zheng-yuhe-from-guangdong
+/scripts/check_*.py                 @zheng-yuhe-from-guangdong
+/.github/workflows/                 @zheng-yuhe-from-guangdong
+/.gitee/workflows/                  @zheng-yuhe-from-guangdong
+
+# ── 安全与治理文档 ──
+/SECURITY.md                        @zheng-yuhe-from-guangdong
+/CODE_OF_CONDUCT.md                 @zheng-yuhe-from-guangdong
+/CONTRIBUTING.md                    @zheng-yuhe-from-guangdong
+
+# ── 对外材料（改动影响外部读者）──
+/README.md                          @zheng-yuhe-from-guangdong
+/README.en.md                       @zheng-yuhe-from-guangdong
+/manual/                            @zheng-yuhe-from-guangdong
+/llms.txt                           @zheng-yuhe-from-guangdong
+/llms-full.txt                      @zheng-yuhe-from-guangdong
