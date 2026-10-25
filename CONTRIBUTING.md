@@ -17,7 +17,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 （2026-10-15 实测：`build.ps1` 的 `expected` 曾滞后 44 天，导致**任何用户 clone 后照文档跑都看到假 FAIL 并当场中断**。）
 
 ### 1. 单一主源（2026-10-19 订正：双版镜像期已终止）
-- **唯一的源是 `srclib_jiayan/qcc_zh.jy`**（甲言 · 34,335 行）；`srclib/qcc_x86.c` 是**历史信任根**，已停更（2026-09-06），**不再是并行实现的第二份编译器**，两者相差 11,735 行
+- **唯一的源是 `srclib_jiayan/qcc_zh.jy`**（甲言 · 35,264 行）；`srclib/qcc_x86.c` 是**历史信任根**，已停更（2026-09-06），**不再是并行实现的第二份编译器**，两者相差 11,735 行
 - 改功能**只改甲言源**。不要再往 C 版镜像 —— 维持两份实现会让每处改动成本翻倍，且 C 版那一半无法用中文验证
 - `.jy` 文件**必须 UTF-8**：用能保证编码的编辑器。**绝不用 PowerShell 的 `Set-Content`/`Out-File` 写 `.jy`**（历史事故：UTF-8 被按 GBK 写坏）
 

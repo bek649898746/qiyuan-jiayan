@@ -1,6 +1,6 @@
 # 安全政策（Security Policy）
 
-> 适用仓库：`qiyuan-jiayan`（甲言 Jiayan — 中文原生编程语言与自举编译器）
+> 适用仓库：`qiyuan-jiayan`（甲言 Jiayan — 中文书写编程语言与自举编译器）
 > 本政策自 2026-10-25 起生效。
 
 ## 一、报告漏洞

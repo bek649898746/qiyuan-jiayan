@@ -7,7 +7,7 @@
 ## 1. 一句话看懂架构
 
 ```
-srclib_jiayan/qcc_zh.jy ← 编译器主源（甲言 · 4,088 KB · 34,335 行）★ 唯一的源
+srclib_jiayan/qcc_zh.jy ← 编译器主源（甲言 · 4,088 KB · 35,264 行）★ 唯一的源
 seed/qcc.jy             ← 纯甲言种子（1,834 KB），自举起点
 qcc_zh_seed.exe         ← 已知不动点的产物，实际构建用的种子
 srclib/qcc_x86.c        ← 历史信任根（C 原版 · 1,853 KB），只读参考，不参与构建
@@ -100,7 +100,7 @@ Get-FileHash v1.exe,v2.exe,v3.exe -Algorithm SHA256   # v2 == v3 即收敛
 ## 6. 文件地图
 
 ```
-srclib_jiayan/qcc_zh.jy   编译器主源（甲言 · 4,088 KB · 34,335 行）★
+srclib_jiayan/qcc_zh.jy   编译器主源（甲言 · 4,088 KB · 35,264 行）★
 srclib_jiayan/qcc_work.jy ⚠️ 内部中间件（勿用）：C 版机械镜像 · 22,571 行 · 中文字符 5.8%
                           （中文字符仅 5.8%），仅历史英文链 build.ps1 使用
 seed/qcc.jy               纯甲言种子（1,834 KB · 22,571 行）
