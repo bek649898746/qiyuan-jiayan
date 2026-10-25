@@ -1,28 +1,51 @@
-# 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
+﻿# 启元 · 甲言
+
+<div align="center">
+  <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
+</div>
+
+`整 甲 = 1;` 和 `int 甲 = 1;` 是同一件事 —— 两种写法可以混在同一个文件里。
+整个编译器 **35,264 行**全部用甲言自己写；**它编译自己两次，两次哈希必须相同。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
-[![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 ![自举](https://img.shields.io/badge/%E8%87%AA%E4%B8%BE-v1%3D%3Dv2%3D%3D%24expected-brightgreen)
 ![零依赖](https://img.shields.io/badge/%E9%9B%B6%E4%BE%9D%E8%B5%96-%E4%B8%8D%E9%9C%80%20gcc%20%2F%20Python-brightgreen)
-![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-35%2C198%20%E8%A1%8C-blue)
+![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-35%2C264%20%E8%A1%8C-blue)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64-lightgrey)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
 
-> **徽章怎么看**（避免误读）
-> - **License / Security Policy**：静态事实，指向对应文件。
-> - **OpenSSF Scorecard**：由 [`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml) 定期实跑并公开发布，
->   点进去可看**逐项**得分与扣分理由 —— 分数是机器算的，不是自评的。
->   ⚠️ 其中 **Binary-Artifacts 一项有意扣分**：仓库自带 `qcc_zh_seed.exe`（≈15 MB），
->   这是「零依赖自举」的设计前提（clone 即用，不必先编一个编译器）。该扣分是**取舍**，不是疏漏。
-> - **自举 / 零依赖 / 主源规模**：静态徽章，数值随主线推进变化，**权威值见下方状态块与 `$expected`**。
+---
+
+## 30 秒验证
+
+不需要装任何东西，不需要联网：
+
+```powershell
+powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
+```
+
+| 你可能想知道 | 答案 |
+|:--|:--|
+| **要装什么？** | **什么都不用装**。clone 下来直接跑 `qcc_zh_seed.exe`（15 MB，随仓库分发）—— 不需要 gcc，不需要 Python |
+| **能编译真东西吗？** | 编译过**真实 Git 2.45.2**：563 个源文件过 537 个，链接后可运行（`git version 2.45.2`）|
+| **怎么证明它没编错？** | **自举不动点**：用它编自己 → 产物再编一次 → 两次 SHA256 必须相等。你可以自己跑，不必信我们 |
+
+**下一步** → [为什么用它](README_WHY.md) · [仓库导航（哪个目录干什么）](manual/仓库导航.md) · [快速上手](manual/快速上手.md)
+
+---
+
+## 📊 当前状态
+
+> 以下是**自动生成**的事实基线，用来判断「你手里这份快照有多新」。
+
 
 <!-- GEN:STATUS:BEGIN - 由 scripts/gen_readme_status.ps1 自动生成, 请勿手改 -->
 > ### 你读到的是哪个状态
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-10-25 23:29** |
-> | HEAD | `8aae3050`（分支 `sync-20261025`） |
+> | 生成时间 | **2026-10-26 00:24** |
+> | HEAD | `35239d44`（分支 `sync-20261025`） |
 > | 自举不动点 | **`B50E5C60`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
 > | 主源 | **35264 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1443 个** `feat_zh_*.c` |
@@ -39,17 +62,6 @@
 > 若你手里的快照与上表不符，**一律以仓库最新提交为准**。
 > 重生成本块的命令：`powershell -File scripts/gen_readme_status.ps1`
 <!-- GEN:STATUS:END -->
-
-> ### 📌 版本提示
->
-> 本文档是 **2026-10-21 当前主线**。若你在别处看到下面这些旧说法，按现行口径替换：
->
-> - **五代全等** → 现在是 **`v1 == v2 == $expected`**（一步收敛，只有两代；`$expected` 见 `scripts/build_zh.ps1`）
-> - **不动点 `650993A2` / `3B4002D2` / `39C6FC81`** → 现在**以 `scripts/build_zh.ps1` 的 `$expected` 为准**（2026-10-25 参考值 `B50E5C60`，主线推进即变）
-> - **主源「33,743 行」**（2026-10-15 口径）→ 现在是 **35,264 行**
-> - **`qcc_work.jy` 是「中文版主交付物」** → 它只是**英文链镜像**（中文字符 5.8%），主源是 `qcc_zh.jy`
->
-> 旧口径在 README 里存活过 **57 天**（2026-08-24 → 2026-10-20），期间被抓取的快照可能带着旧数据。旧数据撤不回来，但新读者该知道信哪个。
 
 > ## 🚀 新手上路（第一次来？先看这里）
 
@@ -758,3 +770,30 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 > - **安装部署**：见上方 [快速开始](#快速开始)（Windows x64 · **零依赖** · clone 即用）
 
 > **v1.0 的意义**：它证明的是「手搓自举中文编译器**能编译并落地运行真实的 36.4 万行 C 项目**（git-2.45.2）」，这是当时的核心交付。此后的主线不再追求 feat 数量，而是补机制深度与 AI 适配。
+
+---
+
+## 📋 口径修订记录（给跟踪者）
+
+> 一节说明徽章口径、一节说明历史口径修订。**它们不是入门材料**，但也不删 ——
+> 跟踪这个仓库较久的人需要知道「哪些旧说法已经被替换」。
+
+> **徽章怎么看**（避免误读）
+> - **License / Security Policy**：静态事实，指向对应文件。
+> - **OpenSSF Scorecard**：由 [`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml) 定期实跑并公开发布，
+>   点进去可看**逐项**得分与扣分理由 —— 分数是机器算的，不是自评的。
+>   ⚠️ 其中 **Binary-Artifacts 一项有意扣分**：仓库自带 `qcc_zh_seed.exe`（≈15 MB），
+>   这是「零依赖自举」的设计前提（clone 即用，不必先编一个编译器）。该扣分是**取舍**，不是疏漏。
+> - **自举 / 零依赖 / 主源规模**：静态徽章，数值随主线推进变化，**权威值见下方状态块与 `$expected`**。
+
+> ### 📌 版本提示
+>
+> 本文档是 **2026-10-21 当前主线**。若你在别处看到下面这些旧说法，按现行口径替换：
+>
+> - **五代全等** → 现在是 **`v1 == v2 == $expected`**（一步收敛，只有两代；`$expected` 见 `scripts/build_zh.ps1`）
+> - **不动点 `650993A2` / `3B4002D2` / `39C6FC81`** → 现在**以 `scripts/build_zh.ps1` 的 `$expected` 为准**（2026-10-25 参考值 `B50E5C60`，主线推进即变）
+> - **主源「33,743 行」**（2026-10-15 口径）→ 现在是 **35,264 行**
+> - **`qcc_work.jy` 是「中文版主交付物」** → 它只是**英文链镜像**（中文字符 5.8%），主源是 `qcc_zh.jy`
+>
+> 旧口径在 README 里存活过 **57 天**（2026-08-24 → 2026-10-20），期间被抓取的快照可能带着旧数据。旧数据撤不回来，但新读者该知道信哪个。
+
