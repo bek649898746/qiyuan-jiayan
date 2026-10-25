@@ -31,9 +31,9 @@ jobs:
   tests:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -61,9 +61,9 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -127,7 +127,7 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # 2026-10-22 启元：删掉「gcc 编 C 版」—— 本 job 从不用它（内核验证走 WSL/QEMU）。
       - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
@@ -164,7 +164,7 @@ jobs:
       contents: read
       actions: write        # 末尾 upload-artifact 需要
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: 种子在位检查
         shell: powershell
@@ -180,7 +180,7 @@ jobs:
 
       - name: 两代产物取证（失败也上传，便于追因）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: bootstrap-v1-v2
           path: |
@@ -206,9 +206,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
