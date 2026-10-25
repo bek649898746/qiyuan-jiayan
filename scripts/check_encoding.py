@@ -12,6 +12,13 @@ EXTS = ('.c', '.h', '.jy', '.py')
 SKIP_DIRS = ('.git', 'node_modules', 'target', 'quarantine', '_archived',
              '_retired', 'scratch', 'memory', '.openclaw', '__pycache__')
 
+# 例外：**故意含非法 UTF-8 字节**的负例锚。
+# 这类文件测的就是「编译器必须拒绝非法编码」，它本身**必须**非 UTF-8 ——
+# 否则锚就失去了被测对象。白名单按文件名精确匹配，不做通配，避免误放。
+ALLOW_NON_UTF8 = (
+    'feat_zh_utf8269_neg.c',   # 族14 #269（R551）：字符串字面量含非法 UTF-8 ⟹ 期望 A6085 拒绝
+)
+
 def check_file(path):
     with open(path, 'rb') as f:
         data = f.read()
@@ -34,6 +41,8 @@ def scan(root):
                 continue
             if any(fn.endswith(e) for e in ('.bak', '.bak_gbk')) or '.bak' in fn:
                 continue
+            if fn in ALLOW_NON_UTF8:
+                continue   # 故意的负例锚：必须非 UTF-8，见 ALLOW_NON_UTF8 注释
             p = os.path.join(dirpath, fn)
             total += 1
             r = check_file(p)
