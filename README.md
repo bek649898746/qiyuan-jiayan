@@ -445,6 +445,61 @@ qcc_zh_seed.exe : qcc_x86: 打不开 D:\a\qiyuan-jiayan\qiyuan-jiayan\examples\?
 **但那等于把「中文文件名能用」这条验证删掉** —— 而这恰恰是这个中文编程语言最该守住的东西。
 
 **⟹ 所以我们让它红着。红着比假装绿着诚实。**
+### 11. CodeQL 曾报 3,142 条 —— 58% 是扫描器配错，2026-10-27 收窄到 11 条（其中真代码缺陷 **2 条**）
+
+**曾经**：`Security → Code scanning` 页面上 open 告警 **3,142 条**，看起来触目惊心。
+
+**逐条核过之后发现**：
+
+| 来源 | 条数 | 性质 |
+|:--|-----:|:--|
+| 已封存的 1.0 C 实现（`qcc_x86.c` 755 + `asm_zh.c` 314）| 1,069 | 该文件已从构建路径撤出、不再维护 |
+| `seed/` 副本（与 `srclib/` **逐字节相同**）| 614 | 同一缺陷报两遍 |
+| `tests/` 负向样例 | 219 | **故意**越界来测工具（如 `// @EXPECTED compile_fail`）|
+| 纯代码风格类 | 约 292 | `unused-local-variable` / `short-global-name` 等，不是安全问题 |
+| 其余 | 约 950 | `scripts/_*.c` 一次性探针、6 MB 调试产物 |
+
+**⟹ 58% 是扫描器配置问题，不是代码缺陷。**
+
+**2026-10-27 已收窄**（`.github/codeql/codeql-config.yml`）：
+
+- `paths-ignore` 排除上述四类
+- query suite 从 `security-and-quality` 换成 **`security-extended`** —— **安全维度覆盖更广**，只是不含纯代码风格项
+- 同时给 CodeQL 加了 `main` 分支触发（原先只扫 `publish`，而 Scorecard 的 SAST 判据是「在所有 commit 上跑」）
+
+**结果：3,142 → 11。**
+
+**现在剩的 11 条，逐条说清**：
+
+| 类别 | 条数 | 内容 |
+|:--|-----:|:--|
+| **不是代码告警** | 9 | `Binary-Artifacts` ×2（仓库自带 `qcc_zh_seed.exe` / `v14_self/cpu64_v14_self.exe`）· `Code-Review` · `Maintained` · `Security-Policy` · `SAST` · `CI-Tests` · `Fuzzing` · `CII-Best-Practices` —— **这些是 OpenSSF Scorecard 的检查项**（scorecard 同样上传 SARIF 到同一个页面），不是 CodeQL 报的代码缺陷 |
+| **真代码缺陷** | **2** | `cpp/offset-use-before-range-check` @ `scripts/feat_err.c:34` 与 `scripts/feat_exc.c:20` |
+
+**那 2 条的具体内容**（两处同一模式）：
+
+```c
+int i = 0;
+while (msg[i] != 0 && i < 15) { e.msg[i] = msg[i]; i++; }
+//     ^^^^^^^^^ 先读 msg[i]，后判 i < 15
+```
+
+**判据顺序反了。** `strlen(msg) == 15` 时会越界读 1 字节。修法是交换两个条件：
+
+```c
+while (i < 15 && msg[i] != 0) { e.msg[i] = msg[i]; i++; }
+```
+
+语义完全等价（两个条件都在 `&&` 里，只是短路顺序）。**本轮未修** —— 这两个是特性锚（`feat_*.c`），改动要跑全量 1,663 锚确认无回归，属施工方作业。
+
+**⚠️ 排除扫描 ≠ 承认没有缺陷。** `qcc_x86.c` 里另有 7 处真缺陷（`cpp/unsafe-strcat` ×2 · `cpp/unbounded-write` ×1 · `cpp/world-writable-file-creation` ×2 · `cpp/offset-use-before-range-check` ×2）**决定不修** —— 该文件已封存，修它等于给一台不运行的引擎做保养。封存原件位置：tag `jiayan-v1.0-sealed`（commit `54e237ff`, blob `fff09635`）。
+
+**⚠️ 最大的覆盖盲区：甲言主源扫不到。** `qcc_zh.jy`（35,743 行）**CodeQL 完全覆盖不到** —— 它的 C/C++ 前端不认识中文关键字。这是已知且**无法用配置解决**的：要让静态分析覆盖甲言，只能走自家 IR（`实薄` 三地址码 / `控式` 控制流 / `剩系` CFG+活集 / `段双` 截断标记，配 `opt_zh.jy` 的 12 类 pass 与 `不变构跑()` 的 6 条不变量）。**CodeQL 报绿 ≠ 主源安全。**
+
+**这一条要认的**：那 3,142 条挂在那里，任何点开 Security 页的人都会以为这个仓库有三千个漏洞。**配错了就该改，不该留着等人误解**；但也**不该为了让数字好看而把真缺陷 dismiss 掉** —— 所以上面那 2 条留着红，理由和格式都跟第 1、10 条一致。
+
+---
+
 
 ---
 
@@ -457,7 +512,7 @@ qcc_zh_seed.exe : qcc_x86: 打不开 D:\a\qiyuan-jiayan\qiyuan-jiayan\examples\?
 - **第 9 条 6 个宏锚回归** —— 10-21 发现并定位，**10-22 已修复**（种子 `BA7A8849`，全量 1,663 锚 `PASS=1656 / FAIL=0`）。这一条现在证明的是「这套锚真能抓到真回归，且 24 小时内闭环」。
 - **第 10 条 `fopen` 打不开中文文件名** —— 只在非中文 Windows（如 CI runner）复现，**未修**。它是产品级缺陷，而且**我们刻意不绕过**：把测试里的文件名改成英文就能变绿，但那等于删掉「中文文件名能用」这条验证。
 
-**该认的都认了，该改的都改了。** 仍挂两条未修：**第 1 条（C 版实现在非仓库根静默产出崩溃产物）**· **第 10 条（`fopen` 中文名）** —— 都要改编译器源码，属施工方作业，本文档不冒充已修。
+**该认的都认了，该改的都改了。** 仍挂未修：**第 1 条（C 版实现在非仓库根静默产出崩溃产物）**· **第 10 条（`fopen` 中文名）**· **第 11 条里的 2 条 CodeQL 真缺陷（`feat_err.c` / `feat_exc.c` 的边界判据顺序）** —— 都要改源码/测试锚，属施工方作业，本文档不冒充已修。
 
 ---
 
