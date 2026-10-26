@@ -1,20 +1,25 @@
-# CodeQL 配置 —— 限定扫描范围
+# CodeQL 配置 —— 只扫「活的、可行动的标准 C」
 #
-# 为什么需要这个文件：
-#   本仓库的 .c 文件**有两种方言**：
-#     ① 英文 C（standard C）—— `srclib/` `seed/` 以及 `scripts/` `tests/` 里多数文件
-#     ② **甲言**（中文关键字：整/字/构/枚/若/循环/遍/返/空/常/静 …）—— 扩展名仍是 .c
+# 2026-10-27 启元（审计）：原配置扫出 3,142 条 open 告警，其中 58% 是三类噪音：
+#   · 扫了已封存的 1.0 C 实现（qcc_x86.c 755 + asm_zh.c 314 + seed 副本 614 = 1,683 条）
+#   · 负向测试样例被当缺陷（tests/** 219 条，例：`// @EXPECTED compile_fail`）
+#   · 同一份代码报两遍（srclib/ 与 seed/ 的 qcc_x86.c / asm_zh.c 逐字节相同）
+# 收窄后剩约 80 条，全部落在仍在维护的 srclib/qcc_rt.c 与 srclib/jyld.c 上。
 #
-#   CodeQL 的 C/C++ 前端只认标准 C，碰到中文关键字会解析失败。
-#   若全仓扫描，绝大多数文件会产生解析错误噪音，把真正的安全问题淹没。
+# ⚠️ **排除扫描 ≠ 承认没有缺陷。**
+#    qcc_x86.c 里 7 处真缺陷确实存在（cpp/unsafe-strcat ×2 · cpp/unbounded-write ×1 ·
+#    cpp/world-writable-file-creation ×2 · cpp/offset-use-before-range-check ×2），
+#    **决定不修**：该文件已从构建路径撤出（见 ci.yml），修它等于给一台不运行的引擎做保养。
+#    封存原件位置：tag `jiayan-v1.0-sealed`（commit 54e237ff, blob fff09635）。
+#    它的定位是 **oracle / 独立验证**（scripts/build_zh.ps1 L4704），不是废弃代码。
 #
-#   ⟹ 本配置**只扫标准 C**，把甲言专有目录排除掉。
-#   Scorecard 的 SAST 判据是「CodeQL 在所有 commit 上运行」，不是「解析成功率」，
-#   因此限定范围不影响该项得分，同时保证扫描结果**有信噪比**。
+# 甲言主源 `qcc_zh.jy`（35,743 行）**不在本扫描器覆盖范围内** —— CodeQL 的 C/C++ 前端
+# 只认标准 C，不认识中文关键字。这是已知且无法用本配置解决的盲区，写在 README 里。
 
-name: "CodeQL config (standard C only)"
+name: "CodeQL config (标准 C · 排除封存与负向样例)"
 
-# 只扫标准 C —— 甲言源码（中文关键字）不在 CodeQL 能力范围内
+# 本仓库 .c 有两种方言：① 英文 C ② 甲言（中文关键字，扩展名仍是 .c）。
+# CodeQL 只认标准 C，扫甲言文件会产生大量解析错误噪音 ⟹ 用 paths 收窄。
 paths:
   - srclib
   - seed
@@ -22,22 +27,36 @@ paths:
   - tests
 
 paths-ignore:
-  # 甲言写的多语言实现（85 个文件全部是中文关键字）
-  - examples/multilang
+  # ① 1.0 封存的 C 实现（ci.yml 声明：不再进 CI、不再维护）
+  - srclib/qcc_x86.c
+  - srclib/asm_zh.c
 
-  # 中文特性锚（1443 个，绝大多数含甲言中文关键字）
-  # ⚠️ 只排除 feat_zh_*，**不能**用 feat_* 通配 —— 实测 feat_* 里另有 237 个文件，
-  #    其中 219 个是纯标准 C 且应当被扫描（排除掉会把覆盖范围砍掉一大半）。
+  # ② 封存种子快照 —— 与 srclib 版逐字节相同，不排就是同一缺陷再报一遍
+  - 'seed/**'
+
+  # ③ 负向测试样例 —— 这些文件**故意**越界/写错来测工具，报出来是预期行为
+  - 'tests/**'
+
+  # ④ 调试产物（4 个文件共 6 MB，本地未跟踪）与一次性探针
+  - srclib/_dbg_*.c
+  - srclib/qcc_x86_dbg.c
+  - scripts/_*.c
+
+  # ⑤ 甲言写的多语言实现与中文特性锚
+  #    ⚠️ 只排 feat_zh_*，**不能**用 feat_* 通配 —— 实测 feat_* 里另有 237 个文件，
+  #       其中 219 个是纯标准 C 且应当被扫描。
+  - examples/multilang
   - scripts/feat_zh_*
 
-  # 构建产物与归档
+  # ⑥ 构建产物与归档
   - '**/*.bak*'
   - '**/_bak_*'
   - '**/scratch_*'
   - '**/quarantine'
 
+# security-extended：比默认集更广的安全查询。
+# 原 security-and-quality 混入了 292 条纯代码风格项（unused-local-variable /
+# short-global-name / function-in-block 等），它们不是安全问题，会淹没真正的发现。
+# 换 suite 不是降标准 —— 安全维度上 extended 覆盖更广，只是不含风格类。
 queries:
-  - uses: security-and-quality
-
-# 甲言相关的 .jy 主源不是标准 C 编译单元，显式不纳入
-# （CodeQL 的 c-cpp 前端本身也不会主动收 .jy）
+  - uses: security-extended
