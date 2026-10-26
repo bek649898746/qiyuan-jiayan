@@ -465,7 +465,7 @@ qcc_zh_seed.exe : qcc_x86: 打不开 D:\a\qiyuan-jiayan\qiyuan-jiayan\examples\?
 
 - `paths-ignore` 排除上述四类
 - query suite 从 `security-and-quality` 换成 **`security-extended`** —— **安全维度覆盖更广**，只是不含纯代码风格项
-- 同时给 CodeQL 加了 `main` 分支触发（原先只扫 `publish`，而 Scorecard 的 SAST 判据是「在所有 commit 上跑」）
+- （曾试过加 `main` 分支触发，**已撤回**：`origin/main` 自 2026-08-24 起停推、本地已领先 2,614 提交，那条触发永远不会生效。**对外线只有 `publish`**（Gitee 侧同内容的分支叫 `main`，是同一个 commit `07ff95d7`））
 
 **结果：3,142 → 11。**
 
