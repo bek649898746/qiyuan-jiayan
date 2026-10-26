@@ -17,7 +17,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [ "publish" ]
+    branches: [ "publish", "main" ]   # 2026-10-27 启元: 加 main —— Scorecard SAST 判据是「在所有 commit 上跑」，原只扫 publish
   pull_request:
     branches: [ "publish" ]
   # 每周一 03:00 UTC 定期重扫（与 Scorecard 的 01:30 错开）
