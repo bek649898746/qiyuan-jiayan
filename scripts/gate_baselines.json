@@ -1,9 +1,9 @@
 {
- "fixed": "B50E5C60",
- "time": "2026-10-26 23:05:00",
+ "fixed": "DA96655F",
+ "time": "2026-10-27 14:36:26",
  "gates": {
   "zh_feat": {
-   "anchor_count": 1663,
+   "anchor_count": 1674,
    "source": "run_tests_zh.py 的 CORE_FEAT 长度",
    "note": "刀三 (2026-10-17): 移出 2 条长期红锚 feat_rawstr_zh.c / feat_vartmpl.c；新锚入册前须至少过一次全量闸（该锚 PASS 且 FAIL=0）"
   },
@@ -26,7 +26,7 @@
    "note": "刀二/刀八 (2026-10-17): winansi A1001 假阳修复 36/15→37/14；extern typedef 登记修复后 config.c 转绿 ⟹ 37/14→38/13"
   },
   "srclib": {
-   "detail_lines": 1,
+   "detail_lines": 21,
    "real_fail": 71,
    "source": "scripts/_srclib_fails.txt 的 [ERR] 行数（含分类标题行）；real_fail 71 = 41 缺头文件 + 26 坏文件 + 2 A4001 + 2 未声明"
   }

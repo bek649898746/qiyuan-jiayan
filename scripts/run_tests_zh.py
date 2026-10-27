@@ -2810,7 +2810,7 @@ CORE_FEAT += [
     'scripts/feat_zh_auto102_noinit_neg.c',        # 第455站第一百三十八轮 R509 (收 #102): `自动 x;` 无初始化式 ⟹ A6058 (原 rc=0 读到 0)
     'scripts/feat_zh_dep110_name_neg.c',           # 第455站第一百三十八轮 R509 (收 #110 依赖类型): `定长 123, 5;` 元素类型位字面量 ⟹ A6056 (原 rc=0 声明静默无效)
     'scripts/feat_zh_drop15_fnname_neg.c',         # 第455站第一百三十八轮 R509 (收 #15 Drop 标记): `析构 甲, 未定义名;` ⟹ A6057 (原 rc=0 析构从不调用)
-    'scripts/feat_zh_assert91_ok.c',               # 第455站第一百四十轮 R510 (收 #91 断言分级): `断言 条件;` 真值放行 + 与 发布模式 共存
+    # `scripts/feat_zh_assert91_ok.c` 已在 族4 #91 段（R510 同一锚）⟹ 去重删除 （2026-10-26 · D77 锚登记表闸）
     'scripts/feat_zh_assert91_noexpr_neg.c',       # 第455站第一百四十轮 R510 (收 #91): 空形 `断言;` ⟹ A6062 (原 rc=0, 运行时恒 出口1)
     'scripts/feat_zh_comptime187_ok.c',            # 第455站第一百四十轮 R510 (收 #187 部分求值): `编译期(2+3*4)` ⟹ CT 20
     'scripts/feat_zh_comptime187_bad_neg.c',       # 第455站第一百四十轮 R510 (收 #187): `编译期(未定义名+1)` 求值失败 ⟹ A6061 (原 静默得 0)
@@ -3157,7 +3157,7 @@ CORE_FEAT += [
 CORE_FEAT += [
     'scripts/feat_zh_fwd_global_neg.c',     # 刀四: 全局 声明 在 函数 **之后** ⟹ 函数体 引用 它 ⟹ 旧 生成 隐式局部槽 静默读 0 ⟹ 修后 A1001 响亮
     'scripts/feat_zh_nstrlen_neg.c',        # 刀五: `串长(字缓冲)` 旧 把 首字节 当 长度 (97='a') ⟹ 修后 A9001 响亮 (且 零 __ 前缀 泄漏)
-    'scripts/feat_zh_paramkw_neg.c',        # 刀六: 形参名 撞 类型词 (`字 *短`) 旧 静默 串位 (303 vs 对照 301) ⟹ 修后 A9001 响亮 + 点名
+    # `scripts/feat_zh_paramkw_neg.c` 已在 族6 形参段（第九十五轮 同一锚）⟹ 去重删除 （2026-10-26 · D77 锚登记表闸）
     'scripts/feat_zh_lenleak_neg.c',        # 刀五 补锚 (skeptic refute): **标识符形但非向量** 实参 (`长度 普通量`) 旧 落 __vec_*_id 生成路径 ⟹ 诊断泄漏 __ 前缀 ⟹ 修后 A9001 点名声参
 ]
 # R555 (2026-10-08 虾米 · C类攻坚 批C-I): **定案 S-21..S-24 证据锚** —— 7/161 栈展开 · 6/143 切片模式 · 12/245 异常 ABI
@@ -3706,6 +3706,43 @@ CORE_FEAT += [
     'scripts/feat_zh_union_dim_typedef.c',       # R800: `尺寸(<不完整 typedef> *)` 消费词位 + 布局 520
     'scripts/feat_zh_dim_typedef_sizeof.c',      # R800b: typedef 尺寸快照回填 + 布局 8
 ]
+# D77 (2026-10-26 · 审计递刀「锚数三口径」): **漏登补入** —— 以下 6 个锚早已在盘上、`--only` 单跑全绿，
+#   却从未登记进 CORE_FEAT（旧「入册规则」靠人记，没有机械闸 ⟹ 漏了一个月）。
+#   现由 `scripts/check_anchor_registry.py` 闸住：盘上每个 feat*.c 要么在闸内，要么在 EXCLUDED 表（附理由）。
+CORE_FEAT += [
+    'scripts/feat_zh_array_dim_undef_neg.c',   # ARRAY-DIM-UNDEF 负锚: 数组维度未知 ⟹ A6111
+    'scripts/feat_zh_array_dim_vla_ok.c',      # ARRAY-DIM-UNDEF 正锚: 运行期维度（VLA）不被 A6111 误伤
+    'scripts/feat_zh_macro_over_neg.c',        # 族8 #179 宏重载负锚: 宏参数个数不匹配 ⟹ 响亮拒绝
+    'scripts/feat_zh_macro_over_ok.c',         # 族8 #179 宏重载正锚: 按元数分派
+    'scripts/feat_zh_mcf222_ret_ok.c',         # 族10 #222 多子句函数/依据开关: 臂体可选 `返`
+    'scripts/feat_zh_quexing_neg.c',           # 族6 择档负锚: `缺省:` 全拼 不是关键字 ⟹ A6084
+]
+
+# R882 (2026-10-27 虾米 · 施工单《读行读不到内容 P0》): **读行 (fgets) 六条行为锚**
+#   修前: 全仓 1,663 锚零覆盖 `读行`，而它从文件 / stdin 都读空（指针自增发射成 inc r8）。
+#   修后: 本锚覆盖 文件一行 / 连续两行 / 超长行截断 / 余段 / 无尾换行末行 / EOF / stdin 管道。
+CORE_FEAT += [
+    'scripts/feat_zh_io_readline_ok.c',
+]
+
+# R883 (2026-10-27 虾米 · 施工单《负锚三缺口》+《检查深度一致化》P0):
+#   三个零覆盖的 A 码 (A6014/A6059) + 两个核心机制零验证 (A3005/A6016) 补负锚。
+#   A3002 经实测**不可达**（L16052 共享借用的「末用早于当前词位 ⟹ 自动放还」先于 A3002 生效），
+#   A6112 已被 R842 删除（容量护栏移到 A6113，>256 MiB），二者按「给出可达性结论」闭环。
+CORE_FEAT += [
+    'scripts/feat_zh_neg_a6014.c',
+    'scripts/feat_zh_neg_a6059_import.c',
+    'scripts/feat_zh_neg_a6059_export.c',
+    'scripts/feat_zh_neg_a3005.c',
+    'scripts/feat_zh_neg_a6016.c',
+]
+
+# R885 (2026-10-27 虾米 · 施工单《运算符优先级两处错误 P0》bug1):
+#   `<< >>` 从 乘法() 移出，新增 移位() 层（低于 + -、高于关系）；四条正例 + 三条对照防回退。
+CORE_FEAT += [
+    'scripts/feat_zh_precedence_shift_ok.c',
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
@@ -3902,10 +3939,22 @@ def run_one_test(name):
         # R701 刀八: run() -> Popen() —— `run(timeout=)` 抛 TimeoutExpired 时**拿不到 pid**（见下 R582 注释），
         #   无法按 PID 树杀; 原 按 镜像名 (`taskkill /IM <exe名>`) ⟹ **同名进程会被误杀**
         #   (= 2026-10-03 刀A「串扰」同族旧债)。 Popen 持有 `_proc.pid` ⟹ 只杀 本树。
-        _proc = subprocess.Popen(['cmd', '/c', h1], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        # 2026-10-27 (读行 P0 闭环): `@EXPECTED in:` 原先用 communicate(input=...) 喂给 `cmd /c`，
+        #   实测 cmd 不把管道转交子进程 ⟹ 锚里的 stdin 读恒空（`--serve` 同族）。改用临时文件
+        #   作 stdin 句柄（文件句柄可被子进程继承），这才让 `in:` 断言真正可测。
+        _stdin_fh = None
+        _stdin_path = None
+        if stdin_in is not None:
+            _stdin_path = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_stdin.txt')
+            with open(_stdin_path, 'w', encoding='utf-8', newline='') as _sf:
+                _sf.write(stdin_in)
+            _stdin_fh = open(_stdin_path, 'rb')
+        _proc = subprocess.Popen(['cmd', '/c', h1],
+                                 stdin=(_stdin_fh if _stdin_fh is not None else subprocess.PIPE),
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, encoding='utf-8', errors='replace')
         try:
-            _o, _e = _proc.communicate(input=stdin_in, timeout=15)
+            _o, _e = _proc.communicate(input=(None if _stdin_fh is not None else stdin_in), timeout=15)
             rc = _proc.returncode
             out = (_o or '').strip()
             err = (_e or '').strip()
@@ -3926,6 +3975,13 @@ def run_one_test(name):
         rc = 'ERR'; out = str(e); err = ''
     try:
         os.remove(h1); os.remove(out_file); os.remove(err_file)
+    except OSError:
+        pass
+    try:
+        if _stdin_fh is not None:
+            _stdin_fh.close()
+        if _stdin_path is not None:
+            os.remove(_stdin_path)
     except OSError:
         pass
 

@@ -1,19 +1,33 @@
 # 启元甲言 CI — 每次 push/PR 自动验证闭环
-# 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,663 锚
+# 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
 # 2026-10-22 启元（审计）：全面脱离 C 版英文实现。
-#   · 不再 gcc 现编 qcc_x86.exe —— C 版已于 jiayan-v1.0-stable（2026-08-24）封存为历史信任根，
-#     原样留在该标签里可随时 checkout 复验，但不再进 CI、不再维护。
+#   · 不再 gcc 现编 qcc_x86.exe —— C 版已封存为历史信任根，不再进 CI、不再维护。
+#
+#   ⚠️ 2026-10-27 启元（审计）修正：原文写「原样留在 jiayan-v1.0-stable 里可随时 checkout 复验」
+#      是**错的**，实测（口径统一用 git blob = LF，`git cat-file -s <blob>`）：
+#        · tag `jiayan-v1.0-stable` → commit 9d2d1f22（2026-08-24）
+#          其 srclib/qcc_x86.c = blob e1f155c1b9 / **1,043,752 B**
+#        · 真正封存的那份     = blob fff09635 / **1,874,904 B**
+#        ⟹ tag 里只有封存版的 **55.7%**，不是被封存的那份。
+#
+#      ⚠️ 口径提醒（2026-10-27 复验）：`srclib/qcc_x86.c` 在**工作区磁盘上是 1,897,503 B（CRLF）**，
+#         在 **git 里是 1,874,904 B（LF）**，差值 22,599 B = 行数（每行一枚 CR）。
+#         比较两个 tag 的同一文件**必须都用 git blob**；拿磁盘体积去比 blob 是两种口径。
+#
+#   ✅ 封存版的实际位置：tag `jiayan-v1.0-sealed` → commit 54e237ff（2026-09-06）
+#      其 srclib/qcc_x86.c = blob fff09635 / 1,874,904 B ⟹ `git checkout jiayan-v1.0-sealed`
+#      即得完整原件（Windows 落盘为 1,897,503 B CRLF，同一份文件）。
+#      ⚠️ 该 tag 目前**只在本地**，尚未 push 到 origin / GitHub。
+#
+#   · 定位澄清：qcc_x86.c **不是废弃代码，是 oracle / 独立验证**。
+#     依据 scripts/build_zh.ps1 L4704：「qcc_x86（旧 frozen 英文）已无法编译当前规模中文源（死循环），
+#     仅作 oracle/独立验证」。自举链是「自己编自己」，共谋性错误只有独立实现能抓到 ⟹ **保留，不下架**。
+#     CodeQL 侧已把它排除（.github/codeql/codeql-config.yml）—— 只影响告警噪音，不影响 oracle 用途。
 #   · 一律使用仓库自带的中文自举种子 qcc_zh_seed.exe（15 MB，随仓库分发，零依赖）。
 #   · 删除了 asmzh job（其存在前提是「C 版汇编器 + C 版编译器」两套对拍，前提已失效）。
 name: qiyuan-ci
-
-# 顶层最小权限（OpenSSF Scorecard 的 `Token-Permissions` 项要求显式声明且不是读写全开）。
-# 未声明时 GITHUB_TOKEN 的权限取决于仓库默认设置，可能过宽 —— 显式写死更安全。
-# 需要写权限的 job 单独提权，见下方 bootstrap（上传产物需要 actions: write）。
-permissions:
-  contents: read
 
 on:
   push:
@@ -21,7 +35,7 @@ on:
   pull_request:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
   # ── 完整自举（20.8 分钟）不适合每次 push 跑，改为 nightly + 手动 ──
-  #    这是全链唯一无法在 90 秒自证/九线/1,443 锚里覆盖的验收点：
+  #    这是全链唯一无法在 90 秒自证/九线/1,425 锚里覆盖的验收点：
   #    「v1 == v2 == $expected」只有真跑完两代自举才能判。
   schedule:
     - cron: '0 18 * * *'                  # 每天 UTC 18:00 = 北京时间 02:00
@@ -31,21 +45,29 @@ jobs:
   tests:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       # 2026-10-22 启元（审计）：不再 gcc 现编 C 版 qcc_x86.exe。
-      #   英文实现已于 jiayan-v1.0-stable（2026-08-24）封存 —— C 版 qcc_x86.c 原样留在该标签
-      #   作历史信任根，但不再维护：seed 切到自举不动点编译器后，它已无法编译当前规模的中文源。
+      #   ⚠️ 2026-10-27 修正：原文说 C 版「原样留在 jiayan-v1.0-stable」—— **不实**。
+      #      该 tag 里的 qcc_x86.c 只有 1,043,752 B（blob），是封存版（1,874,904 B）的 55.7%。
+      #      完整原件在 tag `jiayan-v1.0-sealed`（commit 54e237ff）。详见文件头 §2026-10-27。
+      #   仍不再维护：seed 切到自举不动点编译器后，它已无法编译当前规模的中文源（死循环）。
+      #   但它**不是废弃代码**，是 oracle / 独立验证（见文件头「定位澄清」）。
       #   仓库自带的中文自举种子 qcc_zh_seed.exe（15 MB，随仓库分发）直接可用。
       - name: 编码检查 (源文件必须严格 UTF-8)
         run: python scripts/check_encoding.py .
 
       - name: 编译器自检（中文自举种子）
         run: .\qcc_zh_seed.exe --test
+
+      # 2026-10-27 (施工单《负锚三缺口与选项接线判据》): `--serve` 从 ORPHAN 转 WIRED。
+      #   原 `_verify_serve.py` 写法正确，但全仓零调用 ⟹ 测试存在、正确、从不执行。
+      - name: 编译服务器 --serve 接线判据（ping / compile / quit）
+        run: python scripts/check_serve.py
 
       # ── 行为断言：push/PR 只跑快速集，全量挪到 nightly ────────────────
       # 2026-10-21：全量 377 个测试串行实测 969 秒（16.2 分钟），每次都跑偏重。
@@ -61,9 +83,9 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -105,31 +127,14 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
-      # 2026-10-25 启元审计（第三轮修正，前两轮都错在别处）：
-      #
-      # 【第一轮】直接跑 run_tests_zh.py --zh-feat
-      #   find_qcc() 找 qcc_zh_v1..v7.exe（bootstrap 的产物），而 bootstrap 的 if 是
-      #   schedule || workflow_dispatch ⟹ push 时被 skip ⟹ 报「环境未就绪」。
-      #
-      # 【第二轮】改用 QCC_TEST_BIN=qcc_zh_seed.exe
-      #   种子是上个里程碑的编译器，主源已是新版本 ⟹ 1663 锚里
-      #   feat_zh_specialization50.c 稳定假红（本地对照：v1 PASS / 种子 FAIL）。
-      #
-      # 【第三轮·本轮】把逻辑抽到 scripts/ci_zh_feat.ps1，run: 块只留一行纯 ASCII 调用。
-      #   ⟹ 真正根因是**编码**：原先把含中文的 PowerShell 直接写在 run: 块里，
-      #     GitHub 把它写成无 BOM 的临时 .ps1，windows-latest 的 PS5.1 在英文 locale
-      #     下按 ANSI(CP1252) 解码 ⟹ 中文乱码 ⟹ ParserError: UnexpectedToken ⟹ 崩在第一行。
-      #   ⟹ 铁律：ci.yml 的 run: 块里不写任何中文；要中文逻辑就抽成 .ps1 文件
-      #     （存为 UTF-8 with BOM）。详见 scripts/ci_zh_feat.ps1 头部注释。
-      - name: 中文特性锚（1,443 个 feat_zh_*.c）
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
+      - name: 中文特性锚（1,425 个 feat_zh_*.c）
+        run: python scripts/run_tests_zh.py --zh-feat
 
   qemu:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
       # 2026-10-22 启元：删掉「gcc 编 C 版」—— 本 job 从不用它（内核验证走 WSL/QEMU）。
       - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
@@ -145,7 +150,7 @@ jobs:
   # 为什么单独一个 job：跑一次 ~20.8 分钟（两代编译 + 不动点比对），
   # 塞进 push/PR 会把每次提交都拖到 20 分钟以上 ⟹ 只在 nightly/手动跑。
   #
-  # 它验的是什么（90 秒自证 / 九线 / 1,443 锚全都覆盖不到）：
+  # 它验的是什么（90 秒自证 / 九线 / 1,425 锚全都覆盖不到）：
   #   v1 = qcc_zh_seed.exe 编 qcc_zh.jy
   #   v2 = qcc_zh_v1.exe   编 qcc_zh.jy
   #   判据 = v1 == v2 == $expected（build_zh.ps1 内硬失败，不等即 exit 1）
@@ -159,14 +164,13 @@ jobs:
   #   windows-latest runner 有 7 GB ⟹ 够。public 仓库 Actions 时长不计费。
   # ══════════════════════════════════════════════════════════
   bootstrap:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # 2026-10-27 (bootstrap P0): publish 的 push 也跑自举 —— 原条件让日常 push 的绿
+    #   永远不含「编译器能自举」这一条（bootstrap/nightly_full 都被 skipped）。
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/publish')
     runs-on: windows-latest
     timeout-minutes: 60
-    permissions:
-      contents: read
-      actions: write        # 末尾 upload-artifact 需要
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
       - name: 种子在位检查
         shell: powershell
@@ -178,11 +182,24 @@ jobs:
 
       - name: 完整自举链（两代 + 不动点比对 · 约 20.8 分钟）
         shell: powershell
-        run: powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
+        run: |
+          # 2026-10-27: 错误外化 —— 裸 exit 1 时审计方（无 token）拿不到任何原因。
+          # 诊断串保持纯 ASCII（中文诊断会被 GitHub 写成无 BOM 临时 .ps1，PS5.1 按 ANSI 解码乱码）。
+          $ErrorActionPreference = 'Continue'
+          $out = (powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1 2>&1 | Out-String)
+          $rc = $LASTEXITCODE
+          Write-Host $out
+          if ($rc -ne 0) {
+            $fails = ($out -split "`n" | Where-Object { $_ -match '\[失败|\[FAIL|FAIL\]|ERROR|ERR\]|ParserError|Unexpected token' } | Select-Object -First 10 | ForEach-Object { $_.Trim() }) -join ' ~ '
+            if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 10) -join ' ~ ') }
+            Write-Host "::error::build_zh failed rc=$rc :: $fails"
+            exit 1
+          }
+          Write-Host "bootstrap chain PASS"
 
       - name: 两代产物取证（失败也上传，便于追因）
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@v4
         with:
           name: bootstrap-v1-v2
           path: |
@@ -208,9 +225,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -224,7 +241,20 @@ jobs:
       #   不再需要 gcc 现编 C 版。昨天为 D41 加的这行随之删除。
 
       - name: 行为断言全量（377 个 · 约 16.2 分钟）
-        run: python scripts/run_tests.py
+        shell: powershell
+        run: |
+          # 2026-10-27: 错误外化（同 bootstrap）—— 失败时把 FAIL 行打成 ::error:: annotation。
+          $ErrorActionPreference = 'Continue'
+          $out = (python -X utf8 scripts/run_tests.py 2>&1 | Out-String)
+          $rc = $LASTEXITCODE
+          Write-Host $out
+          if ($rc -ne 0) {
+            $fails = ($out -split "`n" | Where-Object { $_ -match 'FAIL' } | Select-Object -First 15 | ForEach-Object { $_.Trim() }) -join ' ~ '
+            if (-not $fails) { $fails = (($out -split "`n" | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 8) -join ' ~ ') }
+            Write-Host "::error::run_tests full failed rc=$rc :: $fails"
+            exit 1
+          }
+          Write-Host "full assertions PASS"
 
       - name: 多 .o 链接 + jycc 验收
         run: python scripts/test_multifile.py

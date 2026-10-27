@@ -1,4 +1,4 @@
-# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
+﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
 #
 # 流程:
 #   1. python scripts/sinicize.py   # 按 scripts/zh_map.txt 把 qcc_work.jy 生成 qcc_zh.jy
@@ -232,7 +232,7 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = 'B50E5C60'  # 2026-10-23 刀3A/3B STATIC-SILENT 闭环: PE 分配器 64 位 + 512MiB 竞技场(堆+自切栈) 移出镜像 走 VirtualAlloc; SizeOfImage 1069.8 -> 557.9 MiB; 退出不切回加载器栈 (rsp 与 TEB 同源); v2==v3==7E43F061
+$expected = 'DA96655F'  # 2026-10-27 (R885): 运算符优先级 bug1 —— `<< >>` 从 乘法() 移出，新增 移位() 层；v1==v2；上一代 BF63050E
 $expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
 $expected_前 = '2DB0CC41'  # A9 指针地基三缺陷 (TYPEOF/PTRPTR/DEREFIDX) + --refs 预置段过滤 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==2DB0CC41; 前值 6099BEE6
 $expected_前 = '6099BEE6'  # D18 (#94): aligned(N) 类型级 满卯 + 同名 max 继承（匿名不参与）(2026-10-18 · 地基长线): 锚 1647; 净缺口 0. 自举 v1==v2==6099BEE6; 前值 39C6FC81

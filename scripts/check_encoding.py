@@ -1,38 +1,55 @@
 # -*- coding: utf-8 -*-
 """启元编码自查工具 — 扫描源码文件编码健康度
 用法: python scripts/check_encoding.py [root]
-要求: .c/.h/.jy/.py 源文件必须是严格 UTF-8
+要求: .c/.h/.jy/.py/.ps1 源文件必须是严格 UTF-8
 非 UTF-8 → 退出码 1 (CI 可挂)
+2026-10-27 (bootstrap P0): 纳入 .ps1，并显式识别 UTF-16 BOM 与 NUL 字节 ——
+  原白名单没有 .ps1 ⟹ publish 上的 build_zh.ps1 编码事故 在 CI 第一道门 从未被拦。
 """
-import os, sys
+import os, sys, subprocess
 
 sys.stdout.reconfigure(encoding='utf-8')  # CI windows-latest locale=cp1252, 中文输出否则 UnicodeEncodeError (fix 2026-08-07)
 
-EXTS = ('.c', '.h', '.jy', '.py')
+EXTS = ('.c', '.h', '.jy', '.py', '.ps1')
 SKIP_DIRS = ('.git', 'node_modules', 'target', 'quarantine', '_archived',
              '_retired', 'scratch', 'memory', '.openclaw', '__pycache__')
+# 故意的非 UTF-8 输入：A6085 (字符串字面量 UTF-8 规范性校验) 的负锚 **必须** 内含 0xFF 0xFE，
+# 否则它测不到“非法字节必红”。这不是待修项，是测试夹具。
+ALLOW = ('scripts/feat_zh_utf8269_neg.c',)
 
-# 例外：**故意含非法 UTF-8 字节**的负例锚。
-# 这类文件测的就是「编译器必须拒绝非法编码」，它本身**必须**非 UTF-8 ——
-# 否则锚就失去了被测对象。白名单按文件名精确匹配，不做通配，避免误放。
-ALLOW_NON_UTF8 = (
-    'feat_zh_utf8269_neg.c',   # 族14 #269（R551）：字符串字面量含非法 UTF-8 ⟹ 期望 A6085 拒绝
-)
+
+def tracked_files(root):
+    """只扫 git 已跟踪的文件：本地工作区常驻大量未跟踪的调试产物（UTF-16 日志等），
+    全扫会把真信号埋进噪声里。git 不可用时退回全扫。"""
+    try:
+        r = subprocess.run(['git', '-C', root, 'ls-files', '-z'], capture_output=True)
+        if r.returncode == 0:
+            return set(x for x in r.stdout.decode('utf-8', 'replace').split('\x00') if x)
+    except Exception:
+        pass
+    return None
 
 def check_file(path):
     with open(path, 'rb') as f:
         data = f.read()
+    # UTF-16 的 BOM 不是合法 UTF-8 起始字节，但纯 ASCII 的 UTF-16 LE 正文
+    # （每个字符后跟 \x00）能被 UTF-8 解码成功 ⟹ 必须显式拦住，否则会静默放过。
+    if data.startswith(b'\xff\xfe') or data.startswith(b'\xfe\xff'):
+        return 'NOT_UTF8(UTF-16 BOM)'
     try:
-        data.decode('utf-8')
-        return None  # OK
+        text = data.decode('utf-8')
     except UnicodeDecodeError:
         return 'NOT_UTF8'
     except Exception as e:
         return f'ERR:{e}'
+    if '\x00' in text:
+        return 'NOT_UTF8(NUL byte)'
+    return None  # OK
 
 def scan(root):
     bad = []
     total = 0
+    tracked = tracked_files(root)
     for dirpath, dirs, files in os.walk(root):
         # 剪枝跳过目录
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith('_')]
@@ -41,9 +58,12 @@ def scan(root):
                 continue
             if any(fn.endswith(e) for e in ('.bak', '.bak_gbk')) or '.bak' in fn:
                 continue
-            if fn in ALLOW_NON_UTF8:
-                continue   # 故意的负例锚：必须非 UTF-8，见 ALLOW_NON_UTF8 注释
             p = os.path.join(dirpath, fn)
+            rel = os.path.relpath(p, root).replace('\\', '/')
+            if rel in ALLOW:
+                continue
+            if tracked is not None and rel not in tracked:
+                continue
             total += 1
             r = check_file(p)
             if r:

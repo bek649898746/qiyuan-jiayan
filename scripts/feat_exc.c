@@ -17,7 +17,7 @@ static void throw_ex_user(int type, int code, const char *msg) {
     cur_ex.code = code;
     ex_pending_user = 1;
     int i = 0;
-    while (msg[i] != 0 && i < 15) { cur_ex.msg[i] = msg[i]; i++; }
+    while (i < 15 && msg[i] != 0) { cur_ex.msg[i] = msg[i]; i++; }  /* 2026-10-27 CodeQL cpp/offset-use-before-range-check: 先判界再读 */
     cur_ex.msg[i] = 0;
 }
 

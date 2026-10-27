@@ -31,7 +31,7 @@ static Err mk_err(int code, const char *msg, int val) {
     e.err = code;
     e.val = val;
     int i = 0;
-    while (msg[i] != 0 && i < 15) { e.msg[i] = msg[i]; i++; }
+    while (i < 15 && msg[i] != 0) { e.msg[i] = msg[i]; i++; }  /* 2026-10-27 CodeQL cpp/offset-use-before-range-check: 先判界再读 */
     e.msg[i] = 0;
     return e;
 }

@@ -5,5 +5,10 @@
 *.c    text encoding=UTF-8
 *.md   text encoding=UTF-8
 *.txt  text encoding=UTF-8
-*.ps1  text eol=crlf
+# 2026-10-27 (bootstrap P0): .ps1 一律不做 换行/编码 转换 —— CI 上 UTF-16/UTF-8-BOM
+# 被 autocrlf 二次处理会把 BOM 效果破坏（PS 5.1 按 ANSI 读 ⟹ 中文变量名 ParserError）。
+*.ps1  -text
 *.asm  text encoding=UTF-8
+
+# 读行 行为锚 夹具：逐字节固定（换行/字节长度是断言的一部分，禁止任何转换）
+scripts/fixtures/** -text
