@@ -233,6 +233,22 @@ Gate 9:   编译器裸机适配（printf→串口、read_file→内存）
 
 ---
 
+## 🧰 工具链（都是甲言自己写的）
+
+| 工具 | 源码 | 能力 |
+|:--|:--|:--|
+| **包管理器 `jypkg`** | `tools/jypkg/jy_pkg.jy`（48.8 KB · 甲言） | 依赖拓扑排序 · 环检测 · 锁文件 · **SHA-256 完整性校验**<br>⚠️ 校验用的 SHA-256 是**甲言自己的 `jylib` 实现**（连 `<string.h>` 都剥离、改用自写 `jy_memcpy_`）⟹ **包管理器用来验完整性的密码学也是甲言写的**<br>实测：`lock` / `check` 可用 · `index` / `install` / `verify` 为实验性，见 [`tools/README.md`](tools/README.md) |
+| **语言服务器 `jylsp`** | `tools/jylsp/jylsp.jy`（40.2 KB · 甲言） | LSP：补全 / 跳转 / 跨文件跳转 / 中文路径跳转 / 诊断转发 |
+| **VSCode 扩展** | `tools/vscode-jiayan/` | 语法高亮 + 3 条命令 + LSP 客户端 |
+| **静态审计 `jyaudit`** | `tools/jyaudit/jyaudit.ps1` | 仓库自审脚本 |
+
+```powershell
+# 各工具在自己的目录里编译（源码用相对包含）
+cd tools\jypkg   && ..\..\qcc_zh_seed.exe jy_pkg.jy   -o jy_pkg.exe     # 实测 rc=0 · 1.1 s
+cd tools\jylsp   && ..\..\qcc_zh_seed.exe jylsp.jy    -o jylsp.exe
+```
+
+---
 ## 🔍 已知问题与口径说明
 
 > 2026-10-20 一份外部独立审计对本仓库提出 8 条质疑，逐条给结论。

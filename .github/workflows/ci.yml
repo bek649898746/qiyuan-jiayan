@@ -136,6 +136,42 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
 
+  tools:
+    needs: tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: 种子在位检查
+        shell: powershell
+        run: |
+          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "::error::qcc_zh_seed.exe 不在仓库根目录"; exit 1 }
+      - name: 工具链编译（甲言自己写的工具还能不能编）
+        shell: powershell
+        run: |
+          # 2026-10-28 新增：tools/ 此前只存在于对外线、无任何 CI 覆盖，与主源兼容性从未回归。
+          # 判据只到「能编译」——不跑工具本身（index/install/verify 已知实验性，见 tools/README.md）。
+          $ErrorActionPreference = 'Continue'
+          $fail = @()
+          $targets = @(
+            @{ d = 'tools\jypkg'; f = 'jy_pkg.jy' },
+            @{ d = 'tools\jylsp'; f = 'jylsp.jy'  }
+          )
+          foreach ($t in $targets) {
+            Push-Location $t.d
+            $out = (& ..\..\qcc_zh_seed.exe $t.f -o "$env:TEMP\_tool.out.exe" 2>&1 | Out-String)
+            $rc = $LASTEXITCODE
+            Pop-Location
+            Write-Host ("[{0}] rc={1} :: {2}" -f $t.f, $rc, ($out.Trim() -replace "`r?`n", ' | '))
+            if ($rc -ne 0) { $fail += ("{0} rc={1}" -f $t.f, $rc) }
+          }
+          if ($fail.Count -gt 0) {
+            Write-Host ("::error::工具链编译失败 :: " + ($fail -join ' ~ '))
+            exit 1
+          }
+          Write-Host "tools build PASS"
+
   qemu:
     runs-on: windows-latest
     needs: tests
