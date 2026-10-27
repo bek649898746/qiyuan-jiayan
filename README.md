@@ -44,15 +44,15 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-10-26 00:24** |
-> | HEAD | `35239d44`（分支 `sync-20261025`） |
-> | 自举不动点 | **`B50E5C60`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **35264 行**（`srclib_jiayan/qcc_zh.jy`） |
-> | 特性锚 | **1443 个** `feat_zh_*.c` |
-> | 种子指纹 | `2D94D829`（`qcc_zh_seed.exe` SHA256 前 8 位） |
+> | 生成时间 | **2026-10-28 06:40** · 本块六项**全部按本仓（`publish`）文件现算**，非施工线转抄 |
+> | HEAD | `8bc70895`（分支 `publish`） |
+> | 自举不动点 | **`DA96655F`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **35777 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 特性锚 | **1445 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1451 文件** |
+> | 种子指纹 | `DA96655F`（`qcc_zh_seed.exe` SHA256 前 8 位）—— **与不动点一致** |
 >
-> **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
-> 想知道**现在**的准确值，跑：
+> **数字会过期。** 施工线（`main`）领先本镜像若干代：本仓是**每天一次的对外快照**。
+> 想知道**现在**的准确值，请在施工线仓库跑：
 >
 > ```
 > powershell -File scripts/audit_facts.ps1      # 1 秒导出全基线
@@ -60,7 +60,7 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 > ```
 >
 > 若你手里的快照与上表不符，**一律以仓库最新提交为准**。
-> 重生成本块的命令：`powershell -File scripts/gen_readme_status.ps1`
+> 重生成本块的命令：`powershell -File scripts/gen_readme_status.ps1`（在施工线仓跑，再按本仓文件核对后同步到此处）
 <!-- GEN:STATUS:END -->
 
 > ## 🚀 新手上路（第一次来？先看这里）
