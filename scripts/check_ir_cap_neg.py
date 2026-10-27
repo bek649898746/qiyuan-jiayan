@@ -49,15 +49,20 @@ if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
+# ⚠️ 中文 标签 只用于 打印; 文件名 slug **必须 纯 ASCII** —— 编译器 的 `-o` 路径 走 ANSI,
+#    CI runner 代码页 = cp1252 ⟹ 中文 被 降级 成 '??' ⟹ CreateFile 失败 ⟹
+#    报「无法写入 capneg_??.exe」⟹ **控制组 假红** (2026-10-27 zh_chain 闸现场: 闸⑧ rc=1)。
+#    本地 代码页 cp936 能编码 中文 所以 从未 暴露 —— 这是 编译器 的 真缺陷 (中文 -o 名 不支持),
+#    本闸 只 需 绕开: 文件名 一律 ASCII。
 CASES = [
-    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽'),
-    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链'),
+    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽', 'main'),
+    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链', 'chain'),
 ]
 
 fails = []
 print('[check_ir_cap_neg] 编译器 = %s' % CC)
-for src, knob, tag in CASES:
-    exe = os.path.join(TMP, 'capneg_%s.exe' % tag)
+for src, knob, tag, slug in CASES:
+    exe = os.path.join(TMP, 'capneg_%s.exe' % slug)
     # ① 控制组
     env0 = dict(os.environ)
     env0.pop(knob, None)
@@ -71,7 +76,7 @@ for src, knob, tag in CASES:
         fails.append('%s 控制组 rc=%d (应 0): %s' % (tag, r0.returncode, t0.strip()[:120]))
     # ② 实验组
     env1 = dict(os.environ, **{knob: '1'})
-    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % tag)],
+    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % slug)],
                         capture_output=True, cwd=ROOT, env=env1)
     t1 = ((r1.stdout or b'') + (r1.stderr or b'')).decode('utf-8', 'replace')
     hit = '[ERR] IR-OVERFLOW' in t1
