@@ -71,7 +71,7 @@ def run_one_test(name):
     """单个测试: 编译+运行+断言. 返回 (name, ok, msg)"""
     qcc = find_qcc()
     src = os.path.join('tests', name)
-    expected = '0'; expected_out = None; expected_err = None; expect_cfail = False; stdin_in = None
+    expected = '0'; expected_out = None; expected_err = None; expect_cfail = False; stdin_in = None; extra_args = []
     try:
         # R561 (2026-09-30 虾米 · 第 429 站): 同 `run_tests_zh.py` —— **read(600) 截断 ⟹ 长头注释锚的
         #   `@EXPECTED` 静默失效**（实测: tests/qcc 下 307 个含断言锚里 2 个落 600 之后）。改读全文。
@@ -91,6 +91,8 @@ def run_one_test(name):
         m = re.search(r'//\s*@EXPECTED\s+in:(.+)$', line)
         if m: stdin_in = m.group(1).strip()
         if '@EXPECTED compile_fail' in line: expect_cfail = True
+        m = re.search(r'//\s*@ARG\s+(.+)$', line)
+        if m: extra_args = m.group(1).split()
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
     h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
@@ -98,7 +100,7 @@ def run_one_test(name):
         os.remove(h1)
     except OSError:
         pass
-    r = subprocess.run([qcc, src, '-o', h1], capture_output=True, text=True,
+    r = subprocess.run([qcc, src, '-o', h1] + extra_args, capture_output=True, text=True,
                        encoding='utf-8', errors='replace')
     if r.returncode != 0 or not os.path.exists(h1):
         if expect_cfail:
