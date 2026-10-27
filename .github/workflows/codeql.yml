@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # build-mode: none = 不做编译，直接静态分析源码。
       #   ⚠️ 这是**有意选择**，不是偷懒：本项目的编译链是甲言自举链

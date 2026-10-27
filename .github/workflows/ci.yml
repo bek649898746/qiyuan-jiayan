@@ -45,7 +45,7 @@ jobs:
   tests:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -83,7 +83,7 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -142,7 +142,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: 种子在位检查（seed must exist）
         shell: powershell
         run: |
@@ -179,7 +179,7 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # 2026-10-22 启元：删掉「gcc 编 C 版」—— 本 job 从不用它（内核验证走 WSL/QEMU）。
       - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
@@ -215,7 +215,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: 种子在位检查
         shell: powershell
@@ -270,7 +270,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
