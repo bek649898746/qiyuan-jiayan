@@ -127,8 +127,14 @@ jobs:
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/verify_multilang.ps1
 
-      - name: 中文特性锚（1,425 个 feat_zh_*.c）
-        run: python scripts/run_tests_zh.py --zh-feat
+      # 2026-10-27 修正（审计侧）：这一步必须走 ci_zh_feat.ps1，不能直接调 run_tests_zh.py。
+      #   ci_zh_feat.ps1 里做两件事：① 用中文种子编出 qcc_zh_v1.exe（当前主源产物）
+      #   ② 用 v1 跑全量锚。少了 ① 就没有 qcc_zh_v1.exe，run_tests_zh.py 的守卫会响亮拒绝。
+      #   ⟹ 全程中文路径：种子 → v1 → 锚。不碰任何英文实现。
+      #   详见 scripts/ci_zh_feat.ps1 头部注释（那里记了为什么必须先编 v1）。
+      - name: 中文特性锚（1,443 个 feat_zh_*.c）
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
 
   qemu:
     runs-on: windows-latest
