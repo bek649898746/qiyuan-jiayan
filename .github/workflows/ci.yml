@@ -143,15 +143,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: 种子在位检查
+      - name: 种子在位检查（seed must exist）
         shell: powershell
         run: |
-          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "::error::qcc_zh_seed.exe 不在仓库根目录"; exit 1 }
+          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "::error::qcc_zh_seed.exe missing at repo root"; exit 1 }
       - name: 工具链编译（甲言自己写的工具还能不能编）
         shell: powershell
         run: |
-          # 2026-10-28 新增：tools/ 此前只存在于对外线、无任何 CI 覆盖，与主源兼容性从未回归。
-          # 判据只到「能编译」——不跑工具本身（index/install/verify 已知实验性，见 tools/README.md）。
+          # 2026-10-28: tools/ had no CI coverage before; these four kits live only on the publish line.
+          # ASCII ONLY in this run-block. GitHub writes it to a BOM-less temp .ps1 and PS5.1 decodes
+          # it as ANSI(GBK): any CJK here corrupts quote pairing => ParserError (same trap as build_zh.ps1 L219).
+          # Scope: compile check only. index/install/verify are experimental and are NOT executed.
           $ErrorActionPreference = 'Continue'
           $fail = @()
           $targets = @(
@@ -160,14 +162,15 @@ jobs:
           )
           foreach ($t in $targets) {
             Push-Location $t.d
-            $out = (& ..\..\qcc_zh_seed.exe $t.f -o "$env:TEMP\_tool.out.exe" 2>&1 | Out-String)
+            $out = (& ..\..\qcc_zh_seed.exe $t.f -o "$env:TEMP\_tool_build_out.exe" 2>&1 | Out-String)
             $rc = $LASTEXITCODE
             Pop-Location
-            Write-Host ("[{0}] rc={1} :: {2}" -f $t.f, $rc, ($out.Trim() -replace "`r?`n", ' | '))
+            $flat = ($out.Trim() -replace "`r?`n", ' | ')
+            Write-Host ("[{0}] rc={1} :: {2}" -f $t.f, $rc, $flat)
             if ($rc -ne 0) { $fail += ("{0} rc={1}" -f $t.f, $rc) }
           }
           if ($fail.Count -gt 0) {
-            Write-Host ("::error::工具链编译失败 :: " + ($fail -join ' ~ '))
+            Write-Host ("::error::tools build FAILED :: " + ($fail -join ' ~ '))
             exit 1
           }
           Write-Host "tools build PASS"
