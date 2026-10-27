@@ -13,7 +13,7 @@
 #    封存原件位置：tag `jiayan-v1.0-sealed`（commit 54e237ff, blob fff09635）。
 #    它的定位是 **oracle / 独立验证**（scripts/build_zh.ps1 L4704），不是废弃代码。
 #
-# 甲言主源 `qcc_zh.jy`（35,743 行）**不在本扫描器覆盖范围内** —— CodeQL 的 C/C++ 前端
+# 甲言主源 `qcc_zh.jy`（甲言自举主源，规模随迭代增长）**不在本扫描器覆盖范围内** —— CodeQL 的 C/C++ 前端
 # 只认标准 C，不认识中文关键字。这是已知且无法用本配置解决的盲区，写在 README 里。
 
 name: "CodeQL config (标准 C · 排除封存与负向样例)"

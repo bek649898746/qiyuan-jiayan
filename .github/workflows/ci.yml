@@ -1,5 +1,5 @@
 # 启元甲言 CI — 每次 push/PR 自动验证闭环
-# 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 1,656 锚
+# 验证: 编码闸 → 编译器自检 → 行为断言 → 多文件链接 | 中文链 90 秒自证 / 九线 / 全量中文特性锚
 #       | 完整自举两代不动点 (v1==v2==$expected，schedule 触发)
 #
 # 2026-10-22 启元（审计）：全面脱离 C 版英文实现。
@@ -34,8 +34,8 @@ on:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
   pull_request:
     branches: [ master, main, publish ]   # publish = 默认分支（补 2026-10-20）
-  # ── 完整自举（20.8 分钟）不适合每次 push 跑，改为 nightly + 手动 ──
-  #    这是全链唯一无法在 90 秒自证/九线/1,425 锚里覆盖的验收点：
+  # ── 完整自举耗时长，不适合每次 push 跑，改为 nightly + 手动 ──
+  #    这是全链唯一无法在 90 秒自证 / 九线 / 特性锚里覆盖的验收点：
   #    「v1 == v2 == $expected」只有真跑完两代自举才能判。
   schedule:
     - cron: '0 18 * * *'                  # 每天 UTC 18:00 = 北京时间 02:00
@@ -70,10 +70,10 @@ jobs:
         run: python scripts/check_serve.py
 
       # ── 行为断言：push/PR 只跑快速集，全量挪到 nightly ────────────────
-      # 2026-10-21：全量 377 个测试串行实测 969 秒（16.2 分钟），每次都跑偏重。
+      # 2026-10-21：全量测试串行跑一遍耗时很长，每次都跑偏重。
       # 快速集 30 个关键用例 19 秒，覆盖类型/布局/变参/控制流/指针/字符串/数组。
       # 全量在下方 nightly_full job（schedule / workflow_dispatch 才跑）。
-      - name: 行为断言（快速集 30 个 · 全量 377 个在 nightly）
+      - name: 行为断言（快速集 · 全量在 nightly）
         run: python scripts/run_tests.py --fast
 
       - name: 多 .o 链接 + jycc 验收 (6 项)
@@ -132,7 +132,7 @@ jobs:
       #   ② 用 v1 跑全量锚。少了 ① 就没有 qcc_zh_v1.exe，run_tests_zh.py 的守卫会响亮拒绝。
       #   ⟹ 全程中文路径：种子 → v1 → 锚。不碰任何英文实现。
       #   详见 scripts/ci_zh_feat.ps1 头部注释（那里记了为什么必须先编 v1）。
-      - name: 中文特性锚（1,443 个 feat_zh_*.c）
+      - name: 中文特性锚（全量 feat_zh_*.c · 数量以 scripts/gate_baselines.json 为准）
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
 
@@ -153,10 +153,10 @@ jobs:
   # ══════════════════════════════════════════════════════════
   # 完整自举链 —— 全链唯一没被机器守护的验收点
   #
-  # 为什么单独一个 job：跑一次 ~20.8 分钟（两代编译 + 不动点比对），
+  # 为什么单独一个 job：跑一次要编两代 + 比不动点，耗时长，
   # 塞进 push/PR 会把每次提交都拖到 20 分钟以上 ⟹ 只在 nightly/手动跑。
   #
-  # 它验的是什么（90 秒自证 / 九线 / 1,425 锚全都覆盖不到）：
+  # 它验的是什么（90 秒自证 / 九线 / 特性锚全都覆盖不到）：
   #   v1 = qcc_zh_seed.exe 编 qcc_zh.jy
   #   v2 = qcc_zh_v1.exe   编 qcc_zh.jy
   #   判据 = v1 == v2 == $expected（build_zh.ps1 内硬失败，不等即 exit 1）
@@ -186,7 +186,7 @@ jobs:
           $sha = (Get-FileHash qcc_zh_seed.exe -Algorithm SHA256).Hash
           Write-Host "种子: $len 字节 / SHA256 $($sha.Substring(0,16))…"
 
-      - name: 完整自举链（两代 + 不动点比对 · 约 20.8 分钟）
+      - name: 完整自举链（两代 + 不动点比对）
         shell: powershell
         run: |
           # 2026-10-27: 错误外化 —— 裸 exit 1 时审计方（无 token）拿不到任何原因。
@@ -215,9 +215,9 @@ jobs:
           if-no-files-found: warn
 
   # ══════════════════════════════════════════════════════════
-  # 行为断言 · 全量 377 个 —— 与 bootstrap 并行跑（不同 runner，互不干扰）
+  # 行为断言 · 全量 —— 与 bootstrap 并行跑（不同 runner，互不干扰）
   #
-  # 为什么单独一个 job：全量实测 969 秒（16.2 分钟），塞进 push/PR 会把
+  # 为什么单独一个 job：全量跑一遍耗时远超快速集，塞进 push/PR 会把
   # 每次提交都拖到 20 分钟以上 ⟹ push 只跑 --fast（30 个/19 秒）兜关键路径，
   # 全量放到 nightly 兜回归。
   #
@@ -246,7 +246,7 @@ jobs:
       # 2026-10-22 启元：test_multifile.py 已改用中文种子（QCC_TEST_BIN / qcc_zh_seed.exe 兜底），
       #   不再需要 gcc 现编 C 版。昨天为 D41 加的这行随之删除。
 
-      - name: 行为断言全量（377 个 · 约 16.2 分钟）
+      - name: 行为断言全量（数量以 scripts/run_tests.py 为准）
         shell: powershell
         run: |
           # 2026-10-27: 错误外化（同 bootstrap）—— 失败时把 FAIL 行打成 ::error:: annotation。
