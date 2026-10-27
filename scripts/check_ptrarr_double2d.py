@@ -7,8 +7,15 @@
   ⟹ 与 R813 的结构体族不同源：8 字节标量所指（双精度/长整长整）走的是另一条元数据路径。
 
 判据（6 格，任一不满足即红）：
-  · 类型 ∈ {双精度, 长整长整, 整, 字符, 短整, 结构体} × `*p[3]; p[0]=y; p[0][1]=v;`
-  · 每格断言：`p[0][1] == v` **且** `y[1] == v`（内存 + 读回双通道）。
+  · 类型 ∈ {双精度, 长整长整, 整, 字符, 短整} × `*p[3]; p[0]=y; p[0][1]=v;`
+  · 每格断言：`p[0][1] == v` **且** `y[1] == v`（内存 + 读回双通道）
+  · 第 6 格 **关键字别名**（R845/R846 真根因的回归闸）：
+    `双精度 a; a = 2.5;` 与 `双精度 y[3]; y[1] = 2.5;` 都必须**编得过且打印 2.50** ——
+    病灶史（2026-10-25 定位）：`双精度` 原**不是关键字**（关键字表里 8 字节浮点 只有
+    `double`/`双`）⟹ 声明侧当「未知类型名」⟹ **隐式 int** ⟹ 本判据 double 格 报 A9002 或读回 0.00；
+    而前几轮（R813/R823/R824）一直去补「指浮/指内/存宽」都无效 —— 那些标记从未被读到。
+    R845 在词法层把 `双精度`→`双`、`单精度`→`单` 归一（与 `长整`→`长 长`、`__int64` 同处同法）；
+    R846 补「下标基 写」的值准备与元素宽（见源码注释）。两条**缺一不可**。
 
 用法: python scripts/check_ptrarr_double2d.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 6 格全绿；1 = 有格写丢失/错值（缺陷仍在）
@@ -68,6 +75,31 @@ def main():
                                         out.strip().replace('\n', ' / ')))
         if not ok:
             bad.append(name)
+    # 第 6 格: **关键字别名回归闸**（R845/R846 的真根因）
+    #   `双精度` 若不是关键字 ⟹ 声明 ⟹ 隐式 int ⟹ 对标量直接 A9002、对数组读回 0.00。
+    #   历史上这一格的红 被误当成「指针数组 codegen 缺陷」，连修三轮无效。
+    alias_src = ('#包含 <stdio.h>\n整 主() {\n'
+                 '  双精度 a;\n  a = 2.5;\n  格式化 "S %.2f\\n", a;\n'
+                 '  双精度 y[3];\n  y[1] = 3.5;\n  格式化 "Y %.2f\\n", y[1];\n'
+                 '  返 0;\n}\n')
+    alias_want = 'S 2.50\nY 3.50'
+    asrc = os.path.join(w, 'alias.c')
+    io.open(asrc, 'w', encoding='utf-8', newline='\n').write(alias_src)
+    aexe = os.path.join(w, 'alias.exe')
+    r = subprocess.run([cc, asrc, '-o', aexe], capture_output=True, timeout=300)
+    if r.returncode != 0:
+        bad.append('alias-double(compile)')
+        print('[%-8s] 编译失败 rc=%d %s' % ('alias', r.returncode,
+                                            ((r.stderr or b'').decode('utf-8', 'replace').strip()[:90])))
+    else:
+        q = subprocess.run([aexe], capture_output=True, timeout=60)
+        out = (q.stdout or b'').decode('utf-8', 'replace').replace('\r\n', '\n').strip()
+        ok = q.returncode == 0 and out == alias_want
+        print('[%-8s] rc=%d %s | %s' % ('alias', q.returncode, 'OK' if ok else 'WRONG',
+                                       out.replace('\n', ' / ')))
+        if not ok:
+            bad.append('alias')
+
     print('=== 指针数组 双重下标写: %s ===' % ('PASS' if not bad else 'FAIL -> ' + ', '.join(bad)))
     return 0 if not bad else 1
 

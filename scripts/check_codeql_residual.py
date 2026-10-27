@@ -9,18 +9,25 @@
   ③-b ci.yml 不许再写「C 版原样留在 jiayan-v1.0-stable」的假声明
      （实测 tag 内只有封存版的 55.7%）。
 """
+import argparse
 import os
 import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = REPO
 
 
 def read(p):
-    return open(os.path.join(REPO, p), encoding='utf-8', errors='replace').read()
+    return open(os.path.join(ROOT, p), encoding='utf-8', errors='replace').read()
 
 
 def main():
+    global ROOT
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--root', default=None, help='要检查的树（默认本仓；用于修前/修后对照）')
+    a = ap.parse_args()
+    ROOT = a.root or REPO
     fails = []
     for p in ('scripts/feat_err.c', 'scripts/feat_exc.c'):
         s = read(p)

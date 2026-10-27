@@ -50,23 +50,14 @@ if not os.path.exists(CC):
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
 CASES = [
-    # (源码, 调试开关, 显示名, 文件名片段)
-    #
-    # ⚠️ 文件名片段必须**纯 ASCII**（2026-10-26 启元审计 · CI zh_chain 闸⑧ 红的根因）：
-    #   原先直接拿中文 tag（'主槽' / '子链'）拼进输出文件名 ⟹
-    #   `capneg_主槽.exe`。本地中文 locale（CP936）传参正常，所以本机一直 PASS；
-    #   而 GitHub runner 是英文 locale（CP1252）⟹ Python 把中文路径参数按 ANSI 编码
-    #   ⟹ 交给 qcc 时已变成 `capneg_??.exe` ⟹ 甲言报「无法写入 ...capneg_??.exe」
-    #   ⟹ 控制组 rc=1（应为 0）⟹ 闸⑧ 假红。
-    #   与 jylib/build.ps1 里那条「甲言拒收中文路径参数」是同一个坑，只是换了入口。
-    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽', 'main'),
-    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链', 'chain'),
+    ('scripts/feat_zh_irland_l1cap_main_neg.c', 'QCC_DBG_IRCAP_MAIN', '主槽'),
+    ('scripts/feat_zh_irland_l1cap_chain_neg.c', 'QCC_DBG_IRCAP_CHAIN', '子链'),
 ]
 
 fails = []
 print('[check_ir_cap_neg] 编译器 = %s' % CC)
-for src, knob, tag, slug in CASES:
-    exe = os.path.join(TMP, 'capneg_%s.exe' % slug)
+for src, knob, tag in CASES:
+    exe = os.path.join(TMP, 'capneg_%s.exe' % tag)
     # ① 控制组
     env0 = dict(os.environ)
     env0.pop(knob, None)
@@ -80,7 +71,7 @@ for src, knob, tag, slug in CASES:
         fails.append('%s 控制组 rc=%d (应 0): %s' % (tag, r0.returncode, t0.strip()[:120]))
     # ② 实验组
     env1 = dict(os.environ, **{knob: '1'})
-    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % slug)],
+    r1 = subprocess.run([CC, src, '-o', os.path.join(TMP, 'capneg_%s_k.exe' % tag)],
                         capture_output=True, cwd=ROOT, env=env1)
     t1 = ((r1.stdout or b'') + (r1.stderr or b'')).decode('utf-8', 'replace')
     hit = '[ERR] IR-OVERFLOW' in t1

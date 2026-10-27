@@ -5,6 +5,8 @@
 非 UTF-8 → 退出码 1 (CI 可挂)
 2026-10-27 (bootstrap P0): 纳入 .ps1，并显式识别 UTF-16 BOM 与 NUL 字节 ——
   原白名单没有 .ps1 ⟹ publish 上的 build_zh.ps1 编码事故 在 CI 第一道门 从未被拦。
+2026-10-27 (skeptic 复核): 再加 **含非 ASCII 的 .ps1 必须带 UTF-8 BOM** ——
+  只查 UTF-8 可解码会放过「无 BOM + 中文变量名」这种真实 P0 输入（PS5.1 按 ANSI 读 ⟹ 112 错）。
 """
 import os, sys, subprocess
 
@@ -36,6 +38,13 @@ def check_file(path):
     # （每个字符后跟 \x00）能被 UTF-8 解码成功 ⟹ 必须显式拦住，否则会静默放过。
     if data.startswith(b'\xff\xfe') or data.startswith(b'\xfe\xff'):
         return 'NOT_UTF8(UTF-16 BOM)'
+    # 2026-10-27 (skeptic 复核): **含非 ASCII 的 .ps1 必须带 UTF-8 BOM** —— 只查
+    # 「UTF-8 可解码」不够：publish 的 build_zh.ps1 是合法 UTF-8（无 BOM）+ 343 个
+    # 中文变量名，PS 5.1 在英文 runner 按 ANSI 读 ⟹ 112 个 ParserError。原闸对这一
+    # 真实 P0 输入是绿的 ⟹ 必须把 BOM 规则写进闸，才算根治。
+    if path.lower().endswith('.ps1') and not data.startswith(b'\xef\xbb\xbf'):
+        if any(b >= 0x80 for b in data):
+            return 'NOT_BOM(non-ASCII .ps1 without UTF-8 BOM)'
     try:
         text = data.decode('utf-8')
     except UnicodeDecodeError:

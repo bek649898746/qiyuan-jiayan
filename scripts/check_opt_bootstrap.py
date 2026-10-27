@@ -179,7 +179,10 @@ NEG_TEXT = (
     '    移64 r0, [rbp-8]\n'         # 正向 D: rbp ≠ r0 ⟹ 应优化成 移64 r2, r1
     '    移64 r0, r1\n'
     '    移64 r2, r0\n'
-    '    移64 r0, [XYZ+8]\n'         # 负向 E: 源含**认不出的寄存器式 token** ⟹ 保守拒绝（原样）
+    '    移64 r0, [rXX+8]\n'         # 负向 E: 源含「**寄存器式但认不出**」的 token(rXX) ⟹ 保守拒绝（原样）
+    '    移64 r6, r7\n'
+    '    移64 r8, r6\n'
+    '    移64 r6, [XYZ+8]\n'         # 正向 F: 符号基址 XYZ 不是可疑寄存器（R881 命名空间收紧）⟹ 应优化
     # ---- ⑦ 帧/栈「存→取 同址」（实测通道：只声明删/替）----
     '    存帧64 [rbp-8], r0\n'
     '    取帧64 r0, [rbp-8]\n'        # 正向: 同寄 ⟹ 删取
@@ -269,7 +272,8 @@ else:
         ('    移64 r0, r1\n    移64 r2, r0\n    移64 r0, [r0+8]' in got, '负向21 第三行以 rX 为内存基址 ⟹ 原样（skeptic 复现 B）'),
         ('    移64 r5, r1\n    移64 r2, r5\n    移64 r5, [rbp-8]' in got, '负向22 别名(r5==rbp) 源读 rX ⟹ 原样'),
         ('.替\n    移64 r2, r1' in got, '阳性10 源不读 rX(rbp≠r0) ⟹ .替 + 移64 r2, r1'),
-        ('    移64 r0, r1\n    移64 r2, r0\n    移64 r0, [XYZ+8]' in got, '负向23 源含认不出的寄存器式 token ⟹ 保守拒绝（原样）'),
+        ('    移64 r0, r1\n    移64 r2, r0\n    移64 r0, [rXX+8]' in got, '负向23 源含「寄存器式但认不出」的 token(rXX) ⟹ 保守拒绝（原样）'),
+        ('.替\n    移64 r8, r7' in got, '正向 F 符号基址 [XYZ+8] 不是可疑寄存器 ⟹ 允许优化（R881 命名空间收紧）'),
         # —— ⑦ 帧/栈 存→取 同址（实测通道）——
         ('.删     取帧64 r0, [rbp-8]' in got, '阳性11 同寄 存→取 ⟹ 声明删取（实测通道）'),
         ('.替\n    移64 r3, r0' in got, '阳性12 异寄 存→取 ⟹ 声明删取 + 替之以 移64 r3, r0'),
@@ -296,10 +300,13 @@ else:
     else:
         segs = [x.strip() for x in rep.group(1).split('/')]
         nums = [int(re.search(r'(\d+)$', s).group(1)) for s in segs if re.search(r'(\d+)$', s)]
-        if len(nums) != 9 or any(x == 0 for x in nums):
-            fails.append('分支自检: 分类计数 %s 未覆盖全部 9 条 pass' % nums)
+        # 收尾行类数 随 R880（+G-DCE/⑪/⑫）与 R881（+LSP）增长 ⟹ 只断言**经典 9 类**全命中；
+        # 元数据驱动的那几类 由 check_opt_meta_consume / check_opt_lsp / check_opt_per_pass 覆盖。
+        if len(nums) < 9 or any(x == 0 for x in nums[:9]):
+            fails.append('分支自检: 分类计数 %s 的前 9 类（经典 pass）未全部命中' % nums)
         else:
-            print('    [自检] 9 条 pass 分支计数 = %s ⟹ 全部被本用例覆盖 ✓' % nums)
+            print('    [自检] 经典 9 类 pass 分支计数 = %s ⟹ 全部被本用例覆盖 ✓（G-DCE/⑪/⑫/LSP 由各自判据器覆盖）'
+                  % nums[:9])
     ok = all(c[0] for c in checks)
     print('  负向/正向用例: %s' % ('全过' if ok else 'FAIL'))
     for good, name in checks:

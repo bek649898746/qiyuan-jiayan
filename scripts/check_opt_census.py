@@ -37,8 +37,17 @@ def regno(t):
     for s in ('+', '-', '*'):
         t = t.split(s)[0]
     t = t.strip()
-    m = re.match(r'^r(\d+)$', t)
+    if t == 'rip':
+        return 16                      # 伪寄存器：不是 GPR，也不是「认不出的写法」
+    m = re.match(r'^r(\d+)[bwd]?$', t)     # r8b / r8w / r8d 与 r8 同号
     return int(m.group(1)) if m else NUM.get(t, -1)
+
+
+def reg_shape(t):
+    """寄存器命名空间 = r/e + (数字|小写字母)。别的字母串是**符号**（.L410 / STR18 / FN）"""
+    if len(t) < 2 or t[0] not in 're':
+        return False
+    return t[1].isdigit() or t[1].islower()
 
 
 def mentions(seg, want):
@@ -48,7 +57,7 @@ def mentions(seg, want):
         r = regno(t)
         if r == want:
             return True
-        if r < 0 and t[0].isalpha():
+        if r < 0 and reg_shape(t):
             return True
     return False
 
@@ -105,6 +114,39 @@ def mirror(lines):
                 tg = a.split(' ', 1)[1].strip() if ' ' in a else ''
                 if tg and b == tg + ':':
                     c['跳落到下一行'] += 1; k += 2; done = True
+        # ⑫ 算术-立即数 融合（R880）: 压栈 r0 / 移动 r0,K / 弹栈 rX / op rX,r0 / 移32 r0,rX
+        if not done and k + 4 < n:
+            if a == '压栈 r0' and (b.startswith('移动 r0, ') or b.startswith('移即 r0, ')) \
+                    and b2.startswith('弹栈 '):
+                kk = b.split(', ', 1)[1] if ', ' in b else ''
+                xs = b2.split(' ', 1)[1] if ' ' in b2 else ''
+                a3 = lines[k + 3] if k + 3 < n else ''
+                a4 = lines[k + 4] if k + 4 < n else ''
+                if kk.lstrip('-').isdigit() and xs and a3.split(' ', 1)[0] in (
+                        '加', '减', '与', '或', '异或', '加64', '减64', '与64', '或64', '异或64'):
+                    t3 = toks(a3)
+                    if len(t3) >= 2 and t3[0] == xs and t3[1] == 'r0' and (
+                            a4.startswith('移32 ') or a4.startswith('移64 ')):
+                        t4 = toks(a4)
+                        if len(t4) >= 2 and t4[0] == 'r0' and t4[1] == xs:
+                            c['算术立即融合'] += 1; k += 5; done = True
+        # ⑪ 比较-分支 融合（R880）
+        if not done and k + 7 < n:
+            if a.startswith('压栈 ') and (b.startswith('移动 r0, ') or b.startswith('移即 r0, ')) \
+                    and b2.startswith('弹栈 '):
+                a3 = lines[k + 3] if k + 3 < n else ''
+                a4 = lines[k + 4] if k + 4 < n else ''
+                a5 = lines[k + 5] if k + 5 < n else ''
+                a6 = lines[k + 6] if k + 6 < n else ''
+                a7 = lines[k + 7] if k + 7 < n else ''
+                kk = b.split(', ', 1)[1] if ', ' in b else ''
+                bs = b2.split(' ', 1)[1] if ' ' in b2 else ''
+                if kk.lstrip('-').isdigit() and a3.startswith('比较 ') and a4.startswith('置') \
+                        and a4.endswith(' al') and a5 == '零扩展 eax, al' and a6 == '测试 r0, r0' \
+                        and a7.startswith('为零跳 '):
+                    t3 = toks(a3)
+                    if len(t3) >= 2 and t3[0] == bs and t3[1] == 'r0':
+                        c['比较分支融合'] += 1; k += 8; done = True
         # ⑦ 存<族><宽> [mem], rX + 取<族><宽> rY, [mem]（逐字同址）
         if not done and k + 1 < n:
             m1 = re.match(r'^存(帧|栈)(32|64) (\[[^\]]+\]), (r\d+)$', a)
@@ -138,6 +180,7 @@ def tool_counts(p):
 
 def check(p, tag):
     lines = [l.strip(' \t\r') for l in io.open(p, encoding='utf-8', errors='replace').read().split('\n')]
+    lines = [l for l in lines if not l.startswith('; @')]   # 元数据 附录 行 不参与 镜像（工具 会 剥离）
     mir = mirror(lines)
     nums, o = tool_counts(p)
     if nums is None:

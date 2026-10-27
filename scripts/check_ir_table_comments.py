@@ -8,6 +8,7 @@
 
 判据只读注释行，不改任何逻辑。
 """
+import argparse
 import os
 import sys
 
@@ -17,7 +18,11 @@ SRC = os.path.join(REPO, 'srclib_jiayan', 'qcc_zh.jy')
 
 
 def main():
-    lines = open(SRC, encoding='utf-8').read().splitlines()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--file', default=None, help='要检查的 qcc_zh.jy（默认仓库主源；用于修前/修后对照）')
+    a = ap.parse_args()
+    src = a.file or SRC
+    lines = open(src, encoding='utf-8').read().splitlines()
     fails = []
 
     idx = [i for i, l in enumerate(lines) if '静 整 方层[' in l]

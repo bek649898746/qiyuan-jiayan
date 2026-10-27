@@ -22,7 +22,18 @@ if (Test-Path 'srclib_jiayan\qcc_zh.jy') {
     $srcLines = @([IO.File]::ReadAllLines((Resolve-Path 'srclib_jiayan\qcc_zh.jy').Path, [Text.Encoding]::UTF8)).Count
 }
 
-$anchors = @(Get-ChildItem 'scripts' -File -Filter 'feat_zh_*.c' -EA SilentlyContinue).Count
+# D77 (2026-10-26 · 审计递刀「锚数三口径」): 锚有**两个**口径，必须都给，且同源取数 ——
+#   · 条目 = 闸内 CORE_FEAT 长度（实际跑的用例数；也收录 feat_*.c 等非 feat_zh_ 锚）
+#   · 文件 = 盘上 feat_zh_*.c 个数（用户数「特性锚文件」时看这个）
+#   两数天然不同；旧版本只写文件数却标签叫「特性锚」⟹ README 的 1,443 与闸里的 1,663 对不上。
+#   口径一致性由 scripts/check_anchor_registry.py 的第 (6) 项硬校验。
+$anchorFiles = @(Get-ChildItem 'scripts' -File -Filter 'feat_zh_*.c' -EA SilentlyContinue).Count
+$anchorEntries = '(读取失败)'
+try {
+    $cnt = (& python -X utf8 'scripts\check_anchor_registry.py' --counts 2>$null | Select-Object -Last 1)
+    $m2 = [regex]::Match([string]$cnt, 'entries=(\d+)')
+    if ($m2.Success) { $anchorEntries = $m2.Groups[1].Value }
+} catch { }
 
 $seedSha = '(无 seed)'
 if (Test-Path 'qcc_zh_seed.exe') {
@@ -40,7 +51,7 @@ $L.Add('> | 生成时间 | **' + $time + '** |')
 $L.Add('> | HEAD | ' + $BT + $head + $BT + '（分支 ' + $BT + $branch + $BT + '） |')
 $L.Add('> | 自举不动点 | **' + $BT + $fix + $BT + '**（权威源 = ' + $BT + 'scripts/build_zh.ps1' + $BT + ' 的 ' + $BT + '$expected' + $BT + '） |')
 $L.Add('> | 主源 | **' + $srcLines + ' 行**（' + $BT + 'srclib_jiayan/qcc_zh.jy' + $BT + '） |')
-$L.Add('> | 特性锚 | **' + $anchors + ' 个** ' + $BT + 'feat_zh_*.c' + $BT + ' |')
+$L.Add('> | 特性锚 | **' + $anchorEntries + ' 条目**（闸内 ' + $BT + 'CORE_FEAT' + $BT + '，实际跑的数）· ' + $BT + 'feat_zh_*.c' + $BT + ' **' + $anchorFiles + ' 文件** |')
 $L.Add('> | 种子指纹 | ' + $BT + $seedSha + $BT + '（' + $BT + 'qcc_zh_seed.exe' + $BT + ' SHA256 前 8 位） |')
 $L.Add('>')
 $L.Add('> **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。')
@@ -83,4 +94,4 @@ if ($txt -match '(?s)<!-- GEN:STATUS:BEGIN.*?GEN:STATUS:END -->') {
 $out = if ($hadBom) { [string]$bomChar + $txt } else { $txt }
 [IO.File]::WriteAllText($readmePath, $out, (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Host ('[gen_readme_status] {0} · HEAD={1} · 不动点={2} · 主源={3} 行 · 锚={4}' -f $mode, $head, $fix, $srcLines, $anchors) -ForegroundColor Green
+Write-Host ('[gen_readme_status] {0} · HEAD={1} · 不动点={2} · 主源={3} 行 · 锚={4} 条目/{5} 文件' -f $mode, $head, $fix, $srcLines, $anchorEntries, $anchorFiles) -ForegroundColor Green

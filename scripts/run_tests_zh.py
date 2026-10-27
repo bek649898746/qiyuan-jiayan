@@ -3743,6 +3743,11 @@ CORE_FEAT += [
     'scripts/feat_zh_precedence_shift_ok.c',
 ]
 
+# R885c (2026-10-27 虾米 · 施工单《检查深度一致化》P0 第 6 项): A1002 零锚补齐。
+CORE_FEAT += [
+    'scripts/feat_zh_neg_a1002.c',
+]
+
 def build_tests(args):
     if args.zh_feat:
         return list(CORE_FEAT)   # 核心确定性中文特性 (独立 有主 测试, 盯真崩)
