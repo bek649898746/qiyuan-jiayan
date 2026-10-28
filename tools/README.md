@@ -92,6 +92,8 @@ jy_pkg.exe verify <锁> <仓库>       # 核锁：锁要求的版本在仓库里
 > `install` 这个名字也建议按实际能力改（如 `resolve` / `lock-from-repo`），避免让人以为它能装包。
 ---
 
+> 📄 **各套自己的 README**：`jypkg/README.md`（7 子命令实测表 + 清单格式）· `jylsp/README.md`（capability 实测原文 + 三项平台事实）—— 2026-10-28 按实测补写。
+
 ## 二、`jylsp` —— LSP 语言服务器
 
 ```powershell
