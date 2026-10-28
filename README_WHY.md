@@ -197,12 +197,12 @@ cd <仓库>
 | **30 秒自证**（8 项：编译器自检 / 编译运行 / 中文关键字 / 代码图谱 / 结构化诊断） | `powershell -File scripts/verify_90s.ps1` | **3 秒** |
 | **九条语言线**（用甲言写的 9 种语言实现，可编译可运行） | `powershell -File scripts/verify_multilang.ps1` | **7 秒** |
 | **完整自举**（两代 + 不动点比对） | `powershell -File scripts/build_zh.ps1` | 2–4 分钟 |
-| **全量特性锚**（1,468 个行为断言 + gcc 对拍） | `python scripts/run_tests_zh.py --zh-feat` | 约 10 分钟 |
+| **全量特性锚**（1,451 个行为断言 + gcc 对拍） | `python scripts/run_tests_zh.py --zh-feat` | 约 10 分钟 |
 
 **收益**：
 - **不信我们，跑一条命令**：全部判据都是"输出必须等于什么"，不是"看起来对"
 - **可审计**：每个测试锚都写明了期望输出/退出码，用 `@EXPECTED` 标注
-- **防退化**：1,468 个特性锚构成回归护栏，任何改动退化都会立刻变红
+- **防退化**：1,451 个特性锚构成回归护栏，任何改动退化都会立刻变红
 
 **真实语料成绩**（不是玩具）：
 
@@ -335,7 +335,7 @@ powershell -File scripts/verify_90s.ps1
 |:--|:--|:--|
 | 编译器主源 | **35,777 行**（全中文） | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
 | 中文关键字 | **38 个** | `manual/中文关键字表.md` |
-| 特性锚 | **1,468 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
+| 特性锚 | **1,451 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
 | 自举不动点 | **以 `scripts/build_zh.ps1` 的 `$expected` 为准** | 跑一次完整自举 |
 | 种子大小 | **15.8 MB** | `(Get-Item qcc_zh_seed.exe).Length` |
 | 语言机制台账 | **291 项** | `manual/机制特性实现表.md` |
