@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 #   [失败 FAIL] 不动点 XXXXXXXX != 期望 YYYYYYYY  (链耗时 Xs)
 # ⚠️ 跑完脚本会自动把不动点产物同步为 qcc_zh_seed.exe（-NoSeed 可跳过）
 
-# 中文特性测试（1,468 个 feat_zh_*.c）
+# 中文特性测试（1,451 个 feat_zh_*.c）
 python scripts/run_tests_zh.py --zh-feat
 
 # 测试套件 + 行为断言（另需 Python 3.x）
@@ -109,7 +109,7 @@ srclib/asm_zh.c/.jy       中文汇编器（C 61 KB / 甲言 108 KB）
 srclib/qcc_rt.c           运行库（68 KB）
 srclib/jyld.c             COFF 链接器（138 KB）
 srclib/jycc.c             编译驱动（3 KB）
-scripts/feat_zh_*.c       中文特性锚（1,468 个）
+scripts/feat_zh_*.c       中文特性锚（1,451 个）
 tests/qcc/                编译测试（353 个文件）
 tests/behavior/           行为断言（45 个文件）
 scripts/build_zh.ps1      ⭐ 中文链主入口
