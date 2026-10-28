@@ -7,7 +7,7 @@
 ## 1. 一句话看懂架构
 
 ```
-srclib_jiayan/qcc_zh.jy ← 编译器主源（甲言 · 4,088 KB · 35,264 行）★ 唯一的源
+srclib_jiayan/qcc_zh.jy ← 编译器主源（甲言 · 4,211 KB · 35,777 行）★ 唯一的源
 seed/qcc.jy             ← 纯甲言种子（1,834 KB），自举起点
 qcc_zh_seed.exe         ← 已知不动点的产物，实际构建用的种子
 srclib/qcc_x86.c        ← 历史信任根（C 原版 · 1,853 KB），只读参考，不参与构建
@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 #   [失败 FAIL] 不动点 XXXXXXXX != 期望 YYYYYYYY  (链耗时 Xs)
 # ⚠️ 跑完脚本会自动把不动点产物同步为 qcc_zh_seed.exe（-NoSeed 可跳过）
 
-# 中文特性测试（1,443 个 feat_zh_*.c）
+# 中文特性测试（1,468 个 feat_zh_*.c）
 python scripts/run_tests_zh.py --zh-feat
 
 # 测试套件 + 行为断言（另需 Python 3.x）
@@ -100,7 +100,7 @@ Get-FileHash v1.exe,v2.exe,v3.exe -Algorithm SHA256   # v2 == v3 即收敛
 ## 6. 文件地图
 
 ```
-srclib_jiayan/qcc_zh.jy   编译器主源（甲言 · 4,088 KB · 35,264 行）★
+srclib_jiayan/qcc_zh.jy   编译器主源（甲言 · 4,211 KB · 35,777 行）★
 srclib_jiayan/qcc_work.jy ⚠️ 内部中间件（勿用）：C 版机械镜像 · 22,571 行 · 中文字符 5.8%
                           （中文字符仅 5.8%），仅历史英文链 build.ps1 使用
 seed/qcc.jy               纯甲言种子（1,834 KB · 22,571 行）
@@ -109,7 +109,7 @@ srclib/asm_zh.c/.jy       中文汇编器（C 61 KB / 甲言 108 KB）
 srclib/qcc_rt.c           运行库（68 KB）
 srclib/jyld.c             COFF 链接器（138 KB）
 srclib/jycc.c             编译驱动（3 KB）
-scripts/feat_zh_*.c       中文特性锚（1,443 个）
+scripts/feat_zh_*.c       中文特性锚（1,468 个）
 tests/qcc/                编译测试（353 个文件）
 tests/behavior/           行为断言（45 个文件）
 scripts/build_zh.ps1      ⭐ 中文链主入口
