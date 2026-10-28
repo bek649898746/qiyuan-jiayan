@@ -238,6 +238,33 @@ Gate 9:   编译器裸机适配（printf→串口、read_file→内存）
 
 ---
 
+## ⚡ 并发：语言级，不是库
+
+![甲言并发：有界通道 / select 多路复用 / 结构化并发](./assets/demo-concurrency.png)
+
+并发原语做进**语法**，线程运行时由用户按约定提供（`thread_create` / `thread_join`）：
+
+| 能力 | 甲言语法 | Go 对照 |
+|:--|:--|:--|
+| 有界通道 | `通道 q, 4;` · `送 q, v;` · `收 q, a;` | `chan`（`make(chan int, 4)`） |
+| 多路复用 | `择收(就绪(q1), 就绪(q2)) { 例 0: … 缺: … }` | `select` —— **默认阻塞**，需 `default` 才非阻塞 |
+| **结构化并发** | `结构化并发 { 线程 t 跑 f, a; }` —— **块退出自动 join** | **无** —— goroutine 没有父作用域，泄漏靠 `errgroup` / `context` 补，语言级 proposal 尚未落地 |
+| fork-join | `线程 t 跑 f, a;` + `等待 t;` | `sync.WaitGroup` 手工 Add/Done |
+| actor | `作用`（语言级邮箱） | 无（第三方库） |
+| async / await | `异步` / `等候` | 无（Go 不用 async） |
+
+**一句话对比**：Go 有 `chan` 和 `select`，但 **goroutine 没有父作用域** —— 泄漏是语言级缺口；
+甲言的 `结构化并发 { }` **把作用域变成生命周期边界**，泄漏写不出来。而 `择收` 天然非阻塞（`缺` 分支兜底），不会像 `select` 那样卡死。
+
+> ⚠️ **如实说明**：`结构化并发` 的**语法与结构约束**在语言里；线程运行时（`thread_create` / `thread_join`）由用户按约定提供
+> —— **甲言约束的是结构，不是线程实现**。仓库内锚用同步模拟验证结构语义
+> （`feat_zh_struct_concur25.c`：块内 3 线程 ⟹ 块退出 join ×3；嵌套时内层先 join）。
+
+> 六个锚实测（现役种子）：`feat_zh_struct_concur25` → `#25 结构化并发 PASS` · `feat_zh_select24` → `#24 select 多路复用 PASS` ·
+> `feat_zh_task62` → `FJ 30` · `feat_chan2_zh` → `PASS` · `feat_zh_actor19` → `#19 actor 语言级邮箱 PASS` · `feat_zh_async20` → `#20 异步 等候 PASS`。
+> 可运行示例：[`examples/concurrency.jy`](examples/concurrency.jy)
+
+---
 ## 🧰 工具链（都是甲言自己写的）
 
 | 工具 | 源码 | 能力 |
