@@ -61,7 +61,7 @@
 - **可以中英混写**：`整`/`int`、`若`/`if` 随时互换 ⟹ 手上的 C 代码能直接进来
 - **学习曲线只剩"编程"本身**，不再叠加一层语言关
 
-**证据**：中文关键字 38 个 · 中文标识符 **249,931 处** · 主源 **35,264 行**（`srclib_jiayan/qcc_zh.jy`）
+**证据**：中文关键字 38 个 · 中文标识符 **249,931 处** · 主源 **35,777 行**（`srclib_jiayan/qcc_zh.jy`）
 
 > #### 📌 主源里 30% 是中文，剩下那 70% 到底是什么
 >
@@ -109,7 +109,7 @@
 > | ② 编译器演化期 | 07-20 ~ 08-01 | `qcc_min` / `qcc_boot` / `qcc_bare` / `jy_compiler` | — | 从 28 指令 VM 走向真实 x86-64 目标 |
 > | ③ 甲言入仓 · C 版信任根 | 2026-08-05 起 | `srclib/qcc_x86.c` | 22,600 行 | 甲言仓内的英文实现，2026-09-06 起停更 |
 > | ④ 机械汉化镜像 | — | `srclib_jiayan/qcc_work.jy` | 22,571 行 | 由 C 版逐行机械汉化（中文字符约 5.9%） |
-> | ⑤ **手工演进主源（现在）** | 至今 | `srclib_jiayan/qcc_zh.jy` | **35,264 行** | 持续手工加料（中文字符约 30%），全中文标识符 |
+> | ⑤ **手工演进主源（现在）** | 至今 | `srclib_jiayan/qcc_zh.jy` | **35,777 行** | 持续手工加料（中文字符约 30%），全中文标识符 |
 >
 > ⟹ 所以我们说「**中文书写**」，**不说「中文原生」** —— "原生"容易被理解成"从零为中文设计"，那不是事实。
 >
@@ -197,12 +197,12 @@ cd <仓库>
 | **30 秒自证**（8 项：编译器自检 / 编译运行 / 中文关键字 / 代码图谱 / 结构化诊断） | `powershell -File scripts/verify_90s.ps1` | **3 秒** |
 | **九条语言线**（用甲言写的 9 种语言实现，可编译可运行） | `powershell -File scripts/verify_multilang.ps1` | **7 秒** |
 | **完整自举**（两代 + 不动点比对） | `powershell -File scripts/build_zh.ps1` | 2–4 分钟 |
-| **全量特性锚**（1,443 个行为断言 + gcc 对拍） | `python scripts/run_tests_zh.py --zh-feat` | 约 10 分钟 |
+| **全量特性锚**（1,468 个行为断言 + gcc 对拍） | `python scripts/run_tests_zh.py --zh-feat` | 约 10 分钟 |
 
 **收益**：
 - **不信我们，跑一条命令**：全部判据都是"输出必须等于什么"，不是"看起来对"
 - **可审计**：每个测试锚都写明了期望输出/退出码，用 `@EXPECTED` 标注
-- **防退化**：1,443 个特性锚构成回归护栏，任何改动退化都会立刻变红
+- **防退化**：1,468 个特性锚构成回归护栏，任何改动退化都会立刻变红
 
 **真实语料成绩**（不是玩具）：
 
@@ -333,9 +333,9 @@ powershell -File scripts/verify_90s.ps1
 
 | 项 | 值 | 怎么自己算 |
 |:--|:--|:--|
-| 编译器主源 | **35,264 行**（全中文） | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
+| 编译器主源 | **35,777 行**（全中文） | `(Get-Content srclib_jiayan/qcc_zh.jy).Count` |
 | 中文关键字 | **38 个** | `manual/中文关键字表.md` |
-| 特性锚 | **1,443 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
+| 特性锚 | **1,468 个** `feat_zh_*.c` | `(Get-ChildItem scripts/feat_zh_*.c).Count` |
 | 自举不动点 | **以 `scripts/build_zh.ps1` 的 `$expected` 为准** | 跑一次完整自举 |
 | 种子大小 | **15.8 MB** | `(Get-Item qcc_zh_seed.exe).Length` |
 | 语言机制台账 | **291 项** | `manual/机制特性实现表.md` |
@@ -349,7 +349,7 @@ powershell -File scripts/verify_90s.ps1
 | 我想… | 去哪 |
 |:--|:--|
 | 快速上手、怎么算"跑对了" | [manual/快速上手.md](manual/快速上手.md) |
-| 读 35,264 行源码 | [manual/源码导航.md](manual/源码导航.md) |
+| 读 35,777 行源码 | [manual/源码导航.md](manual/源码导航.md) |
 | 中文关键字全表 | [manual/中文关键字表.md](manual/中文关键字表.md) |
 | 能编译哪些特性 | [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) |
 | 为什么"能自举"值得信 | [manual/机制特性实现表.md](manual/机制特性实现表.md) |
