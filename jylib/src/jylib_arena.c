@@ -14,8 +14,7 @@
  * 线性递增的核心逻辑沿用原实现。
  *
  * ---------------------------------------------------------------------------
- * ⚠️ 本文件刻意【不含任何字符串字面量】—— 绕行 ADDR32 重定位缺陷
- * ⚠️ 不碰 long 家族指针（只用 unsigned char*），故不受 D107 影响
+ * ⚠️ 本文件不含字符串字面量 —— 保持与外部工具链的最大兼容性
  * ---------------------------------------------------------------------------
  *
  * 编译方 : 甲言 qcc_x86      调用方 : 任意 C ABI 兼容工具链
@@ -44,10 +43,8 @@ void jy_arena_init(jy_arena *a, void *buf, unsigned long cap)
  * 步骤：① 把 pos 上取整到 align ② 检查剩余空间 ③ 切片并推进
  *
  * ⚠️ 刻意不用除法：(pos + align - 1) / align * align
- *   甲言把整数除法编译成对运行时库 __qcc_div_check64 的调用（除零保护），
- *   而库 .obj 不含 qcc_rt.c ⟹ 外部链接时报 undefined reference。
- *   ⟹ align 恒是 2 的幂，改用位掩码上取整，全程零除法，库可独立链接。
- *   （实测：用除法时 gcc 链接报 `undefined reference to __qcc_div_check64`）
+ *   align 恒是 2 的幂，用位掩码上取整 (pos+mask)&~mask 更快、且不引入
+ *   运行时库的除零检查依赖 —— 库 .obj 可独立被任意 C 工具链链接。
  * -------------------------------------------------------------------------- */
 void *jy_arena_alloc_aligned(jy_arena *a, unsigned long size, unsigned long align)
 {

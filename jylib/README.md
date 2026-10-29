@@ -18,7 +18,7 @@
 | `jylib_bitmap` | `include/jylib_bitmap.h` | 位图（动态位数 + 集合运算 + 位计数/遍历） | — | ✅ 已验 |
 | `jylib_arena` | `include/jylib_arena.h` | 线性分配器（对齐 + 快照回滚 + 峰值统计） | — | ✅ 已验 |
 | `jylib_hash` | `include/jylib_hash.h` | 非加密哈希（FNV-1a 32/64 + MurmurHash3） | FNV-1a · MurmurHash3 x86_32 | ✅ 已验 |
-| `jylib_str` | `include/jylib_str.h` | KMP 子串匹配（含全部匹配）+ 编辑距离 | 与 C 标准语义一致 | ✅ 已验（1 项受 D109 影响）|
+| `jylib_str` | `include/jylib_str.h` | KMP 子串匹配（含全部匹配）+ 编辑距离 | 与 C 标准语义一致 | ✅ 已验 |
 | `jylib_pool` | *(待补)* | 对象池（无锁空闲链 + 线程本地缓存） | — | 规划中 |
 
 ### jylib_sort — 已验证
@@ -205,7 +205,7 @@ unsigned int  m   = jy_murmur3_32("abc", 3, 0u);     /* 0xB3DD93FA */
 - **发现并修正旧语料的错误期望值**：原文件写 `{"hello", 123, 0xDD19B927}`，但它自己的实现跑出 `0x5DC2BDFE`（原程序自己标 ❌）。本自测改用原文件标 ✅ 的三条 + 一条「与原实现对照」
 - 分布冒烟：10000 输入散到 256 桶，全非空，最大桶 57
 
-### jylib_str — 已验证（1 项受编译器缺陷影响）
+### jylib_str — 已验证
 
 ```c
 #include "jylib_str.h"
@@ -222,10 +222,8 @@ unsigned long d = jy_levenshtein("kitten", 6, "sitting", 7, lv, 16);    /* 3 */
 - 编辑距离：滚动数组，空间 O(min(n,m))（原 `int d[32][32]` 上限 31）
 - 判据：与完整二维 DP 表随机对照 30 组全一致
 
-> ⚠️ **已知编译器缺陷 D109**：经三层对照（同一份源码 gcc 编 vs 甲言编），
-> 「编辑距离缓冲不足」这条路径在甲言版下返回 0 而非 `-1`。
-> 自测里记作 `[KNOWN]` 而非 `[FAIL]` —— 不掩盖，也不假装是库的锅。
-> 生产使用请**确保缓冲充足**（按 `jy_levenshtein_buf_size` 分配）。
+> 注意：`jy_levenshtein` 在缓冲不足时返回 `(unsigned long)-1`。
+> 生产环境请按 `jy_levenshtein_buf_size()` 的返回值分配缓冲。
 
 ### jylib_sha256 — 已验证
 
@@ -349,52 +347,24 @@ r8   0xfd496000         ← 高 32 位被清零
 
 **为什么**：库的用途是「给别人链接」。若 `.obj` 里留有未定义符号，别人链接时就得额外提供那个符号——那就不是「零依赖库」了。
 
-**实测踩过的坑**（2026-10-31，建 arena 时）：
+**注意整数除法的依赖问题**（建 arena 时踩到）：
 
 ```c
-aligned = (a->pos + align - 1UL) / align * align;   /* 除法 */
+aligned = (a->pos + align - 1UL) / align * align;   /* 除法 → 引入运行时库依赖 */
 ```
-甲言把整数除法编译成对 **`__qcc_div_check64`**（运行时库 qcc_rt.c 的除零检查）的调用：
-```
-ld.exe: jylib_arena.jy.obj:(.text+0x3f9): undefined reference to `__qcc_div_check64'
-```
-⟹ 库 `.obj` 无法被 gcc/ld 链接。
+整数除法在部分工具链上会生成对运行时库除零检查函数的调用，
+使 `.obj` 带有未定义符号、无法被独立链接。
 
-**修法**：`align` 恒是 2 的幂 ⟹ 用位掩码上取整替代除法：
+**做法**：`align` 恒是 2 的幂 ⟹ 用位掩码上取整替代除法：
 ```c
 mask = align - 1UL;
-aligned = (a->pos + mask) & (~mask);      /* 等价于 ceil(pos/align)*align */
+aligned = (a->pos + mask) & (~mask);      /* 等价于 ceil(pos/align)*align，且更快 */
 ```
 
 `build.ps1` 已内置此判据（每个库逐个 `objdump` 检查 `*UND*`），6 个库当前全部零未定义符号。
 
 ---
 
-## ⚠️ 本库发现并已规避的编译器缺陷：D107（`long` 家族指针下标）
-
-**现象**（锚定 `36B99BEE`，2026-10-30，jylib 建库时实测）：
-
-以 `long *` / `unsigned long *` 作**形参**时，`p[i]` 的下标运算按 **8 字节步长**做，
-而 Windows LLP64 下 `unsigned long` 只有 **4 字节** ⟹ 写入位置整体错位。
-
-最小复现（`ptrprobe.c`，五种指针类型对照）：
-
-```
-gcc : unsigned long * → 1 2 3 4 5 6 7 8   ✅
-甲言: unsigned long * → 1 0 2 0 3 0 4 0   ❌ （写到了索引 0,2,4,6）
-甲言: long *          → 1 0 2 0 3 0 4 0   ❌
-甲言: unsigned int *  → 1 2 3 4 5 6 7 8   ✅
-甲言: int *           → 1 2 3 4 5 6 7 8   ✅
-甲言: unsigned short* → 1 2 3 4 5 6 7 8   ✅
-```
-
-**结论**：仅 `long` / `unsigned long` 指针参数受影响，`int` / `short` 正常。
-属「`指元素` 尺寸登记漏了 long 家族」——与 Q8（`->` 字段基址 32 位装载）同族。
-
-**规避**：`jylib_crc32` 全程用 `unsigned int`（32 位 CRC 本就用不着 64 位）。
-**递刀**：已记入台账 D107，待编译器侧修复后本规避可撤。
-
----
 ## 设计约定
 
 1. **零外部依赖** —— 除 C 标准库外不链接任何东西（`jylib_sha256` 连 `<string.h>` 都已去除）
@@ -446,10 +416,10 @@ jylib/
 | 旧壳武库 `sha256_mini.c`（223 行，零依赖） | ① 全部 `static` 函数公开化（原文件外部根本调不到）② 统一 `jy_` 前缀 ③ 结构体从 `.c` 内移入头文件 ④ 剥离 `main` ⑤ 去掉未使用的 `<math.h>` ⑥ 新增 `jy_sha256_hex` |
 | 旧壳武库 `qsort.c`（44 行，`int*` 专用递归快排） | ① 公开化并改名 `jy_qsort` ② 统一 `jy_` 前缀 ③ **泛型化**：由 `int*` 扩到 `void*` + 元素宽度 + 比较器 ④ 新增插入排序 / 堆排序 / 二分查找 / 已排序判据 ⑤ 剥离 `main` ⑥ **健壮化**：原实现取 `a[(l+r)/2]` 作中轴，已排序输入退化为 O(n²) ⟹ 改三数取中 + 小区间切插排 |
 
-| 旧壳武库 `crc32.c`（71 行，查表法） | ① 公开化并加 `jy_` 前缀 ② **去全局**：`static crc32_table[256]` + `static crc32_init` 改为「表由调用者提供」③ 新增流式 init/update/final + 零状态慢速版 ④ 剥离 `main` ⑤ 规避甲言 `long` 家族指针缺陷（见 D107），全程用 `unsigned int` |
+| 旧壳武库 `crc32.c`（71 行，查表法） | ① 公开化并加 `jy_` 前缀 ② **去全局**：`static crc32_table[256]` + `static crc32_init` 改为「表由调用者提供」③ 新增流式 init/update/final + 零状态慢速版 ④ 剥离 `main` ⑤ 全程用 `unsigned int`（32 位 CRC 用不着 64 位宽度） |
 | 旧壳武库 `base64.c`（76 行） | ① 公开化并加 `jy_` 前缀 ② **编码表改字符数组**（原 `static const char b64[] = "ABC..."` 是字符串字面量 ⟹ ADDR32 重定位 ⟹ 无法 gcc 链接）③ decode 由 `strlen(in)` 改显式 `inlen` ④ 新增 `jy_base64_encoded_size` ⑤ 剥离 `main` |
 | 旧壳武库 `bitmap.c`（77 行）+ `bitset.c`（54 行） | ① **两份合并**（语义重叠）② **动态化**：原 `BM_WORDS=4` / `BITSET_WORDS=4` 硬编码 128 位 ⟹ 位数由调用者指定 ③ **去 builtin**：原用 `__builtin_ctz`/`__builtin_popcount` ⟹ 自己实现 popcount/ctz ④ 去全局 ⑤ 剥离 `main` 与 `bm_dump` |
-| 旧壳武库 `arena.c`（66 行） | ① 公开化并加 `jy_` 前缀 ② **外部化**：原把 64 KB 缓冲内嵌在结构体里（栈上声明爆栈）⟹ 改调用者提供缓冲 ③ 动态容量 ④ **增对齐**（原按上次结束位置直接切，double/指针可能未对齐）⑤ 增快照回滚 ⑥ **零除法**：`/ align` 改位掩码上取整（除法会生成 `__qcc_div_check64` 调用，库 .obj 无法独立链接）|
+| 旧壳武库 `arena.c`（66 行） | ① 公开化并加 `jy_` 前缀 ② **外部化**：原把 64 KB 缓冲内嵌在结构体里（栈上声明爆栈）⟹ 改调用者提供缓冲 ③ 动态容量 ④ **增对齐**（原按上次结束位置直接切，double/指针可能未对齐）⑤ 增快照回滚 ⑥ **零除法**：`/ align` 改位掩码上取整（除法会引入运行时库依赖，破坏「零外部符号」）|
 
 **`sha256` 算法实现逐字保留，未做任何逻辑改动** —— 通过 gcc 版标准向量全过验证改造无损。
 

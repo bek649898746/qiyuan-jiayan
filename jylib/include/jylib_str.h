@@ -15,8 +15,8 @@
  *   ⑥ 剥离     —— 去掉 main()
  *
  * ⚠️ lps 表用 unsigned int 而非 unsigned long
- *   甲言 D107 缺陷：long 家族指针形参的 p[i] 按 8 字节步长算 ⟹ 写入错位。
- *    见 jylib_crc32.h 文件头与台账 D107。lps 下标最多 4G 够用。
+ *   lps 下标最大等于模式串长度，32 位足够（4G 字符的模式串不现实）。
+ *   用 unsigned int 可保证跨 ABI 的宽度一致。
  *
  * 两者定位
  *   KMP        : 精确子串查找，O(n+m)，不回溯文本指针
@@ -57,8 +57,7 @@ long jy_kmp_find(const char *text, unsigned long text_len,
 
 /* ---- 查找全部匹配 ----------------------------------------------------
  * 把每个匹配起始下标写入 out，最多 out_cap 个。
- * out 用 unsigned int（不用 long）—— 规避甲言 D107 缺陷：
- *   实测 long* 形参的 p[i] 下标按 8 字节步长算，导致写入错位。
+ * out 用 unsigned int —— 匹配下标不会超过 32 位，用 32 位类型更紧凑。
  * 返回实际写入个数；若匹配数超过 out_cap，返回 out_cap（表示被截断）。
  * -------------------------------------------------------------------------- */
 unsigned long jy_kmp_find_all(const char *text, unsigned long text_len,

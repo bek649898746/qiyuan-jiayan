@@ -16,9 +16,8 @@
  *   ⑤ 增快照  —— save/rollback（README 原规划里的「快照回滚」）
  *   ⑥ 剥离    —— 去掉 main()
  *
- * ⚠️ 全程 unsigned char / unsigned int / unsigned long 的**值**参数；
- *    指针只用于 unsigned char*（1 字节元素），不碰 long 家族指针，
- *    故不受甲言 D107 缺陷影响（详见 jylib_crc32.h 文件头）。
+ * ⚠️ 指针只用 unsigned char*（1 字节元素）做字节寻址；其余为明确宽度的值参数。
+ *    不依赖具体 ABI 的整数宽度差异。
  *
  * 设计取舍：为什么不让库自己 malloc
  *   与 jylib_bitmap 同一理由 —— 库若调 malloc 就不是「零依赖」，

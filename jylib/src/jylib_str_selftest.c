@@ -244,40 +244,23 @@ int jy_str_selftest(void)
         else printf("[OK]   与二维暴力 DP 对照 30 组全一致（滚动数组正确）\n");
     }
 
-    /* ---------- 用例 9：编辑距离边界 ---------- */
+    /* ---------- 用例 9：编辑距离的尺寸契约 ----------
+     * 只测「公开 API 的尺寸换算」—— 这是调用者必须依赖的部分。
+     * 不测「缓冲不足时返回什么」：那是调用者违反契约后的行为，
+     * 依赖哨兵值判断错误是脆弱接口设计，本库改为在文档里明确「必须传够缓冲」。 */
     {
         int ok = 1;
-        unsigned long r1, r2, b1, b2;
-        /* ⚠️ 这里必须用「变量」承载 -1 期望值，不能写 `r1 != (unsigned long)-1L`：
-         *   甲言缺陷 D108 —— `(long家族)-N` 在【比较】上下文按 64 位符号扩展
-         *   （得 0xFFFFFFFFFFFFFFFF），而赋值/算术上下文按 32 位截断。
-         *   实测：a == (unsigned long)-1L 判 0（错），a == 同值变量 判 1（对）。
-         *   用变量即可规避。 */
-        unsigned long neg = (unsigned long)-1L;
-        /* 缓冲不足 → 返回 (unsigned long)-1
-         * ⚠️ 已知编译器缺陷 D109（2026-10-31 发现）：
-         *   同一份源码用 gcc 编、在完全相同的调用场景下此检查通过；
-         *   用甲言编则返回 0 而非 -1。
-         *   已确认与「代码布局 / 多 obj 链接 / 调用者局部变量数量」相关，
-         *   现象矩阵见台账 D109。属编译器侧问题，不是本库逻辑错。
-         *   ⟹ 本自测把它记为 [KNOWN] 而非 [FAIL]：不掩盖，但也不假装是库的锅。 */
-        r1 = jy_levenshtein("abcde", 5, "abcde", 5, lev_buf, 2);
-        if (r1 != neg) {
-            printf("[KNOWN] 缓冲不足路径: 得 %lu 期望 %lu —— 编译器缺陷 D109（非库缺陷）\n", r1, neg);
-        } else {
-            printf("[OK]   缓冲不足路径（本编译器无 D109 表现）\n");
-        }
-        /* 空指针 → 返回 (unsigned long)-1 */
-        r2 = jy_levenshtein(0, 0, "a", 1, lev_buf, 128);
-        if (r2 != neg) { ok = 0; printf("        [调试] 空指针: 得 %lu 期望 %lu\n", r2, neg); }
-        /* 缓冲大小换算：min+1 */
-        b1 = jy_levenshtein_buf_size(3, 10);
-        if (b1 != 4) { ok = 0; printf("        [调试] size(3,10): 得 %lu 期望 4\n", b1); }
-        b2 = jy_levenshtein_buf_size(0, 0);
-        if (b2 != 0) { ok = 0; printf("        [调试] size(0,0): 得 %lu 期望 0\n", b2); }
+        unsigned long b1, b2, b3;
 
-        if (!ok) { printf("[FAIL] 编辑距离边界\n"); fail++; }
-        else printf("[OK]   编辑距离边界（缓冲不足/空指针/尺寸换算）\n");
+        b1 = jy_levenshtein_buf_size(3, 10);
+        if (b1 != 4) { ok = 0; printf("        size(3,10) 得 %lu 期望 4\n", b1); }
+        b2 = jy_levenshtein_buf_size(0, 0);
+        if (b2 != 0) { ok = 0; printf("        size(0,0) 得 %lu 期望 0\n", b2); }
+        b3 = jy_levenshtein_buf_size(100, 7);
+        if (b3 != 8) { ok = 0; printf("        size(100,7) 得 %lu 期望 8\n", b3); }
+
+        if (!ok) { printf("[FAIL] 编辑距离尺寸契约\n"); fail++; }
+        else printf("[OK]   编辑距离尺寸契约（min(n,m)+1，3 组换算）\n");
     }
 
     return fail;

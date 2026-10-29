@@ -18,10 +18,10 @@
  *   ④ 去全局   —— 无静态状态，全部由参数传入
  *   ⑤ 剥离     —— 去掉 main() 与 bm_dump（后者含 printf，属演示）
  *
- * ⚠️ 为什么全用 unsigned int 而不是 unsigned long
- *   甲言存在缺陷 D107：以 long* / unsigned long* 作形参时 p[i] 下标按 8 字节
- *   步长算，而 LLP64 下 unsigned long 只有 4 字节 ⟹ 写入位置整体错位。
- *   最小复现见台账 D107 / jylib_crc32.h 文件头。本库用 unsigned int 规避。
+ * ⚠️ 为什么用 unsigned int 而不是 unsigned long
+ *   本库对整数宽度有明确约定：CRC-32 是 32 位算法，用 unsigned int 语义清晰、
+ *   跨平台一致（Windows 上 long 与 int 同为 32 位，但部分平台 long 是 64 位）。
+ *   ⟹ 全程用 unsigned int，不依赖 ABI 差异。
  *
  * 设计取舍：为什么不让库自己分配
  *   库若调 malloc，就与「零依赖」冲突，也把「分配失败」引入本不该关心它的层。

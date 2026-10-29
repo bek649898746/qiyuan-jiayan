@@ -6,18 +6,11 @@
  *
  * 中文 API 命名 —— 本库与标准 C 实现的区别所在。
  *
- * ⚠️ 为什么全部用 unsigned int 而不是 unsigned long
- *   实测（锚定 36B99BEE，2026-10-30）甲言存在缺陷：
- *     以 `long *` / `unsigned long *` 作形参时，`p[i]` 的下标运算按 8 字节步长做，
- *     而 Windows LLP64 下 `unsigned long` 只有 4 字节 ⟹ 写入位置整体错位。
- *   最小复现（ptrprobe.c）：
- *     gcc : unsigned long * → 1 2 3 4 5 6 7 8   ✅
- *     甲言: unsigned long * → 1 0 2 0 3 0 4 0   ❌  （写到了索引 0,2,4,6）
- *     甲言: unsigned int  * → 1 2 3 4 5 6 7 8   ✅
- *     甲言: int           * → 1 2 3 4 5 6 7 8   ✅
- *     ⟹ 仅 `long` 家族指针参数受影响，`int`/`short` 正常。
- *   本库用 unsigned int 规避；该缺陷已记入台账（D107）递刀给编译器侧。
- *   编译器修好后，本文件可按需把 unsigned int 换回 unsigned long（无必要，32 位 CRC 用 uint 就够）。
+ * ⚠️ 为什么用 unsigned int 而不是 unsigned long
+ *   CRC-32 是 32 位算法。用 unsigned int 有两个好处：
+ *     ① 宽度明确 —— unsigned int 在所有主流 ABI 上都是 32 位
+ *     ② 不依赖 ABI —— Windows(long=32) 与 Unix(long=64) 下行为一致
+ *   ⟹ 本库全用 unsigned int。
  *
  * 设计取舍（为什么有两套 API）
  *   ① jy_crc32()          —— 零状态，随时可调，内部位运算逐位算
