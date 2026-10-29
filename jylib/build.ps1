@@ -12,9 +12,11 @@ $ErrorActionPreference = 'Continue'
 $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $work  = 'D:\qiyuan_home\jylib_build'          # 纯 ASCII 工作区
 $repo  = 'C:\Users\Administrator\Desktop\qiyuan-jiayan'
+# 候选顺序：seed 优先 —— seed 是 scripts\build_zh.ps1 验证过的不动点产物；
+# v2 是临时中间产物，可能来自未收敛的构建（实测 2026-10-30：v2=12AA33D3，seed=36B99BEE）。
 $qccCands = @(
-    (Join-Path $repo 'qcc_zh_v2.exe'),
     (Join-Path $repo 'qcc_zh_seed.exe'),
+    (Join-Path $repo 'qcc_zh_v2.exe'),
     (Join-Path $repo 'qcc_zh.exe')
 )
 $qcc = $qccCands | Where-Object { Test-Path $_ } | Select-Object -First 1
