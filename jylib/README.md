@@ -3,7 +3,7 @@
 > 用**甲言（中文 C 方言编译器）**编译的通用 C 库，产物可被任意 C ABI 兼容工具链（gcc / clang / msvc）链接调用。
 > 语料来自旧壳武库中挑选的通用件，经改造为库形态（公开化 / 统一前缀 / 补头文件 / 剥离 main）。
 
-**版本** 1.2.0 · **锚定编译器** `36B99BEE`（10-29 R905l）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（4 模块 × 双轨 = 8 自测全 exit=0）
+**版本** 1.3.0 · **锚定编译器** `36B99BEE`（10-31 R905l）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（6 模块 × 双轨 = 12 自测全 exit=0，且全部**零外部依赖**）
 
 ---
 
@@ -15,7 +15,8 @@
 | `jylib_sort` | `include/jylib_sort.h` | 排序（快排 / 插排 / 堆排）+ 二分查找 + 已排序判据 | 与 C 标准 `qsort`/`bsearch` 同语义 | ✅ 已验 |
 | `jylib_crc32` | `include/jylib_crc32.h` | CRC-32（零状态版 + 查表版 + 流式） | CRC-32/ISO-HDLC（以太网/PNG/ZIP） | ✅ 已验 |
 | `jylib_base64` | `include/jylib_base64.h` | Base64 编解码 | RFC 4648 §4 | ✅ 已验 |
-| `jylib_arena` | *(待补)* | 内存竞技场（O(1) 分配 + 快照回滚 + 子竞技场） | — | 规划中 |
+| `jylib_bitmap` | `include/jylib_bitmap.h` | 位图（动态位数 + 集合运算 + 位计数/遍历） | — | ✅ 已验 |
+| `jylib_arena` | `include/jylib_arena.h` | 线性分配器（对齐 + 快照回滚 + 峰值统计） | — | ✅ 已验 |
 | `jylib_pool` | *(待补)* | 对象池（无锁空闲链 + 线程本地缓存） | — | 规划中 |
 
 ### jylib_sort — 已验证
@@ -121,6 +122,64 @@ long m = jy_base64_decode(out, (unsigned long)n, dec, sizeof(dec));  /* 还原 6
 
 > ⚠️ 本库编码表用**字符数组初始化**，不用 `"ABC..."` 字符串字面量 —— 二者语义等价，但字符串字面量会生成 `IMAGE_REL_AMD64_ADDR32` 重定位，导致甲言 `.obj` 无法被 gcc/ld 链接（详见 `jylib_sha256.c` 文件头）。
 
+### jylib_bitmap — 已验证
+
+**动态位数**（原语料硬编码 128 位上界），存储由调用者提供：
+
+```c
+#include "jylib_bitmap.h"
+
+unsigned int 存储[8];               /* 8 × 32 = 256 位 */
+jy_bitmap bm;
+jy_bitmap_init(&bm, 存储, 8, 200);  /* 200 位 */
+
+jy_bitmap_set(&bm, 0);
+jy_bitmap_set(&bm, 199);
+jy_bitmap_toggle(&bm, 100);
+
+unsigned long n = jy_bitmap_count(&bm);       /* 置位总数 */
+long first = jy_bitmap_first(&bm);            /* 第一个置位点 */
+long nx = jy_bitmap_next(&bm, 1);             /* 1 之后第一个 */
+
+/* 集合运算（三个位图位数必须相同）*/
+jy_bitmap_and(&结果, &A, &B);
+jy_bitmap_or (&结果, &A, &B);
+jy_bitmap_not(&结果, &A);
+```
+
+**7 个用例全过**：单位操作四态 / 边界位数（1/31/32/33/100，**尾巴位不计入 count**）/
+count+first+next 与暴力对照 / 5 种集合运算与逐位暴力对照 / 原地运算 r==a / 相等比较 / 1024 位压测。
+
+> 原 `bitset.c` 用 `__builtin_ctz` / `__builtin_popcount`（GCC 内建，非 C 标准），
+> 本库自己实现，任何编译器都能编。
+
+### jylib_arena — 已验证
+
+**线性分配**，一次性回收 O(1)，带对齐与快照回滚：
+
+```c
+#include "jylib_arena.h"
+
+unsigned char 内存[4096];
+jy_arena a;
+jy_arena_init(&a, 内存, sizeof(内存));
+
+int *p = (int *)jy_arena_alloc(&a, sizeof(int));
+double *d = (double *)jy_arena_alloc_aligned(&a, sizeof(double), 16);
+
+jy_arena_mark m = jy_arena_save(&a);      /* 快照 */
+/* ... 临时分配 ... */
+jy_arena_rollback(&a, m);                 /* 回滚，空间可复用 */
+
+jy_arena_reset(&a);                       /* 一次性全部回收 */
+```
+
+> **为什么不让库自己 malloc**：那就不叫零依赖了，还把「分配失败」引入本不该关心它的层。
+> 存储由调用者提供（栈数组 / 静态数组 / 自己的池都行）。
+>
+> 原语料把 64 KB 缓冲**内嵌在结构体里**（`unsigned char data[65536]`）—— 栈上声明直接爆栈；
+> 本版改为指针 + 容量。
+
 ### jylib_sha256 — 已验证
 
 由**同一份源**分别用甲言与 gcc 编译，标准向量全部通过（`pass=6 fail=0`）：
@@ -176,22 +235,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ---
 
-## ✅ 构建状态（2026-10-30 更新 · 4 模块双轨全通）
+## ✅ 构建状态（2026-10-31 更新 · 6 模块双轨全通 · 全部零外部依赖）
 
 **gcc 版：完全可用** ✅
-**甲言版：完全可用** ✅ —— 4 个模块 × 双轨 = 8 个自测全 exit=0
+**甲言版：完全可用** ✅ —— 6 个模块 × 双轨 = 12 个自测全 exit=0
 
 ```
+[jylib_arena]  甲言 -> OK   gcc -> OK
 [jylib_base64] 甲言 -> OK   gcc -> OK
+[jylib_bitmap] 甲言 -> OK   gcc -> OK
 [jylib_crc32]  甲言 -> OK   gcc -> OK
 [jylib_sha256] 甲言 -> OK   gcc -> OK
 [jylib_sort]   甲言 -> OK   gcc -> OK
-[selftest]
-  [jylib_base64/gcc] exit=0    [jylib_base64/jy] exit=0
-  [jylib_crc32/gcc]  exit=0    [jylib_crc32/jy]  exit=0
-  [jylib_sha256/gcc] exit=0    [jylib_sha256/jy] exit=0
-  [jylib_sort/gcc]   exit=0    [jylib_sort/jy]   exit=0
+[selftest]  12 条全 exit=0（6 模块 × gcc/jy 两轨）
 复现: powershell -NoProfile -ExecutionPolicy Bypass -File jylib\build.ps1
+
+零外部依赖判据（库 .obj 不得引用运行时符号）:
+  jylib_arena   jylib_base64   jylib_bitmap
+  jylib_crc32   jylib_sha256   jylib_sort       ← 全部 ✅ 零未定义符号
 ```
 
 > 编译器选择：build.ps1 **seed 优先**。seed 是 `scripts\build_zh.ps1` 验证过的不动点产物；
@@ -232,6 +293,33 @@ r8   0xfd496000         ← 高 32 位被清零
 
 ⟹ **"甲言的库能给别人调用"这件事此前从未被真正验证过** —— 甲言的验证一直在自己闭环里。
 建库这一步正好把它逼出来了。
+
+---
+
+## ✅ 硬判据：库 `.obj` 必须零外部依赖
+
+**判据**：`objdump -t jylib_xxx.jy.obj` 的输出中，不得出现任何 `*UND*` 符号。
+
+**为什么**：库的用途是「给别人链接」。若 `.obj` 里留有未定义符号，别人链接时就得额外提供那个符号——那就不是「零依赖库」了。
+
+**实测踩过的坑**（2026-10-31，建 arena 时）：
+
+```c
+aligned = (a->pos + align - 1UL) / align * align;   /* 除法 */
+```
+甲言把整数除法编译成对 **`__qcc_div_check64`**（运行时库 qcc_rt.c 的除零检查）的调用：
+```
+ld.exe: jylib_arena.jy.obj:(.text+0x3f9): undefined reference to `__qcc_div_check64'
+```
+⟹ 库 `.obj` 无法被 gcc/ld 链接。
+
+**修法**：`align` 恒是 2 的幂 ⟹ 用位掩码上取整替代除法：
+```c
+mask = align - 1UL;
+aligned = (a->pos + mask) & (~mask);      /* 等价于 ceil(pos/align)*align */
+```
+
+`build.ps1` 已内置此判据（每个库逐个 `objdump` 检查 `*UND*`），6 个库当前全部零未定义符号。
 
 ---
 
@@ -281,7 +369,9 @@ jylib/
 │   ├── jylib_sha256.h                 SHA 模块公开 API
 │   ├── jylib_sort.h                   排序模块公开 API
 │   ├── jylib_crc32.h                  CRC-32 模块公开 API
-│   └── jylib_base64.h                 Base64 模块公开 API
+│   ├── jylib_base64.h                 Base64 模块公开 API
+│   ├── jylib_bitmap.h                 位图模块公开 API
+│   └── jylib_arena.h                  线性分配器公开 API
 ├── src/
 │   ├── jylib_sha256.c                 核心（零字符串字面量）
 │   ├── jylib_sha256_selftest.c        标准向量自测（含 printf）
@@ -290,7 +380,11 @@ jylib/
 │   ├── jylib_crc32.c                  核心（零字符串字面量）
 │   ├── jylib_crc32_selftest.c         标准向量 + 三路交叉自测
 │   ├── jylib_base64.c                 核心（零字符串字面量）
-│   └── jylib_base64_selftest.c        RFC 4648 向量 + 往返自测
+│   ├── jylib_base64_selftest.c        RFC 4648 向量 + 往返自测
+│   ├── jylib_bitmap.c                 核心（零字符串字面量）
+│   ├── jylib_bitmap_selftest.c        7 用例自测（含暴力对照）
+│   ├── jylib_arena.c                  核心（零字符串字面量 / 零除法）
+│   └── jylib_arena_selftest.c         7 用例自测
 ├── lib/                               构建产物（*.jy.obj + *.gcc.obj）
 └── tests/
     └── selftest_main.c                sha256 自测驱动（其余驱动由 build.ps1 自动生成）
@@ -306,6 +400,9 @@ jylib/
 | 旧壳武库 `qsort.c`（44 行，`int*` 专用递归快排） | ① 公开化并改名 `jy_qsort` ② 统一 `jy_` 前缀 ③ **泛型化**：由 `int*` 扩到 `void*` + 元素宽度 + 比较器 ④ 新增插入排序 / 堆排序 / 二分查找 / 已排序判据 ⑤ 剥离 `main` ⑥ **健壮化**：原实现取 `a[(l+r)/2]` 作中轴，已排序输入退化为 O(n²) ⟹ 改三数取中 + 小区间切插排 |
 
 | 旧壳武库 `crc32.c`（71 行，查表法） | ① 公开化并加 `jy_` 前缀 ② **去全局**：`static crc32_table[256]` + `static crc32_init` 改为「表由调用者提供」③ 新增流式 init/update/final + 零状态慢速版 ④ 剥离 `main` ⑤ 规避甲言 `long` 家族指针缺陷（见 D107），全程用 `unsigned int` |
+| 旧壳武库 `base64.c`（76 行） | ① 公开化并加 `jy_` 前缀 ② **编码表改字符数组**（原 `static const char b64[] = "ABC..."` 是字符串字面量 ⟹ ADDR32 重定位 ⟹ 无法 gcc 链接）③ decode 由 `strlen(in)` 改显式 `inlen` ④ 新增 `jy_base64_encoded_size` ⑤ 剥离 `main` |
+| 旧壳武库 `bitmap.c`（77 行）+ `bitset.c`（54 行） | ① **两份合并**（语义重叠）② **动态化**：原 `BM_WORDS=4` / `BITSET_WORDS=4` 硬编码 128 位 ⟹ 位数由调用者指定 ③ **去 builtin**：原用 `__builtin_ctz`/`__builtin_popcount` ⟹ 自己实现 popcount/ctz ④ 去全局 ⑤ 剥离 `main` 与 `bm_dump` |
+| 旧壳武库 `arena.c`（66 行） | ① 公开化并加 `jy_` 前缀 ② **外部化**：原把 64 KB 缓冲内嵌在结构体里（栈上声明爆栈）⟹ 改调用者提供缓冲 ③ 动态容量 ④ **增对齐**（原按上次结束位置直接切，double/指针可能未对齐）⑤ 增快照回滚 ⑥ **零除法**：`/ align` 改位掩码上取整（除法会生成 `__qcc_div_check64` 调用，库 .obj 无法独立链接）|
 
 **`sha256` 算法实现逐字保留，未做任何逻辑改动** —— 通过 gcc 版标准向量全过验证改造无损。
 

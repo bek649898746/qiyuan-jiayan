@@ -151,6 +151,33 @@ if ($selftestResults.Count -gt 0) {
     Write-Host '  (本轮无自测)' -ForegroundColor Yellow
 }
 Write-Host ''
+Write-Host '  零外部依赖判据（库 .obj 不得引用运行时符号）:'
+$dirty = 0
+foreach ($r in $results) {
+    if (-not $r.JY) { continue }
+    $obj = Join-Path $here "lib\$($r.Module).jy.obj"
+    if (-not (Test-Path $obj)) { continue }
+    $symOut = (& objdump -t $obj 2>&1 | Out-String)
+    $und = @()
+    ($symOut -split "`n") | ForEach-Object {
+        if ($_ -match '\*UND\*\s+(\S+)') { $und += $matches[1] }
+    }
+    $und = $und | Select-Object -Unique | Where-Object { $_ -ne '' }
+    if ($und.Count -gt 0) {
+        Write-Host ("    {0,-20} ❌ 有 {1} 个未定义符号: {2}" -f $r.Module, $und.Count, ($und -join ', ')) -ForegroundColor Red
+        $dirty++
+    } else {
+        Write-Host ("    {0,-20} ✅ 零未定义符号" -f $r.Module) -ForegroundColor Green
+    }
+}
+if ($dirty -gt 0) {
+    Write-Host ''
+    Write-Host '  ⟹ 有库引用了外部符号，无法被别人独立链接。' -ForegroundColor Red
+    Write-Host '     最常见原因：代码里用了除法（甲言编译成 __qcc_div_check64 调用）。' -ForegroundColor Yellow
+    Write-Host '     修法：把 / 改成位运算（如 align 是 2 的幂时用掩码上取整），或改用乘法。' -ForegroundColor Yellow
+}
+
+Write-Host ''
 Write-Host '  产物: lib/'
 Get-ChildItem (Join-Path $here 'lib') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("    {0,-28} {1,8:N0} B" -f $_.Name, $_.Length) }
 Write-Host ''
