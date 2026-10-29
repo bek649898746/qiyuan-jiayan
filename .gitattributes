@@ -3,6 +3,14 @@
 
 # 常见文本文件（显式 UTF-8，防止边缘情况）
 *.c    text encoding=UTF-8
+
+# 2026-10-29 (可复现性 P0): 运行时库 qcc_rt.c 被编译器**逐字节内嵌**进每个产物
+# （自动前置包含）⟹ 行尾符直接改变不动点 hash。本机实证：
+#   CRLF 版 qcc_rt.c 自举 ⟹ 39BFD07D（错）；LF 版（内容一字未改）⟹ 36B99BEE（对）。
+#   `text` 属性 + core.autocrlf=true ⟹ checkout 出 CRLF ⟹ 任何人 clone 都算错不动点。
+# 与上方 *.ps1 -text / 下方 scripts/fixtures/** -text 同一理由：逐字节固定，禁止任何转换。
+srclib/qcc_rt.c -text
+seed/qcc_rt.c   -text
 *.md   text encoding=UTF-8
 *.txt  text encoding=UTF-8
 # 2026-10-27 (bootstrap P0): .ps1 一律不做 换行/编码 转换 —— CI 上 UTF-16/UTF-8-BOM
