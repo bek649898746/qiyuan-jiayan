@@ -72,43 +72,82 @@ foreach ($s in $sources) {
     $results += [pscustomobject]@{ Module=$base; JY=$(Test-Path (Join-Path $here "lib\$jyObj")); GCC=$(Test-Path (Join-Path $here "lib\$gccObj")) }
 }
 
-# ---- 自测（每个 *_selftest.c 一套：gcc 编自测，分别链接两种库产物）----
+# ---- 自测（gcc 编自测模块 + 驱动，分别链接两种库）----
 Write-Host ''
 Write-Host '[selftest]'
-$stList = @(Get-ChildItem $work -Filter 'jylib_*_selftest.c' -File | ForEach-Object { $_.BaseName -replace '_selftest$','' })
-if ($stList.Count -eq 0) { Write-Host '  （无 *_selftest.c）' -ForegroundColor Yellow }
+$selftests = @(Get-ChildItem $work -Filter '*_selftest.c' -File | Sort-Object Name)
+if ($selftests.Count -eq 0) { Write-Host '  (无自测模块)' -ForegroundColor Yellow }
 
-foreach ($mod in $stList) {
-    $stName = "${mod}_selftest.c"
-    $drv    = Join-Path $work "driver_$mod.c"
+$selftestResults = @()
+foreach ($stf in $selftests) {
+    $mod = $stf.BaseName -replace '_selftest$',''
+    $libObjGcc = Join-Path $work "$mod.gcc.obj"
+    $libObjJy  = Join-Path $work "$mod.jy.obj"
+    if (-not (Test-Path $libObjGcc) -and -not (Test-Path $libObjJy)) {
+        Write-Host ("  [{0}] 跳过（库 obj 不存在）" -f $mod) -ForegroundColor Yellow
+        continue
+    }
+    $hdr = Join-Path $work "$mod.h"
+    if (-not (Test-Path $hdr)) {
+        Write-Host ("  [{0}] 跳过（头文件 {1}.h 不存在）" -f $mod, $mod) -ForegroundColor Yellow
+        continue
+    }
+    # 驱动：调用 <mod>_selftest() 并作为退出码
+    $drv = Join-Path $work "stmain_$mod.c"
+    $fnName = 'jy_' + ($mod -replace '^jylib_','') + '_selftest'
     @"
 #include <stdio.h>
 #include "$mod.h"
-int main(void) { int f = $(${mod} -replace '^jylib_','jy_')_selftest(); printf("RESULT fails=%d\n", f); return f; }
-"@ | Set-Content -Path $drv -Encoding ASCII
+int main(void){ int f = $fnName(); printf("; exit=%d\n", f); return f; }
+"@ | ForEach-Object { [IO.File]::WriteAllText($drv, $_, (New-Object Text.UTF8Encoding $false)) }
 
-    & gcc -w -I $work -c (Join-Path $work $stName) -o (Join-Path $work "st_$mod.obj") 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Host "  [$mod] 自测模块 gcc 编译失败" -ForegroundColor Red; continue }
-    & gcc -w -I $work -c $drv -o (Join-Path $work "drv_$mod.obj") 2>&1 | Out-Null
-
-    $line = "  $mod :"
+    & gcc -w -I $work -c $stf.FullName -o (Join-Path $work "st_$mod.obj") 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ("  [{0}] 自测编译失败" -f $mod) -ForegroundColor Red
+        continue
+    }
     foreach ($tag in @('gcc','jy')) {
         $obj = Join-Path $work "$mod.$tag.obj"
-        if (-not (Test-Path $obj)) { $line += "  [$tag]=缺产物"; continue }
+        if (-not (Test-Path $obj)) { continue }
         $exe = Join-Path $work "selftest_${mod}_$tag.exe"
-        & gcc -w -I $work -o $exe (Join-Path $work "drv_$mod.obj") (Join-Path $work "st_$mod.obj") $obj 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { $line += "  [$tag]=链接失败"; continue }
-        $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $work "st_${mod}_$tag.txt")
-        $line += "  [$tag]=exit$($p.ExitCode)"
+        & gcc -w -I $work -o $exe $drv $obj (Join-Path $work "st_$mod.obj") 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ("  [{0}/{1}] 链接失败" -f $mod, $tag) -ForegroundColor Red
+            $selftestResults += [pscustomobject]@{ Module=$mod; Tag=$tag; Exit='LINK-FAIL'; Detail='' }
+            continue
+        }
+        $logf = Join-Path $work "st_${mod}_$tag.txt"
+        $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $logf
+        $code = $p.ExitCode
+        $txt = (Get-Content $logf -ErrorAction SilentlyContinue | Where-Object { $_ -match 'exit=' }) -join ''
+        $color = if ($code -eq 0) { 'Green' } else { 'Red' }
+        Write-Host ("  [{0}/{1}] exit={2}  {3}" -f $mod, $tag, $code, $txt) -ForegroundColor $color
+        $selftestResults += [pscustomobject]@{ Module=$mod; Tag=$tag; Exit=$code; Detail=$txt }
     }
-    $color = if ($line -match 'exit0' -and $line -notmatch '失败|缺产物') { 'Green' } else { 'Red' }
-    Write-Host $line -ForegroundColor $color
 }
 
 # ---- 汇总 ----
 Write-Host ''
 Write-Host '--------------- 汇总 ---------------'
 $results | ForEach-Object { Write-Host ("  {0,-20} 甲言={1,-6} gcc={2,-6}" -f $_.Module, $(if($_.JY){'OK'}else{'--'}), $(if($_.GCC){'OK'}else{'--'})) }
+Write-Host ''
+if ($selftestResults.Count -gt 0) {
+    Write-Host '  自测（双轨对照）:'
+    $byMod = $selftestResults | Group-Object Module
+    foreach ($g in $byMod) {
+        $gccRow = $g.Group | Where-Object Tag -eq 'gcc'
+        $jyRow  = $g.Group | Where-Object Tag -eq 'jy'
+        $gv = if ($gccRow) { $gccRow.Exit } else { '--' }
+        $jv = if ($jyRow)  { $jyRow.Exit }  else { '--' }
+        $ok = ($gv -eq 0) -and ($jv -eq 0)
+        $tag = if ($ok) { '✅ 双轨全绿' } elseif ($gv -eq 0 -or $jv -eq 0) { '⚠️ 单轨' } else { '❌ 失败' }
+        Write-Host ("    {0,-22} gcc={1,-8} jy={2,-8} {3}" -f $g.Name, $gv, $jv, $tag) -ForegroundColor $(if($ok){'Green'}else{'Red'})
+    }
+    Write-Host ''
+    Write-Host '  判据: 两轨 exit 都必须为 0；任一非 0 即为回归。'
+} else {
+    Write-Host '  (本轮无自测)' -ForegroundColor Yellow
+}
 Write-Host ''
 Write-Host '  产物: lib/'
 Get-ChildItem (Join-Path $here 'lib') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("    {0,-28} {1,8:N0} B" -f $_.Name, $_.Length) }
