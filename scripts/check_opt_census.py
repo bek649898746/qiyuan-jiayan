@@ -14,6 +14,7 @@
 退出码: 0 = 逐类一致 ; 1 = 不一致
 """
 import io, os, re, sys, collections, subprocess
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)

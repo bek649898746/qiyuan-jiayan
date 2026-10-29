@@ -17,6 +17,7 @@
 退出码: 0 = 全过；1 = 有 RED
 """
 import argparse, hashlib, json, os, subprocess, sys, tempfile
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)

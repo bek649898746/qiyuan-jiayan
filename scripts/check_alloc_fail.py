@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import tempfile
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 SRC = '''#包含 <stdio.h>
 函数 整 主(空) { 整 x = 1 + 2; 返 x - 3; }

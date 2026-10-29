@@ -10,6 +10,7 @@
 用法: python scripts/check_opt_per_pass.py        退出码 0 = 逐条全过
 """
 import io, os, re, struct, subprocess, sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)

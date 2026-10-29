@@ -19,6 +19,7 @@
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # 兼容放在 scripts/ 或 memory/atlas/tools/ 两种位置

@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 import tempfile
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SELF = os.path.join(ROOT, 'scratch_perf_dag')

@@ -13,6 +13,7 @@
 退出码: 0 = 报告生成成功（差异本身不是错误）；1 = 用法/文件错误。
 """
 import io, os, re, sys, json, hashlib
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)

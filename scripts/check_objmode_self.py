@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import time
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)

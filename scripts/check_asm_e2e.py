@@ -8,6 +8,7 @@
 退出码: 0 全过 ; 1 有 断言 失败。
 """
 import io, os, re, subprocess, sys, hashlib
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)

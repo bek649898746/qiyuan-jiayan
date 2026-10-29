@@ -14,6 +14,7 @@
 退出码: 0 = 全过；1 = 有 RED
 """
 import os, sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))

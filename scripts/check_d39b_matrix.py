@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """D39-b 判据矩阵：-graph 输出路径 与 源文件/产物 的 同一性 判定（绝对 vs 相对 是核心残留）"""
 import os, sys, subprocess, shutil, tempfile, hashlib, json
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 CC = sys.argv[1] if len(sys.argv) > 1 else r"build\dev_fast.exe"
 SRC = "int 主(空) {\n    返 7;\n}\n"

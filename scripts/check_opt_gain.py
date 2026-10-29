@@ -13,6 +13,7 @@
 退出码: 0 = 断言成立（优化链更小） ; 1 = 不成立（当前基线下应报 1）
 """
 import io, os, re, struct, sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)

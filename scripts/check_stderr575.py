@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 PROBE = '''#包含 <stdio.h>
 函数 整 主(空) {

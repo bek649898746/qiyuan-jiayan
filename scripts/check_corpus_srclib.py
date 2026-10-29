@@ -14,6 +14,7 @@
   退出码: 0 = 无「非白名单」失败; 1 = 有
 """
 import io, os, subprocess, sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 qcc = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else r'qcc_zh_seed.exe'
 LIMIT = int(sys.argv[2]) if len(sys.argv) > 2 else 300
