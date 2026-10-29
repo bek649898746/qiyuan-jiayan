@@ -3,7 +3,7 @@
 > 用**甲言（中文 C 方言编译器）**编译的通用 C 库，产物可被任意 C ABI 兼容工具链（gcc / clang / msvc）链接调用。
 > 语料来自旧壳武库中挑选的通用件，经改造为库形态（公开化 / 统一前缀 / 补头文件 / 剥离 main）。
 
-**版本** 1.3.0 · **锚定编译器** `36B99BEE`（10-31 R905l）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（6 模块 × 双轨 = 12 自测全 exit=0，且全部**零外部依赖**）
+**版本** 1.4.0 · **锚定编译器** `36B99BEE`（10-31 R905l）· **状态** ✅ 甲言版与 gcc 版**双轨全通**（8 模块 × 双轨 = 16 自测全 exit=0，且全部**零外部依赖**）
 
 ---
 
@@ -17,6 +17,8 @@
 | `jylib_base64` | `include/jylib_base64.h` | Base64 编解码 | RFC 4648 §4 | ✅ 已验 |
 | `jylib_bitmap` | `include/jylib_bitmap.h` | 位图（动态位数 + 集合运算 + 位计数/遍历） | — | ✅ 已验 |
 | `jylib_arena` | `include/jylib_arena.h` | 线性分配器（对齐 + 快照回滚 + 峰值统计） | — | ✅ 已验 |
+| `jylib_hash` | `include/jylib_hash.h` | 非加密哈希（FNV-1a 32/64 + MurmurHash3） | FNV-1a · MurmurHash3 x86_32 | ✅ 已验 |
+| `jylib_str` | `include/jylib_str.h` | KMP 子串匹配（含全部匹配）+ 编辑距离 | 与 C 标准语义一致 | ✅ 已验（1 项受 D109 影响）|
 | `jylib_pool` | *(待补)* | 对象池（无锁空闲链 + 线程本地缓存） | — | 规划中 |
 
 ### jylib_sort — 已验证
@@ -179,6 +181,51 @@ jy_arena_reset(&a);                       /* 一次性全部回收 */
 >
 > 原语料把 64 KB 缓冲**内嵌在结构体里**（`unsigned char data[65536]`）—— 栈上声明直接爆栈；
 > 本版改为指针 + 容量。
+
+### jylib_hash — 已验证
+
+```c
+#include "jylib_hash.h"
+
+unsigned int  h32 = jy_fnv32("abc", 3);              /* 0x1A47E90B */
+unsigned long long h64 = jy_fnv64("abc", 3);         /* 0xE71FA2190541574B */
+unsigned int  m   = jy_murmur3_32("abc", 3, 0u);     /* 0xB3DD93FA */
+```
+
+| 函数 | 定位 |
+|:--|:--|
+| `jy_fnv32` | 极快，适合哈希表桶索引；分布一般 |
+| `jy_fnv64` | 同上，位数更多，适合大容量表 |
+| `jy_murmur3_32` | 分布更好（雪崩强），带 seed 可用于分片 |
+
+> ⚠️ 三者都**不是**加密哈希 —— 不可用于签名/口令/完整性校验（那是 `jylib_sha256` 的活）。
+
+**8 个用例全过**，其中：
+- 原 `murmur3.c` 的未对齐读取 `*(uint32_t*)(d+i*4)` 改为逐字节拼装（原写法是 UB）
+- **发现并修正旧语料的错误期望值**：原文件写 `{"hello", 123, 0xDD19B927}`，但它自己的实现跑出 `0x5DC2BDFE`（原程序自己标 ❌）。本自测改用原文件标 ✅ 的三条 + 一条「与原实现对照」
+- 分布冒烟：10000 输入散到 256 桶，全非空，最大桶 57
+
+### jylib_str — 已验证（1 项受编译器缺陷影响）
+
+```c
+#include "jylib_str.h"
+
+unsigned int lps[16];
+jy_kmp_build_lps("ABABACA", 7, lps, 16);
+long p = jy_kmp_find("ABABDABACDABABCABAB", 19, "ABABCABAB", 9, lps);   /* 10 */
+
+unsigned int lv[16];
+unsigned long d = jy_levenshtein("kitten", 6, "sitting", 7, lv, 16);    /* 3 */
+```
+
+- KMP：动态 lps（原 `int lps[256]` 上限 256）+ 找全部匹配（支持重叠）
+- 编辑距离：滚动数组，空间 O(min(n,m))（原 `int d[32][32]` 上限 31）
+- 判据：与完整二维 DP 表随机对照 30 组全一致
+
+> ⚠️ **已知编译器缺陷 D109**：经三层对照（同一份源码 gcc 编 vs 甲言编），
+> 「编辑距离缓冲不足」这条路径在甲言版下返回 0 而非 `-1`。
+> 自测里记作 `[KNOWN]` 而非 `[FAIL]` —— 不掩盖，也不假装是库的锅。
+> 生产使用请**确保缓冲充足**（按 `jy_levenshtein_buf_size` 分配）。
 
 ### jylib_sha256 — 已验证
 
