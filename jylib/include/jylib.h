@@ -19,17 +19,12 @@
 #define JYLIB_H
 
 #define JYLIB_VERSION_MAJOR 1
-#define JYLIB_VERSION_MINOR 1
+#define JYLIB_VERSION_MINOR 0
 #define JYLIB_VERSION_PATCH 0
-#define JYLIB_VERSION_STRING "1.1.0"
+#define JYLIB_VERSION_STRING "1.0.0"
 
 /* 构建工具链标识 —— 用于文档与诊断，不参与逻辑 */
 #define JYLIB_BUILT_BY "qcc_x86 (甲言)"
-
-/* 已交付模块（源文件在 src/，公开头文件各自单独 include）
- *   jylib_sha256   SHA-256 / HMAC-SHA256 / HKDF     （1.0.0 起）
- *   jylib_result   错误联合 + 显式传播宏             （1.1.0 起）
- */
 
 #ifdef __cplusplus
 extern "C" {

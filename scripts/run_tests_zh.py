@@ -75,6 +75,15 @@ MACRO_GUARD = [
 #    文件保留, 修好后重新入册 (入册时同样须过全量闸)。
 # 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
 CORE_FEAT = [
+    'scripts/feat_zh_dangling_array_neg.c',  # R905h (2026-10-29 虾米 · 审计 ORD-36): 返回局部数组名 必须 A3105（修前放行）
+    'scripts/feat_zh_dangling_allow_ok.c',  # R905h: 合法对照（形参 / static 局部）不得误报
+    'scripts/feat_zh_blockproto_ok.c',      # ORD-52 (2026-10-30 虾米): 块内函数原型 (C99 6.7.5.3) 真跑 BPROTO 42 65（修前 A1004 缺分号）
+    'scripts/feat_zh_blockproto_neg.c',     # ORD-52 负锚: 块内原型 缺分号 必须 A1004（修前盲吞下一条语句）
+    'scripts/feat_zh_dimcast53_ok.c',       # ORD-53 (2026-10-30 虾米): 常量上下文 转型操作数 (T)x —— 数组维度真跑 DIMCAST 7 9 32
+    'scripts/feat_zh_syshdr57_ok.c',        # ORD-57 (2026-10-30 虾米): 内置头/内建名 缺口 —— stdio 三常量 + locale 六常量真跑 SYS57 15 260 20
+    'scripts/feat_zh_win32_59_ok.c',        # ORD-59 (2026-10-30 虾米): Windows 平台标识 + 内置 windows.h 最小子集 —— 真跑 WIN59 1 1 260
+    'scripts/feat_zh_mathlib_sugar_ok.c',  # R905g (2026-10-29 虾米 · 审计 ORD-37): 转置/矩阵乘 的 1D 平铺 + 2D 行数组（修前 1D 全错/2D 转置错）
+    'scripts/feat_zh_enum_qual_ok.c',  # R905f (2026-10-29 虾米 · 审计 ORD-33): const enum 局部声明 + (enum T*) 转型（修前均 A1004）
     'scripts/feat_zh_macro180_chain_ok.c',  # 净缺口 #180 **正锚** (2026-10-17 虾米): 合法宏链/宏内宏展开正常（B → (A+2) = 42；APPLY(41) → ADD(41) = 42）
     'scripts/feat_zh_macro180_selfref_neg.c',  # 净缺口 #180 **负锚** (2026-10-17): 自引用宏 = C 6.10.3.4 p2 blue paint — 甲言 L804 防重入 ⟹ 不挂死 + A1001 响亮。判据 scripts/check_macro180_selfref.py（正锚运行 + 负锚 30s 内返回 + 正常宏对照 rc=0）
     'scripts/feat_zh_inline280_ok.c',  # ⚠️ **仅语义锚（不证展开）**: 内联函数的调用语义正确。展开性判据 scripts/check_inline280.py 当前 **FAIL** ⟹ #280 **未闭环**（勿当闭环证据；skeptic 2026-10-17 驳回）
@@ -2995,6 +3004,17 @@ CORE_FEAT += [
     #     neg 锚 诊断 串 写「超过上限 24」而 真实 拒绝点 64 ⟹ 口径 漂移 必红. 修复后 两锚 各自 绿.
     'scripts/feat_zh_macro_nest60_ok.c',   # SF-5: 宏展开 深度 60 ⟹ 承载数组 [64] 内, 值 逐层 传递 正确 (NEST 7)
     'scripts/feat_zh_macro_nest70_neg.c',  # SF-6: 宏展开 深度 70 ⟹ A9010 响亮拒绝 且 口径 == 判定点 (超过上限 64)
+    # ---- R886 (2026-10-27 虾米 · 特性深度普查「5 个真糖零锚」): 5 个糖各补 1 锚，并进默认链 ----
+    'scripts/feat_zh_neg_a6086_huofan.c',      # 或返: 语句位置 A6086 响亮拒绝（修前 = 静默 no-op 假结构）；`表达式 或返;` 那半由台账 SUGAR-HUOFAN-EXPR 跟踪
+    'scripts/feat_zh_neg_a6086_hongguize.c',   # 宏规则(macro_rules 式): A6086（既有载体 = `#定义词 名(形参) 体`）
+    'scripts/feat_zh_neg_a6086_chaoji.c',      # 超级编译(程序特化): A6086（定案 S-52：本体属实现自由度、不适用，但必须响亮拒绝）
+    'scripts/feat_zh_sugar_leishu_ok.c',       # 类属 = _Generic 的中文名：多分支选择 + 默认分支（此前中文名零锚）
+    'scripts/feat_zh_sugar_saowei_ok.c',       # 扫尾 = 延迟/defer 的中文别名：函数退出 LIFO（此前别名零锚）
+    # ---- R887 (2026-10-27 虾米): 「表达式语句 + 尾随标识符」通用洞收口（末梢守卫） ----
+    'scripts/feat_zh_neg_a1004_trailing_ident.c',    # 取(0) 甲乙; → A1004（修前 rc=0 静默；单写 甲乙; 本来就是 A1001）
+    'scripts/feat_zh_neg_a1004_trailing_huofan.c',   # 取(0) 或返; → A1004（或返 的 advertised 形态，修前 rc=0 静默）
+    'scripts/feat_zh_precedence_bitcmp_ok.c',   # ORD-28 bug2 (2026-10-28): 位运算 & ^ | 的优先级 — 修前 8 条里 6 条与 gcc 不符（2000 轮压测 B 组 2.40%）
+    'scripts/feat_zh_macro_prepend_guard_ok.c',  # ORD-27 刀二 (2026-10-28): 用户宏不得替换前插受信代码里的同名 token（`#define c 42` 曾把 qcc_rt.c 的 `int c` 变 `int 42` ⟹ A1004）
 ]
 
 # R518 (2026-10-07 虾米 · 第 455 站第一百四十七轮 · B类攻坚 批L): **#46 编译器卡死 根治 (A6069)**

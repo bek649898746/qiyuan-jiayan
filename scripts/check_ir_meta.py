@@ -27,7 +27,7 @@ os.chdir(ROOT)
 
 # 对照编译器 = **R880 改动前** 的 shipped（R879 收口 `1C153876`）。
 # 判据 **fail-closed**：文件缺失 / 哈希不符 ⟹ 判红（不许「无对照 也 PASS」）。
-CONTROL_SHA8 = '1C153876'
+CONTROL_SHA8 = '8B02D16B'
 
 SRC = '''#include <stdio.h>
 int 算和(int n) {
@@ -156,7 +156,8 @@ def strip_meta(text):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
-    ap.add_argument('--control', default=os.path.join(ROOT, 'build', 'control_qcc_1C153876.exe'))
+    # 2026-10-30：文件名随 CONTROL_SHA8 动态拼（原硬编码 DEF8508B ⟹ 重钉后找不到）
+    ap.add_argument('--control', default=os.path.join(ROOT, 'build', 'control_qcc_%s.exe' % CONTROL_SHA8))
     ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_ir_meta'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)

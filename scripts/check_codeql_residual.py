@@ -26,9 +26,29 @@ def main():
     global ROOT
     ap = argparse.ArgumentParser()
     ap.add_argument('--root', default=None, help='要检查的树（默认本仓；用于修前/修后对照）')
+    ap.add_argument('--scope', action='store_true',
+                    help='只判《CodeQL 扫描范围收窄》那 8 项（配置面），不判 ci.yml/feat_err 那几项。'
+                         '施工单 ORD-20261027-05 用它做判据 —— 否则它的红会和 ORD-04（残留/可诊断性）混在一起。')
     a = ap.parse_args()
     ROOT = a.root or REPO
     fails = []
+
+    if a.scope:
+        cfg = read('.github/codeql/codeql-config.yml')
+        for needle in ('srclib/qcc_x86.c', 'srclib/asm_zh.c', "'seed/**'", "'tests/**'",
+                       'srclib/_dbg_*.c', 'srclib/qcc_x86_dbg.c', 'scripts/_*.c'):
+            if needle not in cfg:
+                fails.append('codeql-config.yml: 缺收窄排除 %r' % needle)
+        if 'security-extended' not in cfg:
+            fails.append('codeql-config.yml: queries 不是 security-extended（安全口径未收口）')
+        if fails:
+            print('[FAIL] CodeQL 扫描范围收窄: %d 项' % len(fails))
+            for f in fails:
+                print('   - ' + f)
+            return 1
+        print('[PASS] CodeQL 扫描范围收窄: 7 项排除 + security-extended（root=%s）' % ROOT)
+        return 0
+
     for p in ('scripts/feat_err.c', 'scripts/feat_exc.c'):
         s = read(p)
         if 'while (i < 15 && msg[i] != 0)' not in s:

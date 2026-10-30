@@ -6,8 +6,15 @@
 
 判据（全部走真实子进程，不 mock）：
   ① 连发 2 条 `{"cmd":"ping"}`：应答非空、含 "ping"、两次都成立
-  ② `{"cmd":"compile","src":...}`：`"ok":true` 且产物真实落盘
-  ③ `{"cmd":"quit"}`：进程在 10s 内正常退出（rc=0）
+  ② ping 应答是**标准 JSON**（`json.loads` 可解析 + `ok:true` + `cmd:ping`）
+  ③ 协议**对空白容错**：`{"cmd": "ping"}`（标准序列化器默认写法）也能识别
+  ④ `{"cmd":"compile","src":...}`：`"ok":true` 且产物真实落盘，且**句柄已释放**（可立即重命名）
+  ⑤ `{"cmd":"quit"}`：**有 `{"ok":true,"cmd":"quit"}` 回包**，且进程在 10s 内正常退出（rc=0）
+
+2026-10-28（R891）补 ②③④⑤：原判据只验「含 ping 字样 / ok:true / 进程退出」，
+实测漏掉三个真缺口 —— ping 回的是甲言 JSON 方言（`{"成功":真}`，`真` 不是 JSON 真值，客户端 `json.loads` 必失败）、
+`{"cmd": "ping"}` 的空白不认（任何标准序列化器默认带空格）、编译后产物句柄不释放
+（`--serve` 长驻时客户端编译完无法运行或替换产物，实测 PermissionError）。
 
 用法: python scripts/check_serve.py [--cc <编译器 exe>]
 默认: 环境变量 QCC_TEST_BIN，否则 qcc_zh_seed.exe → qcc_zh_v1.exe 依次探测。
@@ -63,14 +70,27 @@ def main():
 
     fails = []
 
-    def send(obj):
-        # 协议是紧凑 JSON（净浅 按 `"cmd":"` 原文匹配，不跳空格）⟹ 必须 separators 去空格
-        p.stdin.write(json.dumps(obj, ensure_ascii=False, separators=(',', ':')) + '\n')
-        p.stdin.flush()
+    def send(obj, compact=True):
+        # 紧凑 JSON 是历史协议（`净浅` 曾按 `"cmd":"` 原文匹配）；
+        # 2026-10-28 起 `净浅` 也容忍 `"cmd": "ping"` 的空白 ⟹ compact=False 用于验证这条容错。
+        s = json.dumps(obj, ensure_ascii=False,
+                       separators=(',', ':') if compact else None)
+        try:                       # R905d: serve 已死（崩/被我们判据打死）时 write/flush 抛 OSError ⟹ 退化成空应答，
+            p.stdin.write(s + '\n')  # 由调用处 断言「无应答」报 FAIL，而不是让判据脚本自己炸出 traceback。
+            p.stdin.flush()
+        except (OSError, ValueError):
+            return ''
         try:
             return q.get(timeout=15)
         except queue.Empty:
             return ''
+
+    def parse_ok(s):
+        try:
+            json.loads(s)
+            return True
+        except Exception:
+            return False
 
     for i in (1, 2):
         resp = send({'cmd': 'ping'})
@@ -79,6 +99,20 @@ def main():
         elif 'ping' not in resp:
             fails.append('ping#%d 应答不含 ping: %r' % (i, resp[:120]))
 
+    # 2026-10-28（R891）新增三条：都是实测踩到的真缺口
+    # ① 应答必须是**标准 JSON**（原 ping 回 `{"成功":真,...}`，`真` 不是 JSON 真值 ⟹ 任何 json.loads 客户端失败）
+    resp = send({'cmd': 'ping'})
+    if not parse_ok(resp):
+        fails.append('ping 应答不是标准 JSON（json.loads 失败）: %r' % resp[:140])
+    else:
+        d = json.loads(resp)
+        if d.get('ok') is not True or d.get('cmd') != 'ping':
+            fails.append('ping 标准键缺失/不符（需要 ok:true 与 cmd:ping）: %r' % resp[:140])
+    # ② 协议对空白容错（标准序列化器默认输出 `"cmd": "ping"`）
+    resp_sp = send({'cmd': 'ping'}, compact=False)
+    if '"ok":true' not in resp_sp.replace(' ', ''):
+        fails.append('带空格 JSON 未被识别（`{"cmd": "ping"}` ⟹ %r）' % resp_sp[:120])
+
     resp = send({'cmd': 'compile', 'src': 'int main(){return 7;}', 'out': out_exe})
     if not resp:
         fails.append('compile 应答为空')
@@ -86,8 +120,34 @@ def main():
         fails.append('compile 未成功: %r' % resp[:160])
     elif not os.path.exists(out_exe):
         fails.append('compile 报 ok 但产物不存在: %s' % out_exe)
+    else:
+        # ③ 编译后**产物句柄必须已释放**（serve 长驻时原实现每个文件留句柄 ⟹ 客户端无法运行/替换产物）
+        try:
+            os.replace(out_exe, out_exe + '.moved')
+            os.replace(out_exe + '.moved', out_exe)
+        except OSError as e:
+            fails.append('compile 后产物仍被 serve 占用（无法重命名：%s）' % e.__class__.__name__)
 
-    send({'cmd': 'quit'})
+    # ⑥ 同进程**双源复用**回归（2026-10-29 · 审计 skeptic 1 实测缺口的钉子）：
+    #    节点号跨编译复用 ⟹ 逐节点平表（`转基浮[]` 等）必须随节点清零；否则上一轮 `(float*)`
+    #    转型位残留，本轮 `*(&整g)` 被判 双精度 ⟹ 合法程序 A9002 拒编（实测：serve 连编两条即现；
+    #    单次调用 4/4 PASS ⟹ 只有长驻场景暴露）。修法见 `建节`/`终子` 的 `转基浮[计]=0` / memset。
+    out2 = os.path.join(tmp, 'serve_reuse2.exe')
+    r1 = send({'cmd': 'compile', 'src': 'int main(){ float f = 1.5f; float h = *(float*)&f; return (int)h; }',
+               'out': out_exe})
+    if '"ok":true' not in (r1 or '').replace(' ', ''):
+        fails.append('双源复用#1（(float*) 转型）未成功: %r' % (r1 or '')[:160])
+    r2 = send({'cmd': 'compile', 'src': 'int main(){ int g = 7; int h = *(&g); return h; }', 'out': out2})
+    if not r2:
+        fails.append('双源复用#2（*(&整g)）无应答 —— 疑 serve 进程已被上一轮节点的残留状态打死')
+    elif '"ok":true' not in r2.replace(' ', ''):
+        fails.append('双源复用#2（*(&整g)）被上一轮转型位污染: %r' % r2[:160])
+    elif not os.path.exists(out2):
+        fails.append('双源复用#2 报 ok 但产物不存在: %s' % out2)
+
+    qresp = send({'cmd': 'quit'})
+    if '"ok":true' not in (qresp or '').replace(' ', ''):
+        fails.append('quit 回包缺失或非 ok:true: %r' % (qresp or '')[:120])
     try:
         rc = p.wait(timeout=10)
     except subprocess.TimeoutExpired:
@@ -105,7 +165,7 @@ def main():
         if err:
             print('   stderr 末行: ' + err[-1][:200])
         return 1
-    print('[PASS] --serve 接线判据: ping×2 / compile+产物 / quit 正常退出')
+    print('[PASS] --serve 接线判据: ping×2（标准 JSON）/ 带空格容错 / compile+产物+句柄释放 / quit 回包+退出')
     return 0
 
 

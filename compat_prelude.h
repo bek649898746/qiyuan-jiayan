@@ -402,8 +402,8 @@ int lstat(const char *path, void *buf);
 #define NO_MEMMEM 1
 #define NO_SETENV 1  /* C7 2026-09-16 回滚 C2 的过度条件化: mingw.h L290 明确 "We require NO_SETENV" (gitsetenv → mingw_putenv); __MINGW32__ 下同样需要, 否则 compat/mingw.c 的 setenv 无声明 (A1001) */
 extern int putenv(const char *name);  /* POSIX putenv -> msvcrt _putenv (fix 2026-08-23 t49e: was 0-stub, gitsetenv() putenv() silently returned 0 -> GIT_CONFIG_PARAMETERS never written -> git -c ignored; real decl + jyld alias _putenv, same msvcrt env block as getenv) */
-#ifndef __MINGW32__
-#define NO_UNSETENV 1  /* (C2 2026-09-16) __MINGW32__ 下 compat/mingw.h 的 #error 检查 禁止 此宏 */
+#if !defined(__MINGW32__) && !defined(_MSC_VER)  /* R905f: 两分支由 mingw.h/msvc.h 提供 unsetenv, 且它们的 #error 禁止 NO_UNSETENV */
+#define NO_UNSETENV 1
 #endif
 #define NO_MKDTEMP 1
 #define mktemp(a) (a)  /* POSIX mktemp stub: 返回模板本身 (fix 2026-08-15: mktemp undefined) */
@@ -1214,6 +1214,7 @@ unsigned long long _beginthreadex(void *a1, unsigned int a2, void *a3, void *a4,
 /* fix 2026-08-18: geteuid 必须返 0 (与 msvcrt _stat 的 st_uid=0 匹配)。
    原返 1 → is_path_owned_by_current_uid: st_uid(0)!=euid(1) → "dubious ownership"
    → git 拒绝仓库 (config --local 报 not in repo, rev-parse 报 dubious ownership) */
+#if !defined(__MINGW32__) && !defined(_MSC_VER)  /* R905f (2026-10-29 虾米 · ORD-33): POSIX 函数 stub 的 统一 守卫 (从 geteuid 起) */
 static int geteuid(void) { return 0; }
 static int getuid(void) { return 1; }
 int _access(const char *path, int mode);
@@ -1226,8 +1227,11 @@ static int access(const char *path, int mode) { int rc = _access(path, mode); if
 #endif
 #define execvp(a,b) (-1)  /* POSIX exec stub (fix 2026-08-15: run-command.c execvp undefined) */
 #define _exit(a) exit(a)  /* POSIX 立即退出 — 复用 msvcrt exit (fix 2026-08-15: run-command.c _exit undefined) */
-static inline int git_has_dir_sep(const char *path) { return !!strchr(path, '/'); }  /* git-compat-util.h 静态 inline 兜底 (fix 2026-08-15: run-command.c git_has_dir_sep undefined) */
-static inline char *git_find_last_dir_sep(const char *path) { return strrchr(path, '/'); }  /* 同上 */
+/* has_dir_sep: 交给 git-compat-util.h 自己定义（试验） */
+#ifndef find_last_dir_sep
+static inline char *git_find_last_dir_sep(const char *path) { return strrchr(path, '/'); }
+#define find_last_dir_sep git_find_last_dir_sep
+#endif  /* 同上 */
 #define sigfillset(a) 0  /* POSIX 信号集 stub */
 #define sigemptyset(a) 0
 #define sigaction(a,b,c) 0
@@ -1240,7 +1244,7 @@ static int fcntl(int fd, int cmd, ...) { (void)fd; (void)cmd; return -1; }  /* P
 #define WEXITSTATUS(s) 0
 #define WIFEXITED(s) 1
 #ifndef __MINGW32__  /* C2 (2026-09-16): __MINGW32__ 下 由 compat/mingw.h 的 static inline 提供 */
-#define fork() (-1)  /* POSIX fork stub */
+#define fork() (-1)  /* POSIX fork stub — R905f: 变参, MSVC 分支下 compat/msvc.h 会以 fork(a,b,c) 形态调用 */
 #endif
 #define NSIG 65  /* POSIX 信号数量 stub */
 #define execve(a,b,c) (-1)  /* POSIX execve stub */
@@ -1287,17 +1291,23 @@ static int proc_type_GetCurrentConsoleFontEx;  /* qcc ## 长标识符合成截�
    删除后: 全量静默 1926→106 次 (442→22 文件); `scratch_gl/c19/c19_run.c` 运行 rc 由 2 转 0 (赋值不再被丢);
    语料闸 551/10 **名单级逐项一致** (零回归)。
    依据: 类型定义本就来自 git 的 regex.h (兼容层无需再近似), 近似由下方 L1313 `typedef int regex_t;` 承担。 */
+#if !defined(__MINGW32__) && !defined(_MSC_VER)  /* R905f (2026-10-29 虾米 · ORD-33): POSIX 函数 stub 的 统一 守卫 */
 static int execv(void *a, void *b) { (void)a; (void)b; return -1; } /* POSIX execv (A75 2026-09-14): shell.c L221 — 顶层 内联 结构体 数组 `cmd_list[]` 原 被 解析错位, 该调用 在 旧编译器 上 从未 被 解析 (假 OK); 修复后 正确 解析 → 需 声明 */
 static int execl(void *a, void *b, void *c) { (void)a; (void)b; (void)c; return -1; } /* builtin/help.c POSIX 变参 exec (fix 2026-08-15: execl undefined) */
-static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; } /* fix 2026-08-15: symlink undefined */
+#ifndef __MINGW32__  /* R905f: __MINGW32__ 下 由 compat/mingw.h 提供 symlink */
+static int symlink(const char *a, const char *b) { (void)a; (void)b; return -1; }
+#endif /* fix 2026-08-15: symlink undefined */
 static int getppid(void) { return 1; } /* POSIX 父进程 ID, Windows msvcrt 无 _getppid (fix 2026-08-15: getppid undefined) */
 static int accept(int s, void *a, void *b) { (void)s; (void)a; (void)b; return -1; } /* ws2_32 accept stub (fix 2026-08-15: accept undefined) */
 static int shutdown(int s, int how) { (void)s; (void)how; return -1; } /* ws2_32 shutdown stub (fix 2026-08-15: shutdown undefined) */
+#ifndef __MINGW32__  /* R905f: __MINGW32__ 下 由 compat/mingw.h 提供 readlink ⟹ prelude 不得 重复定义 (A6109) */
 static int readlink(const char *a, char *b, int c) { (void)a; (void)b; (void)c; return -1; }
+#endif
 static int fchmod(int a, int b) { (void)a; (void)b; return -1; }
 static unsigned int alarm(unsigned int seconds) { (void)seconds; return 0; }  /* POSIX alarm stub (fix 2026-08-15: upload-pack.c alarm undefined) */
 static int fsync(int fd) { (void)fd; return 0; }  /* POSIX fsync stub (fix 2026-08-15: bulk-checkin.c fsync undefined) */
 static void sync(void) {}  /* POSIX sync stub (fix 2026-08-15) */
+#endif /* R905f: 以上 POSIX stub 在 __MINGW32__ / _MSC_VER 下 由 compat/mingw.h | compat/msvc.h 提供, prelude 不得 重复定义 (A6109) */
 /* userdiff.c 多行初始化宏 qcc 未展开, 呼叫落在 stub 上 (fix 2026-08-15).
    fix 2026-08-19: ginit 体把 stub 返回值当 struct 指针拷 88 字节 (sizeof userdiff_driver) --
    stub 必须返回有效地址 (否则从地址 0 拷贝 SEGV). 参数 a/b/c

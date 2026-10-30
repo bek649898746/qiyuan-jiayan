@@ -173,7 +173,7 @@ foreach ($r in $results) {
 if ($dirty -gt 0) {
     Write-Host ''
     Write-Host '  ⟹ 有库引用了外部符号，无法被别人独立链接。' -ForegroundColor Red
-    Write-Host '     最常见原因：代码里用了整数除法（在部分工具链上会引入运行时库依赖）。' -ForegroundColor Yellow
+    Write-Host '     最常见原因：代码里用了除法（甲言编译成 __qcc_div_check64 调用）。' -ForegroundColor Yellow
     Write-Host '     修法：把 / 改成位运算（如 align 是 2 的幂时用掩码上取整），或改用乘法。' -ForegroundColor Yellow
 }
 
@@ -181,7 +181,7 @@ Write-Host ''
 Write-Host '  产物: lib/'
 Get-ChildItem (Join-Path $here 'lib') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("    {0,-28} {1,8:N0} B" -f $_.Name, $_.Length) }
 Write-Host ''
-Write-Host '  注: 甲言版与 gcc 版产物行为一致，双轨对照即为验收判据；' -ForegroundColor Yellow
-Write-Host '      若双轨结果不一致，优先核对参数指针的元素尺寸是否与声明类型一致。' -ForegroundColor Yellow
-Write-Host '      [jy] 行须 pass=6 fail=0 且 exit=0；直接运行，勿在调试器下运行（会改变地址布局）。' -ForegroundColor Yellow
+Write-Host '  注: 甲言版构建状态 —— 第 262 站已修 __qcc_ginit 内联 memset 指针截断；' -ForegroundColor Yellow
+Write-Host '      启元 Q8 修 -> 字段基址 32 位截断（参数指针 未登记 指元素尺寸 致判据漏）。' -ForegroundColor Yellow
+Write-Host '      [jy] 行须 pass=6 fail=0 且 exit=0；直接跑，勿用 gdb（gdb 抑制 ASLR 会掩盖截断）。' -ForegroundColor Yellow
 Write-Host ''

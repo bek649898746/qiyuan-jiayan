@@ -2281,12 +2281,123 @@ static void write_pe(FILE *f, int entry_rva) {
     while (pos < data_end) { fputc(0, f); pos++; }
 }
 
+/* ---------- `--ar`：GNU ar 写器（台账 D56 · 2026-10-25） ----------
+ * 为什么放在 jyld 里：链接器已经拥有 **COFF 符号表 / 节表 / GNU ar 读取** 的全部知识
+ * （`parse_coff` / `parse_archive`）⟹ 写库只需复用同一份解析；另立第三方二进制会重复。
+ * 产出格式与 GNU ar 一致：`!<arch>\n` + 符号索引成员 `/` + 长名表 `//`（按需）+ 每成员 60 字节头。
+ * 索引成员内容 = [BE32 符号数][BE32 成员头偏移 ×n][NUL 结尾名字 ×n]（GNU 约定，顺序一致）。
+ */
+static void wr_be32(FILE *f, unsigned v) {
+    fputc((int)((v >> 24) & 0xFF), f); fputc((int)((v >> 16) & 0xFF), f);
+    fputc((int)((v >> 8) & 0xFF), f); fputc((int)(v & 0xFF), f);
+}
+static void ar_hdr(FILE *f, const char *name16, int size) {
+    char nm[16]; memset(nm, ' ', 16);
+    int n = (int)strlen(name16); if (n > 16) n = 16;
+    memcpy(nm, name16, n);
+    fwrite(nm, 1, 16, f);
+    char buf[16];
+    sprintf(buf, "%-12d", 0); fwrite(buf, 1, 12, f);          /* date */
+    sprintf(buf, "%-6d", 0);  fwrite(buf, 1, 6, f);           /* uid */
+    sprintf(buf, "%-6d", 0);  fwrite(buf, 1, 6, f);           /* gid */
+    sprintf(buf, "%-8d", 0);  fwrite(buf, 1, 8, f);           /* mode */
+    sprintf(buf, "%-10d", size); fwrite(buf, 1, 10, f);       /* size */
+    fwrite("`\n", 1, 2, f);
+}
+
+#define AR_MAXSYM 4096
+typedef struct { char name[NSYMLEN]; int mem; } ArSym;
+
+static int ar_write(const char *out, char **ins, int n) {
+    if (n <= 0) { fprintf(stderr, "jyld --ar: 需要至少一个成员对象\n"); return 1; }
+    uint8_t *body[1024]; int body_len[1024]; const char *nm[1024];
+    static ArSym syms[AR_MAXSYM]; int nsym = 0;
+    long long longnames_len = 0; int need_long = 0;
+    for (int i = 0; i < n; i++) {
+        int len = 0;
+        uint8_t *b = read_all(ins[i], &len);
+        if (!b) { fprintf(stderr, "jyld --ar: cannot open %s\n", ins[i]); return 1; }
+        if (len < 20 + 40 || r2(b) != 0x8664) {           /* IMAGE_FILE_MACHINE_AMD64 */
+            fprintf(stderr, "jyld --ar: %s 不是 x86-64 COFF 对象（machine=%04X）\n", ins[i], len >= 2 ? r2(b) : 0);
+            return 1;
+        }
+        body[i] = b; body_len[i] = len;
+        const char *base = ins[i];
+        for (const char *p = ins[i]; *p; p++) if (*p == '/' || *p == '\\') base = p + 1;
+        nm[i] = base;
+        if ((int)strlen(base) + 1 > 15) { need_long = 1; longnames_len += (long long)strlen(base) + 2; }
+        int symptr = r4(b + 8), nsym_o = r4(b + 12);
+        int strtab = symptr + 18 * nsym_o;                 /* COFF 字符串表紧随符号表 */
+        for (int s = 0; s < nsym_o && nsym < AR_MAXSYM; s += 1) {
+            const uint8_t *e = b + symptr + 18 * s;
+            char sname[NSYMLEN]; sname[0] = 0;
+            if (e[0] == 0 && e[1] == 0 && e[2] == 0 && e[3] == 0) {
+                unsigned off = (unsigned)r4(e + 4);
+                const char *src = (const char *)(b + strtab + off);
+                int k = 0; while (k < NSYMLEN - 1 && src[k]) { sname[k] = src[k]; k++; }
+                sname[k] = 0;
+            } else {
+                int k = 0; while (k < 8 && e[k]) { sname[k] = (char)e[k]; k++; }
+                sname[k] = 0;
+            }
+            int secnum = (short)r2(e + 12);
+            int cls = e[16];
+            if (!sname[0] || secnum <= 0) { s += e[17]; continue; }          /* 未定义/绝对 不进索引 */
+            if (cls != 2 && cls != 105) { s += e[17]; continue; }            /* EXTERNAL / WEAK_EXTERNAL */
+            int dup = 0;
+            for (int q = 0; q < nsym; q++) if (!strcmp(syms[q].name, sname)) { dup = 1; break; }
+            if (!dup) { memcpy(syms[nsym].name, sname, NSYMLEN); syms[nsym].name[NSYMLEN - 1] = 0; syms[nsym].mem = i; nsym++; }
+            s += e[17];
+        }
+    }
+    int symdata = 4 + 4 * nsym;
+    for (int q = 0; q < nsym; q++) symdata += (int)strlen(syms[q].name) + 1;
+    long long base = 8 + 60 + symdata + (symdata & 1);
+    if (need_long) base += 60 + longnames_len + (long long)(longnames_len & 1);
+    long long moff[1024];
+    { long long acc = base;
+      for (int i = 0; i < n; i++) { moff[i] = acc; acc += 60 + body_len[i] + (body_len[i] & 1); } }
+
+    FILE *f = fopen(out, "wb");
+    if (!f) { fprintf(stderr, "jyld --ar: 无法创建 %s\n", out); return 1; }
+    fwrite("!<arch>\n", 1, 8, f);
+    ar_hdr(f, "/", symdata);
+    wr_be32(f, (unsigned)nsym);
+    for (int q = 0; q < nsym; q++) wr_be32(f, (unsigned)moff[syms[q].mem]);
+    for (int q = 0; q < nsym; q++) fwrite(syms[q].name, 1, strlen(syms[q].name) + 1, f);
+    if (symdata & 1) fputc('\n', f);
+    long long lofs = 0; int lofs_of[1024];
+    if (need_long) {
+        ar_hdr(f, "//", (int)longnames_len);
+        for (int i = 0; i < n; i++) {
+            if ((int)strlen(nm[i]) + 1 > 15) {
+                lofs_of[i] = (int)lofs;
+                fwrite(nm[i], 1, strlen(nm[i]), f); fwrite("/\n", 1, 2, f);
+                lofs += (long long)strlen(nm[i]) + 2;
+            } else lofs_of[i] = -1;
+        }
+        if (longnames_len & 1) fputc('\n', f);
+    }
+    for (int i = 0; i < n; i++) {
+        char hname[32];
+        if (lofs_of[i] >= 0) sprintf(hname, "/%d", lofs_of[i]);
+        else sprintf(hname, "%s/", nm[i]);
+        ar_hdr(f, hname, body_len[i]);
+        fwrite(body[i], 1, body_len[i], f);
+        if (body_len[i] & 1) fputc('\n', f);
+    }
+    fclose(f);
+    fprintf(stderr, "jyld --ar: %s 已写出（%d 成员 / %d 符号）\n", out, n, nsym);
+    return 0;
+}
+
 /* ---------- 主入口 ---------- */
 int main(int argc, char **argv) {
     const char *outf = "a.exe";
     const char *inputs[MAX_OBJS];
     int input_n = 0;
     int argi = 1;
+    if (argc > 2 && !strcmp(argv[1], "--ar")) return ar_write(argv[2], &argv[3], argc - 3);
     while (argc > argi) {
         if (!strcmp(argv[argi], "-o") && argc > argi + 1) { outf = argv[argi + 1]; argi += 2; continue; }
         if (!strcmp(argv[argi], "--help")) {

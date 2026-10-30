@@ -34,14 +34,25 @@ typedef unsigned long long size_t;
        free 堆顶回退 (fix 2026-08-13 Phase3 根治 bump 泄漏, 替代 256MB 堆预算治标) ---- */
 void *realloc(void *p, size_t n) { /* fix M6: int->size_t 与 stdlib 一致 */
     char *q;
+    unsigned long 旧顶;
+    unsigned long 上界;
+    size_t 拷;
     if (n <= 0) n = 1;
-    if (p && p == (void*)(unsigned long)_bump_top()) {
+    旧顶 = (unsigned long)_bump_top();
+    if (p && p == (void*)旧顶) {
         _bump_set((unsigned int)((unsigned long)p + n));
         return p;
     }
     q = malloc(n);
     if (p && q) {
-        memcpy(q, p, n);
+        /* ORD-34 根因 (2026-10-29): 原 memcpy(q, p, n) 按「新」尺寸 n 从旧块读 —— bump 堆无块头，
+           旧尺寸不可知；n > 旧尺寸 时读越过堆顶 ⟹ 0xC0000005（-S 写 16MB→32MB 元数据缓冲必崩；
+           崩点 = 内联 memcpy 的 `mov %al,(%r8)`，WER 偏移恒 0x120d，gdb 同址）。
+           上界 = 旧块起点到旧堆顶 的距离：活块必在堆顶之下 ⟹ 旧尺寸 ≤ 上界 ⟹ 拷 min(n, 上界)
+           **恒不越界**，且旧内容一字不漏（拷 ≥ 旧尺寸）。p 已 free 回退到堆顶之上 ⟹ 上界 0，不拷。 */
+        上界 = (旧顶 > (unsigned long)p) ? (旧顶 - (unsigned long)p) : 0;
+        拷 = (n <= 上界) ? n : (size_t)上界;
+        if (拷) memcpy(q, p, 拷);
     }
     return q;
 }

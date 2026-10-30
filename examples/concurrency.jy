@@ -1,10 +1,10 @@
 #包含 <stdio.h>
 
-/* 线程运行时（真实场景换成 pthread_create / CreateThread） */
+/* 线程是**编译器内建**（线程 t 跑 f, n），不需要自己实现运行时 ——
+   旧版这里的 thread_create/thread_join 空壳是同步直接调用，会误导读者以为「并发」段落要自己造线程，
+   且从未被调用（见 ORD-31 施工单）。2026-10-29 删除。 */
 静 整 累计 = 0;
 静 空 干活(整 v) { 累计 += v; }
-静 空 thread_create(整 *t, 空 (*fn)(整), 整 arg) { (空)t; fn(arg); }
-静 空 thread_join(整 *t) { (空)t; }
 
 函数 整 主(空) {
     整 a = 0, b = 0, c = 0, x = 0, y = 0, 缺省 = 0;
