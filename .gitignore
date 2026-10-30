@@ -58,6 +58,10 @@ seed/_BOOTSTRAP.md
 # 种子二进制（开源仓库只传种子：允许提交 seed/*_seed.exe）
 !seed/*_seed.exe
 
+# V14 全链历史归档（2026-10-26 · 大哥令「上传多一个 V14 全链」）
+# 源码 + 可执行文件成对发布 —— 可执行文件是「零依赖、双击即跑」的证明，必须随源码一起提交
+!v14_self/*.exe
+
 # 调试/测试工作目录（本地保留，不上传）
 scratch_test/
 scratch_main/
@@ -258,5 +262,6 @@ scripts/_strtb*.py
 scripts/_t10_*.c
 csmoke/
 jyldsmoke/
-# 2026-10-30: 判据自产物（gen_entry.py 每轮重写不动点+时间戳）⟹ 不跟踪
-scripts/gate_baselines.json
+
+# 编译探针临时目录（不提交 · 2026-10-26）
+drectve248/

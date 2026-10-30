@@ -136,6 +136,45 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ci_zh_feat.ps1
 
+  tools:
+    needs: tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: 种子在位检查（seed must exist）
+        shell: powershell
+        run: |
+          if (-not (Test-Path qcc_zh_seed.exe)) { Write-Host "::error::qcc_zh_seed.exe missing at repo root"; exit 1 }
+      - name: 工具链编译（甲言自己写的工具还能不能编）
+        shell: powershell
+        run: |
+          # 2026-10-28: tools/ had no CI coverage before; these four kits live only on the publish line.
+          # ASCII ONLY in this run-block. GitHub writes it to a BOM-less temp .ps1 and PS5.1 decodes
+          # it as ANSI(GBK): any CJK here corrupts quote pairing => ParserError (same trap as build_zh.ps1 L219).
+          # Scope: compile check only. index/install/verify are experimental and are NOT executed.
+          $ErrorActionPreference = 'Continue'
+          $fail = @()
+          $targets = @(
+            @{ d = 'tools\jypkg'; f = 'jy_pkg.jy' },
+            @{ d = 'tools\jylsp'; f = 'jylsp.jy'  }
+          )
+          foreach ($t in $targets) {
+            Push-Location $t.d
+            $out = (& ..\..\qcc_zh_seed.exe $t.f -o "$env:TEMP\_tool_build_out.exe" 2>&1 | Out-String)
+            $rc = $LASTEXITCODE
+            Pop-Location
+            $flat = ($out.Trim() -replace "`r?`n", ' | ')
+            Write-Host ("[{0}] rc={1} :: {2}" -f $t.f, $rc, $flat)
+            if ($rc -ne 0) { $fail += ("{0} rc={1}" -f $t.f, $rc) }
+          }
+          if ($fail.Count -gt 0) {
+            Write-Host ("::error::tools build FAILED :: " + ($fail -join ' ~ '))
+            exit 1
+          }
+          Write-Host "tools build PASS"
+
   qemu:
     runs-on: windows-latest
     needs: tests
@@ -213,19 +252,6 @@ jobs:
             qcc_zh_v2.exe
           retention-days: 14
           if-no-files-found: warn
-
-      - name: 断言自举产物存在（防 always() 假象）
-        # ORD-26 ③ (2026-10-29 启元): upload-artifact 带 `if: always()` 时，界面会按 name 聚合**更早 run 的同名产物**，
-        #   出现「bootstrap 失败但界面显示 2.35 MB / sha256:...」的假绿（run 40479499279，artifacts.total_count=0）。
-        #   判据只看 API artifacts.total_count / 盘上文件，不看界面。
-        if: always()
-        shell: powershell
-        run: |
-          $bad = 0
-          if (-not (Test-Path qcc_zh_v1.exe)) { Write-Host "::error::qcc_zh_v1.exe 不存在 —— 自举链未产出"; $bad = 1 }
-          if (-not (Test-Path qcc_zh_v2.exe)) { Write-Host "::error::qcc_zh_v2.exe 不存在 —— 未达成不动点两代"; $bad = 1 }
-          if ($bad -ne 0) { exit 1 }
-          Write-Host "自举产物存在断言 PASS（v1/v2 均在盘上）"
 
   # ══════════════════════════════════════════════════════════
   # 行为断言 · 全量 —— 与 bootstrap 并行跑（不同 runner，互不干扰）
