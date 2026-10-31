@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""check_git_compile_repro —— 「用当前编译器重编 git」的可复现判据（ORD-33）。
+"""check_git_compile_repro —— 「用当前编译器重编 git」的可复现判据。
 
 判据（全部走真实编译器子进程，不 mock）：
   ① **10 个核心 .c** 在现行配置（`-D _WIN32=1`）下全部 rc=0：
