@@ -4811,5 +4811,27 @@ try {
     Write-Host "[入口刷新] 失败（不影响验收）: $_"
 }
 
+# ===== README 状态块自动刷新（2026-11-01 启元 · 修「三数字漂移」）=====
+# 由来（外部评审实测发现）：publish 上 README 状态块生成于 10-28，而 $expected 已改到 10-30
+#   ⟹ 读者同时看到三个"该对上却对不上"的数：
+#        种子 qcc_zh_seed.exe = 8D0876AF
+#        $expected            = 4D6901C3
+#        README 自举不动点     = DA96655F
+#      行数也不符（README 35777 vs 实际 36102）。
+# 根因**不是** gen_readme_status.ps1 算错 —— 它确实从 $expected 读、确实算种子 SHA。
+# 根因是：**它从来没被自动调用**，全靠人记得手跑。
+# 修法：挂进收尾钩子，让状态块永远跟随 $expected 与当前 HEAD。
+# 只读统计、只改 README 的 GEN:STATUS 块；失败不影响本脚本退出码。
+try {
+    $genSt = Join-Path $PSScriptRoot 'gen_readme_status.ps1'
+    if (Test-Path $genSt) {
+        Write-Host '[README 状态块] 刷新 GEN:STATUS（随 expected 与 HEAD 自动对齐）' -ForegroundColor Cyan
+        powershell -NoProfile -ExecutionPolicy Bypass -File $genSt 2>&1 | Select-Object -Last 2
+    } else {
+        Write-Host '[README 状态块] 跳过（未找到 gen_readme_status.ps1）'
+    }
+} catch {
+    Write-Host "[README 状态块] 失败（不影响验收）"
+}
 exit 0
 
