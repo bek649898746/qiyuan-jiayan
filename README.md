@@ -53,12 +53,12 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-01 09:31** |
-> | HEAD | `480da040`（分支 `publish`） |
-> | 自举不动点 | **`57B6EA9B`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **36791 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 生成时间 | **2026-11-01 20:30** |
+> | HEAD | `dec7b204`（分支 `publish`） |
+> | 自举不动点 | **`20D50715`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **36976 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1693 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1464 文件** |
-> | 种子指纹 | `57B6EA9B`（`qcc_zh_seed.exe` SHA256 前 8 位） |
+> | 种子指纹 | `20D50715`（`qcc_zh_seed.exe` SHA256 前 8 位） |
 >
 > **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
 > 想知道**现在**的准确值，跑：
@@ -414,6 +414,7 @@ strstr(中文子串) : 非常道        // C 库直接返回进可空，解包�
 | 能力 | 甲言语法 | Go 对照 |
 |:--|:--|:--|
 | 有界通道 | `通道 q, 4;` · `送 q, v;` · `收 q, a;` | `chan`（`make(chan int, 4)`） |
+| **跨线程通道** | **文件级** `通道 数, 8;` + `线程池` —— 两线程经同一通道传数；满时让出、10 秒无进展才 `A5007` | `chan`（goroutine 间共享）|
 | 多路复用 | `择收(就绪(q1), 就绪(q2)) { 例 0: … 缺: … }` | `select` —— **默认阻塞**，需 `default` 才非阻塞 |
 | **结构化并发** | `结构化并发 { 线程 t 跑 f, a; }` —— **块退出自动 join** | **无** —— goroutine 没有父作用域，泄漏靠 `errgroup` / `context` 补，语言级 proposal 尚未落地 |
 | fork-join | `线程 t 跑 f, a;` + `等待 t;` | `sync.WaitGroup` 手工 Add/Done |
@@ -429,7 +430,7 @@ strstr(中文子串) : 非常道        // C 库直接返回进可空，解包�
 
 > 六个锚实测（现役种子）：`feat_zh_struct_concur25` → `#25 结构化并发 PASS` · `feat_zh_select24` → `#24 select 多路复用 PASS` ·
 > `feat_zh_task62` → `FJ 30` · `feat_chan2_zh` → `PASS` · `feat_zh_actor19` → `#19 actor 语言级邮箱 PASS` · `feat_zh_async20` → `#20 异步 等候 PASS`。
-> 可运行示例：[`examples/concurrency.jy`](examples/concurrency.jy)
+> 可运行示例：[`examples/concurrency.jy`](examples/concurrency.jy) · **跨线程通道（两线程 × 100 数，实测输出 `MT100 OK`）**：[`examples/channel_mt.jy`](examples/channel_mt.jy)
 
 ---
 ## 🧰 工具链（都是甲言自己写的）
@@ -539,10 +540,10 @@ cd qi-yuan--jia-yan
 创建 `hello.jy`（**注意：源文件用 GBK 或 UTF-8 编码保存**，Windows 控制台建议 GBK）：
 
 ```c
-/* hello.jy —— 和 C 一样，关键字可以是中文 */
-int main() {
-    printf("jiayan hello 123\n");
-    return 0;
+/* hello.jy —— 中文关键字写的第一行代码 */
+整 main() {
+    输出("你好，甲言！\n");
+    返 0;
 }
 ```
 
@@ -551,23 +552,21 @@ int main() {
 ```bash
 ./qcc_zh_seed.exe hello.jy -o hello.exe
 ./hello.exe
-# 输出: jiayan hello 123
+# 输出: 你好，甲言！
 ```
 
-**步骤 4：试试中文关键字（甲言特色）**
+**步骤 4：也可以用英文关键字（同一份文件里还能中英混写）**
+
+`整 甲 = 1;` 与 `int 甲 = 1;` 完全等价：
 
 ```c
-/* 中文版 hello —— 关键字是中文 */
-整 main() {
-    输出("你好，甲言！\n");
-    返 0;
+/* 英文关键字版本 —— 和 C 一样 */
+int main() {
+    printf("jiayan hello 123\n");
+    return 0;
 }
 ```
 
-```bash
-./qcc_zh_seed.exe hello_zh.jy -o hello_zh.exe
-./hello_zh.exe
-```
 
 **步骤 5：完整自举验证（进阶，可选）**
 

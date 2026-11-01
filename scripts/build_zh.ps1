@@ -233,7 +233,17 @@ $ErrorActionPreference = 'Stop'
 #     （期望 A6086）⟹ 本 批 同 时 删 白名单 该 行 + 把 该 锚 换成 `重导出`(15/285)。 **白名单 是 活契约**。
 #   ⚠️ 只 做 语言面; **.edata 未 做** ⟹ 族12 #248 **仍 挂账**（下一刀: COFF `.drectve` 段 发 `/EXPORT:名`）。
 #   链 一步 收敛 v1 == v2 == 243DA40D; 前值 4116FD09。
-$expected = '57B6EA9B'  # 中文自举不动点（2026-11-01 实测，v1==v2==种子）
+# [自举历史] $expected_前 = '21412505'  # 2026-10-31 (ORD-67 两缺口): 8 字节整数转型门控 + 嵌套指针表达式缩放守卫
+# [自举历史] $expected_前 = 'D0D9AF22'  # 2026-11-01 (ORD-67 定稿 + TYPEDEF-LIST): ptrdiff 语义 + 声明符列表引擎
+# [自举历史] $expected_前 = 'D77D06A5'  # 2026-11-01 (多星声明符 指向构序)
+# [自举历史] $expected_前 = '57B6EA9B'  # 2026-11-01 (函数声明符 列表)
+# [自举历史] $expected_前 = '840FAC0B'  # 2026-11-01 (ORD-69+70: 查变量/查询族 文件区 反向全表扫 -> 名字链走查；产物字节相同；交替3轮 -34.5%)
+# [自举历史] $expected_前 = '0E2B5E47'  # 2026-11-01 (ORD-76: --profile v3 五段 + 八热点；默认路径零污染；判据 check_profile_v3)
+# [自举历史] $expected_前 = '34542A22'  # 2026-11-01 (ORD-76: --profile v3 五段 + 八热点；默认路径零污染；判据 check_profile_v3)  # 2026-11-01 (ORD-69+70: 查变量/查询族 文件区 反向全表扫 -> 名字
+# [自举历史] $expected_前 = '50C6C699'  # 2026-11-01 (ORD-20261101-81): 通道 送 满 安全阀 —— 自旋体让出 CPU + 单线程无消费者 响亮中止 (A5007, exit 7)；通道判据不再把超时判绿；v1==v2；前值 34542A22
+# [自举历史] $expected_前 = 'A8268C69'  # 2026-11-01 (ORD-20261101-81 v2): 通道 送 满 安全阀 —— 满即无消费者（通道不可跨线程/不可传参），无条件 A5007 + exit(7)（含线程池程序）；判据四腿；v1==v2；前值 50C6C699
+$expected = '20D50715'  # 2026-11-01 (ORD-20261101-81 L1): 文件级通道 → 运行期对象（槽位 0..31、锁 + 让出 + 10s 有界等待）；B3 两线程×100 数 MT100 OK；函数内通道不变；v1==v2；前值 A8268C69
+# [自举历史] $expected_前 = 'B8D9725B'  # 收 空时 非阻塞 + __ch_q_empty 计数（关闭检查位置错，已纠正）
 # [自举历史] $expected_前 = '36B99BEE'  # ORD-34 之前（R905l 枚举转型）；v1==v2
 # [自举历史] $expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
 # [自举历史] $expected_前 = '2DB0CC41'  # A9 指针地基三缺陷 (TYPEOF/PTRPTR/DEREFIDX) + --refs 预置段过滤 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==2DB0CC41; 前值 6099BEE6
@@ -4811,27 +4821,5 @@ try {
     Write-Host "[入口刷新] 失败（不影响验收）: $_"
 }
 
-# ===== README 状态块自动刷新（2026-11-01 启元 · 修「三数字漂移」）=====
-# 由来（外部评审实测发现）：publish 上 README 状态块生成于 10-28，而 $expected 已改到 10-30
-#   ⟹ 读者同时看到三个"该对上却对不上"的数：
-#        种子 qcc_zh_seed.exe = 8D0876AF
-#        $expected            = 4D6901C3
-#        README 自举不动点     = DA96655F
-#      行数也不符（README 35777 vs 实际 36102）。
-# 根因**不是** gen_readme_status.ps1 算错 —— 它确实从 $expected 读、确实算种子 SHA。
-# 根因是：**它从来没被自动调用**，全靠人记得手跑。
-# 修法：挂进收尾钩子，让状态块永远跟随 $expected 与当前 HEAD。
-# 只读统计、只改 README 的 GEN:STATUS 块；失败不影响本脚本退出码。
-try {
-    $genSt = Join-Path $PSScriptRoot 'gen_readme_status.ps1'
-    if (Test-Path $genSt) {
-        Write-Host '[README 状态块] 刷新 GEN:STATUS（随 expected 与 HEAD 自动对齐）' -ForegroundColor Cyan
-        powershell -NoProfile -ExecutionPolicy Bypass -File $genSt 2>&1 | Select-Object -Last 2
-    } else {
-        Write-Host '[README 状态块] 跳过（未找到 gen_readme_status.ps1）'
-    }
-} catch {
-    Write-Host "[README 状态块] 失败（不影响验收）"
-}
 exit 0
 

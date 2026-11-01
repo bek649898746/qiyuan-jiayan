@@ -751,6 +751,105 @@ int cur_ex_code = 0; /* #148: 最近异常码 (捕获 名 绑定用) */
 
 /* 接入 2026-09-02 #20c 惰性求值 (试吞): 惰性 x, f, a; → 声明 __lazy_x_set/__lazy_x_val 缓存;
    取值 x, f, a → __qcc_lazy_get(&set, &val, f, a) — 首次调用 f(a) 计算并缓存 (惰性, 只算一次) */
+/* ORD-20261101-81（2026-11-01 虾米 · 通道 `送` 满的静默挂死）：阻塞点安全阀。
+   现场：`通道 q, 2; 送 q,1; 送 q,2; 送 q,3;` 永久自旋 —— stdout 空、无退出码、CPU 100%，
+   用户只看到「程序不动了」。
+   为什么「满」可以直接判死（不是启发式）：当前语言里 `通道` 只能声明在函数体内（文件级
+   `通道 g, n;` 编不过），且通道**不能作实参传递**（`check_chan_matrix` c7 = compile-fail）
+   ⟹ 除声明它的那个线程外，没有任何线程能 `收` 同一个通道 ⟹ 满时**不可能**有消费者
+   ⟹ 裁定 B 的「等消费者」在该形态下按定义不可满足。
+   行为：满时打印 `[ERR] A5007 通道已满且无消费者` 并 exit(7)（有限时间、可观测、非零退出）。
+   ⚠️ 前置变化：若将来支持通道传参 / 全局通道，本判定必须重做（那时才可能出现跨线程消费者）。 */
+int __qcc_ch_blocked(int c, int cap) { /* 送/背压送 的循环体：c >= cap 时调用 */
+    if (c < cap) return 0;
+    fprintf(stderr, "[ERR] A5007 通道已满且无消费者 (channel full, no consumer) - abort\n");
+    exit(7);
+}
+
+/* ── ORD-20261101-81 L1（2026-11-01 虾米）：文件级通道的运行期对象（跨线程） ──
+   背景：函数内 `通道` 是 7 个栈标量，第二个线程看不到 ⟹ 满时不可能有消费者。
+   文件级 `通道 q, N;` 由编译器登记为槽位（0..31），送/收/就绪/关闭 走这里：
+   静态并行数组（无 malloc / 无结构体指针 —— 运行时布局纪律），全局自旋锁；
+   满时让出（SwitchToThread / Sleep(0)），10 s 无进展才 A5007
+   （跨线程存在消费者 ⟹ 不再无条件判死；无消费者的全局通道 10 s 后仍会响亮中止）。
+   ⚠️ 数据增量 = 32×256×8 + 7×32×4 + 4 + 32 + 4 + 8 = 66480 = 16×4155。 */
+static long long __qcc_ch_buf[32][256];
+static int __qcc_ch_cap[32], __qcc_ch_head[32], __qcc_ch_tail[32], __qcc_ch_count[32];
+static int __qcc_ch_closed_[32], __qcc_ch_empty_[32], __qcc_ch_used[32];
+static int __qcc_ch_glock = 0;
+static void *__qcc_ch_k32 = 0;
+static int (*__qcc_ch_swt)(void) = 0;
+static void (*__qcc_ch_slp)(int) = 0;
+static unsigned int (*__qcc_ch_tick)(void) = 0;
+static int __qcc_ch_probe = 0;
+static long long __qcc_ch_pad16 = 0;
+static void __qcc_ch_lock(void) { while (原子 加(&__qcc_ch_glock, 1) != 0) { 原子 加(&__qcc_ch_glock, -1); } }
+static void __qcc_ch_unlock(void) { 原子 加(&__qcc_ch_glock, -1); }
+static void __qcc_ch_init(void) {
+    if (__qcc_ch_probe) return;
+    __qcc_ch_probe = 1;
+    void *k = load_library("kernel32.dll");
+    if (!k) return;
+    __qcc_ch_swt = get_proc_address(k, "SwitchToThread");
+    __qcc_ch_slp = get_proc_address(k, "Sleep");
+    __qcc_ch_tick = get_proc_address(k, "GetTickCount");
+}
+static void __qcc_ch_yield(void) { __qcc_ch_init(); if (__qcc_ch_swt) __qcc_ch_swt(); else if (__qcc_ch_slp) __qcc_ch_slp(0); }
+static unsigned int __qcc_ch_now(void) { __qcc_ch_init(); return __qcc_ch_tick ? __qcc_ch_tick() : 0; }
+static void __qcc_ch_ensure(int s, int cap) {
+    if (s < 0 || s >= 32) { fprintf(stderr, "[ERR] A5007 通道槽位越界 (slot=%d)\n", s); exit(2); }
+    if (__qcc_ch_used[s]) return;
+    __qcc_ch_lock();
+    if (!__qcc_ch_used[s]) {
+        if (cap < 1) cap = 1;
+        if (cap > 256) { __qcc_ch_unlock(); fprintf(stderr, "[ERR] A5007 通道容量超上限 256\n"); exit(2); }
+        __qcc_ch_cap[s] = cap; __qcc_ch_head[s] = 0; __qcc_ch_tail[s] = 0; __qcc_ch_count[s] = 0;
+        __qcc_ch_closed_[s] = 0; __qcc_ch_empty_[s] = 0; __qcc_ch_used[s] = 1;
+    }
+    __qcc_ch_unlock();
+}
+int __qcc_ch_send(int s, long long v, int cap) {
+    __qcc_ch_ensure(s, cap);
+    unsigned int t0 = 0; int started = 0;
+    for (;;) {
+        __qcc_ch_lock();
+        if (__qcc_ch_closed_[s]) { __qcc_ch_unlock(); fprintf(stderr, "[ERR] A5006 通道已关闭 (channel closed) - abort\n"); exit(1); }
+        if (__qcc_ch_count[s] < __qcc_ch_cap[s]) {
+            __qcc_ch_buf[s][__qcc_ch_tail[s]] = v;
+            __qcc_ch_tail[s] = (__qcc_ch_tail[s] + 1) % __qcc_ch_cap[s];
+            __qcc_ch_count[s] = __qcc_ch_count[s] + 1;
+            __qcc_ch_unlock();
+            return 0;
+        }
+        __qcc_ch_unlock();
+        if (!started) { started = 1; t0 = __qcc_ch_now(); }
+        if (__qcc_ch_now() - t0 > 10000) { fprintf(stderr, "[ERR] A5007 通道已满且无进展 (channel full, no consumer) - abort\n"); exit(7); }
+        __qcc_ch_yield();
+    }
+}
+int __qcc_ch_recv(int s, void *out, int width, int cap) {
+    __qcc_ch_ensure(s, cap);
+    __qcc_ch_lock();
+    if (__qcc_ch_count[s] > 0) {
+        long long v = __qcc_ch_buf[s][__qcc_ch_head[s]];
+        __qcc_ch_head[s] = (__qcc_ch_head[s] + 1) % __qcc_ch_cap[s];
+        __qcc_ch_count[s] = __qcc_ch_count[s] - 1;
+        __qcc_ch_unlock();
+        if (width == 8) *(long long *)out = v;
+        else if (width == 2) *(short *)out = (short)v;
+        else if (width == 1) *(char *)out = (char)v;
+        else *(int *)out = (int)v;
+        return 1;
+    }
+    if (__qcc_ch_closed_[s]) { __qcc_ch_unlock(); fprintf(stderr, "[ERR] A5006 通道已关闭 (channel closed) - abort\n"); exit(1); }
+    __qcc_ch_empty_[s] = __qcc_ch_empty_[s] + 1;
+    __qcc_ch_unlock();
+    return 0;
+}
+int __qcc_ch_ready(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = __qcc_ch_count[s] > 0; __qcc_ch_unlock(); return r; }
+int __qcc_ch_ready_send(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = (__qcc_ch_count[s] < __qcc_ch_cap[s]) && !__qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
+int __qcc_ch_close(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); __qcc_ch_closed_[s] = 1; __qcc_ch_unlock(); return 0; }
+int __qcc_ch_closed(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = __qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
 /* R570 (2026-10-08 虾米 · C类攻坚 批C-W · 族3 #60 **线程池**): `线程池 池, N;` → __qcc_tp_new(N);
    `提交 池, 任务, 实参;` → __qcc_tp_submit(任务, 实参); `等待池 池;` → __qcc_tp_wait()。
    单 全局 池: 任务 = (函数指针, 实参) 两 平行数组; 工作线程 自旋 等 **启动旗**; 等待池 置旗 后 join 全部;
