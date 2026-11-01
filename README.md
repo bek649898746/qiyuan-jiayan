@@ -1,5 +1,19 @@
 # 启元 · 甲言 —— 中文自举编译器（Qiyuan · Jiayan: A Self-Hosting Chinese Compiler）
 
+> ## ⚠️ 你正在读的是 **2026-08-24 的历史封存版**，不是今天的甲言
+>
+> **活版本在 [`publish` 分支](https://github.com/bek649898746/qiyuan-jiayan/tree/publish)**
+> —— Gitee 镜像：[`qi-yuan--jia-yan`](https://gitee.com/zheng-yuhe-from-guangdong/qi-yuan--jia-yan) 的 `main` 分支。
+>
+> 本分支为历史封存，仅供追溯。**下面所有数字（不动点 / 回归数 / 产物体积 / 测试数）都是 8 月口径，今天已不成立** ——
+> 编译器、语言特性、验证规模、构建脚本、性能都与当时不同。
+>
+> **想知道现在的能力与规模**：去 `publish`。它首屏有一块「你读到的是哪个状态」，
+> 写明当次快照的 HEAD、自举不动点（以 `scripts/build_zh.ps1` 的 `$expected` 为准，**不写死哈希**）、
+> 主源行数、特性锚数、种子指纹 —— 六项全部按该分支文件现算。
+
+---
+
 > ## 🏆 封存版本 v1.0（jiayan-v1.0-stable · 2026-08-24）
 >
 > **手搓自举中文编译器 · 编译并落地运行 git-2.45.2**
