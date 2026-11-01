@@ -5,11 +5,149 @@
 # 目的：把「审计者要花 20+ 步才能自己搞清楚的事实」压到 30 秒。
 #       跑完你就有了基线，剩下的时间只需专注「找它没说的事」。
 # ============================================================
+# 参数必须位于脚本第一个可执行语句之前（PowerShell 语法要求）
+param([switch]$Json)
+
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $sw = [Diagnostics.Stopwatch]::StartNew()
+
+# ────────────────────────────────────────────────────────────
+# -Json 开关（2026-11-02 加，回应外部媒体 UNDERCODE NEWS 的建议）
+#
+# 背景：该媒体在评价里明确点名，甲言「最强下一步」是发布
+#   ① 独立可复现的构建说明 ② **机器可读的测试结果** ③ 产物哈希 ④ 自举信任链说明
+# 我们 ①③④ 都有，② 缺 —— 本脚本原输出是给人读的文本表格，
+# 想让程序核验就得写正则解析，那不叫「可复算」。
+#
+# 用法：
+#   powershell -File scripts/audit_facts.ps1          # 原文本模式（不变）
+#   powershell -File scripts/audit_facts.ps1 -Json    # 机器可读
+#
+# schema 约定（外部可依赖，改动需 bump schema_version）：
+#   所有量为**当场实测**，不从文档转抄；解析失败的字段为 null（不填假值）
+# ────────────────────────────────────────────────────────────
+
+if ($Json) {
+    # ─────────────────────────────────────────────────────────
+    # -Json 模式（2026-11-02 加，回应外部媒体 UNDERCODE NEWS 建议②「机器可读的测试结果」）
+    #
+    # 实现说明：刻意**不用 ConvertTo-Json**。实测它在本次上下文抛
+    #   "Cannot convert value System.String to type SwitchParameter"，
+    #   而同样对象在独立脚本里正常 —— 成因未查明。
+    # schema 只有 3 层、字段固定，故逐行拼接：结果可预测，不依赖 PS 版本。
+    #
+    # schema 约定（外部可依赖；改动需 bump schema_version）：
+    #   所有量**当场实测**，不从文档转抄；解析失败输出 null，绝不填假值。
+    # ─────────────────────────────────────────────────────────
+    $nl = "`n"
+    $sb = New-Object System.Text.StringBuilder
+
+    function _q([string]$s) {
+        if ($null -eq $s) { return 'null' }
+        $x = $s.Replace('\', '\\').Replace('"', '\"')
+        $x = $x.Replace("`r", '\r').Replace("`n", '\n').Replace("`t", '\t')
+        return '"' + $x + '"'
+    }
+    function _i($v) { if ($null -eq $v) { return 'null' } ; return ([string]([int64]$v)) }
+    function _d($v) { if ($null -eq $v) { return 'null' } ; return ([double]$v).ToString([System.Globalization.CultureInfo]::InvariantCulture) }
+
+    function _srcstat([string]$rel) {
+        $p = Join-Path $root $rel
+        if (-not (Test-Path $p)) { return $null }
+        $full = (Resolve-Path $p).Path
+        $t = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+        $ln = @([System.IO.File]::ReadAllLines($full, [System.Text.Encoding]::UTF8)).Count
+        $cj = ([regex]::Matches($t, '[\u4e00-\u9fff]')).Count
+        $pc = 0.0
+        if ($t.Length -gt 0) { $pc = [math]::Round($cj * 100.0 / $t.Length, 1) }
+        return @{ path = $rel.Replace('\','/'); lines = $ln; chars = $t.Length; cjk = $pc }
+    }
+
+    # ── 采集（全部现算）
+    $gHead    = ((git rev-parse HEAD 2>$null) | Out-String).Trim()
+    $gHeadS   = ((git rev-parse --short HEAD 2>$null) | Out-String).Trim()
+    $gBranch  = ((git rev-parse --abbrev-ref HEAD 2>$null) | Out-String).Trim()
+    $gTracked = @(git ls-files 2>$null).Count
+
+    $srcMain = _srcstat 'srclib_jiayan\qcc_zh.jy'
+    $srcC    = _srcstat 'srclib\qcc_x86.c'
+    $srcEn   = _srcstat 'srclib_jiayan\qcc_work.jy'
+
+    $exp = $null
+    $m = Select-String -Path scripts\build_zh.ps1 -Pattern "^\`$expected\s*=\s*'([0-9A-Fa-f]{8})'" -EA SilentlyContinue | Select-Object -First 1
+    if ($m) { $exp = ([regex]::Match($m.Line, "'([0-9A-Fa-f]{8})'")).Groups[1].Value }
+    $seedSha = $null
+    if (Test-Path 'qcc_zh_seed.exe') { $seedSha = (Get-FileHash 'qcc_zh_seed.exe' -Algorithm SHA256).Hash.Substring(0,8) }
+    $seedOk = 'false'
+    if ($exp -and $seedSha -and ($exp -eq $seedSha)) { $seedOk = 'true' }
+
+    $anchorN = @(Get-ChildItem scripts\feat_zh_*.c -EA SilentlyContinue).Count
+    $qccN    = @(git ls-files tests/qcc 2>$null).Count
+
+    $mlFiles = @(Get-ChildItem examples\multilang -Recurse -Include '*.c' -File -EA SilentlyContinue)
+    $mlLines = 0
+    foreach ($x in $mlFiles) { $mlLines += @([System.IO.File]::ReadAllLines($x.FullName, [System.Text.Encoding]::UTF8)).Count }
+
+    $lgTotal = $null; $lgOk = $null; $lgSurf = $null; $lgMiss = $null
+    $lmPath = 'manual\机制特性实现表.md'
+    if (Test-Path $lmPath) {
+        $row = Select-String -Path $lmPath -Pattern '^\|\s*\*\*合计\*\*' -Encoding UTF8 -EA SilentlyContinue | Select-Object -First 1
+        if ($row) {
+            $cells = @(($row.Line -split '\|') | ForEach-Object { ($_ -replace '\*','').Trim() } | Where-Object { $_ -ne '' })
+            if ($cells.Count -ge 6) {
+                $lgTotal = [int]$cells[2]; $lgOk = [int]$cells[3]; $lgSurf = [int]$cells[4]; $lgMiss = [int]$cells[5]
+            }
+        }
+    }
+
+    # ── 拼装
+    function _srcline($key, $v) {
+        $r = '    ' + (_q $key) + ': '
+        if ($null -eq $v) { return ($r + 'null') }
+        $b = '{' + $nl
+        $b += '      "path": ' + (_q $v.path) + ',' + $nl
+        $b += '      "lines": ' + (_i $v.lines) + ',' + $nl
+        $b += '      "chars": ' + (_i $v.chars) + ',' + $nl
+        $b += '      "cjk_pct": ' + (_d $v.cjk) + $nl
+        $b += '    }'
+        return ($r + $b)
+    }
+
+    [void]$sb.Append('{' + $nl)
+    [void]$sb.Append('  "schema_version": 1,' + $nl)
+    [void]$sb.Append('  "generated_at": ' + (_q (Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')) + ',' + $nl)
+    [void]$sb.Append('  "generated_by": "scripts/audit_facts.ps1 -Json",' + $nl)
+    [void]$sb.Append('  "repo": {' + $nl)
+    [void]$sb.Append('    "head": ' + (_q $gHead) + ',' + $nl)
+    [void]$sb.Append('    "head_short": ' + (_q $gHeadS) + ',' + $nl)
+    [void]$sb.Append('    "branch": ' + (_q $gBranch) + ',' + $nl)
+    [void]$sb.Append('    "tracked_files": ' + (_i $gTracked) + $nl)
+    [void]$sb.Append('  },' + $nl)
+    [void]$sb.Append('  "source": {' + $nl)
+    [void]$sb.Append((_srcline 'main' $srcMain) + ',' + $nl)
+    [void]$sb.Append((_srcline 'c_root' $srcC) + ',' + $nl)
+    [void]$sb.Append((_srcline 'en_mirror' $srcEn) + $nl)
+    [void]$sb.Append('  },' + $nl)
+    [void]$sb.Append('  "bootstrap": {' + $nl)
+    [void]$sb.Append('    "expected": ' + (_q $exp) + ',' + $nl)
+    [void]$sb.Append('    "seed_sha256_8": ' + (_q $seedSha) + ',' + $nl)
+    [void]$sb.Append('    "seed_matches_expected": ' + $seedOk + $nl)
+    [void]$sb.Append('  },' + $nl)
+    [void]$sb.Append('  "anchors": { "feat_zh_files": ' + (_i $anchorN) + ' },' + $nl)
+    [void]$sb.Append('  "tests": { "qcc_files": ' + (_i $qccN) + ' },' + $nl)
+    [void]$sb.Append('  "mechanism_ledger": ')
+    if ($null -eq $lgTotal) { [void]$sb.Append('null,' + $nl) }
+    else { [void]$sb.Append('{ "total": ' + (_i $lgTotal) + ', "implemented": ' + (_i $lgOk) + ', "surface": ' + (_i $lgSurf) + ', "missing": ' + (_i $lgMiss) + ' },' + $nl) }
+    [void]$sb.Append('  "multilang": { "files": ' + (_i $mlFiles.Count) + ', "lines": ' + (_i $mlLines) + ' },' + $nl)
+    [void]$sb.Append('  "elapsed_ms": ' + (_i ([math]::Round($sw.Elapsed.TotalMilliseconds, 0))) + $nl)
+    [void]$sb.Append('}' + $nl)
+
+    [Console]::Out.Write($sb.ToString())
+    exit 0
+}
 function Show-Sec($t) {
     Write-Host ""
     Write-Host ("── " + $t) -ForegroundColor Cyan
