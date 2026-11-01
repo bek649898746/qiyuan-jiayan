@@ -16,6 +16,7 @@
 ![零依赖](https://img.shields.io/badge/%E9%9B%B6%E4%BE%9D%E8%B5%96-%E4%B8%8D%E9%9C%80%20gcc%20%2F%20Python-brightgreen)
 ![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-%E5%85%A8%E4%B8%AD%E6%96%87%E6%A0%87%E8%AF%86%E7%AC%A6-blue)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64-lightgrey)
+[![OpenSSF Best Practices: passing](https://www.bestpractices.dev/projects/15888/badge)](https://www.bestpractices.dev/projects/15888)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
 
 ---
@@ -806,6 +807,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 > 跟踪这个仓库较久的人需要知道「哪些旧说法已经被替换」。
 
 > **徽章怎么看**（避免误读）
+> - **OpenSSF Best Practices（`passing`）**：全部徽章里**唯一经过人工审核**的一个 ——
+>   项目在 [bestpractices.dev](https://www.bestpractices.dev/projects/15888) 上**逐项填报**，
+>   并通过 passing 级**全部必填项**（passing 档 100%）。
+>   ⟹ 与下方 Scorecard 性质不同：**前者是「有人按清单核对过」，后者是「工具自动扫出来的分」**。
 > - **License / Security Policy**：静态事实，指向对应文件。
 > - **OpenSSF Scorecard**：由 [`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml) 定期实跑并公开发布，
 >   点进去可看**逐项**得分与扣分理由 —— 分数是机器算的，不是自评的。
