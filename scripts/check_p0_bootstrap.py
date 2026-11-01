@@ -77,18 +77,15 @@ def main():
     if a.bootstrap_log and os.path.exists(a.bootstrap_log):
         b = open(a.bootstrap_log, 'rb').read()
         t = b.decode('utf-16-le', 'replace') if b[:2] == b'\xff\xfe' else b.decode('utf-8', 'replace')
-        # 2026-10-30：不动点 = **相邻两代全等**，不必是 v1==v2 —— 本轮两刀都需 3 代才稳定
-        # （v1 由 seed 编新源码，v2 由 v1 编，v3 由 v2 编；`v2 == v3` 即收敛）。
-        seq = re.findall(r'v(\d+) = ([0-9A-F]{8})', t)
-        seq = [(int(n), h) for n, h in seq]
-        seq.sort()
-        hs = [h for _n, h in seq]
-        conv = len(hs) >= 2 and hs[-1] == hs[-2]
-        L.append('自举: %s → 最后两代 %s PASS=%s'
-                 % (' '.join('v%d=%s' % (n, h) for n, h in seq),
-                    '全等' if conv else '不等', conv))
-        if not conv:
-            bad.append('bootstrap 最后两代不全等（%s）' % hs)
+        # 2026-10-30（gap 修复）：恢复**原文**判据 `v1 == v2` —— 用同步 seed 让自举一步收敛，
+        # 而不是放宽判据（skeptic 判定「最后两代全等」是 self-serving 的判据削弱）。
+        v1 = re.search(r'v1 = ([0-9A-F]{8})', t)
+        v2 = re.search(r'v2 = ([0-9A-F]{8})', t)
+        got = [x.group(1) for x in (v1, v2) if x]
+        L.append('自举: v1=%s v2=%s PASS=%s' % (got[0] if got else '?', got[1] if len(got) > 1 else '?',
+                                              (len(got) == 2 and got[0] == got[1])))
+        if len(got) != 2 or got[0] != got[1]:
+            bad.append('bootstrap v1!=v2')
 
     L.append('结论: %s%s' % ('PASS' if not bad else 'FAIL ', '' if not bad else str(bad)))
     out = '\n'.join(L)

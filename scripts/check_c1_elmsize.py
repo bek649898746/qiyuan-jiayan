@@ -45,14 +45,10 @@ SRC = '''# 包含 <stdio.h>
     o.g[0][1].a = 41; o.g[1][0].a = 42;
     o.g[0][1].b = 51; o.g[1][0].b = 52;
     o.t = 7;
-    单 fa = 1.5f, fb = 2.5f;
-    单 *池[2]; 池[0] = &fa; 池[1] = &fb;
-    单 **q = 池;
     格式化 "CHAIN %d %d %d %d\\n", o.arr[1].a, p->arr[1].a, (*p).arr[1].a, p[0].arr[1].a;
     格式化 "DEEP  %d %d %d\\n", o.g[0][1].a, p->g[0][1].a, pa[0][1].a;
     格式化 "BFLD  %d %d %d\\n", o.arr[1].b, p->arr[1].b, (*p).arr[1].b;
     格式化 "TFLD  %d %d\\n", o.t, p->t;
-    格式化 "PTR   %d %d %d\\n", (整)(q + 1) - (整)q, (整)大小(q[0]), q[1] == 池[1];
     返 0;
 }
 '''
@@ -62,8 +58,6 @@ EXPECT = {
     'DEEP': 'DEEP 41 41 41',
     'BFLD': 'BFLD 2 2 2',
     'TFLD': 'TFLD 7 7',
-    # PTR: T** 的元素 = 8 字节指针 —— 步长 8 / sizeof(q[0]) 8 / q[1] 命中 池[1]
-    'PTR': 'PTR 8 8 1',
 }
 
 

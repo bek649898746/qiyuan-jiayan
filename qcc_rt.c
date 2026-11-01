@@ -773,6 +773,7 @@ int __qcc_ch_blocked(int c, int cap) { /* 送/背压送 的循环体：c >= cap 
    满时让出（SwitchToThread / Sleep(0)），10 s 无进展才 A5007
    （跨线程存在消费者 ⟹ 不再无条件判死；无消费者的全局通道 10 s 后仍会响亮中止）。
    ⚠️ 数据增量 = 32×256×8 + 7×32×4 + 4 + 32 + 4 + 8 = 66480 = 16×4155。 */
+static int __qcc_ch_rt_begin = 0; /* L1 运行期块起点标记（无文件级通道时预扫整块删除） */
 static long long __qcc_ch_buf[32][256];
 static int __qcc_ch_cap[32], __qcc_ch_head[32], __qcc_ch_tail[32], __qcc_ch_count[32];
 static int __qcc_ch_closed_[32], __qcc_ch_empty_[32], __qcc_ch_used[32];
@@ -850,6 +851,7 @@ int __qcc_ch_ready(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); i
 int __qcc_ch_ready_send(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = (__qcc_ch_count[s] < __qcc_ch_cap[s]) && !__qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
 int __qcc_ch_close(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); __qcc_ch_closed_[s] = 1; __qcc_ch_unlock(); return 0; }
 int __qcc_ch_closed(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = __qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
+static int __qcc_ch_rt_end = 0; /* L1 运行期块终点标记 */
 /* R570 (2026-10-08 虾米 · C类攻坚 批C-W · 族3 #60 **线程池**): `线程池 池, N;` → __qcc_tp_new(N);
    `提交 池, 任务, 实参;` → __qcc_tp_submit(任务, 实参); `等待池 池;` → __qcc_tp_wait()。
    单 全局 池: 任务 = (函数指针, 实参) 两 平行数组; 工作线程 自旋 等 **启动旗**; 等待池 置旗 后 join 全部;

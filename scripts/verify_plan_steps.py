@@ -47,6 +47,12 @@ def read_text(path):
     return fb.decode('utf-8', errors='replace')
 
 
+def _norm_cc(cmd):
+    """把 `--cc <产物>` 归一化 —— 修前腿**本来**就是「同一支判据换一个被测产物」，
+    因此 `--cc` 的值允许不同（其余参数必须逐字相同）。2026-10-31（skeptic）：修前回执
+    的 `$` 行改为记录**真实**的修前产物路径后，原「前缀逐字匹配」会把它误判为非同源。"""
+    return re.sub(r'--cc\s+\S+', '--cc <CC>', (cmd or '').strip())
+
 def need(fails, tag, ok, extra=''):
     print('[%-18s] %s%s' % (tag, 'PASS' if ok else 'FAIL', ('（%s）' % extra) if extra else ''))
     if not ok:
@@ -97,7 +103,7 @@ def evidence_sync(ledger, logdir):
         if os.path.exists(bef):
             cmdline = next((l for l in read_text(bef).splitlines() if l.startswith('$ ')), '')
             crit0 = (r.get('criterion_cmd') or '').strip()
-            if crit0 and not cmdline[2:].strip().startswith(crit0):
+            if crit0 and not _norm_cc(cmdline[2:]).startswith(_norm_cc(crit0)):
                 stale.append('%s←%s' % (r['id'], os.path.basename(bef)))
     return stale, miss
 
@@ -149,7 +155,7 @@ def main():
             if not os.path.exists(path):
                 continue
             cl = next((l for l in read_text(path).splitlines() if l.startswith('$ ')), '')
-            if crit and not cl[2:].strip().startswith(crit):
+            if crit and not _norm_cc(cl[2:]).startswith(_norm_cc(crit)):
                 diff.append(os.path.basename(path))
 
     ok2 = not (miss_b or miss_a or diff)
@@ -176,18 +182,12 @@ def main():
     else:
         t = read_text(bp)
         p0 = read_text(p0p)
-            # 2026-10-30：不动点 = **相邻两代全等**，不必是 v1==v2（本轮两刀都需 3 代才稳定）
-        _seq = sorted((int(n), h) for n, h in re.findall(r'v(\d+) = ([0-9A-F]{8})', t))
-        _hs = [h for _n, h in _seq]
-        _conv = len(_hs) >= 2 and _hs[-1] == _hs[-2] and _hs[-1] == EXP
-        ok = (_conv
-              and 'PASS' in t
+            # 2026-10-30（gap 修复）：恢复原文判据 `v1 == v2 == EXP` —— seed 已同步，自举一步收敛。
+        ok = (('v1 = %s' % EXP) in t and ('v2 = %s' % EXP) in t and 'PASS' in t
               and '中文变量名赋值行: 0' in p0
               and 'PARSE_OK' in p0
               and 'NOT_UTF8(UTF-16 BOM)' in p0)
-        need(fails, 'bootstrap', ok,
-             '最后两代全等 == %s（链 %s）+ Parser0/中文0/UTF16红'
-             % (EXP, '→'.join(_hs) or '<缺>'))
+        need(fails, 'bootstrap', ok, 'v1==v2==%s + Parser0/中文0/UTF16红' % EXP)
 
     # 5) 读行 6 锚 + --serve 往返（真跑）
     anchors = ('scripts/feat_zh_io_readline_ok.c,scripts/feat_zh_neg_a6014.c,'
