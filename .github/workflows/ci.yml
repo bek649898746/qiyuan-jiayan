@@ -19,7 +19,7 @@
 #   ✅ 封存版的实际位置：tag `jiayan-v1.0-sealed` → commit 54e237ff（2026-09-06）
 #      其 srclib/qcc_x86.c = blob fff09635 / 1,874,904 B ⟹ `git checkout jiayan-v1.0-sealed`
 #      即得完整原件（Windows 落盘为 1,897,503 B CRLF，同一份文件）。
-#      ⚠️ 该 tag 目前**只在本地**，尚未 push 到 origin / GitHub。
+#      ✅ 2026-11-01 已 push 到 origin 与 gitee —— 两端 `git ls-remote --tags` 均得 80c80f36（annotated）→ 54e237ff（commit）。
 #
 #   · 定位澄清：qcc_x86.c **不是废弃代码，是 oracle / 独立验证**。
 #     依据 scripts/build_zh.ps1 L4704：「qcc_x86（旧 frozen 英文）已无法编译当前规模中文源（死循环），

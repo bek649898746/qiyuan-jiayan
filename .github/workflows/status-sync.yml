@@ -1,0 +1,74 @@
+# 状态块自动同步 —— 根治「对外数字永远过期」
+#
+# 由来（2026-11-01 启元 · 审计岗）：
+#   外部审计（Linux 环境）给「数字新鲜度」评 D，理由：
+#     README 状态块生成于 10-28，与 11-01 的 HEAD 全面脱节，8 项数字对不上；
+#     同一指标存在 1445 / 1663 / 1688 / 1693 四套并行值。
+#
+#   根因不是「忘了跑脚本」，是**机制依赖人手**：
+#     gen_readme_status.ps1 要在施工线手动跑、再同步到发布线 ⟹ 施工线 1.5 提交/小时 ⟹ 必然追不上。
+#
+#   本 workflow 把「手动跑」变成「push 即自动跑并提交」：
+#     publish 每次 push ⟹ 重新生成状态块 ⟹ 有变化就自动提交回 publish。
+#
+# 设计要点（都是防坑）：
+#   1. **独立文件，不改 ci.yml** —— 现有 CI 452 次运行公开可查，是加分项，不许碰坏。
+#   2. `github.actor != 'github-actions[bot]'` —— 防「提交触发 CI 再提交」的无限循环。
+#   3. 提交信息带 `[skip ci]` —— 双保险，不让本 workflow 再为状态块提交跑一遍。
+#   4. `permissions: contents: write` —— 显式最小权限，只给 push 需要的那一项。
+#   5. 状态块由脚本现算（HEAD / 不动点 / 行数 / 锚数 / 种子指纹），本文件不写死任何数字。
+
+name: status-sync
+
+on:
+  push:
+    branches: [ publish ]
+  workflow_dispatch:        # 支持网页手动触发
+
+permissions:
+  contents: write
+
+concurrency:
+  group: status-sync-${{ github.ref }}
+  cancel-in-progress: true  # 连续 push 时只保留最后一次同步
+
+jobs:
+  sync:
+    # 防循环：bot 自己的提交不再触发
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: 检出（需完整历史以取 HEAD 与提交时间）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 重新生成 README 状态块
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'scripts/gen_readme_status.ps1')) {
+            Write-Host '未找到 scripts/gen_readme_status.ps1，跳过（不判失败）'
+            exit 0
+          }
+          powershell -ExecutionPolicy Bypass -File scripts/gen_readme_status.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "状态块生成失败（exit=$LASTEXITCODE）"
+            exit 1
+          }
+
+      - name: 有变化则提交回 publish
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git diff --quiet -- README.md
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host '状态块已是最新，无需提交'
+            exit 0
+          }
+          Write-Host '状态块有变化，提交并推送'
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md
+          git commit -m 'docs(状态块): 自动同步到当前 HEAD [skip ci]'
+          git push
