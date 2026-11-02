@@ -43,11 +43,19 @@ foreach ($c in $cases) {
         $script:fail++; continue
     }
     $t0 = [Diagnostics.Stopwatch]::StartNew()
-    & $qcc $src -o $exe 2>&1 | Out-Null
+    # 2026-11-02 启元：编译器把优化统计以 [OPT] 前缀写进 stderr（非错误信息）。
+    # PS 的 $ErrorActionPreference='Stop' + 2>&1 会把 native stderr 变成
+    # terminating error ⟹ 编译明明成功(rc=0)也判红（CI zh_chain 连红两次）。
+    # 局部降到 Continue 收集输出；成败仍只认 rc + 产物存在，不认 stderr 内容。
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $cout = (& $qcc $src -o $exe 2>&1 | Out-String)
     $rc = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
     $t0.Stop()
     if ($rc -ne 0 -or -not (Test-Path $exe)) {
         Write-Host ("  [FAIL] {0,-11} 编译 rc={1} ({2} ms)" -f $c.line, $rc, [int]$t0.Elapsed.TotalMilliseconds) -ForegroundColor Red
+        if ($cout.Trim()) { Write-Host ("        编译器输出: " + (($cout.Trim() -split "`r?`n") -join " | ")) -ForegroundColor DarkYellow }
         $script:fail++; continue
     }
     $out = & $exe 2>&1 | Out-String
