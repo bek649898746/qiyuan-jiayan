@@ -1,4 +1,4 @@
-# 甲言 × C 混合编程一键构建（四步）
+﻿# 甲言 × C 混合编程一键构建（四步）
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path "$PSScriptRoot\..\..").Path
 $qcc = Join-Path $repo 'qcc_zh_seed.exe'
