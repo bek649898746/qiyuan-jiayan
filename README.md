@@ -54,8 +54,8 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-02 13:34** |
-> | HEAD | `af7e1509`（分支 `publish`） |
+> | 生成时间 | **2026-11-02 13:54** |
+> | HEAD | `ba398fbd`（分支 `publish`） |
 > | 自举不动点 | **`3BA0025C`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
 > | 主源 | **37208 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1723 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1469 文件** |
