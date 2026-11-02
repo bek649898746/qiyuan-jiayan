@@ -54,12 +54,12 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-02 13:54** |
-> | HEAD | `ba398fbd`（分支 `publish`） |
-> | 自举不动点 | **`3BA0025C`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **37208 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 生成时间 | **2026-11-02 23:44** |
+> | HEAD | `ef5ad6e9`（分支 `publish`） |
+> | 自举不动点 | **`C0367707`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **37205 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1723 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1469 文件** |
-> | 种子指纹 | `3BA0025C`（`qcc_zh_seed.exe` SHA256 前 8 位） |
+> | 种子指纹 | `C0367707`（`qcc_zh_seed.exe` SHA256 前 8 位） |
 >
 > **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
 > 想知道**现在**的准确值，跑：
