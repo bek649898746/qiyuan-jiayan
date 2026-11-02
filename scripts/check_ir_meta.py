@@ -30,7 +30,7 @@ os.chdir(ROOT)
 
 # 对照编译器 = **R880 改动前** 的 shipped（R879 收口 `1C153876`）。
 # 判据 **fail-closed**：文件缺失 / 哈希不符 ⟹ 判红（不许「无对照 也 PASS」）。
-CONTROL_SHA8 = 'DE463254'  # 2026-11-01 重钉（函数声明符 列表修复后主源收口产物；沿用既有维护手法）
+CONTROL_SHA8 = '3BA0025C'  # 2026-11-02 重钉（ORD-20261102-85 IR 阶段1 收口：大源预基 + 追加稳定 + --ir + QCC_OPT；v1==v2 收敛产物）
 
 SRC = '''#include <stdio.h>
 int 算和(int n) {

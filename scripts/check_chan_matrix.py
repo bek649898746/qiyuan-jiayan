@@ -102,16 +102,17 @@ CASES = [
     返 0;
 }
 '''),
-    ('c7', '通道作参数传给函数(当前不可; 记录编译结果)', '''
+    ('c7', '通道作参数传给函数（L2：句柄是 int，可作实参）', '''
 #包含 <stdio.h>
-函数 空 灌(通道 c){
-    送 c, 1;
+函数 空 灌(整 c, 整 v){
+    送 c, v;
 }
 函数 整 主(空){
-    通道 q, 2;
-    灌(q);
+    整 q = 通道新建(2);
+    灌(q, 7);
     整 a=0;
     收 q, a;
+    释放通道(q);
     格式化 "c7 %d\\n", a;
     返 0;
 }
@@ -136,9 +137,9 @@ BASELINE = {
     'c2': 'ok|c2 1 2',   # 2026-10-31 (ORD-60 子项④): 空收改为阻塞 ⟹ 只能收已有条数（原 4 收会挂起）
     'c3': 'ok|c3 1 2',   # 实测: 收 1（腾位）→ 背压送 9 入队 → 再收得 2（FIFO 里 2 在 9 前）
     'c4': 'ok|c4 88',   # 2026-10-31 (ORD-60 子项④): 空收改为阻塞 ⟹ 本用例改为「有数据收」；空收阻塞由 check_chan_block 腿C 覆盖
-    'c5': 'ok|通道已关闭',   # 2026-10-31 (ORD-60 子项③): 关闭后 送 响亮中止（原：静默入队 ok|c5 5 closed=1）
+    'c5': 'abort|rc=1',   # 2026-11-01 (L2): 关闭后 送 → 运行期 [ERR] A5006 + exit(1)；stdout 空（原内联版把消息写 stdout）
     'c6': 'ok|c6 0 1 1 送满=0 送半=1',
-    'c7': 'compile-fail',
+    'c7': 'ok|c7 7',   # 2026-11-01 (ORD-20261101-83 L2): 句柄=int，可作实参
     'c8': 'ok|c8 1 2 3 就绪r=0',
 }
 
@@ -155,6 +156,8 @@ def run_case(cc, cid, src):
     q = subprocess.run([exe], capture_output=True, text=True, encoding='utf-8',
                        errors='replace', timeout=120)
     out = (q.stdout or '').strip().replace('\r', '')
+    if q.returncode != 0:
+        return 'abort|rc=%d' % q.returncode, ((q.stderr or '').strip().splitlines() or [''])[0][:120]
     return 'ok|' + out, ''
 
 
@@ -182,8 +185,8 @@ def main():
                 print('       err: %s' % err)
     print('MATRIX: %d/%d 与基线一致%s' % (len(CASES) - len(drift), len(CASES),
                                           '' if not drift else ' · DRIFT=' + ','.join(drift)))
-    print('note: 基线取自 8D0876AF（2026-10-30）。c7=compile-fail 是**当前缺陷**（通道不可传参），'
-          '不是期望语义；修好它时须显式更新本表。')
+    print('note: 基线取自 8D0876AF（2026-10-30）；2026-11-01 L2 已把 c7 翻正（句柄=int，可作实参）。'
+          '基线预期随语义变更显式更新。')
     if a.do_print:
         print('--- 更新用（BASELINE 块）---')
         for cid, desc, src in CASES:

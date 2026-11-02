@@ -774,9 +774,10 @@ int __qcc_ch_blocked(int c, int cap) { /* 送/背压送 的循环体：c >= cap 
    （跨线程存在消费者 ⟹ 不再无条件判死；无消费者的全局通道 10 s 后仍会响亮中止）。
    ⚠️ 数据增量 = 32×256×8 + 7×32×4 + 4 + 32 + 4 + 8 = 66480 = 16×4155。 */
 static int __qcc_ch_rt_begin = 0; /* L1 运行期块起点标记（按需删块方案已回退，保留供诊断） */
-static long long __qcc_ch_buf[32][256];
-static int __qcc_ch_cap[32], __qcc_ch_head[32], __qcc_ch_tail[32], __qcc_ch_count[32];
-static int __qcc_ch_closed_[32], __qcc_ch_empty_[32], __qcc_ch_used[32];
+static long long __qcc_ch_buf[64][256];
+static int __qcc_ch_cap[64], __qcc_ch_head[64], __qcc_ch_tail[64], __qcc_ch_count[64];
+static int __qcc_ch_closed_[64], __qcc_ch_empty_[64], __qcc_ch_used[64];
+static unsigned int __qcc_ch_gen[64]; /* 句柄代际（无符号，避免 32 位句柄编码的 UB） */
 static int __qcc_ch_glock = 0;
 static void *__qcc_ch_k32 = 0;
 static int (*__qcc_ch_swt)(void) = 0;
@@ -797,23 +798,84 @@ static void __qcc_ch_init(void) {
 }
 static void __qcc_ch_yield(void) { __qcc_ch_init(); if (__qcc_ch_swt) __qcc_ch_swt(); else if (__qcc_ch_slp) __qcc_ch_slp(0); }
 static unsigned int __qcc_ch_now(void) { __qcc_ch_init(); return __qcc_ch_tick ? __qcc_ch_tick() : 0; }
-static void __qcc_ch_ensure(int s, int cap) {
+static void __qcc_ch_ensure(int s, int cap) { /* 只服务文件级字面槽 0..31；动态槽 32..63 由 __qcc_ch_new 初始化 */
     if (s < 0 || s >= 32) { fprintf(stderr, "[ERR] A5007 通道槽位越界 (slot=%d)\n", s); exit(2); }
     if (__qcc_ch_used[s]) return;
+    if (cap <= 0) { fprintf(stderr, "[ERR] A5007 通道句柄未初始化 (slot=%d)\n", s); exit(2); }
     __qcc_ch_lock();
     if (!__qcc_ch_used[s]) {
-        if (cap < 1) cap = 1;
         if (cap > 256) { __qcc_ch_unlock(); fprintf(stderr, "[ERR] A5007 通道容量超上限 256\n"); exit(2); }
         __qcc_ch_cap[s] = cap; __qcc_ch_head[s] = 0; __qcc_ch_tail[s] = 0; __qcc_ch_count[s] = 0;
         __qcc_ch_closed_[s] = 0; __qcc_ch_empty_[s] = 0; __qcc_ch_used[s] = 1;
     }
     __qcc_ch_unlock();
 }
-int __qcc_ch_send(int s, long long v, int cap) {
-    __qcc_ch_ensure(s, cap);
+/* ORD-20261102-84：统一句柄解析 —— 动态句柄 = 槽号 | 代际<<6；文件级字面槽 0..31 不做代际校验。
+   任何范围/状态/代际不符 ⟹ A5008 + exit(8)（绝不静默串台）。 */
+static void __qcc_ch_fail(int h) {
+    fprintf(stderr, "[ERR] A5008 通道句柄失效 (handle=%d: freed / stale generation / forged)\n", h);
+    exit(8);
+}
+static int __qcc_ch_live_locked(int h, int s) { /* 调用者持锁：文件级字面槽 0..31 恒有效；动态句柄验 used+代际 */
+    if (h < 32) return 1;
+    return __qcc_ch_used[s] && __qcc_ch_gen[s] == (unsigned int)(h >> 6);
+}
+static void __qcc_ch_guard_locked(int h, int s) { /* 调用者持锁：resolve 与 实际操作 之间 若 被 释放/复用 ⟹ 响亮 A5008 */
+    if (!__qcc_ch_live_locked(h, s)) { __qcc_ch_unlock(); __qcc_ch_fail(h); }
+}
+static int __qcc_ch_resolve(int h, int cap) {
+    if (h < 0) __qcc_ch_fail(h);
+    if (h < 32) { __qcc_ch_ensure(h, cap); return h; } /* 文件级字面槽 0..31（惰性初始化） */
+    int s = h & 63; /* h 32..63 = 伪造/未初始化的动态槽号（g=0），不可当文件级槽 */
+    if (s < 32 || s >= 64) __qcc_ch_fail(h);
+    __qcc_ch_lock();
+    int ok = __qcc_ch_live_locked(h, s);
+    __qcc_ch_unlock();
+    if (!ok) __qcc_ch_fail(h);
+    return s;
+}
+/* ORD-20261101-83 L2：动态句柄 —— `通道新建(N)` 分配一个槽（32..63），返回槽号作为句柄值。
+   0..31 预留给文件级通道（预扫固定槽），两侧互不碰撞。句柄就是 int，可传参/存结构体/返回。 */
+#define __QCC_CH_GEN_MAX 0x1FFFFFFu /* 25 位代际：handle = slot(6b) | gen<<6 恒为正 int（最大 2147483647） */
+int __qcc_ch_new(int cap) {
+    if (cap < 1) cap = 1;
+    if (cap > 256) { fprintf(stderr, "[ERR] A5007 通道容量超上限 256\n"); exit(2); }
+    __qcc_ch_lock();
+    for (int s = 32; s < 64; s++) {
+        if (!__qcc_ch_used[s]) {
+            unsigned int g = __qcc_ch_gen[s] + 1u;
+            if (g > __QCC_CH_GEN_MAX) continue; /* 该槽代际耗尽 ⟹ 永久弃用（跳过，绝不回绕导致旧句柄复活） */
+            __qcc_ch_cap[s] = cap; __qcc_ch_head[s] = 0; __qcc_ch_tail[s] = 0; __qcc_ch_count[s] = 0;
+            __qcc_ch_closed_[s] = 0; __qcc_ch_empty_[s] = 0; __qcc_ch_used[s] = 1;
+            __qcc_ch_gen[s] = g;
+            __qcc_ch_unlock();
+            return s | (int)(g << 6);
+        }
+    }
+    __qcc_ch_unlock();
+    fprintf(stderr, "[ERR] A5007 通道句柄耗尽 (max 32 live handles, slots 32..63)\n");
+    exit(7);
+}
+int __qcc_ch_release(int h) { /* ORD-20261102-84：只能释放活的动态句柄；重复释放/伪造 ⟹ A5008 */
+    if (h < 32) __qcc_ch_fail(h); /* 文件级字面槽 0..31 / 伪造整数 32..63 一律拒绝 */
+    int s = h & 63;
+    if (s < 32 || s >= 64) __qcc_ch_fail(h);
+    __qcc_ch_lock();
+    if (!__qcc_ch_live_locked(h, s)) { __qcc_ch_unlock(); __qcc_ch_fail(h); }
+    __qcc_ch_used[s] = 0;
+    if (__qcc_ch_gen[s] < __QCC_CH_GEN_MAX) __qcc_ch_gen[s] = __qcc_ch_gen[s] + 1u; /* 旧句柄 代际 落后 ⟹ 下次 使用 A5008；到上限则弃用该槽 */
+    __qcc_ch_cap[s] = 0; __qcc_ch_head[s] = 0; __qcc_ch_tail[s] = 0; __qcc_ch_count[s] = 0;
+    __qcc_ch_closed_[s] = 0; __qcc_ch_empty_[s] = 0;
+    __qcc_ch_unlock();
+    return 0;
+}
+int __qcc_ch_empty_count(int h, int cap) { int s = __qcc_ch_resolve(h, cap); __qcc_ch_lock(); __qcc_ch_guard_locked(h, s); int r = __qcc_ch_empty_[s]; __qcc_ch_unlock(); return r; }
+int __qcc_ch_send(int h, long long v, int cap) {
+    int s = __qcc_ch_resolve(h, cap);
     unsigned int t0 = 0; int started = 0;
     for (;;) {
         __qcc_ch_lock();
+        __qcc_ch_guard_locked(h, s); /* 阻塞期间 若 句柄 被 释放/复用 ⟹ A5008（绝不再写进 新 通道） */
         if (__qcc_ch_closed_[s]) { __qcc_ch_unlock(); fprintf(stderr, "[ERR] A5006 通道已关闭 (channel closed) - abort\n"); exit(1); }
         if (__qcc_ch_count[s] < __qcc_ch_cap[s]) {
             __qcc_ch_buf[s][__qcc_ch_tail[s]] = v;
@@ -828,9 +890,10 @@ int __qcc_ch_send(int s, long long v, int cap) {
         __qcc_ch_yield();
     }
 }
-int __qcc_ch_recv(int s, void *out, int width, int cap) {
-    __qcc_ch_ensure(s, cap);
+int __qcc_ch_recv(int h, void *out, int width, int cap) {
+    int s = __qcc_ch_resolve(h, cap);
     __qcc_ch_lock();
+    __qcc_ch_guard_locked(h, s);
     if (__qcc_ch_count[s] > 0) {
         long long v = __qcc_ch_buf[s][__qcc_ch_head[s]];
         __qcc_ch_head[s] = (__qcc_ch_head[s] + 1) % __qcc_ch_cap[s];
@@ -847,10 +910,10 @@ int __qcc_ch_recv(int s, void *out, int width, int cap) {
     __qcc_ch_unlock();
     return 0;
 }
-int __qcc_ch_ready(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = __qcc_ch_count[s] > 0; __qcc_ch_unlock(); return r; }
-int __qcc_ch_ready_send(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = (__qcc_ch_count[s] < __qcc_ch_cap[s]) && !__qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
-int __qcc_ch_close(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); __qcc_ch_closed_[s] = 1; __qcc_ch_unlock(); return 0; }
-int __qcc_ch_closed(int s, int cap) { __qcc_ch_ensure(s, cap); __qcc_ch_lock(); int r = __qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
+int __qcc_ch_ready(int h, int cap) { int s = __qcc_ch_resolve(h, cap); __qcc_ch_lock(); __qcc_ch_guard_locked(h, s); int r = __qcc_ch_count[s] > 0; __qcc_ch_unlock(); return r; }
+int __qcc_ch_ready_send(int h, int cap) { int s = __qcc_ch_resolve(h, cap); __qcc_ch_lock(); __qcc_ch_guard_locked(h, s); int r = (__qcc_ch_count[s] < __qcc_ch_cap[s]) && !__qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
+int __qcc_ch_close(int h, int cap) { int s = __qcc_ch_resolve(h, cap); __qcc_ch_lock(); __qcc_ch_guard_locked(h, s); __qcc_ch_closed_[s] = 1; __qcc_ch_unlock(); return 0; }
+int __qcc_ch_closed(int h, int cap) { int s = __qcc_ch_resolve(h, cap); __qcc_ch_lock(); __qcc_ch_guard_locked(h, s); int r = __qcc_ch_closed_[s]; __qcc_ch_unlock(); return r; }
 static int __qcc_ch_rt_end = 0; /* L1 运行期块终点标记（同上） */
 /* R570 (2026-10-08 虾米 · C类攻坚 批C-W · 族3 #60 **线程池**): `线程池 池, N;` → __qcc_tp_new(N);
    `提交 池, 任务, 实参;` → __qcc_tp_submit(任务, 实参); `等待池 池;` → __qcc_tp_wait()。
@@ -892,7 +955,7 @@ static volatile int __ws_stop = 0;
 static volatile int __ws_out = 0;
 static int __ws_slot2 = -1;
 static int __ws_tried = 0;
-static int __ws_lk = 0;
+
 static int __ws_hd[17];
 static int __ws_tl[17];
 static int __ws_kids_p[17];
@@ -906,8 +969,12 @@ static int (*__ws_tlsset)(int, void *) = 0;
 static void *(*__ws_tlsget)(int) = 0;
 int __ws_steals = 0;          /* 成功 **窃取** 次数 (非 static: 供 闸内 锚 断言 窃取 真 发生) */
 static int __ws_pad[4];       /* 数据 补齐 —— 实测: 运行时 其余 增量 已 是 16 的 倍数, 只 需 本 段 自身 为 16 的倍数 (探针: pad 16/32/48 字节 通过, 24/40/56 失败) */
-static void __ws_lock(void) { while (原子 加(&__ws_lk, 1) != 0) { 原子 加(&__ws_lk, -1); } }
-static void __ws_unlock(void) { 原子 加(&__ws_lk, -1); }
+static volatile int __ws_next = 0;  /* 票据锁: 取号 (lock xadd) */
+static volatile int __ws_serv = 0;  /* 票据锁: 当前 服务号 */
+/* 2026-11-02 根因: 旧 test-and-set 回滚在「持有者释放」与「失败者回滚」交叉时 把 锁值 减成 负数
+   ⟹ 之后 永远 加不到 0 (ws61 偶发 挂死)。票据锁 无 回滚, 严格 FIFO, 只用 原子加。 */
+static void __ws_lock(void) { int __ws_t = 原子 加((int *)&__ws_next, 1); while (__ws_serv != __ws_t) { } }
+static void __ws_unlock(void) { 原子 加((int *)&__ws_serv, 1); }
 static void __ws_init(void) {
     if (__ws_tried) return;
     __ws_tried = 1;
@@ -960,16 +1027,16 @@ static int __ws_do_other(int self) {
         if (k == self) continue;
         int sl = __ws_take_idx(k);
         if (sl >= 0) {
-            __ws_steals = __ws_steals + 1;
-            __ws_kids_d[k] = __ws_kids_d[k] + 1;
-            __ws_out = __ws_out - 1;
+            原子 加(&__ws_steals, 1);
+            原子 加(&__ws_kids_d[k], 1);
+            原子 加(&__ws_out, -1);
             ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
             return 1;
         }
     }
     int gi = __ws_take_global_idx();
     if (gi >= 0) {
-        __ws_out = __ws_out - 1;
+        原子 加(&__ws_out, -1);
         ((int (*)(void *))__tp_fn[gi])(__tp_arg[gi]);
         return 1;
     }
@@ -981,8 +1048,8 @@ static void __ws_worker_loop(int me) {
     for (;;) {
         int sl = __ws_take_idx(me);   /* ① 自己 队列 头 */
         if (sl >= 0) {
-            __ws_kids_d[me] = __ws_kids_d[me] + 1;
-            __ws_out = __ws_out - 1;
+            原子 加(&__ws_kids_d[me], 1);
+            原子 加(&__ws_out, -1);
             ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
             continue;
         }
@@ -1009,7 +1076,7 @@ int __qcc_ws_submit_child(void *fn, void *arg) { /* `提交子` —— 任务内
     __ws_arg[me * 32 + (t & 31)] = arg;
     __ws_tl[me] = t + 1;
     __ws_kids_p[me] = __ws_kids_p[me] + 1;
-    __ws_out = __ws_out + 1;
+    原子 加(&__ws_out, 1);  /* 必须原子: 与 锁外 的 原子减 混用 plain RMW 会 丢更新 (ws61 根因) */
     __ws_unlock();
     if (__ws_dbg) fprintf(stdout, "[DBG-WS] submit_child: me=%d tl=%d\n", me, t + 1);
     return 0;
@@ -1061,7 +1128,7 @@ int __qcc_tp_submit(void *fn, void *arg) {
         __tp_fn[gt & 127] = fn;
         __tp_arg[gt & 127] = arg;
         __ws_gt = gt + 1;
-        __ws_out = __ws_out + 1;
+        原子 加(&__ws_out, 1);
         __ws_unlock();
         return 0;
     }
@@ -1079,6 +1146,7 @@ int __qcc_tp_wait(void) {
         __ws_stop = 1;
         for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1);
         __tp_total = 0; __tp_qh = 0; __tp_go = 0; __ws_stop = 0; __ws_out = 0; __ws_gh = 0; __ws_gt = 0;
+        __ws_next = 0; __ws_serv = 0; /* 票据锁: 全部 worker 已 join ⟹ 无人持锁, 安全归零 */
         for (int i = 0; i <= 16; i++) { __ws_hd[i] = 0; __ws_tl[i] = 0; __ws_kids_p[i] = 0; __ws_kids_d[i] = 0; }
         return 0;
     }
@@ -1208,6 +1276,12 @@ void __qcc_map_close(void *p) {
 
 void __qcc_leak_report(void) { /* 2026-09-01 #86 内存泄漏检测: 报告运行时资源泄漏 (arena 池未释放) — 泄漏报告; → __qcc_leak_report() */
     int 泄漏 = 0;
+    for (int i = 32; i < 64; i++) { /* ORD-20261102-84：存活动态通道句柄 */
+        if (__qcc_ch_used[i]) {
+            fprintf(stderr, "[LEAK] 通道句柄 槽%d 未释放 (容量 %d)\n", i, __qcc_ch_cap[i]);
+            泄漏++;
+        }
+    }
     for (int i = 0; i < 16; i++) {
         if (__arena_pool[i]) {
             fprintf(stderr, "[LEAK] arena 池 %d 未释放 (占用 %d 字节)\n", i, __arena_cap[i]);

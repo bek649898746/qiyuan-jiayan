@@ -26,7 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 STAGES = {
     # 档位: (.data VSize 上限, SizeOfImage 上限, .text RawSize 上限)
-    'floor': (10 * 1048576, 11 * 1048576, 332 * 1024),   # 撤 96MB 地板后实测 9.0 / 9.28 / 280KB；2026-11-01 L1：通道运行期常驻（按需删块会破坏 token 索引里程碑，已回退）⟹ 小产物 .text 328KB（+28KB），上限 300→332；.data/Image 地板不变
+    'floor': (10 * 1048576, 11 * 1048576, 372 * 1024),   # 撤 96MB 地板后实测 9.0 / 9.28 / 280KB；2026-11-01 L1/L2：通道运行期常驻（L2 句柄）⟹ 348KB；2026-11-02 ORD-84：代际校验/resolve/guard/泄漏 +16KB ⟹ 实测 364KB，上限 356→372（+8KB 余量，仍为紧预算）；.data/Image 地板不变
     'static': (2 * 1048576, 3 * 1048576, 1 << 30),        # 撤 8MB 静态区地板后 .data/SizeOfImage 达标（.text 不限）
     'dce': (2 * 1048576, 3 * 1048576, 8 * 1024),          # 施工单 §四 1–3 条原文（含 .text ≤8KB）
 }

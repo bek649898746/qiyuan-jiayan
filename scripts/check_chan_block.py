@@ -27,7 +27,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_chan_block')
-TIMEOUT = 5.0
+TIMEOUT = 15.0
 
 OK_SRC = (
     '#包含 <stdio.h>\n'

@@ -95,8 +95,8 @@ def main():
         q = subprocess.run([exe], capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=30)
         out = (q.stdout or '')
-        print('[A 关闭后送] rc=%d out=%r' % (q.returncode, out.strip()))
-        if q.returncode == 0 or '通道已关闭' not in out:
+        print('[A 关闭后送] rc=%d out=%r err=%r' % (q.returncode, out.strip(), (q.stderr or '').strip()))
+        if q.returncode == 0 or '通道已关闭' not in (out + (q.stderr or '')):
             fails.append('关闭后仍可写入（rc=%d, out=%r）' % (q.returncode, out.strip()))
 
     rc, err, exe = build(cc, 'ok', OK_SRC)
@@ -118,8 +118,8 @@ def main():
         q = subprocess.run([exe], capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=30)
         out = (q.stdout or '')
-        print('[C 关闭后收] rc=%d out=%r' % (q.returncode, out.strip()))
-        if q.returncode == 0 or '通道已关闭' not in out:
+        print('[C 关闭后收] rc=%d out=%r err=%r' % (q.returncode, out.strip(), (q.stderr or '').strip()))
+        if q.returncode == 0 or '通道已关闭' not in (out + (q.stderr or '')):
             fails.append('关闭后仍可收（rc=%d, out=%r）' % (q.returncode, out.strip()))
 
     # 腿 D：关闭后**有存量**必须可 drain（施工单 §4.1「取空后才返回失败」）

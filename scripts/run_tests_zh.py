@@ -422,6 +422,29 @@ CORE_FEAT = [
     # C7 并发轴 (2026-09-11 扫雷: 16 个 锚 原 全部 在 闸 外 → 逐个 复验 通过 后 入闸;
     #   其中 feat_lock2 抓出 真 bug: 锁住 延迟 解锁 在 提前返回 路径 漏发 — 已修, 见 施工日志)
     'scripts/feat_thread_zh.c', 'scripts/feat_chan_zh.c', 'scripts/feat_chan2_zh.c',
+    'scripts/feat_chan_pass_zh.c', 'scripts/feat_chan_handle_zh.c',  # ORD-20261101-83 L2: 句柄作实参 / 返回+结构体+数组
+    'scripts/feat_chan_local_reuse_zh.c', 'scripts/feat_chan_many_zh.c',  # L2 回归：内联环零槽位 / 17 个文件级通道
+    'scripts/feat_chan_mix_zh.c', 'scripts/feat_chan_mix16_zh.c', 'scripts/feat_chan_33_neg_zh.c',  # L2：文件级(0..31) 与 句柄(32..63) 混用/边界
+    # ORD-20261102-84 L3：句柄生命周期闭环（失效/伪造/重复释放 响亮 A5008；10000 次复用；泄漏可观测；
+    #   结构化并发块内释放 A6093 / 块外释放合法）
+    'scripts/feat_chan_life_stale_abort_zh.c', 'scripts/feat_chan_life_forged_abort_zh.c',
+    'scripts/feat_chan_life_double_abort_zh.c', 'scripts/feat_chan_life_rawslot_abort_zh.c',
+    'scripts/feat_chan_life_gen0_abort_zh.c', 'scripts/feat_chan_life_reuse10k_ok_zh.c',
+    'scripts/feat_chan_leak_visible_zh.c', 'scripts/feat_chan_scope_release_neg_zh.c',
+    'scripts/feat_chan_scope_release_ok_zh.c',
+    # A6093 绕过封堵：块内 `外层变量 = 通道新建` 同样拒绝；块外释放合法
+    'scripts/feat_chan_scope_assign_neg_zh.c', 'scripts/feat_chan_scope_assign_ok_zh.c',
+    # A6093 深挖补②：别名拷贝 / 函数返回 / 嵌套活跃块 全部拒绝；重新赋块外句柄不误报
+    'scripts/feat_chan_scope_alias_neg_zh.c', 'scripts/feat_chan_scope_fnret_neg_zh.c',
+    'scripts/feat_chan_scope_nested_neg_zh.c', 'scripts/feat_chan_scope_reassign_ok_zh.c',
+    # 声明初始化污点：`整 w = 通道新建(2); h = w; 释放通道(h);` 同样拒绝；块外释放合法
+    'scripts/feat_chan_scope_decl_alias_neg_zh.c', 'scripts/feat_chan_scope_decl_fnret_neg_zh.c',
+    'scripts/feat_chan_scope_decl_outer_ok_zh.c',
+    # 多声明符：`整 w = 通道新建(2), z = 0;` 必须登记全部声明符（不能只看最后一个）
+    'scripts/feat_chan_scope_multi_decl_neg_zh.c', 'scripts/feat_chan_scope_multi_decl_fnret_neg_zh.c',
+    'scripts/feat_chan_scope_multi_decl_outer_ok_zh.c',
+    # ORD-20261102-85 IR 阶段 1：常量折叠正锚 + 浮点负锚（优化不得越界）
+    'scripts/feat_ir_opt_const_ok_zh.c', 'scripts/feat_ir_opt_float_neg_zh.c',
     'scripts/feat_actor_zh.c', 'scripts/feat_zh_actor19.c', 'scripts/feat_zh_async20.c',
     'scripts/feat_zh_select24.c', 'scripts/feat_select2.c', 'scripts/feat_zh_struct_concur25.c',
     'scripts/feat_atomic_zh.c', 'scripts/feat_atomic_cas_zh.c', 'scripts/feat_atomic_xchg_zh.c',
