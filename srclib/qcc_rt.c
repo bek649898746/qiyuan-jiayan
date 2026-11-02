@@ -955,7 +955,7 @@ static volatile int __ws_stop = 0;
 static volatile int __ws_out = 0;
 static int __ws_slot2 = -1;
 static int __ws_tried = 0;
-
+static int __ws_lk = 0;
 static int __ws_hd[17];
 static int __ws_tl[17];
 static int __ws_kids_p[17];
@@ -969,12 +969,8 @@ static int (*__ws_tlsset)(int, void *) = 0;
 static void *(*__ws_tlsget)(int) = 0;
 int __ws_steals = 0;          /* 成功 **窃取** 次数 (非 static: 供 闸内 锚 断言 窃取 真 发生) */
 static int __ws_pad[4];       /* 数据 补齐 —— 实测: 运行时 其余 增量 已 是 16 的 倍数, 只 需 本 段 自身 为 16 的倍数 (探针: pad 16/32/48 字节 通过, 24/40/56 失败) */
-static volatile int __ws_next = 0;  /* 票据锁: 取号 (lock xadd) */
-static volatile int __ws_serv = 0;  /* 票据锁: 当前 服务号 */
-/* 2026-11-02 根因: 旧 test-and-set 回滚在「持有者释放」与「失败者回滚」交叉时 把 锁值 减成 负数
-   ⟹ 之后 永远 加不到 0 (ws61 偶发 挂死)。票据锁 无 回滚, 严格 FIFO, 只用 原子加。 */
-static void __ws_lock(void) { int __ws_t = 原子 加((int *)&__ws_next, 1); while (__ws_serv != __ws_t) { } }
-static void __ws_unlock(void) { 原子 加((int *)&__ws_serv, 1); }
+static void __ws_lock(void) { while (原子 加(&__ws_lk, 1) != 0) { 原子 加(&__ws_lk, -1); } }
+static void __ws_unlock(void) { 原子 加(&__ws_lk, -1); }
 static void __ws_init(void) {
     if (__ws_tried) return;
     __ws_tried = 1;
@@ -1027,16 +1023,16 @@ static int __ws_do_other(int self) {
         if (k == self) continue;
         int sl = __ws_take_idx(k);
         if (sl >= 0) {
-            原子 加(&__ws_steals, 1);
-            原子 加(&__ws_kids_d[k], 1);
-            原子 加(&__ws_out, -1);
+            __ws_steals = __ws_steals + 1;
+            __ws_kids_d[k] = __ws_kids_d[k] + 1;
+            __ws_out = __ws_out - 1;
             ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
             return 1;
         }
     }
     int gi = __ws_take_global_idx();
     if (gi >= 0) {
-        原子 加(&__ws_out, -1);
+        __ws_out = __ws_out - 1;
         ((int (*)(void *))__tp_fn[gi])(__tp_arg[gi]);
         return 1;
     }
@@ -1048,8 +1044,8 @@ static void __ws_worker_loop(int me) {
     for (;;) {
         int sl = __ws_take_idx(me);   /* ① 自己 队列 头 */
         if (sl >= 0) {
-            原子 加(&__ws_kids_d[me], 1);
-            原子 加(&__ws_out, -1);
+            __ws_kids_d[me] = __ws_kids_d[me] + 1;
+            __ws_out = __ws_out - 1;
             ((int (*)(void *))__ws_fn[sl])(__ws_arg[sl]);
             continue;
         }
@@ -1076,7 +1072,7 @@ int __qcc_ws_submit_child(void *fn, void *arg) { /* `提交子` —— 任务内
     __ws_arg[me * 32 + (t & 31)] = arg;
     __ws_tl[me] = t + 1;
     __ws_kids_p[me] = __ws_kids_p[me] + 1;
-    原子 加(&__ws_out, 1);  /* 必须原子: 与 锁外 的 原子减 混用 plain RMW 会 丢更新 (ws61 根因) */
+    __ws_out = __ws_out + 1;
     __ws_unlock();
     if (__ws_dbg) fprintf(stdout, "[DBG-WS] submit_child: me=%d tl=%d\n", me, t + 1);
     return 0;
@@ -1128,7 +1124,7 @@ int __qcc_tp_submit(void *fn, void *arg) {
         __tp_fn[gt & 127] = fn;
         __tp_arg[gt & 127] = arg;
         __ws_gt = gt + 1;
-        原子 加(&__ws_out, 1);
+        __ws_out = __ws_out + 1;
         __ws_unlock();
         return 0;
     }
@@ -1146,7 +1142,6 @@ int __qcc_tp_wait(void) {
         __ws_stop = 1;
         for (int i = 0; i < __tp_n; i++) WaitForSingleObject(__tp_th[i], -1);
         __tp_total = 0; __tp_qh = 0; __tp_go = 0; __ws_stop = 0; __ws_out = 0; __ws_gh = 0; __ws_gt = 0;
-        __ws_next = 0; __ws_serv = 0; /* 票据锁: 全部 worker 已 join ⟹ 无人持锁, 安全归零 */
         for (int i = 0; i <= 16; i++) { __ws_hd[i] = 0; __ws_tl[i] = 0; __ws_kids_p[i] = 0; __ws_kids_d[i] = 0; }
         return 0;
     }
@@ -1708,6 +1703,35 @@ void 向量加(void *a, void *b, void *c, int n) {
    `抛出 码, 值;` → `throw_ex(1, 码, "")` + `ex_val = 值` + (试块内) 跳转捕获标签.
    运行时 真实现: 设置 ex_pending / cur_ex_code（码），ex_val 由生成码赋值.
    原状: throw_ex 无运行时实现、无内建登记 ⟹ 用户必须自定义（C 模拟假特性）。 */
+/* ORD-94: C99 snprintf/vsnprintf —— **无内部缓冲上限**。
+   _vscprintf 求「本应写入」的长度（C99 返回值），_vsnprintf 直接写用户缓冲（按 n 截断）。
+   x64 上 va_list 是纯指针、按值传递 ⟹ 计算长度不消耗 ap，同一 ap 可再用一次。 */
+static int (*__qcc_vscprintf_ptr)(const char*, char*);
+static int (*__qcc_vsnprintf_ptr)(char*, unsigned long long, const char*, char*);
+static int __qcc_vsnprintf(char *s, unsigned long long n, const char *fmt, char *ap) {
+    int need;
+    if (!__qcc_vscprintf_ptr) {
+        void *h = load_library("msvcrt.dll");
+        __qcc_vscprintf_ptr = (int (*)(const char*, char*))get_proc_address(h, "_vscprintf");
+        __qcc_vsnprintf_ptr = (int (*)(char*, unsigned long long, const char*, char*))get_proc_address(h, "_vsnprintf");
+    }
+    if (!__qcc_vscprintf_ptr || !__qcc_vsnprintf_ptr) return 0;
+    need = __qcc_vscprintf_ptr(fmt, ap);
+    if (need < 0) need = 0;
+    if (n == 0 || !s) return need;
+    __qcc_vsnprintf_ptr(s, n, fmt, ap);
+    s[n - 1] = 0;
+    return need;
+}
+static int __qcc_snprintf(char *s, unsigned long long n, const char *fmt, ...) {
+    return __qcc_vsnprintf(s, n, fmt, (char*)__qcc_va_start());
+}
+/* 过渡别名（ORD-94 名字迁移）：上一代 seed 的词法映射仍指向 `qcc_snprintf`；
+   自举换代后（seed 同步新名）即可删除。 */
+static int qcc_snprintf(char *s, unsigned long long n, const char *fmt, ...) {
+    return __qcc_snprintf(s, n, fmt, (char*)__qcc_va_start());
+}
+
 int throw_ex(int gen, int code, const char *msg) {
     ex_pending = gen ? code : 1;
     cur_ex_code = code;

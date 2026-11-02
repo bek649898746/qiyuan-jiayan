@@ -2192,36 +2192,15 @@ int TerminateProcess(void *hProcess, unsigned int uExitCode);  /* C7b (2026-09-1
    "unable to format message" (fix 2026-08-18: git init get_common_dir_noenv).
    包装: count=0 用增长缓冲测长; count>0 直通 _vsnprintf.
    声明原型: qcc 对未声明函数调用约定错乱 → _vsnprintf 返回 0 (fix 2026-08-18). */
+#ifndef QCC_RT_PREPENDED
 int _vsnprintf(char *str, size_t size, const char *format, va_list ap);
 void *malloc(size_t size);
 void free(void *ptr);
-#define vsnprintf qcc_vsnprintf
-static int qcc_vsnprintf(char *str, size_t maxsize, const char *fmt, va_list ap) {
-    if (maxsize > 0) {
-        int r = _vsnprintf(str, maxsize, fmt, ap);
-        if (r >= 0)
-            return r;
-        /* 旧 msvcrt _vsnprintf 截断返回 -1 (非 C99 所需长度) → 增长缓冲测长 (fix 2026-08-18: strbuf_vaddf maxsize 略小时截断 die) */
-    }
-    size_t cap = 256;
-    for (;;) {
-        char *tmp = (char*)malloc(cap);
-        int r = _vsnprintf(tmp, cap, fmt, ap);
-        free(tmp);
-        if (r >= 0 && (size_t)r < cap)
-            return r;
-        if (cap >= (1u << 20))
-            return -1;
-        cap <<= 1;
-    }
-}
-#define snprintf qcc_snprintf
-static int qcc_snprintf(char *str, size_t maxsize, const char *fmt, ...) {
-    va_list ap; va_start(ap, fmt);
-    int r = qcc_vsnprintf(str, maxsize, fmt, ap);
-    va_end(ap);
-    return r;
-}
+/* ORD-94 (2026-11-02): snprintf/vsnprintf 包装已移除 —— 甲言 由 运行库
+   qcc_snprintf / qcc_vsnprintf（msvcrt _vscprintf + _vsnprintf，C99 任意长度）
+   统一提供；gcc 侧直接用 libc 的 C99 实现。此处若再 #define snprintf ...，
+   会与词法层 snprintf → qcc_snprintf 映射互相污染（宏名被改名 → 运行库定义被劫持）。 */
+#endif /* !QCC_RT_PREPENDED — 运行库已提供 qcc_snprintf，避免重复定义 */
 
 /* 真 git_mmap/git_munmap (fix 2026-08-18): jyld 导入表无 CreateFileMapping/MapViewOfFile/
    GetFileSizeEx/_get_osfhandle → win32mmap.c 被排除出链接; 定义在 compat/prelude_mmap.c

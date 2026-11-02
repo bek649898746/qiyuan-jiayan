@@ -11,6 +11,15 @@
 # 与上方 *.ps1 -text / 下方 scripts/fixtures/** -text 同一理由：逐字节固定，禁止任何转换。
 srclib/qcc_rt.c -text
 seed/qcc_rt.c   -text
+
+# 2026-11-02 (可复现性 P0 · 二次踩坑 · 启元隔离验收发现): 新增「被逐字节内嵌」文件必须同步登记
+#   症状：干净 clone 后 build_zh.ps1 报「不动点 888F3C97 != 期望 C0367707」
+#   根因：compat_prelude.h / qcc_rt_ws.c / qcc_snprintf_mini.c 未标 -text
+#         ⟹ core.autocrlf=true 时 checkout 出 CRLF ⟹ 编进产物 ⟹ hash 变
+#   判据：scripts/check_reproducibility.py（扫「被内嵌但缺 -text」即红）
+srclib/qcc_rt_ws.c         -text
+srclib/qcc_snprintf_mini.c -text
+compat_prelude.h           -text
 *.md   text encoding=UTF-8
 *.txt  text encoding=UTF-8
 # 2026-10-27 (bootstrap P0): .ps1 一律不做 换行/编码 转换 —— CI 上 UTF-16/UTF-8-BOM

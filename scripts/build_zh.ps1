@@ -1,4 +1,8 @@
-﻿# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
+﻿# 甲言 (Jiayan) — 中文原生自举编译器
+# Copyright (c) 2026 郑宇和 (Zheng Yuhe)
+# SPDX-License-Identifier: MIT
+
+# build_zh.ps1 — 中文版甲言 (qcc_zh.jy) 自举验证
 #
 # 流程:
 #   1. python scripts/sinicize.py   # 按 scripts/zh_map.txt 把 qcc_work.jy 生成 qcc_zh.jy
@@ -257,7 +261,7 @@ $ErrorActionPreference = 'Stop'
 # [自举历史] $expected_前 = 'DCA84AE4'  # 2026-11-02 (ORD-20261102-85 IR 阶段1 首刀): 位移待回填表 + --ir 导出 + QCC_OPT/负锚；v2==v3；前值 D90C36B4
 # [自举历史] $expected_前 = '85DD71B6'  # 2026-11-02 (ORD-20261102-85 IR 阶段1 第二刀): 两相回填（只抬不降，保留预基口径）；v1==v2；前值 DCA84AE4
 # [自举历史] $expected_前 = '0A3B9182'  # 2026-11-02 (ORD-20261102-85 IR 阶段1 第三刀): 固定两相（布局相 + 终发相）；v1==v2；前值 85DD71B6
-$expected = '3BA0025C'  # 2026-11-02 (ORD-20261102-85 IR 阶段1 最终): 显式指令链回填 + -S 真位移 + 取消无条件第二遍（自编 码生成 15.3s）；seed 同步；v1==v2；前值 024D0123
+$expected = 'C0367707'  # 2026-11-02 (ORD-94 skeptic #2 根治：内部符号 `__qcc_snprintf/__qcc_vsnprintf`，AST 顶层函数不计内部；两轮换代后 v2==v3): 前值 F5AC6465；v1==v2
 # [自举历史] $expected_前 = 'B8D9725B'  # 收 空时 非阻塞 + __ch_q_empty 计数（关闭检查位置错，已纠正）
 # [自举历史] $expected_前 = '36B99BEE'  # ORD-34 之前（R905l 枚举转型）；v1==v2
 # [自举历史] $expected_前 = '9ECD765B'  # A9×3 + P0-2 + --refs (2026-10-19): 锚 1648; 自举 v1==v2==9ECD765B; 前值 2DB0CC41  # P0-2 嵌套 struct 数组 花括 初始化 (2026-10-19): 锚 1648; 净缺口 0. 自举 v1==v2==9ECD765B; 前值 2DB0CC41
