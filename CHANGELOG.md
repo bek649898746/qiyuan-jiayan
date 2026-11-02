@@ -69,7 +69,7 @@
 - **修复**: 非-S模式跳过 final gen_code (gen_final仅影响-S文本, 不影响机器码); -S保留final, -c本就单遍(H1==H2不受影响)
 - **收益**: gcc宿主 3.8s→3.16s(-17%), 自举v1编译 14.6s→10.7s(-27%), 验证循环飞轮提速
 - **验证**: 自举五代全等b44e2df8 + H1==H2 + 325/325 + 20/20 + git 612/612 + 冒烟全通
-- **验证策略分层(大哥定调)**: 纯性能优化走轻量闭环(自举+H1==H2+325+Git冒烟), Git全量编译降频为语义改动/封存节点/定期
+- **验证策略分层(项目口径)**: 纯性能优化走轻量闭环(自举+H1==H2+325+Git冒烟), Git全量编译降频为语义改动/封存节点/定期
 
 ## 3B4002D2 (2026-08-24)
 
@@ -104,7 +104,7 @@
 
 - **审计 郑启灵 刻入本体**: selftest 三重身份「铸基 郑宇和 · 自举 郑启元 · 审计 郑启灵 · 种子 828」, lexer 关键字 启灵 (与 宇和/启元 同 NK=828) — 审计从外部动作变语言本体身份
 - 此前代际: t49f (D443F953) sizeof(void**)=64 根治 / t49e (ADF8FB00) status --short 空输出根治 4 修 / t49d (1532A847) strtoul 恒返 0 根治 / t49c4sync (0ACA68FA) H1==H2 镜像双链合一 7 处同步 / t49 (370DB51D) 6 bug 根治 (inflate x2 + qcc x4) / t47 (bd3e48e3) %o/%I64u/struct 拷贝 / t46 (e8aee877) branch 五连修 / t45 (B43909BF) init/commit/diff 全链路
-- **H1==H2 严格达成**: C源链 == 镜像链 == 15089135 (gcc宿主编C源第一代全等不动点, 符合大哥历史标准)
+- **H1==H2 严格达成**: C源链 == 镜像链 == 15089135 (gcc宿主编C源第一代全等不动点)
 - 自举: v1..v5 = 15089135 五代全等, 测试 325+20 全绿, expected 同步
 
 ## 3AF2F1EF (2026-08-22)
@@ -139,7 +139,7 @@
 
 ## 2C328901 (2026-08-22, 在途未封存)
 
-**git 攻坚最后一公里: struct tm 修复 + 编译器本体 5 bug 根治 (大哥令转正: 修编译器而非改 git 源码)**
+**git 攻坚最后一公里: struct tm 修复 + 编译器本体 5 bug 根治 (决策: 修编译器而非改 git 源码)**
 
 - **struct tm 未定义 (#29)**: compat_prelude.h 补 MinGW 布局 struct tm (9 int = 36 字节, tm_year@20, tm_wday@24) + lexer 吞 __extension__ — git log 日期全崩根因 (%ad/%cI/%aI/%aD/medium/fuller 的 Date 行)
 - **qcc bug #27**: 64位返回值被 movslq %eax 截断 (140728898420658 变 -78) — 加 fn_ll_sig 结构记录函数返回 long long
@@ -476,7 +476,7 @@
 - **修复**：cast 类型解析跳过 `(*) (args)` 到类型结束 `)`（fp_d 深度从 1 开始，覆盖 `(*` 的括号）
 - **实证**：kernel_v50 FNPASS（5 种变体：局部/字面量/内存槽 cast 调用全对）；kernel_v54 真函数指针工具表 TOOLS-PASS [PASS]
 - **镜像同步** + 新不动点 E3CCCF5D，全量 H1==H2 180/180
-- **另发现**（Windows 独立问题，记台账）：`int x = (int)f` 在 Windows 模式恒 0（fn_patch 补丁路径待查），bin 模式正常
+- **另发现**（Windows 独立问题，已记录）：`int x = (int)f` 在 Windows 模式恒 0（fn_patch 补丁路径待查），bin 模式正常
 
 ## 87EB41AB (2026-08-09)
 **#7 printf %08x/%#x 实现（host+mirror 同步，新不动点）：**
@@ -492,7 +492,7 @@
 - **新增回归**：regress_printf_hex.c
 
 ## A5AE7D39 (2026-08-09)
-**台账批量清零: #5 ftell / #11 未知字符 / #2 func_tbl / #13 TS（新不动点）：**
+**缺陷批量清零: #5 ftell / #11 未知字符 / #2 func_tbl / #13 TS（新不动点）：**
 
 - **#5 BUG-12**: read_file 的 ftell 显式 `sz < 0` 检查（原隐式靠 sz>0 兜底）——host+mirror 同步
 - **#11 BUG-5**: lexer 未知字符不再静默丢弃——计数并在 lex 结束报 `[WARN] lex: N 未知字符被忽略`（host switch default / mirror 择缺 同步）
@@ -502,7 +502,7 @@
 - **验证**: v2==v3==v4=A5AE7D39（904465B），全量 H1==H2 179/179
 
 ## 7CDFCFC5 (2026-08-09)
-**enum 家族修复: 负值常量 + 全局变量声明（台账 #1 攻坚，宿主+镜像同步）：**
+**enum 家族修复: 负值常量 + 全局变量声明（缺陷 #1 攻坚，宿主+镜像同步）：**
 
 - **根因1（挂死）**：顶层/typedef-enum 两处处理器只认 `= NK`，不消费 `-`（MK token）→ `RED = -2` 卡死死循环；且无 tk0 安全守卫（blk() 版有，另两处没有）
 - **根因2（值错）**：`e_lookup` 用 `-1` 作"未找到"哨兵 → 负值常量 RED=-2 被判未找到 → 当普通变量用（值 0）。哨兵改 `0x80000000`（INT_MIN 在 enum 里实际不可表达），两处调用点 `>=0` → `!=哨兵`（含 switch case 标签）
@@ -525,7 +525,7 @@
 - enum 常量体 {A,B=5,C} 从未解析 → 常量未注册 → 使用崩溃；修复 was_enum+FK 解析+e_reg 注册
 - 教训: else tk++ 无条件推进跳过 } 吞 token 挂死 → tk0 安全守卫
 - union/free: 正常, 锁回归 regress_union.c / regress_free.c
-- extern: 同文件声明+定义不支持 (多文件模型OK); scanf: 运行时未实现 — 记台账
+- extern: 同文件声明+定义不支持 (多文件模型OK); scanf: 运行时未实现 — 已记录
 - 验证: v2==v3==v4=A16AC67F, 全量 H1==H2 174/174
 
 ## FA9CDF0D (2026-08-09)
@@ -537,7 +537,7 @@
 - **验证**：v2==v3==v4=FA9CDF0D，宿主+v2 `f("abc")[1]` 均正确
 - **新增回归**：regress_ptr_param_inc.c（a++ 解引用 + strlen 风格遍历）
 
-## 60ACEF3D (2026-08-09)（bin_mode C3；6FD5AA72 的 b() 守卫因 10 测试超 4MB 容量回退, 容量问题记台账）
+## 60ACEF3D (2026-08-09)（bin_mode C3；6FD5AA72 的 b() 守卫因 10 测试超 4MB 容量回退, 容量问题已记录）
 
 **bin_mode C3: 裸二进制输出端（审计 P0#1 三步全落地）：**
 

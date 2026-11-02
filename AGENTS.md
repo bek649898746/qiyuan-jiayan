@@ -56,10 +56,10 @@ $t = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
 
 > 曾同步的「英文链镜像」`srclib_jiayan/qcc_work.jy`（22,571 行）仅 `scripts/build.ps1` 使用，与主链产物**不互通**。
 
-### 4. 内部材料永不提交
+### 4. 工作区目录永不提交
 
-`docs/` · `memory/` · `_audit_inbox/` 属内部材料（**当前均已 0 件入索引**）。
-禁用 `git add -A` / `git add .`，**只用精确路径**。依据：`_启元禁令.md`。
+`docs/`、`memory/` 等本地工作区目录属开发过程材料（**当前均已 0 件入索引**）。
+禁用 `git add -A` / `git add .`，**只用精确路径**。
 
 ---
 
@@ -82,9 +82,9 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_all.ps1
 | `srclib_jiayan/` | 甲言中文源码（`qcc_zh.jy` 为主源） |
 | `seed/` | 种子（自举起点） |
 | `tests/` | 测试（`qcc` / `behavior` / `kernel` / `unit` / `loong`） |
-| `scripts/` | 工具脚本。⚠️ **目前也混放了约 1630 个测试用例**（`feat_*.c`），迁移计划见 `_audit_inbox` 的施工单 |
+| `scripts/` | 工具脚本。⚠️ **目前也混放了约 1630 个测试用例**（`feat_*.c`），迁移计划待排期 |
 | `manual/` | **面向使用者的公开手册**（快速上手 / AI 上手 / 中文关键字表） |
-| `docs/` `memory/` `_audit_inbox/` | **内部材料 —— 永不提交** |
+| `docs/` `memory/` 等本地目录 | **开发过程材料 —— 永不提交** |
 
 ---
 
