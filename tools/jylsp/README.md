@@ -66,4 +66,4 @@ LSP 服务器本该用 `fread`/`fwrite` 读写标准流，这就成了必须自�
 - 全文同步（`textDocumentSync: 1`），大文件会有整份重传成本
 - 协议支持面只到上面 4 个 capability；`references` / `rename` / `documentSymbol` 等均未声明
 
-_整理：启元 · 审计岗 · 2026-10-28 · capability 与握手均来自实测原文，未采信自述_
+_整理：启元 · 2026-10-28 · capability 与握手均来自实测原文，未采信自述_
