@@ -1,0 +1,126 @@
+# Release 资产签名（Sigstore keyless）—— 让分发的二进制「可验证来源」
+#
+# 为什么要有这个文件：
+#   现在分发的 qcc_zh_seed.exe 是「零依赖自举」的起点 —— 使用者拿到的第一个编译器就是它。
+#   但它此前没有任何来源证明：任何人都可以替换成自己的二进制而不被察觉。
+#   Sigstore 的 keyless 签名把「这个字节串由本仓库的这次 workflow 产出」写进公开的
+#   transparency log（Rekor），校验时不需要预先交换公钥 —— 拿 .sig + .pem 即可验。
+#
+# 设计原则（重要）：
+#   **默认不上传（upload=false）**。本 workflow 默认只「下载资产 → 签名 → 本地校验」，不碰公开
+#   Release 页面；只有显式把 upload 打开，才把 .sig/.pem 传上去。
+#   ⟹ 签名是安全改进，但「改动公开 Release 页」应当由维护者显式决定，不应由默认行为触发。
+#
+# 权限说明：
+#   contents: write  —— 仅在上传签名时用到（gh release upload）
+#   id-token: write  —— cosign keyless 必需：用 GitHub OIDC 换取短时证书，不保存任何私钥
+#   注：本仓库的 Token-Permissions 评分已因 status-sync 需要写权限而归零（见 SECURITY.md
+#   「评分上的两处有意扣分」），本文件不额外改变该判断。
+
+name: release-sign
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要签名的 Release tag（需已存在且有资产）'
+        required: true
+        default: 'v2.1.0'
+      upload:
+        description: '把签名上传到该 Release（默认关闭：只签名并本地校验）'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  sign:
+    name: 签名 Release 资产
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 安装 cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+
+      - name: 下载 Release 资产
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$TAG" --repo "$REPO" --dir dist
+          echo '--- 下载到的资产 ---'
+          ls -l dist
+          n=$(find dist -maxdepth 1 -type f | wc -l)
+          if [ "$n" -eq 0 ]; then
+            echo "::error::该 Release 没有资产，无可签名对象（tag=$TAG）"
+            exit 1
+          fi
+
+      - name: 逐资产签名（keyless，无长期私钥）
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *; do
+            case "$f" in
+              *.sig|*.pem|*.intoto.jsonl) continue ;;   # 已存在的签名文件跳过
+            esac
+            echo "签名: $f"
+            cosign sign-blob --yes \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.pem" \
+              "$f"
+          done
+          echo '--- 生成物 ---'
+          ls -l
+
+      - name: 本地校验签名（不信任生成结果，必须回验）
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *; do
+            case "$f" in
+              *.sig|*.pem|*.intoto.jsonl) continue ;;
+            esac
+            echo "校验: $f"
+            cosign verify-blob \
+              --signature "$f.sig" \
+              --certificate "$f.pem" \
+              --certificate-identity-regexp "https://github.com/${{ github.repository }}/\.github/workflows/release-sign\.yml@.*" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$f"
+          done
+
+      - name: 上传签名到 Release（仅在 upload=true 时）
+        if: ${{ inputs.upload }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd dist
+          gh release upload "$TAG" *.sig *.pem --repo "$REPO" --clobber
+          echo "已上传签名到 $TAG"
+
+      - name: 汇总
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          UPLOADED: ${{ inputs.upload }}
+        run: |
+          echo "### Release 签名结果" >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag: \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 签名方式: Sigstore keyless（OIDC + Rekor transparency log）" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 是否已上传: \`$UPLOADED\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 校验方式: \`cosign verify-blob --signature <f>.sig --certificate <f>.pem <f>\`" >> "$GITHUB_STEP_SUMMARY"
