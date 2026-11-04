@@ -14,6 +14,7 @@
   python scripts/check_operator_prec.py --cc qcc_zh_v1.exe
   python scripts/check_operator_prec.py --gcc        # 用 gcc 复算期望值并核对冻结表
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -98,7 +99,7 @@ def main():
         print('[FAIL] 找不到编译器: %s' % cc)
         return 2
 
-    tmp = tempfile.mkdtemp(prefix='prec_')
+    tmp = tmp_dir('prec')
     try:
         if a.gcc:
             exp = gcc_expected(tmp)

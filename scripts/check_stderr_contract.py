@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""check_stderr_contract —— 内部缺陷追踪 编译器 stderr 契约。
+"""check_stderr_contract —— ORD-20261102-93 编译器 stderr 契约。
 
 判据：
   1. 默认成功编译 stderr == 0 字节；

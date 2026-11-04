@@ -12,6 +12,7 @@
 
 用法: python scripts/check_findqcc_refusal.py [--cc <exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import shutil
@@ -28,10 +29,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default=os.path.join(REPO, 'qcc_zh_seed.exe'))
     a = ap.parse_args()
-    d = tempfile.mkdtemp(prefix='fq_')
+    d = tmp_dir('fq')
     sd = os.path.join(d, 'scripts')
     os.makedirs(sd, exist_ok=True)
     shutil.copy(os.path.join(REPO, 'scripts', 'run_tests_zh.py'), sd)
+    shutil.copy(os.path.join(REPO, 'scripts', 'qcc_tmp.py'), sd)  # A1: 入口依赖
     shutil.copy(os.path.join(REPO, 'scripts', 'feat_zh_typeof_ptr_ok.c'), sd)
 
     env = dict(os.environ)

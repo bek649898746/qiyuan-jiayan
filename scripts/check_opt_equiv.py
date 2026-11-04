@@ -11,6 +11,7 @@
 用法: python scripts/check_opt_equiv.py [--cc qcc_zh_v1.exe] [--anchors 20] [--corpus 5] [--work <dir>]
 退出码: 0 = 全等；1 = 有不等/取材不足；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -20,7 +21,9 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
-CORPUS_DIR = r'C:\Users\Administrator\Desktop\grok-build\scratch_gl'
+# D1078 (2026-11-04 启元): 加环境变量兜底 —— 原为写死本机路径，别人 clone 后跑不起来。
+# 本机行为不变；换机器用 QCC_OPT_CORPUS 指向自己的 20 锚 + 5 语料目录。
+CORPUS_DIR = os.environ.get('QCC_OPT_CORPUS') or r'C:\Users\Administrator\Desktop\grok-build\scratch_gl'
 
 
 def run(cmd, t=900):
@@ -89,7 +92,7 @@ def main():
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
     ap.add_argument('--anchors', type=int, default=20)
     ap.add_argument('--corpus', type=int, default=5)
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_opt_equiv'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_opt_equiv'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)
     opt = os.path.join(ROOT, 'opt_zh.exe')

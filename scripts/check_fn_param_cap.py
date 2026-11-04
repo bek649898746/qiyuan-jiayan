@@ -14,6 +14,7 @@
 用法: python scripts/check_fn_param_cap.py [--cc qcc_zh_v1.exe] [--n 4000]
 退出码: 0 = 该规模编译成功；1 = 触发护栏/失败；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -47,7 +48,7 @@ def main():
         print('[FAIL] 环境未就绪: 找不到编译器 %s（不判绿）' % cc)
         return 2
 
-    w = tempfile.mkdtemp(prefix='qcc_fnparam_')
+    w = tmp_dir('qcc_fnparam')
     src = os.path.join(w, 'many.c')
     lines = gen(a.n, src)
     out = os.path.join(w, 'many.exe')

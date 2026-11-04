@@ -6,13 +6,14 @@
    判据: 未覆盖 类 数 == 已登记 类 数（且逐码对上）⟹ **差异 = 0（每条都有可查的登记理由）**。
 用法: python scripts/check_ir_shadow.py [编译器] [源...]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io, os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 # 修（IR 打磨 goal）: 原 **硬编码 某 已消失 goal 的 scratch**（`grok-goal-bc44933af5ae`）⟹ 语料写不进、
 # 永远「缺件」⟹ 判据 3「自带检查器 全部退出码 0」**不可能满足**。改 **自足**（env 或 临时目录）。
-S = os.environ.get('QCC_IR_SCRATCH') or os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-shadow')
+S = os.environ.get('QCC_IR_SCRATCH') or os.path.join(tmp_root(), 'qiyuan-ir-shadow')
 os.makedirs(S, exist_ok=True)
 CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(QJ, 'qcc_zh_v2.exe')
 

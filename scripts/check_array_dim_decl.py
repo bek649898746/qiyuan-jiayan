@@ -14,6 +14,7 @@
   python scripts/check_array_dim_decl.py --cc qcc_zh_v1.exe
   python scripts/check_array_dim_decl.py --gcc
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -52,7 +53,7 @@ def main():
         print('[FAIL] 找不到编译器: %s' % cc)
         return 2
 
-    tmp = tempfile.mkdtemp(prefix='dimdecl_')
+    tmp = tmp_dir('dimdecl')
     try:
         if a.gcc:
             gcc = shutil.which('gcc')

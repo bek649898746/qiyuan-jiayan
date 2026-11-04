@@ -15,6 +15,7 @@
 用法: python scripts/check_alloc_fail.py [--cc qcc_zh_v1.exe] [--index 0] [--name <表名>]
 退出码: 0 = PASS；1 = RED
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -40,7 +41,7 @@ def main():
     a = ap.parse_args()
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(repo)
-    tmp = tempfile.mkdtemp(prefix='allocfail_')
+    tmp = tmp_dir('allocfail')
     src = os.path.join(tmp, 'probe.c')
     with open(src, 'w', encoding='utf-8', newline='\n') as f:
         f.write(SRC)

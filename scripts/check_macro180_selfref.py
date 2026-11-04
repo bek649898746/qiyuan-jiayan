@@ -11,6 +11,7 @@ C 6.10.3.4 p2（blue paint）：自引用宏在展开时**不再进一步替换*
 用法:
   python scripts/check_macro180_selfref.py [--cc <exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -24,7 +25,7 @@ if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
 ANCHOR = os.path.join('scripts', 'feat_zh_macro180_selfref_neg.c')
 PRE = os.path.join(REPO, 'compat_prelude.h')
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_check_macro180')
+TMP = os.path.join(tmp_root(), '_check_macro180')
 
 
 def main():

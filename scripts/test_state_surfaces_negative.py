@@ -16,6 +16,7 @@
   python scripts/test_state_surfaces_negative.py --old <旧版脚本>   # 额外对照：旧版对同一夹具应**漏报**
 退出: 0 = 全部断言成立；1 = 有断言不成立
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -75,7 +76,7 @@ def main():
     fails = []
 
     def case(name, stale_count, stale_coord, want_rc, want_marks):
-        root = tempfile.mkdtemp(prefix='qy_surf_')
+        root = tmp_dir('qy_surf')
         try:
             build_tree(root, stale_count, stale_coord)
             rc, out = run_gate(root)
@@ -93,7 +94,7 @@ def main():
     case('种过期坐标 → 应当红', False, True, 1, ('FAIL', '编译器仓'))
 
     if a.old:
-        root = tempfile.mkdtemp(prefix='qy_surf_old_')
+        root = tmp_dir('qy_surf_old')
         try:
             build_tree(root, stale_count=True, stale_coord=True)
             rc, out = run_gate(root, script=a.old)

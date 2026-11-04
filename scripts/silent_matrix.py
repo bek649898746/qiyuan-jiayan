@@ -13,6 +13,7 @@
   python scripts/silent_matrix.py --cc qcc_zh_v1.exe --corpus lua,zlib --parallel 6 --json out.json
   可选 --keep-all 表示 连 下划线 前缀（前几轮 手工副本 `_cop*.c` / `_lh*.c`）也计入。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import json
 import os
@@ -25,7 +26,7 @@ from concurrent.futures import ProcessPoolExecutor
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)
 CORPUS_ROOT = r'D:\qiyuan_home\corpus'
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_silent_matrix')
+TMP = os.path.join(tmp_root(), '_silent_matrix')
 os.makedirs(TMP, exist_ok=True)
 
 TARGETS = {

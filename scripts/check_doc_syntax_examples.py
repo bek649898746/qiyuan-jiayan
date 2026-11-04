@@ -12,6 +12,7 @@
 用法: python scripts/check_doc_syntax_examples.py [--cc qcc_zh_v1.exe]
 退出: 0 = 三段示例都编过且输出符合；1 = 有红
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -43,7 +44,7 @@ def main():
     blk_disc = next((b for b in bs if '判别 结局 于' in b), None)
     blk_yiju = next((b for b in bs if b.strip().startswith('整 分支计') or '穷尽 结局' in b), None)
     blk_jg = next((b for b in bs if '解构(' in b), None)
-    w = tempfile.mkdtemp(prefix='qcc_doc_syntax_')
+    w = tmp_dir('qcc_doc_syntax')
     fails = []
     print('=== 语法文档示例真跑（manual/中文关键字表.md §五之二）===')
     print('抽到代码块 %d，判别=%s 依据=%s 解构=%s' %

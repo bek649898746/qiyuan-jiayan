@@ -25,6 +25,9 @@ import statistics
 import subprocess
 import sys
 import time
+import sys as _sys_t2
+_sys_t2.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SELF_SRC = os.path.join(ROOT, 'srclib_jiayan', 'qcc_zh.jy')
@@ -112,7 +115,7 @@ def main():
               % load0)
         return 2
 
-    out_dir = os.path.join(ROOT, 'scratch_test')
+    out_dir = tmp_dir('scratch_test')
     os.makedirs(out_dir, exist_ok=True)
     env = dict(os.environ, QCC_SMALL_HEAP='1')
     rows = []

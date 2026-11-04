@@ -14,6 +14,7 @@ qcc 全 rc=0 并产出 276KB exe；gcc 全部报 `expected ';'`。静默吞 toke
 用法: python scripts/check_missing_semicolon.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 5 例全部报错（缺陷已修）；1 = 至少 1 例静默通过（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -42,7 +43,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_semi_')
+    w = tmp_dir('qcc_semi')
     bad = []
     for name, text in CASES:
         src = os.path.join(w, name + '.c')

@@ -12,6 +12,7 @@
 用法: python scripts/check_float_width_matrix.py [--cc qcc_zh_v1.exe]
 退出: 0 = 10 例全绿；1 = 有红
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -67,7 +68,7 @@ def main():
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
-    w = tempfile.mkdtemp(prefix='qcc_fw_matrix_')
+    w = tmp_dir('qcc_fw_matrix')
     env = dict(os.environ, TEMP=r'D:\qcc_tmp', TMP=r'D:\qcc_tmp')
     gen = os.path.join(w, 'gen.c')
     io.open(gen, 'w', encoding='utf-8', newline='\n').write(GEN)

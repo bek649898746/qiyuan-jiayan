@@ -7,11 +7,14 @@
   · 成功 ⟹ 至少该例已修，应复核其余 4 例后转 fixed
 用法: python scripts/check_corpus_diff.py [--cc qcc_zh_v1.exe] [--file <路径>]
 """
+from qcc_tmp import tmp_dir
 import argparse, os, subprocess, sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT = r'D:\qiyuan_home\corpus\lua-5.4.7\lmathlib.c'
+# D1078 (2026-11-04 启元): 加环境变量兜底 —— 原为写死本机路径，别人 clone 后跑不起来。
+# 本机行为不变（环境变量未设时仍取原路径）；换机器用 QCC_LUA_FILE 指向自己的语料。
+DEFAULT = os.environ.get('QCC_LUA_FILE') or r'D:\qiyuan_home\corpus\lua-5.4.7\lmathlib.c'
 
 
 def main():
@@ -23,7 +26,7 @@ def main():
     if not os.path.exists(a.file):
         print('[SKIP] 语料不存在: %s' % a.file)
         return 0
-    out = os.path.join(os.environ.get('QCC_TMPDIR', os.path.join(REPO, 'scratch_corpus')), 'lmathlib.o')
+    out = os.path.join(os.environ.get('QCC_TMPDIR') or tmp_dir('corpus'), 'lmathlib.o')
     os.makedirs(os.path.dirname(out), exist_ok=True)
     p = subprocess.run([cc, '-c', a.file, '-o', out], cwd=REPO, capture_output=True, text=True,
                        encoding='utf-8', errors='replace')

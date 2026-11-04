@@ -2,6 +2,7 @@
 """并行验证驱动 — 并行跑 scripts/_verify_*.py (隔离目录, 修复临时名冲突).
 用法: python scripts/run_verify_parallel.py [workers]
 build.ps1 [5.5/5] 调用, 替代原串行 ForEach-Object."""
+from qcc_tmp import tmp_dir, tmp_root
 import subprocess, sys, os, glob, tempfile, shutil
 from multiprocessing import Pool
 
@@ -12,7 +13,7 @@ WORKERS = int(sys.argv[1]) if len(sys.argv) > 1 else 8
 
 def run_one(f):
     """在独立临时目录跑脚本 (scratch_test/ 隔离, qcc_x86.exe 复制进去)"""
-    d = tempfile.mkdtemp(prefix='_vf_')
+    d = tmp_dir('_vf')
     try:
         os.makedirs(os.path.join(d, 'scratch_test'), exist_ok=True)
         shutil.copy(QCC, os.path.join(d, 'qcc_x86.exe'))

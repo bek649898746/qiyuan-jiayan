@@ -15,6 +15,7 @@
 用法: python scripts/check_calloc_sz1.py [--cc qcc_zh_seed.exe] [--runs 20]
 退出码: 0 = 20/20 全 0 退出且结构可定位；1 = 有崩溃或结构漂移（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -37,7 +38,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_calloc_')
+    w = tmp_dir('qcc_calloc')
     src = os.path.join(w, 'c1.c')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(SRC)
     exe = os.path.join(w, 'c1.exe')

@@ -19,6 +19,7 @@ gcc 14.2.0 实测（`整 s=-1; 无符号 整 u=2;`）：`s/u` = 2147483647，`s%
 判据形态：编译 + 运行真实产物，与 gcc 期望逐项比对；同时给出常量侧对照，确保两口径可见。
 用法：python scripts/check_runtime_div_unsigned.py --cc qcc_zh_v1.exe
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -75,7 +76,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 找不到编译器: %s' % cc)
         return 2
-    tmp = tempfile.mkdtemp(prefix='rtdiv_')
+    tmp = tmp_dir('rtdiv')
     try:
         src = os.path.join(tmp, 't.jy')
         exe = os.path.join(tmp, 't.exe')

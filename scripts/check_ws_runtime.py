@@ -12,6 +12,7 @@
 
 用法: python scripts/check_ws_runtime.py [--cc qcc_zh_v1.exe]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import concurrent.futures
 import io
@@ -47,7 +48,7 @@ def main():
     ap.add_argument('--cc', default=os.environ.get('QCC_TEST_BIN') or 'qcc_zh_v1.exe')
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
-    work = tempfile.mkdtemp(prefix='qcc_wsrt_')
+    work = tmp_dir('qcc_wsrt')
     bad = []
 
     def comp(src, out, timeout=300):

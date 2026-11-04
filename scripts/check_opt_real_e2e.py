@@ -13,6 +13,7 @@
 用法: python scripts/check_opt_real_e2e.py [--cc qcc_zh_v1.exe] [--src scripts/feat_zh_2phase30_ok.c]
 退出码: 0 = 全过 / 1 = 有红 / 2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -51,7 +52,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
     ap.add_argument('--src', default='scripts/feat_zh_2phase30_ok.c')
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_real_e2e'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_real_e2e'))
     a = ap.parse_args()
     for p in (a.cc, 'opt_zh.exe', 'asm_zh.exe', a.src):
         if not os.path.exists(p):

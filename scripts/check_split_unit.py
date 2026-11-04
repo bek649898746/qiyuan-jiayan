@@ -9,6 +9,7 @@
   ⑤ 反例：只链库对象 ⟹ 链接失败（缺入口），证明入口来自被编译对象。
 用法: python scripts/check_split_unit.py --cc qcc_zh_v2.exe
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import shutil
@@ -32,7 +33,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v2.exe')
     a = ap.parse_args()
-    w = tempfile.mkdtemp(prefix='qcc_split_')
+    w = tmp_dir('qcc_split')
     fails = []
     pa, pb = os.path.join(w, 'sa.c'), os.path.join(w, 'sb.c')
     oa, ob = os.path.join(w, 'sa.o'), os.path.join(w, 'sb.o')

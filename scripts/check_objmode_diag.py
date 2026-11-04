@@ -13,6 +13,7 @@ jyld 才报 `undefined symbol` ⟹ file:line:col 丢失、错误暴露过晚；g
 用法: python scripts/check_objmode_diag.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 4 例全符；1 = 有例不符（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -40,7 +41,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_objdiag_')
+    w = tmp_dir('qcc_objdiag')
     bad = []
     for name, text, want in NEG:
         src = os.path.join(w, name + '.c')

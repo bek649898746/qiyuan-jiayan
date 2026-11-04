@@ -15,6 +15,7 @@
   python scripts/check_ir_value.py --dump-file <f>
   python scripts/check_ir_value.py [引擎] --selftest       # 破坏输入 必 FAIL（判据不自空转）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -22,7 +23,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-value')
+T = os.path.join(tmp_root(), 'qiyuan-ir-value')
 os.makedirs(T, exist_ok=True)
 CC = os.path.join(QJ, 'qcc_zh_v2.exe')
 PROBES = ['scripts/probe/ir_cover_probe.c']

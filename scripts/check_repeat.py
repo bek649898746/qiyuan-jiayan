@@ -12,6 +12,7 @@
 用法: python scripts/check_repeat.py [--cc qcc_zh_seed.exe] [--modes -o,-S,-c] [--ns 2,3,5]
 退出码: 0 = 全矩阵 PASS；1 = 有格失败（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -35,7 +36,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_repeat_')
+    w = tmp_dir('qcc_repeat')
     src = os.path.join(w, 'p.c')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(SRC)
     bad = []

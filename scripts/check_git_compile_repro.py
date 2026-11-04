@@ -13,6 +13,7 @@
 
 用法: python scripts/check_git_compile_repro.py [--cc qcc_zh_v1.exe] [--tree <git 根>]
 """
+from qcc_tmp import tmp_dir
 import argparse
 import hashlib
 import os
@@ -23,7 +24,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 PRELUDE = os.path.join(REPO, 'compat_prelude.h')
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_gitrepro')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('gitrepro')
 
 CORE = ['diff.c', 'dir.c', 'strbuf.c', 'read-cache.c', 'object.c', 'hex.c',
         'builtin/add.c', 'builtin/commit.c', 'builtin/hash-object.c', 'compat/stat.c',
@@ -47,7 +48,7 @@ def build(cc, tree, src, defs, out):
     args = [cc, '-D', '__STDC_VERSION__=199901L', '-D', '__GNUC__=5']
     for d in defs:
         args += ['-D', d]
-    args += ['-D', 'REG_STARTEND=1', '-I', PRELUDE, '-c', src, '-o', out]
+    args += ['-D', 'REG_STARTEND=1', '-I', PRELUDE, '-I', tree, '-c', src, '-o', out]
     p = subprocess.run(args, cwd=tree, capture_output=True, text=True, encoding='utf-8', errors='replace')
     return p.returncode, (p.stdout or '') + (p.stderr or '')
 

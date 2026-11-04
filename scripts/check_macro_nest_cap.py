@@ -20,6 +20,7 @@
   python scripts/check_macro_nest_cap.py --selftest            # 负向自证: 把判据 打靶 到 [24] 假源 ⟹ 必须 FAIL
 退出码: 0 = 全过; 1 = 有 违例 (逐条 打印 违例行)
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import re
@@ -93,7 +94,7 @@ def 生成(深度):
 
 def 动态核对(CC, 深度组, 期望):
     print('[%s] %s' % (期望[0], 期望[1]))
-    临时 = tempfile.mkdtemp(prefix='mnc_')
+    临时 = tmp_dir('mnc')
     for 深度 in 深度组:
         源 = os.path.join(临时, 'nest%d.c' % 深度)
         exe = os.path.join(临时, 'nest%d.exe' % 深度)

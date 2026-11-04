@@ -11,6 +11,7 @@
 
 用法: python scripts/check_perf_budget.py --image|--commit|--pad|--par [--cc <exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import hashlib
 import os
@@ -77,7 +78,7 @@ def main():
         return 0 if ok else 1
 
     if mode == 'pad':
-        d = tempfile.mkdtemp(prefix='perfpad_')
+        d = tmp_dir('perfpad')
         src = os.path.join(d, 'p.jy')
         open(src, 'w', encoding='utf-8-sig').write(SRC)
         hs = []

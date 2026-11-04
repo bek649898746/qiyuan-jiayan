@@ -18,6 +18,7 @@
 用法: python scripts/check_opt_perf.py [--cc qcc_zh_v1.exe] [--runs 7] [--work <dir>]
 退出码: 0 = 达标；1 = 未达标（如实报数）；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -57,7 +58,7 @@ def main():
     ap.add_argument('--runs', type=int, default=9)
     ap.add_argument('--control', default=os.path.join('build', 'control_opt_R880.exe'),
                     help='对照优化器（R880 出厂版）；缺省则从 git 提交 %s 现编' % CTL_SHA)
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_opt_perf'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_opt_perf'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)
     opt = os.path.join(ROOT, 'opt_zh.exe')

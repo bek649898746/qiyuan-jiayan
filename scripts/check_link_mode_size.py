@@ -12,6 +12,7 @@
 用法: python scripts/check_link_mode_size.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 两个产物都 ≤ 阈值；1 = 超阈值（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -38,7 +39,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_size_')
+    w = tmp_dir('qcc_size')
     bad = []
     for name, text in CASES:
         src = os.path.join(w, name + '.c')

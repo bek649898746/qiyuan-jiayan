@@ -1,4 +1,7 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
+# 甲言 (Jiayan) — 中文原生自举编译器
+# Copyright (c) 2026 郑宇和 (Zheng Yuhe)
+# SPDX-License-Identifier: MIT
 """甲言 行为断言测试运行器 (Python 版, v2 支持快速集/并行)
 用法:
   python scripts/run_tests.py                 全量 325 串行 (~12 分钟, 原行为)
@@ -14,6 +17,17 @@
 无 @EXPECTED 时默认 exit:0
 """
 import sys, os, subprocess, re, argparse, shlex
+import sys as _sys_st
+_sys_st.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from qcc_tmp import tmp_dir as _tmp_dir, tmp_root as _tmp_root  # noqa: E402  A1
+except ImportError:
+    def _tmp_dir(name):
+        _b = os.environ.get('QCC_TMP_ROOT', r'D:\qcc_tmp')
+        _p = os.path.join(_b, '%s_%d' % (name, os.getpid()))
+        os.makedirs(_p, exist_ok=True)
+        return _p
+ST_DIR = _tmp_dir('scratch_test')
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 # R715 仪器刀 (2026-10-11 虾米 · 递刀修法③): 兜底给所有 python 子进程 —— 默认控制台 GBK 时
@@ -75,6 +89,8 @@ MACRO_GUARD = [
 #    文件保留, 修好后重新入册 (入册时同样须过全量闸)。
 # 核心确定性中文特性 (2026-09-05 测试挂载): 所有权/借用/多态/copy 族 — 独立有主测试, --zh-feat 默认跑 (自动盯真回归)
 CORE_FEAT = [
+    'scripts/feat_zh_block_shadow_ok.c',  # D6D5b/c (2026-11-04 虾米 · skeptic-0): 块内同名声明遮蔽形参后, 块外读形参必须命中形参; 返回类型非浮点而表达式浮点必须隐式截断 (int/char/short/long/float/double/指针 七形态 + 局部遮蔽 + 双精度返回截断)
+    'scripts/feat_zh_decl_order_ok.c',  # D6D5-DECL-ORDER (2026-11-04 虾米 · skeptic-0 gap ①): 声明顺序作用域 (C11 6.2.1p7) —— 同一块内后声明不得遮蔽此前同名声明的引用 (全局/形参/局部 + 七类型); 修前 global=0/param=0, 修后 7/42
     'scripts/feat_zh_dangling_array_neg.c',  # R905h (2026-10-29 虾米 · 审计 ORD-36): 返回局部数组名 必须 A3105（修前放行）
     'scripts/feat_zh_dangling_allow_ok.c',  # R905h: 合法对照（形参 / static 局部）不得误报
     'scripts/feat_zh_blockproto_ok.c',      # ORD-52 (2026-10-30 虾米): 块内函数原型 (C99 6.7.5.3) 真跑 BPROTO 42 65（修前 A1004 缺分号）
@@ -3899,13 +3915,13 @@ def run_one_test(name):
     #   判据修正为「有纯运行期断言才算运行期锚」; 带 err: 的 `_neg` 锚仍按负例 (compile_fail 分支) 校验 err。
     if (not expect_cfail) and (not explicit_run) and (not expected_out) and ("_neg" in os.path.basename(name)):
         expect_cfail = True
-    h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
+    h1 = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_H1.exe')
     try:
         os.remove(h1)
     except OSError:
         pass
     try:
-        _env = dict(os.environ, QCC_SMALL_HEAP='1')  # 2026-10-19: 锚编译 256MiB 堆备留 ⟹ 8 路并行不打穿 commit
+        _env = dict(os.environ, QCC_SMALL_HEAP='1', QCC_TMP_ROOT=str(_tmp_root()))  # A1: 锚可用 QCC_TMP_ROOT 定位临时文件；2026-10-19: 锚编译 256MiB 堆备留 ⟹ 8 路并行不打穿 commit
         if expected_silent is not None:
             _env['QCC_DBG_SILENT'] = '1'
         r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
@@ -3916,9 +3932,9 @@ def run_one_test(name):
         #   病灶: `run([qcc] ...)` 无 `timeout=` ⟹ 编译器 一旦卡死, 整轮全量闸 **永久挂住且无现场**
         #     (2026-10-11 实测: `--only <3锚>` 跑 8.5 分钟无输出、kill 后日志为空 ⟹ 无法定位)。
         #   现: 120s 上限 + 落盘**现场快照**(命令/部分输出/源码副本) 到 scratch_test/, 并 以 FAIL 报出。
-        _snap = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_COMPILE_TIMEOUT.txt')
+        _snap = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_COMPILE_TIMEOUT.txt')
         try:
-            os.makedirs('scratch_test', exist_ok=True)
+            os.makedirs(ST_DIR, exist_ok=True)
             with open(_snap, 'w', encoding='utf-8') as _f:
                 _f.write('cmd: %s %s\n' % (qcc, ' '.join(list(arg_extra) + [src, '-o', h1])))
                 _f.write('--- partial stdout ---\n' + (ce.stdout or '') + '\n')
@@ -3976,8 +3992,8 @@ def run_one_test(name):
     if expected_warn and expected_warn not in cerr_all:
         return (name, False, 'warn 期望 编译输出 含 %r 实际=%r' % (expected_warn, cerr_all.strip()[:200]))
     # 运行
-    out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
-    err_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_err.txt')
+    out_file = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_out.txt')
+    err_file = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_err.txt')
     try:
         os.remove(out_file); os.remove(err_file)
     except OSError:
@@ -3993,7 +4009,7 @@ def run_one_test(name):
         _stdin_fh = None
         _stdin_path = None
         if stdin_in is not None:
-            _stdin_path = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_stdin.txt')
+            _stdin_path = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_stdin.txt')
             with open(_stdin_path, 'w', encoding='utf-8', newline='') as _sf:
                 _sf.write(stdin_in)
             _stdin_fh = open(_stdin_path, 'rb')
@@ -4199,7 +4215,7 @@ def main():
 
     # 清理 scratch_test (并行/串行都只清一次)
     import shutil
-    st_dir = os.path.join(root, 'scratch_test')
+    st_dir = ST_DIR
     subprocess.run(['powershell', '-NoProfile', '-Command',
                     'Get-Process -Name "*_H1*" -ErrorAction SilentlyContinue | Stop-Process -Force'],
                    capture_output=True)

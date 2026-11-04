@@ -8,6 +8,7 @@
 
 用法: python scripts/check_prelude_macros.py [--cc exe]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -51,7 +52,7 @@ def main():
                     (os.path.join(REPO, 'qcc_zh_seed.exe') if os.path.exists(os.path.join(REPO, 'qcc_zh_seed.exe'))
                      else os.path.join(REPO, 'qcc_zh_v1.exe')))
     a = ap.parse_args()
-    d = tempfile.mkdtemp(prefix='qcc_prelude_')
+    d = tmp_dir('qcc_prelude')
     src = os.path.join(d, 'p.c')
     exe = os.path.join(d, 'p.exe')
     open(src, 'w', encoding='utf-8', newline='\n').write(SRC)

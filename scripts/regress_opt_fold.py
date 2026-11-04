@@ -14,6 +14,7 @@
 用法: python scripts/regress_opt_fold.py
 退出码: 0 = 对照成立；1 = 不符合预期；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io
 import os
 import re
@@ -100,7 +101,7 @@ def build_old(sha, work):
 
 
 def main():
-    work = os.path.join(os.environ.get('TEMP', '.'), 'qcc_regress_fold')
+    work = os.path.join(tmp_root(), 'qcc_regress_fold')
     os.makedirs(work, exist_ok=True)
     for p in ('opt_zh.exe', 'asm_zh.exe', 'qcc_zh_v1.exe'):
         if not os.path.exists(p):

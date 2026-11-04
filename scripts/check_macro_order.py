@@ -14,6 +14,7 @@
 用法: python scripts/check_macro_order.py [--cc qcc_zh_seed.exe]
 退出: 0 全过 / 1 有红 / 2 缺件
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -43,7 +44,7 @@ def main():
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
     if not os.path.exists(cc):
         print('[SKIP] 编译器不存在: %s' % cc); return 2
-    tmp = tempfile.mkdtemp(prefix='morder_')
+    tmp = tmp_dir('morder')
     bad = 0
     for name, src, want_rc in CASES:
         c = os.path.join(tmp, name + '.c')

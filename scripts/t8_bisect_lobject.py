@@ -22,6 +22,7 @@
   python scripts/t8_bisect_lobject.py --mre    --cc <exe>
   python scripts/t8_bisect_lobject.py --bisect --cc <exe>
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io
 import os
 import subprocess
@@ -30,7 +31,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS = r'D:\qiyuan_home\corpus\lua-5.4.7'
 LOBJ = os.path.join(CORPUS, 'lobject.h')
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_t8_bisect')
+TMP = os.path.join(tmp_root(), '_t8_bisect')
 os.makedirs(TMP, exist_ok=True)
 
 PREFIX = '#define LUA_CORE\n#include "lprefix.h"\n'

@@ -11,6 +11,7 @@
   **对照组**: 未开两项检查的常规 IR 探针 ⟹ 上述三项均**不得**出现（证明是真触发而非环境假象）
 退出码: 0 = 三项各自读到真写入 且 对照组为零
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -19,7 +20,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(QJ)
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_t5_landing')
+TMP = os.path.join(tmp_root(), '_t5_landing')
 os.makedirs(TMP, exist_ok=True)
 
 

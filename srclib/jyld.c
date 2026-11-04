@@ -82,7 +82,7 @@ static const char *k32_names[] = {
        实测 `int main(void){return 42;}` 经 `qcc -c` + `jyld` 得 rc=0x2CE000 而非 42。现 移出 前 8 (仍 按 名 解析, 不受位置影响)。 */
     "GetStdHandle", "WriteFile", "CreateFileA", "ReadFile",
     "VirtualAlloc", "SetFilePointer", "ExitProcess", "GetCommandLineA",
-    "LoadLibraryA", /* C10f 回退 (2026-09-17): 编译器内建符号 load_library 的落点 —— 见 resolve_one 别名表 (位置 ≥8, 不影响 CRT 硬编码槽) */
+    "LoadLibraryA","FreeLibrary","GetProcAddress", /* C10f 回退 (2026-09-17): 编译器内建符号 load_library 的落点 —— 见 resolve_one 别名表 (位置 ≥8, 不影响 CRT 硬编码槽) */
     "CloseHandle","CreateFileMappingW","CreateFileW","CreateMutexW",
     "DeleteFileA","DeleteFileW","FlushFileBuffers","FlushViewOfFile",
     "FormatMessageA","FormatMessageW","GetCurrentProcessId","GetDiskFreeSpaceA",
@@ -760,7 +760,7 @@ static const char *msvcrt_names[] = {
     "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strncat","strchr", /* 2026-10-19: +strncat (对象模式自举 .o 需要; 原 undefined symbol) */
     "strrchr","strstr","strtol","strtoul","strtod","atoi","atof","atol","exit","abort","atexit",
     "_strtoi64","_strtoui64","_putenv","_iob",
-    "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc",
+    "fopen","fclose","fread","fwrite","fseek","ftell","rewind","fgetc","fputc","getc","putc",
     "fgets","fputs","vprintf","vfprintf","vsprintf","_vsnprintf","fflush","perror","rand","srand","qsort",
     "_mkdir","_open","_close","_read","_write","_lseek","_dup","_dup2",
     "_getpid","_isatty","_fileno","_get_osfhandle", /* mingw_fstat fd→HANDLE (fix 2026-08-20): 原 prelude stub -1 → GetFileType(INVALID) → EBADF → git init fstat config 失败 */
@@ -1585,12 +1585,18 @@ static void layout(void) {
         }
     }
     /* CRT stub 预留：追加到 .text 末尾（布局后生成），必须先计入尺寸 */
-    out_len[OUT_TEXT] += crt_reserve;
+    /* 2026-11-03 D6 根治: 预留 = **真写入零字节** (out_pad) 而非 只加 out_len.
+       原实现 只 `out_len[OUT_TEXT] += n` 不扩容 ⟹ 当文本量 ≥ 64 KiB（out_cap 恰好
+       停在 65536）时，CRT 桩/ thunk 的后续写入越过分配边界，踩进紧邻的字符串缓冲
+       （实锤 w_strlen1.o: out_len=65675 而 out_cap=65536，123 字节字符串被 thunk 覆盖，
+       运行期把机器码当格式串打印）。out_pad 同时把预留区清零 ⟹ 未写满部分不再是
+       未初始化堆字节。 */
+    out_pad(OUT_TEXT, crt_reserve);
     /* msvcrt thunk 预留（每个直接调用的 libc 函数一个 jmp [IAT] = 6 字节） */
-    out_len[OUT_TEXT] += msvcrt_direct_n * 6;
-    for (int li = 0; li < extra_n; li++) out_len[OUT_TEXT] += extras[li].direct_n * 6; /* C10d */
+    out_pad(OUT_TEXT, msvcrt_direct_n * 6);
+    for (int li = 0; li < extra_n; li++) out_pad(OUT_TEXT, extras[li].direct_n * 6); /* C10d */
     /* kernel32 thunk 预留 (fix 2026-08-07: gcc 地址引用/直接 call 需 jmp [IAT]) */
-    out_len[OUT_TEXT] += k32_thunk_n * 6;
+    out_pad(OUT_TEXT, k32_thunk_n * 6);
 
     /* 只读数据节按最大节对齐（movdqa/movaps 要求）；写入时补填充。
        可写 .data（初始化）与 .bss 放 .data 节（IAT 保留区 0x140 之后）。
@@ -2140,6 +2146,9 @@ static void write_pe(FILE *f, int entry_rva) {
     {
         int cur = 0;
         for (int w = 0; w <= OUT_RDAT; w++) {
+            if (getenv("JYLD_DBG_SEC"))
+                fprintf(stderr, "[WSEC] w=%d sec_start=%d out_len=%d out_cap=%d cur=%d data=%p ftell=%ld\n",
+                        w, g_sec_start[w], out_len[w], out_cap[w], cur, (void*)out_data[w], ftell(f));
             while (cur < g_sec_start[w]) { fputc(0, f); cur++; }
             if (out_len[w]) fwrite(out_data[w], 1, out_len[w], f);
             cur += out_len[w];
@@ -2422,6 +2431,27 @@ int main(int argc, char **argv) {
     crt_reserve = crt_stub_len();
     layout();
     apply_relocs();
+    /* D6 调试仪器 (2026-11-03 虾米): JYLD_MAP=<path> ⟹ 导出 每 对象 .text 基址 + 全部 符号 绝对 VA.
+       用途: 崩溃地址 (gdb rip / 调用栈) → 函数名 的 秒级 映射; 只 在 环境变量 设置 时 生效 ⟹ 正常 链接 零 影响. */
+    if (getenv("JYLD_MAP")) {
+        FILE *mf = fopen(getenv("JYLD_MAP"), "w");
+        if (mf) {
+            for (int mo = 0; mo < obj_n; mo++) {
+                JObj *o = &objs[mo];
+                long long tbase = -1;
+                for (int ms = 0; ms < o->nsec; ms++)
+                    if (o->sec_map[ms] == OUT_TEXT && tbase < 0)
+                        tbase = 0x400000LL + o->secs[ms].rva;
+                if (tbase >= 0) fprintf(mf, "OBJ\t%s\t%llx\n", o->filename, tbase);
+                for (int sy = 0; sy < o->nsym; sy++) {
+                    JSym *s = &o->syms[sy];
+                    if (s->sec > 0 && s->sec <= o->nsec && s->name[0])
+                        fprintf(mf, "SYM\t%s\t%llx\n", s->name, s->resolved_va);
+                }
+            }
+            fclose(mf);
+        }
+    }
     /* 布局后取 main 的最终地址（resolved_va 此时已定） */
     long long main_va = -1;
     for (int i = 0; i < gsym_n; i++) {
@@ -2435,6 +2465,9 @@ int main(int argc, char **argv) {
     if (main_va < 0) { fprintf(stderr, "jyld: no main() defined\n"); return 1; }
     /* 生成真 CRT（main_va/data_rva_base/stc_n 已定），写入预留位置 */
     int crt_off = out_len[OUT_TEXT] - crt_reserve - msvcrt_direct_n * 6 - k32_thunk_n * 6 - extra_direct_total * 6; /* C10d */
+    if (getenv("JYLD_DBG_SEC"))
+        fprintf(stderr, "[CRT] out_len_text=%d crt_reserve=%d msvcrt_direct_n=%d k32_thunk_n=%d extra_direct_total=%d crt_off=%d crt_end=%d\n",
+                out_len[OUT_TEXT], crt_reserve, msvcrt_direct_n, k32_thunk_n, extra_direct_total, crt_off, crt_off + crt_reserve);
     uint8_t *stub = (uint8_t*)malloc(4096);
     int stub_len = gen_crt(stub, crt_off, (int)main_va);
     if (stub_len != crt_reserve) {

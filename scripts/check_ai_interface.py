@@ -17,6 +17,7 @@
   python scripts/check_ai_interface.py --cc qcc_zh_v2.exe --only help # 只验 usage 清单
   python scripts/check_ai_interface.py --cc qcc_zh_v2.exe --only graph,zh
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import json
@@ -64,7 +65,7 @@ def main():
         return (not only) or (name in only)
 
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
-    w = tempfile.mkdtemp(prefix='qcc_ai_iface_')
+    w = tmp_dir('qcc_ai_iface')
     src = os.path.join(w, 'p.c')
     bad = os.path.join(w, 'bad.c')
     hdr = os.path.join(w, 'pre.h')

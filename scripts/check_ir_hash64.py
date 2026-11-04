@@ -10,6 +10,7 @@
   ④ **本趟真变换**: 前/后两组不相同（pass 真改了 L1 影子）
 退出码: 0 = 四条全过
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -17,7 +18,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_ir_hash64')
+TMP = os.path.join(tmp_root(), '_ir_hash64')
 os.makedirs(TMP, exist_ok=True)
 
 

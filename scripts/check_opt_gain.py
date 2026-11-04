@@ -9,7 +9,7 @@
 同时记录：`.asm` 文本字节数、`.text` 字节数、两者差值 —— 三条读数可复算。
 
 用法:
-  python scripts/check_opt_gain.py [--cc <exe>] [--work <dir>] [--src <c文件>] [--minimal]
+  python scripts/check_opt_gain.py [--cc <exe>] [--work <dir>] [--src <c文件>] [--minimal] [--min-pct 8.0]
 退出码: 0 = 断言成立（优化链更小） ; 1 = 不成立（当前基线下应报 1）
 """
 import io, os, re, struct, sys
@@ -23,6 +23,9 @@ CC = 'qcc_zh_v2.exe'
 SRC = os.path.join('scripts', 'feat_zh_opt_gain.c')
 WORK = os.path.join('build', 'opt_gain')
 MINIMAL = '--minimal' in sys.argv
+MIN_PCT = None
+if '--min-pct' in sys.argv:
+    MIN_PCT = float(sys.argv[sys.argv.index('--min-pct') + 1])
 if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
 if '--work' in sys.argv:
@@ -134,6 +137,14 @@ else:
     print('  ⟹ %s' % msg)
     fails.append(msg)
 
+if MIN_PCT is not None and not fails:
+    d = eff_n - eff_o
+    pct = 100.0 * d / eff_n
+    if pct < MIN_PCT:
+        msg = '实际增益 %.3f%% < 下限 %.3f%%' % (pct, MIN_PCT)
+        print('  [FAIL] ' + msg); fails.append(msg)
+    else:
+        print('  ✓ 实际增益 %.3f%% ≥ 下限 %.3f%%' % (pct, MIN_PCT))
 print('== 结果: %s ==' % ('通过（收益落地）' if not fails else 'FAIL=%d' % len(fails)))
 
 # ---------- --compiler: 编译器本体「同一份 -S 产物 2 环链 vs 3 环链」 ----------

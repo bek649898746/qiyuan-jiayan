@@ -15,6 +15,7 @@
   python scripts/check_ir_readend.py --parent <父编译器.exe>    # 负控：必须 差==3 且 无读端
 退出码: 0 = 读端真接入（或负控按预期红）；1 = 不成立
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -31,7 +32,7 @@ EXPECT = 'R821 44 4464 212'
 
 
 def compile_and_run(cc, src):
-    w = tempfile.mkdtemp(prefix='ir_readend_')
+    w = tmp_dir('ir_readend')
     exe = os.path.join(w, 'p.exe')
     env = dict(os.environ, QCC_DUMP='ir')
     r = subprocess.run([cc, src, '-o', exe], capture_output=True, env=env, timeout=600)

@@ -13,6 +13,7 @@
 用法: python scripts/check_pdb.py [--cc qcc_zh_seed.exe]
 退出码: 0 = PDB 真产出且可查到主函数符号；1 = 缺（缺陷仍在）；2 = 环境未就绪（不判绿）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -76,7 +77,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_pdb_')
+    w = tmp_dir('qcc_pdb')
     src = os.path.join(w, 'p.c')
     exe = os.path.join(w, 'p.exe')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(SRC)

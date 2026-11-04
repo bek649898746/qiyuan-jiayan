@@ -19,6 +19,7 @@ fn_param 作为独立债务记录，不在此处冒充。
 用法: python scripts/check_fnstatic_cap.py [--cc qcc_zh_seed.exe] [--n 4000]
 退出: 0 通过 / 1 有红 / 2 缺件
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -38,7 +39,7 @@ def main():
     if not os.path.exists(cc):
         print('[SKIP] 编译器不存在: %s' % cc); return 2
 
-    tmp = tempfile.mkdtemp(prefix='fnstatic_')
+    tmp = tmp_dir('fnstatic')
     src = os.path.join(tmp, 'cap.c')
     obj = os.path.join(tmp, 'cap.o')
     with open(src, 'w', encoding='utf-8') as f:

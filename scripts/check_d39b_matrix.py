@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """D39-b 判据矩阵：-graph 输出路径 与 源文件/产物 的 同一性 判定（绝对 vs 相对 是核心残留）"""
+from qcc_tmp import tmp_dir, tmp_root
 import os, sys, subprocess, shutil, tempfile, hashlib, json
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -15,7 +16,7 @@ def run(cwd, args):
     return r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace")
 
 def case(name, graph_expr, extra=None, expect_rc=None, expect_intact=None):
-    d = tempfile.mkdtemp(prefix="d39b_")
+    d = tmp_dir("d39b")
     os.makedirs(os.path.join(d, "a"), exist_ok=True)
     src = os.path.join(d, "t.jy")
     open(src, "w", encoding="utf-8").write(SRC)

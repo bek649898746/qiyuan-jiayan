@@ -21,11 +21,14 @@ import io
 import os
 import subprocess
 import sys
+import sys as _sys_t2
+_sys_t2.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK = os.path.join(REPO, 'scratch_chan_ptr')
+WORK = tmp_dir('scratch_chan_ptr')
 
 SRC = '''# 包含 <stdio.h>
 函数 整 主(空){

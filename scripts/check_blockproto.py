@@ -18,6 +18,7 @@
 
 用法: python scripts/check_blockproto.py [--cc qcc_zh_v1.exe]
 """
+from qcc_tmp import tmp_dir
 import argparse
 import os
 import subprocess
@@ -26,7 +27,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_blockproto')
+OUT = os.environ.get('QCC_TMPDIR') or tmp_dir('blockproto')
 
 CASES = [
     ('A_minimal', 'int main (void) {\n  int f (int);\n  return 0;\n}\n', 1),

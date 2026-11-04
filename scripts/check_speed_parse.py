@@ -15,6 +15,7 @@
 用法: python scripts/check_speed_parse.py [--cc qcc_zh_seed.exe] [--runs 3]
 退出码: 0 = PASS 或 SKIP；1 = 超预算（提速被回退）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import statistics
@@ -25,14 +26,16 @@ import time
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CORPUS = r'D:\qiyuan_home\corpus\lua-5.4.7'
+# D1078 (2026-11-04 启元): 加环境变量兜底 —— 原为写死本机路径，别人 clone 后跑不起来。
+# 本机行为不变；换机器用 QCC_LUA_DIR 指向自己的 lua 源码树。
+CORPUS = os.environ.get('QCC_LUA_DIR') or r'D:\qiyuan_home\corpus\lua-5.4.7'
 BUDGET = {'lparser.c': 4000, 'lcode.c': 2500}   # 解析 ms 上限
 
 
 def measure(cc, src, runs):
     env = dict(os.environ, QCC_DBG_TIME='1')
     wall, parse = [], []
-    tmpdir = tempfile.mkdtemp(prefix='speed_')
+    tmpdir = tmp_dir('speed')
     obj = os.path.join(tmpdir, os.path.basename(src) + '.o')
     for _ in range(runs):
         t = time.perf_counter()

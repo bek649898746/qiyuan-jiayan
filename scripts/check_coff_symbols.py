@@ -12,6 +12,7 @@
 用法: python scripts/check_coff_symbols.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 两条都符；1 = 有缺陷；2 = 环境未就绪（不判绿）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -67,7 +68,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_coff_')
+    w = tmp_dir('qcc_coff')
     src = os.path.join(w, 'm.c')
     obj = os.path.join(w, 'm.obj')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(SRC)

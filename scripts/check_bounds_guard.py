@@ -13,6 +13,7 @@
 
 用法：python scripts/check_bounds_guard.py --cc <编译器.exe>
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -40,7 +41,7 @@ def main():
     cc = args.cc
     if not os.path.isabs(cc):
         cc = os.path.join(ROOT, cc)
-    tmp = tempfile.mkdtemp(prefix='bounds_')
+    tmp = tmp_dir('bounds')
 
     # 普通探针：`{}` 插值会调用 旁系()（16798 行：占位符 → 参数类型码）
     plain = os.path.join(tmp, 'plain.c')

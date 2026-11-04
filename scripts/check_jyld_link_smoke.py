@@ -32,6 +32,8 @@ for _stream_utf8w in (getattr(_sys_utf8w, 'stdout', None), getattr(_sys_utf8w, '
 import io, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1：临时产物统一落 QCC_TMP_ROOT（默认 D:\qcc_tmp）
 CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'qcc_zh_v1.exe')
 if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
@@ -39,8 +41,10 @@ if not os.path.exists(CC):
     # 2026-10-24（判据方打回）: 缺编译器 ⇹ **rc=2**（环境未就绪，不判绿），不再 rc=0。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— rc=2，未执行本闸，不判绿' % CC); sys.exit(2)
 JYLD = os.path.join(ROOT, 'srclib', 'jyld.exe')
-OUT = os.path.join(ROOT, 'scratch_c1b2' if os.path.isdir(os.path.join(ROOT, 'scratch_c1b2')) else '.', 'jyldsmoke')
-os.makedirs(OUT, exist_ok=True)
+# A1（2026-11-02 路线图）：原 `_BASE = ROOT/scratch_c1b2 or ROOT` + `jyldsmoke_<pid>`
+# 会把 53 个目录漏在仓库根（318.7 MB）⟹ `check_hygiene.py` 恒红。
+# 改走 `qcc_tmp.tmp_dir`：唯一子目录 + QCC_TMP_ROOT（默认 D:\qcc_tmp），仓库根零泄漏。
+OUT = tmp_dir('jyldsmoke')
 
 
 def ensure_jyld():

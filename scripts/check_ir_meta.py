@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """check_ir_meta —— IR→优化器 中间态 元数据 完整性硬闸（R880）。
 
@@ -16,6 +16,7 @@
 用法: python scripts/check_ir_meta.py [--cc <exe>] [--control <control.exe>] [--work <dir>]
 退出码: 0 = 五条全过；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import hashlib
 import io
@@ -30,7 +31,7 @@ os.chdir(ROOT)
 
 # 对照编译器 = **R880 改动前** 的 shipped（R879 收口 `1C153876`）。
 # 判据 **fail-closed**：文件缺失 / 哈希不符 ⟹ 判红（不许「无对照 也 PASS」）。
-CONTROL_SHA8 = '3BA0025C'  # 2026-11-02 重钉（ORD-20261102-85 IR 阶段1 收口：大源预基 + 追加稳定 + --ir + QCC_OPT；v1==v2 收敛产物）
+CONTROL_SHA8 = '4CB91371'  # 2026-11-04 重钉（D6D5-DECL-ORDER 收口2；v1==v2）  # 2026-11-04 重钉（D6D5b/c；v1==v2）  # 2026-11-02 重钉（D2 支配树；v1==v2）
 
 SRC = '''#include <stdio.h>
 int 算和(int n) {
@@ -161,7 +162,7 @@ def main():
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
     # 2026-10-30：文件名随 CONTROL_SHA8 动态拼（原硬编码 DEF8508B ⟹ 重钉后找不到）
     ap.add_argument('--control', default=os.path.join(ROOT, 'build', 'control_qcc_%s.exe' % CONTROL_SHA8))
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_ir_meta'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_ir_meta'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)
     ctrl = a.control if os.path.isabs(a.control) else os.path.join(ROOT, a.control)

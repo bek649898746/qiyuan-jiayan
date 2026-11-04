@@ -401,48 +401,99 @@ void *bsearch(const void *key, const void *base, size_t n, size_t sz, int (*cmp)
    args[i] are POINTERS to the target variables (&a, &b, ...). emit_scanf reads stdin
    into a buffer then calls this. Returns count of successfully converted items. ---- */
 int _scanf_rt(const char *fmt, char **args, const char *buf, int len, int *consumed) {
-    int argi = 0; int i = 0; int j = 0;
-    while (fmt[i] && j < len) {
+    int argi = 0;              /* 参数索引（%n 也消耗一个参数） */
+    int count = 0;             /* 成功转换数（C99：%n 不计入） */
+    int i = 0; int j = 0;
+    while (fmt[i]) {
         if (fmt[i] == '%') {
+            int width = 0; char lenmod = 0;
             i++;
-            if (fmt[i] == 'd') {
+            while (fmt[i] >= '0' && fmt[i] <= '9') { width = width * 10 + (fmt[i] - '0'); i++; }
+            if (fmt[i] == 'l') { lenmod = 'l'; i++; if (fmt[i] == 'l') i++; }
+            else if (fmt[i] == 'h') { lenmod = 'h'; i++; if (fmt[i] == 'h') i++; }
+            if (fmt[i] == 'd' || fmt[i] == 'i') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
-                int neg = 0; long long v = 0; int got = 0;
+                int neg = 0; long long v = 0; int got = 0; int nd = 0;
                 if (j < len && (buf[j] == '-' || buf[j] == '+')) { if (buf[j] == '-') neg = 1; j++; }
-                while (j < len && buf[j] >= '0' && buf[j] <= '9') { v = v * 10 + (buf[j] - '0'); j++; got = 1; }
-                if (got) { if (neg) v = -v; *((int*)(args[argi])) = (int)v; argi++; } /* fix step23: 无数字不写参不计数 (匹配失败) */
-            } else if (fmt[i] == 'x') {
+                while (j < len && buf[j] >= '0' && buf[j] <= '9' && (!width || nd < width)) {
+                    v = v * 10 + (buf[j] - '0'); j++; got = 1; nd++;
+                }
+                if (got) {
+                    if (neg) v = -v;
+                    if (lenmod == 'l') *((long long*)(args[argi])) = v;
+                    else *((int*)(args[argi])) = (int)v;
+                    argi++; count++;
+                }
+            } else if (fmt[i] == 'x' || fmt[i] == 'X') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
-                long long v = 0; int got = 0;
-                while (j < len) {
+                long long v = 0; int got = 0; int nd = 0;
+                while (j < len && (!width || nd < width)) {
                     char c = buf[j]; int d;
                     if (c >= '0' && c <= '9') d = c - '0';
                     else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
                     else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
                     else break;
-                    v = v * 16 + d; j++; got = 1;
+                    v = v * 16 + d; j++; got = 1; nd++;
                 }
-                if (got) { *((int*)(args[argi])) = (int)v; argi++; }
+                if (got) { *((int*)(args[argi])) = (int)v; argi++; count++; }
             } else if (fmt[i] == 'c') {
-                if (j < len) { *((char*)(args[argi])) = buf[j]; j++; argi++; } /* fix step23: 越界不写 (匹配失败) */
+                int k = width ? width : 1; int got = 0;
+                char *dst = (char*)(args[argi]);
+                while (k > 0 && j < len) { *dst = buf[j]; dst++; j++; got = 1; k--; }
+                if (got) { argi++; count++; }
             } else if (fmt[i] == 's') {
                 while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
                 char *dst = (char*)(args[argi]);
-                int got = 0;
-                while (j < len && buf[j] != ' ' && buf[j] != 9 && buf[j] != 10) { *dst = buf[j]; dst++; j++; got = 1; }
-                if (got) { *dst = 0; argi++; } /* fix step23: 无字符不写 */
+                int got = 0; int nd = 0;
+                while (j < len && buf[j] != ' ' && buf[j] != 9 && buf[j] != 10 && (!width || nd < width)) {
+                    *dst = buf[j]; dst++; j++; got = 1; nd++;
+                }
+                if (got) { *dst = 0; argi++; count++; }
+            } else if (fmt[i] == 'f' || fmt[i] == 'e' || fmt[i] == 'g' || fmt[i] == 'E' || fmt[i] == 'G') {
+                while (j < len && (buf[j] == ' ' || buf[j] == 9 || buf[j] == 10)) j++;
+                int neg = 0; double v = 0.0; int got = 0;
+                if (j < len && (buf[j] == '-' || buf[j] == '+')) { if (buf[j] == '-') neg = 1; j++; }
+                while (j < len && buf[j] >= '0' && buf[j] <= '9') { v = v * 10.0 + (double)(buf[j] - '0'); j++; got = 1; }
+                if (j < len && buf[j] == '.') {
+                    double f = 0.1; j++;
+                    while (j < len && buf[j] >= '0' && buf[j] <= '9') {
+                        v += (double)(buf[j] - '0') * f; f *= 0.1; j++; got = 1;
+                    }
+                }
+                if (j < len && (buf[j] == 'e' || buf[j] == 'E')) {
+                    int k = j + 1; int eneg = 0; int ev = 0; int egot = 0;
+                    if (k < len && (buf[k] == '-' || buf[k] == '+')) { if (buf[k] == '-') eneg = 1; k++; }
+                    while (k < len && buf[k] >= '0' && buf[k] <= '9') { ev = ev * 10 + (buf[k] - '0'); k++; egot = 1; }
+                    if (egot) {
+                        double scale = 1.0; int t;
+                        for (t = 0; t < ev; t++) scale *= 10.0;
+                        if (eneg) v /= scale; else v *= scale;
+                        j = k;
+                    }
+                }
+                if (got) {
+                    if (neg) v = -v;
+                    if (lenmod == 'l') *((double*)(args[argi])) = v;
+                    else *((float*)(args[argi])) = (float)v;
+                    argi++; count++;
+                }
+            } else if (fmt[i] == 'n') {
+                *((int*)(args[argi])) = j;
+                argi++;  /* C99: %n 不计入返回值 */
             } else if (fmt[i] == '%') {
+                if (j < len && buf[j] == '%') j++;
             }
             i++;
         } else {
+            if (j >= len) break;   /* 输入耗尽：字面量无法匹配，停止（%n 已在 % 分支处理） */
             if (buf[j] == fmt[i]) j++;
             i++;
         }
     }
-    if (consumed) *consumed = j; /* fix 2026-08-25 step23: fscanf 续读 — 报告已消费字节数, emit_fscanf 据此 SetFilePointer 回退未消费部分 */
-    if (argi > 0) return argi; /* 正常: 转换数 */
-    if (j >= len) return -1; /* EOF/输入耗尽 — gcc 语义: sscanf("",%d)=-1, sscanf("  ",%d)=-1, fscanf@EOF=-1 (fix step23) */
-    return 0; /* 匹配失败但输入未耗尽: sscanf("abc",%d)=0 */
+    if (consumed) *consumed = j;
+    if (count > 0) return count;
+    if (j >= len) return -1;
+    return 0;
 }
 
 /* C99 math 内置 (fix 2026-08-25 step13): 传统 msvcrt.dll 无导出 (在 UCRT/libmingwex),

@@ -11,6 +11,7 @@
 用法: python scripts/check_count_calibers.py [--ledger <path>]
 退出码: 0 PASS / 1 FAIL
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -153,7 +154,7 @@ def main():
     if os.path.exists(a.map):
         import subprocess
         import tempfile
-        tmp = os.path.join(tempfile.mkdtemp(prefix='mechmap_'), 'map.csv')
+        tmp = os.path.join(tmp_dir('mechmap'), 'map.csv')
         r7 = subprocess.run([sys.executable, 'scripts/gen_mechanism_map.py', '--out', tmp,
                              '--mech', a.mech],
                             cwd=REPO, capture_output=True, text=True,

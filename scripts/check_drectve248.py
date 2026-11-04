@@ -26,6 +26,9 @@ for _stream_utf8w in (getattr(_sys_utf8w, 'stdout', None), getattr(_sys_utf8w, '
     if _stream_utf8w is not None and hasattr(_stream_utf8w, 'reconfigure'):
         _stream_utf8w.reconfigure(encoding='utf-8', errors='replace')
 import io, os, struct, subprocess, sys
+import sys as _sys_qt
+_sys_qt.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'qcc_zh_v1.exe')
@@ -33,7 +36,7 @@ if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
-OUT = os.path.join(ROOT, 'scratch_c1b2' if os.path.isdir(os.path.join(ROOT, 'scratch_c1b2')) else '.', 'drectve248')
+OUT = os.path.join(tmp_dir('scratch_c1b2'), 'drectve248')  # A1/B2: 落 QCC_TMP_ROOT
 os.makedirs(OUT, exist_ok=True)
 
 H = '# 包含 <stdio.h>\n'

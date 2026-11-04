@@ -21,6 +21,7 @@
   形  态: 无修饰 / 指针 / 指针const / 双指针 / 数组 / 指针数组 / 函数指针 / 函数指针const
   名  字: 负例 = 无 长 短 常 双 字 空 整（8 个保留类型词）；正例 = 甲
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -199,7 +200,7 @@ def main():
     import hashlib
     fp = hashlib.sha256(open(cc, 'rb').read()).hexdigest()[:8].upper()
     print('[指纹] %s  SHA256[:8] = %s' % (os.path.basename(cc), fp))
-    w = tempfile.mkdtemp(prefix='qcc_census_')
+    w = tmp_dir('qcc_census')
     rows, bad, total = [], [], 0
 
     if a.only:

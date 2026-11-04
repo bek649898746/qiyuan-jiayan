@@ -13,6 +13,7 @@
 用法: python scripts/check_heapsym_dupe.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 链接+运行都成功；1 = 重复符号/链接失败（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -36,7 +37,7 @@ def main():
         # 2026-10-24: 缺前提 不得当绿（否则 「环境没装」会被记成「缺陷已修」）
         print('[FAIL] 环境未就绪: 缺编译器 %s 或 jyld %s' % (cc, jyld))
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_heapsym_')
+    w = tmp_dir('qcc_heapsym')
     objs = []
     for name, text in (('a.c', A), ('b.c', B)):
         src = os.path.join(w, name)

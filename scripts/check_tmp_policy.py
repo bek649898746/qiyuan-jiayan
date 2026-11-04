@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""check_tmp_policy —— 内部缺陷追踪 测试仓位统一与清理判据。
+"""check_tmp_policy —— ORD-20261102-90 测试仓位统一与清理判据。
 
 判据：
   1. 所有测试脚本的 TEMP/mkdtemp/gettempdir 写法已收敛（仅入口/清理脚本自身除外）；

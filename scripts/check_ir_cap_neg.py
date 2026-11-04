@@ -17,6 +17,7 @@
       改**自定位**（照 `check_dwarf289.py::find_qcc` 成例，与闸④ 同工艺）⟹ 无参调用可用 ⟹ 可进闸。
 退出码: 0 = 两负锚 4 条判据 全过; 1 = 有判据不成立
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import subprocess
 import sys
@@ -24,7 +25,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_ir_cap_neg')
+TMP = os.path.join(tmp_root(), '_ir_cap_neg')
 os.makedirs(TMP, exist_ok=True)
 
 

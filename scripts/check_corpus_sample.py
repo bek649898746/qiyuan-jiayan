@@ -15,6 +15,7 @@
   python scripts/check_corpus_sample.py --cc <修前exe> --dir ... --n 12   > corpus_before.log
   python scripts/check_corpus_sample.py --cc qcc_zh_v1.exe --dir ... --n 12 --expect-fail 2
 """
+from qcc_tmp import tmp_dir
 import argparse
 import io
 import os
@@ -57,7 +58,7 @@ def main():
     ap.add_argument('--files', nargs='*', default=None, help='强制包含的基名（如点名样本）')
     ap.add_argument('--expect-fail', type=int, default=None,
                     help='允许的最大失败数（不高于修前）；超了 rc=1')
-    ap.add_argument('--scratch', default=os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_corpus'))
+    ap.add_argument('--scratch', default=os.environ.get('QCC_TMPDIR') or tmp_dir('corpus'))
     ap.add_argument('--timeout', type=int, default=300)
     a = ap.parse_args()
 

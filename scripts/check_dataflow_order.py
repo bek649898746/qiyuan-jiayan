@@ -9,6 +9,7 @@
    不前进 ⟹ 扫描死循环；本判据带 15s 超时，死循环即 FAIL）。
 用法: python scripts/check_dataflow_order.py --cc qcc_zh_v2.exe
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import shutil
@@ -57,7 +58,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v2.exe')
     a = ap.parse_args()
-    w = tempfile.mkdtemp(prefix='qcc_df_order_')
+    w = tmp_dir('qcc_df_order')
     fails = []
 
     pos = os.path.join(w, 'pos.c')

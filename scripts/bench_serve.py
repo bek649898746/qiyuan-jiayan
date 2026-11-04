@@ -14,6 +14,7 @@
   python scripts/bench_serve.py [--cc qcc_zh_v1.exe] [--n 100] [--expect-ratio 10]
 退出码: 0 = 达到期望比值（或未设期望）；1 = 未达到
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import json
 import os
@@ -53,7 +54,7 @@ def main():
         print('[FAIL] 编译器不存在: %s' % cc)
         return 1
 
-    tmp = tempfile.mkdtemp(prefix='qcc_bench_')
+    tmp = tmp_dir('qcc_bench')
     srcs = []
     for i in range(a.n):
         p = os.path.join(tmp, 'b%03d.c' % i)

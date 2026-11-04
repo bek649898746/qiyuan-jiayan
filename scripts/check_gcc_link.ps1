@@ -29,7 +29,7 @@ param([string]$Qcc = '')
 $ErrorActionPreference = 'Continue'
 
 $根     = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$工作区 = Join-Path $根 'scratch_gcclink'
+$工作区 = Join-Path $env:TEMP ('qcc_gcclink_' + $PID)  # 卫生: 临时目录 不落 仓库根 (check_hygiene: root-temp-dirs)
 $MODULE = Join-Path $根 'scripts\gate_gcc_link_module.c'
 $DRIVER = Join-Path $根 'scripts\gate_gcc_link_driver.c'
 $期望   = @('G1=428A2F98', 'G2=0', 'G3=1', 'G4=1', 'G5=G5-OK', 'GATE-GCC-LINK OK')
@@ -114,4 +114,5 @@ foreach ($e in $期望) {
     Write-Host ('     ' + $line.Trim())
 }
 Write-Host '  === 闸外检查 gcc 链接: PASS ===' -ForegroundColor Green
+Remove-Item $工作区 -Recurse -Force -ErrorAction SilentlyContinue
 exit 0

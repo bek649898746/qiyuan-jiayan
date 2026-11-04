@@ -23,6 +23,7 @@
   · 每锚编译 120s / 运行 20s 超时，超时即 taskkill 兜底
   · 并发类锚默认**排除**（黑名单见 CONCURRENCY_BLOCKLIST），需显式点名才跑
 """
+from qcc_tmp import tmp_dir, tmp_root
 import concurrent.futures
 import io
 import os
@@ -58,7 +59,7 @@ DEFAULT_ANCHORS = [
     'feat_zh_compr221_ok.c',
 ]
 
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_dev_direct_run')
+TMP = os.path.join(tmp_root(), '_dev_direct_run')
 os.makedirs(TMP, exist_ok=True)
 
 

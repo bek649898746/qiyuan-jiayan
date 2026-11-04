@@ -18,6 +18,7 @@
 用法: python scripts/check_union_dim.py [--cc qcc_zh_seed.exe]
 退出: 0 全过 / 1 有红 / 2 缺件
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -38,7 +39,7 @@ def main():
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
     if not os.path.exists(cc):
         print('[SKIP] 编译器不存在: %s' % cc); return 2
-    tmp = tempfile.mkdtemp(prefix='udim_')
+    tmp = tmp_dir('udim')
     bad = 0
     for name in CASES:
         src = os.path.join(REPO, 'scripts', name)

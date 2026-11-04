@@ -13,6 +13,7 @@
 用法: python scripts/check_inline280_english.py [--cc <exe>]
 退出码: 0 边界成立；1 边界被破坏。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -24,7 +25,7 @@ os.chdir(REPO)
 CC = 'qcc_zh_v2.exe'
 if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
-BASE = os.path.join(os.environ.get('TEMP', '.'), '_check_inline280_en')
+BASE = os.path.join(tmp_root(), '_check_inline280_en')
 os.makedirs(BASE, exist_ok=True)
 
 EN_SRC = '''inline int add2(int x) { return x + 2; }

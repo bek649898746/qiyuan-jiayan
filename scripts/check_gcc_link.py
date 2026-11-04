@@ -31,7 +31,9 @@ import subprocess
 import sys
 
 根 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-工作区 = os.path.join(根, 'scratch_gcclink')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
+工作区 = tmp_dir('scratch_gcclink')  # A1: 落 QCC_TMP_ROOT
 
 MODULE = os.path.join(根, 'scripts', 'gate_gcc_link_module.c')
 DRIVER = os.path.join(根, 'scripts', 'gate_gcc_link_driver.c')

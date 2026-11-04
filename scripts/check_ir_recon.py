@@ -16,6 +16,7 @@
   ⑤ 负向：域内 L0 实例 删/改 ⟹ 必 FAIL（真打靶）。
 用法: python scripts/check_ir_recon.py [引擎] | --dump-file <f> | [引擎] --selftest
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -24,7 +25,7 @@ from collections import Counter, defaultdict
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-recon')
+T = os.path.join(tmp_root(), 'qiyuan-ir-recon')
 os.makedirs(T, exist_ok=True)
 CC = os.path.join(QJ, 'qcc_zh_v2.exe')
 PROBE = 'scripts/probe/ir_cover_probe.c'

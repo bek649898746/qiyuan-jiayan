@@ -11,6 +11,7 @@
 
 用法：python scripts/check_ptr_dot_method.py --cc qcc_zh_v1.exe
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -59,7 +60,7 @@ def main():
         print('[FAIL] 找不到编译器: %s' % cc)
         return 2
 
-    tmp = tempfile.mkdtemp(prefix='d94_')
+    tmp = tmp_dir('d94')
     bad = []
     try:
         for name, src, want_rc, want in CASES:

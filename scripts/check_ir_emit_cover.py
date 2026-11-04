@@ -18,14 +18,17 @@
   python scripts/check_ir_emit_cover.py --dump-file <f>
   python scripts/check_ir_emit_cover.py --selftest      # 4 组 破坏 必须 FAIL（判据不自空转）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
 import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
-T = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-cover')
+# D1078 (2026-11-04 启元): QJ 就是仓库根，改为相对定位（原写死本机绝对路径）。
+# 别人 clone 到任意目录都能跑；需要指向别处时用 QCC_REPO 覆盖。
+QJ = os.environ.get('QCC_REPO') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+T = os.path.join(tmp_root(), 'qiyuan-ir-cover')
 os.makedirs(T, exist_ok=True)
 CC = os.path.join(QJ, 'qcc_zh_v2.exe')
 

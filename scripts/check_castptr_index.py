@@ -13,6 +13,7 @@
 但**下游的指针算术/下标缩放没有消费它**（变量形态经变量表消费，内联形态没有）。
 判据：三形态 vs gcc 逐值一致；任一不一致 ⟹ 复现（rc=1）。
 """
+from qcc_tmp import tmp_dir
 import argparse
 import io
 import os
@@ -21,7 +22,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_castptr')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('castptr')
 
 SRC = """#include <stdio.h>
 int main (void) {

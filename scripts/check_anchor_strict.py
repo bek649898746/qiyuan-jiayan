@@ -10,6 +10,7 @@
 用法: python scripts/check_anchor_strict.py --cc qcc_zh_v1.exe [锚名 ...]
 退出码: 0 = 全部符合；1 = 有不符合；2 = 环境未就绪。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -46,7 +47,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 环境未就绪: 找不到编译器 %s' % cc)
         return 2
-    tmp = tempfile.mkdtemp(prefix='anchstrict_')
+    tmp = tmp_dir('anchstrict')
     bad = 0
     for name in a.anchors:
         p = os.path.join(REPO, 'scripts', name) if not os.path.isabs(name) else name

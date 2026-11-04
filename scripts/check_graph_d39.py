@@ -16,6 +16,7 @@
 用法: python scripts/check_graph_d39.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 全过；1 = 有 RED
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse, hashlib, json, os, subprocess, sys, tempfile
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -42,7 +43,7 @@ def main():
     if not os.path.exists(cc):
         # 2026-10-24: 缺主体 不得当绿（rc=2 = 环境未就绪）
         print('[FAIL] 编译器不存在: %s（未执行，不判绿）' % cc); return 2
-    tmp = tempfile.mkdtemp(prefix='d39_')
+    tmp = tmp_dir('d39')
     fails = []
     src = os.path.join(tmp, 't.jy')
     open(src, 'w', encoding='utf-8').write(SRC.replace('\\n', '\n'))

@@ -7,12 +7,13 @@
 修前腿: 设 `QCC_DOC_README=<旧 README 路径>`（例如 `git show <commit>:README.md > old.md`）。
 用法: python scripts/check_doc_examples.py [--cc <exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io, os, re, shutil, subprocess, sys, tempfile
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CC = os.path.join(REPO, 'qcc_zh_seed.exe')
-S = os.environ.get('QCC_SCRATCH') or tempfile.mkdtemp(prefix='qcc_doc_')
+S = os.environ.get('QCC_SCRATCH') or tmp_dir('qcc_doc')
 ENV = dict(os.environ, TEMP=r'D:\qcc_tmp', TMP=r'D:\qcc_tmp')
 readme = io.open(os.environ.get('QCC_DOC_README') or os.path.join(REPO, 'README.md'), encoding='utf-8').read()
 
@@ -33,7 +34,7 @@ ps_blocks = [b for t, b in blocks if t in ('powershell', 'bash') and 'hello.jy -
 if not c_blocks or not ps_blocks:
     fails.append('README 里找不到 hello 示例的代码块/命令块')
 else:
-    w = tempfile.mkdtemp(prefix='doc_hello_')
+    w = tmp_dir('doc_hello')
     src = os.path.join(w, 'hello.jy')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(c_blocks[0])
     cmds = [l.strip() for l in ps_blocks[0].split('\n') if l.strip() and not l.strip().startswith('#')]
@@ -54,7 +55,7 @@ else:
 zh_c = [b for t, b in blocks if t == 'c' and '你好，甲言' in b]
 zh_ps = [b for t, b in blocks if t in ('powershell', 'bash') and 'hello_zh.jy' in b]
 if zh_c and zh_ps:
-    w = tempfile.mkdtemp(prefix='doc_hellozh_')
+    w = tmp_dir('doc_hellozh')
     src = os.path.join(w, 'hello_zh.jy')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(zh_c[0])
     r = subprocess.run([CC, src, '-o', os.path.join(w, 'hello_zh.exe')], cwd=w, capture_output=True,

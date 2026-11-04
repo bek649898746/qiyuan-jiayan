@@ -13,6 +13,7 @@
   用法: python scripts/check_corpus_srclib.py <qcc.exe> [样本数, 默认 300]
   退出码: 0 = 无「非白名单」失败; 1 = 有
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io, os, subprocess, sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -49,7 +50,7 @@ def main():
     mid = files[len(files) // 4:] if len(files) > 40 else files
     sample = mid[:LIMIT]
 
-    tmp = os.path.join(os.environ.get('TEMP', '.'), '_srclib_chk')
+    tmp = os.path.join(tmp_root(), '_srclib_chk')
     os.makedirs(tmp, exist_ok=True)
     ok = bad = real_fail = 0
     fails = []

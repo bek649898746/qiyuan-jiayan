@@ -18,6 +18,7 @@
       以及逐次告警名。**零静默** 显示为 `{}`。
 退出码: 恒 0（本器是量具，不作判红；判红由闸⑦ 之类专职检查器承担）。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import re
@@ -35,7 +36,7 @@ SUMM = re.compile(r'槽(\d):\s*(.+?)\s*x(\d+)')
 
 
 def check(cc, src, defs):
-    obj = os.path.join(os.environ.get('TEMP', '.'), '_slots_check.obj')
+    obj = os.path.join(tmp_root(), '_slots_check.obj')
     env = dict(os.environ, QCC_DBG_SILENT='1')
     cmd = [cc, '--lenient'] + defs + ['-I', os.path.dirname(src), '-c', src, '-o', obj]
     r = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace',

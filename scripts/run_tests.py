@@ -13,6 +13,17 @@
 无 @EXPECTED 时默认 exit:0
 """
 import sys, os, subprocess, re, argparse
+import sys as _sys_st
+_sys_st.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from qcc_tmp import tmp_dir as _tmp_dir  # noqa: E402  A1
+except ImportError:
+    def _tmp_dir(name):
+        _b = os.environ.get('QCC_TMP_ROOT', r'D:\qcc_tmp')
+        _p = os.path.join(_b, '%s_%d' % (name, os.getpid()))
+        os.makedirs(_p, exist_ok=True)
+        return _p
+ST_DIR = _tmp_dir('scratch_test')
 sys.stdout.reconfigure(encoding='utf-8')
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,7 +106,7 @@ def run_one_test(name):
         if m: extra_args = m.group(1).split()
 
     # 编译 (输出名用 basename, 兼容 behavior/ 子目录; 并行安全: 每测试独立 exe 名)
-    h1 = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_H1.exe')
+    h1 = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_H1.exe')
     try:
         os.remove(h1)
     except OSError:
@@ -108,8 +119,8 @@ def run_one_test(name):
         return (name, False, '编译失败')
 
     # 运行
-    out_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_out.txt')
-    err_file = os.path.join('scratch_test', os.path.basename(name)[:-2] + '_err.txt')
+    out_file = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_out.txt')
+    err_file = os.path.join(ST_DIR, os.path.basename(name)[:-2] + '_err.txt')
     try:
         os.remove(out_file); os.remove(err_file)
     except OSError:
@@ -167,7 +178,7 @@ def main():
 
     # 清理 scratch_test (并行/串行都只清一次)
     import shutil
-    st_dir = os.path.join(root, 'scratch_test')
+    st_dir = ST_DIR
     subprocess.run(['powershell', '-NoProfile', '-Command',
                     'Get-Process -Name "*_H1*" -ErrorAction SilentlyContinue | Stop-Process -Force'],
                    capture_output=True)

@@ -20,10 +20,13 @@ import os
 import struct
 import subprocess
 import sys
+import sys as _sys_tmp
+_sys_tmp.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK = os.path.join(ROOT, 'scratch_static')
+WORK = tmp_dir('scratch_static')
 LIMIT_MB = 640
 LABELS = 300
 

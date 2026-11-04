@@ -16,6 +16,7 @@
 用法: python -X utf8 scripts/check_mech_real.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 六条机制行为全符；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -125,7 +126,7 @@ def main():
     if not os.path.exists(cc) or not os.path.exists(PRELUDE):
         print('[FAIL] 环境未就绪: cc 或 compat_prelude.h 缺失（本判据未执行，不判绿）')
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_mech_')
+    w = tmp_dir('qcc_mech')
     bad = []
 
     cases = [

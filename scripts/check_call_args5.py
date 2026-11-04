@@ -15,6 +15,7 @@
 用法: python scripts/check_call_args5.py [--cc <exe>]
 退出: 0 PASS / 1 FAIL
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -46,7 +47,7 @@ def main():
     ap.add_argument('--cc', default=os.path.join('build', 'dev_fast.exe'))
     a = ap.parse_args()
 
-    d = tempfile.mkdtemp(prefix='s4_')
+    d = tmp_dir('s4')
     src = os.path.join(d, 't.jy')
     exe = os.path.join(d, 't.exe')
     open(src, 'w', encoding='utf-8-sig').write(SRC)

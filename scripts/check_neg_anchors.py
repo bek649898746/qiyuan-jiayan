@@ -36,6 +36,10 @@ import os
 import re
 import subprocess
 import sys
+import sys as _sys_na
+_sys_na.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir as _tmpd_na  # noqa: E402  A1
+ST_DIR = _tmpd_na('scratch_c1b2')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
@@ -81,7 +85,7 @@ for p in gate_files():
     run_time = bool(re.search(r'@EXPECTED\s+(exit|out):', src))
     # ⚠️ 只认【错误码】形式 A\d{4} —— 注释里的 `L4814`（行号引用）曾被误当成"声称码"⟹ 假警报
     claimed = sorted(set(re.findall(r'\b(A\d{4})\b', src[:2500])))
-    r = subprocess.run([BIN, p, '-o', 'scratch_c1b2/_cna_tmp.exe'], capture_output=True)
+    r = subprocess.run([BIN, p, '-o', os.path.join(ST_DIR, '_cna_tmp.exe')], capture_output=True)
     out = (r.stdout + r.stderr).decode('utf-8', 'replace')
     actual = sorted(set(re.findall(r'\[ERR\]\s*(A\d{4})', out)))
     err_code = (re.search(r'@EXPECTED\s+err:\s*(\S+)', src) or [None, None])[1]

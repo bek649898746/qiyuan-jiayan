@@ -18,6 +18,7 @@
 用法: python scripts/check_link_ar.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 四条全过；1 = 未实现/未达标（缺陷仍在）；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -57,7 +58,7 @@ def main():
     if not os.path.exists(cc) or not jyld:
         print('[FAIL] 环境未就绪: cc=%r jyld=%r（本判据未执行，不判绿）' % (cc, jyld))
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_linkar_')
+    w = tmp_dir('qcc_linkar')
 
     # ---------- ① ar 写器：真打一次 ----------
     write(os.path.join(w, 'f0.c'), 'int f0(void){ return 7; }\n')

@@ -18,6 +18,7 @@
 用法: python scripts/check_opt_meta_consume.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 全过；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -156,7 +157,7 @@ def shz(out):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_opt_meta'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_opt_meta'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)
     opt_src = os.path.join(ROOT, 'srclib', 'opt_zh.jy')
@@ -171,7 +172,7 @@ def main():
     print('⓪ 出厂优化器 由 shipped 编出 rc=0（%d 字节）' % os.path.getsize(opt))
     fails = []
 
-    def chain(tag, text=None, src=None, do_opt=True):
+    def chain(tag, text=None, src=None, do_opt=True, extra=None):
         d = dict(rc_opt=None, out_opt='', shr=None)
         if text is not None:
             p = os.path.join(a.work, tag + '.asm')
@@ -181,7 +182,7 @@ def main():
         cur = p
         if do_opt:
             o = os.path.join(a.work, tag + '_o.asm')
-            ro = run([opt, p, '-o', o])
+            ro = run([opt, p, '-o', o] + (extra or []))
             d['rc_opt'], d['out_opt'] = ro.returncode, (ro.stdout + ro.stderr).decode('utf-8', 'replace')
             cur = o
         exe = os.path.join(a.work, tag + '.exe')
@@ -196,7 +197,7 @@ def main():
 
     def isolated(tag, text, target, need_self=False):
         base = chain(tag + '_n', text, do_opt=False)
-        optd = chain(tag + '_o', text, do_opt=True)
+        optd = chain(tag + '_o', text, do_opt=True, extra=(['--no-16'] if need_self else None))
         if optd['rc_opt'] != 0:
             fails.append('%s: opt rc=%d' % (tag, optd['rc_opt'])); return
         cls = parse_classes(optd['out_opt'])
@@ -247,7 +248,7 @@ def main():
 
     # ⑥ 负控：擦掉元数据
     base = chain('neg_n', DCE_BODY, do_opt=False)
-    neg = chain('neg_o', DCE_BODY, do_opt=True)
+    neg = chain('neg_o', DCE_BODY, do_opt=True, extra=['--no-16'])
     cls = parse_classes(neg['out_opt'])
     nonopt = sum(v or 0 for v in cls.values())
     print('⑥ 负控（擦掉元数据）: G-DCE=%s · 全类合计=%d · .text 逐字节相同=%s · 运行 rc %s/%s'

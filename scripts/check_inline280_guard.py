@@ -13,6 +13,7 @@
 用法: python scripts/check_inline280_guard.py [--cc <exe>]
 退出码: 0 全过 ; 1 有错值。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import subprocess
 import sys
@@ -23,7 +24,7 @@ os.chdir(REPO)
 CC = 'qcc_zh_v2.exe'
 if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
-BASE = os.path.join(os.environ.get('TEMP', '.'), '_check_inline280_guard')
+BASE = os.path.join(tmp_root(), '_check_inline280_guard')
 os.makedirs(BASE, exist_ok=True)
 
 CASES = {

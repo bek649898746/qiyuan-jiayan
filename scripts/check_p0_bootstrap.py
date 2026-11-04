@@ -15,6 +15,7 @@
 用法: python scripts/check_p0_bootstrap.py [--bootstrap-log <logs/bootstrap.log>] [--out <file>]
 退出码: 0 = 三项全部成立；1 = 任一不成立（不得当绿）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -46,7 +47,7 @@ def main():
     if cn != 0:
         bad.append('中文变量名赋值行=%d' % cn)
 
-    w = tempfile.mkdtemp(prefix='qcc_p0boot_')
+    w = tmp_dir('qcc_p0boot')
     parse = os.path.join(w, 'parse.ps1')
     io.open(parse, 'w', encoding='utf-8-sig', newline='\r\n').write(
         '$src = $args[0]\n'

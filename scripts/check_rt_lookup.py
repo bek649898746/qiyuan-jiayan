@@ -17,6 +17,7 @@
 用法: python scripts/check_rt_lookup.py [qcc.exe]
 退出码: 0 = 全通过; 1 = 有 不符
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io, os, re, subprocess, sys
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -34,7 +35,7 @@ int main(void) {
 }
 '''
 
-tmp = os.path.join(os.environ.get('TEMP', '.'), '_rt_lookup_check')
+tmp = os.path.join(tmp_root(), '_rt_lookup_check')
 os.makedirs(tmp, exist_ok=True)
 src = os.path.join(tmp, 'probe_div.c')
 io.open(src, 'w', encoding='utf-8').write(PROBE)

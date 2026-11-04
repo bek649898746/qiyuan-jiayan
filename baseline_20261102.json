@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-11-03 00:59:56",
+  "expected": "C85B65E1",
+  "seed_sha8": "c85b65e1",
+  "main_source": {
+    "path": "srclib_jiayan/qcc_zh.jy",
+    "lines": 37216,
+    "bytes": 4451054,
+    "static_decls": 1732,
+    "static_arrays": 768,
+    "static_scalars": 964,
+    "comment_lines": 1474
+  },
+  "anchors": 1723,
+  "behavior_tests": 377,
+  "products_sha256": {
+    "plain": "67ce943f29eb647618f7269683966f9b983847998167d316a29394f9ebe28fa5",
+    "struct": "065691d333a1b099a86bd4b85e9706ae7a2f8e53587aa0bb5dfba50f9c39e4cf",
+    "float": "f7e36e5f58f579d225218db56ee138bf636d30ee386f7fb0e3e315108d3f8089",
+    "pointer": "4dd14080b66a0422104f75db851ce2aea2425d22dbae36af82915063d048aec6",
+    "channel": "e0775d8ae7d54ca9977cae4c9a860b0a6bb2e6c4ef2221c4d191024077e00c8d"
+  },
+  "bootstrap_sec": null
+}

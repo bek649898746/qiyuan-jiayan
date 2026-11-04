@@ -21,6 +21,7 @@
   python scripts/check_chan_equiv.py --ref qcc_zh_ref_8D0876AF.exe --cc qcc_zh_v1.exe
 退出码: 0 = 全部逐字节相同；1 = 有差异（打印第一处 diff 的文件与首个不同字节偏移）
 """
+from qcc_tmp import tmp_dir
 import argparse
 import hashlib
 import io
@@ -30,7 +31,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_equiv')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('equiv')
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from check_chan_matrix import CASES  # noqa: E402  通道 8 用例（同一份源码，不另抄一份）

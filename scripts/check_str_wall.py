@@ -24,6 +24,7 @@
 用法: python scripts/check_str_wall.py [--cc build/qcc_zh_v1.exe]
 退出码: 0 = 全过；1 = 有红；2 = 环境未就绪（不判绿）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -66,7 +67,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_strwall_')
+    w = tmp_dir('qcc_strwall')
 
     ok = True
     for name, n, per in SCALES:

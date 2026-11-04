@@ -18,6 +18,9 @@ import io
 import os
 import subprocess
 import sys
+import sys as _sys_t2
+_sys_t2.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')
@@ -291,7 +294,7 @@ def main():
     if not qcc or not os.path.exists(qcc):
         # AUDIT-P2-4 (2026-10-21): **环境前置** —— SKIP（rc=0 + `[SKIP]` 标记），不假红。
         print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % qcc); return 0
-    outdir = os.path.join(ROOT, 'scratch_test')
+    outdir = tmp_dir('scratch_test')
     os.makedirs(outdir, exist_ok=True)
     exe = os.path.join(outdir, 'dwarf289_check.exe')
     if os.path.exists(exe):

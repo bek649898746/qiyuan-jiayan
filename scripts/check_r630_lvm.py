@@ -35,6 +35,7 @@
 # R715 仪器刀 (2026-10-11 虾米): 默认控制台 GBK 时 emoji(✅/❌) 会让 print 抛 UnicodeEncodeError
 #   ⟹ 检查器 rc=1 假红 ⟹ 闸⑥/三套件 被中断。强推 UTF-8 输出（Python 3.7+，非 tty 管道下同样生效），
 #   不改任何 print 文本；调用侧（verify.ps1 / run_tests_zh.py）另设 PYTHONIOENCODING=utf-8 作兜底。
+from qcc_tmp import tmp_dir, tmp_root
 import sys as _sys_utf8w
 for _stream_utf8w in (getattr(_sys_utf8w, 'stdout', None), getattr(_sys_utf8w, 'stderr', None)):
     if _stream_utf8w is not None and hasattr(_stream_utf8w, 'reconfigure'):
@@ -47,7 +48,7 @@ if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
     print('[SKIP] 环境未就绪: 找不到 编译器 %s —— 未执行本闸' % CC); sys.exit(0)
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_r630_lvm')
+TMP = os.path.join(tmp_root(), '_r630_lvm')
 os.makedirs(TMP, exist_ok=True)
 LUA = r'D:\qiyuan_home\corpus\lua-5.4.7'
 BASELINE_BEFORE = 344          # R629 实测（前值）

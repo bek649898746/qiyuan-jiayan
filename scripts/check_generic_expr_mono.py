@@ -12,6 +12,7 @@
    `_evidence/20261018_round8/generic_literal_red.log`）。
 用法: python scripts/check_generic_expr_mono.py --cc qcc_zh_v2.exe
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import shutil
@@ -53,7 +54,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v2.exe')
     a = ap.parse_args()
-    w = tempfile.mkdtemp(prefix='qcc_expr_mono_')
+    w = tmp_dir('qcc_expr_mono')
     fails = []
     nm = shutil.which('nm') or 'nm'
 

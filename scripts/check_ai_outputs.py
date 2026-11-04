@@ -20,6 +20,7 @@
   python scripts/check_ai_outputs.py --cc qcc_zh_seed.exe
 退出码: 0 全过；1 有失败（逐项打印 FAIL 原因）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import hashlib
 import io
@@ -96,7 +97,7 @@ def main():
         print('编译器不存在: %s' % cc)
         return 2
 
-    w = tempfile.mkdtemp(prefix='qcc_ai_out_')
+    w = tmp_dir('qcc_ai_out')
     src = os.path.join(w, 'p.c')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(PROBE)
     nlines = len(PROBE.splitlines())

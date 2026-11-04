@@ -19,6 +19,7 @@
     2) 基准 exe 落在 <scratch>/base_<commit>/（不污染工作区）
     3) 结果写 <scratch>/git_base_rebuild.log
 """
+from qcc_tmp import tmp_dir, tmp_root
 import hashlib
 import io
 import os
@@ -29,8 +30,8 @@ import tempfile
 
 JJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 COMMIT = sys.argv[1] if len(sys.argv) > 1 else 'f6847c4f'
-WORK = os.path.join(tempfile.gettempdir(), 'git_base_%s' % COMMIT[:8])
-LOG = os.path.join(tempfile.gettempdir(), 'git_base_rebuild.log')
+WORK = os.path.join(tmp_root(), 'git_base_%s' % COMMIT[:8])
+LOG = os.path.join(tmp_root(), 'git_base_rebuild.log')
 steps = []
 
 

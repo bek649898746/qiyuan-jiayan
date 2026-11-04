@@ -11,6 +11,7 @@
   `--table` 供修前回执用：同一支判据跑历史快照（`git show <rev>:manual/机制特性实现表.md`），
   修前必红、修后必绿，证明改的是表本身而不是判据的期望值。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -88,7 +89,7 @@ def main():
         bad.append('#120 仍含「存疑」')
 
     # E 真实编译器
-    work = tempfile.mkdtemp(prefix='qcc_mech_')
+    work = tmp_dir('qcc_mech')
     ov = os.path.join(work, 'ov204.c')
     io.open(ov, 'w', encoding='utf-8', newline='\n').write(
         '#include <stdio.h>\n'

@@ -13,6 +13,7 @@
 用法: python scripts/check_assign_lvalue.py [--cc <exe>]（默认取 QCC_TEST_BIN，再退回 seed）
 退出: 0 = 已收口；1 = 洞仍在（静默接受）；2 = 环境/对照异常
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -57,7 +58,7 @@ def main():
         print('[FAIL] 编译器不存在: %s' % cc)
         return 2
 
-    w = tempfile.mkdtemp(prefix='qcc_lvalue_')
+    w = tmp_dir('qcc_lvalue')
     holes, wrong = [], []
     for tag, body in CASES:
         rc, out = compile_one(cc, body, w, tag)

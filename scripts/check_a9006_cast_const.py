@@ -18,6 +18,7 @@
 默认按「修好后」判定（p1/p2/p4 应绿、p3 应红）；`--expect-bug` 按当前挂账状态判定，
 仅用于确认缺陷仍可复现（不会因失败而返回非零以外的副作用）。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import subprocess
 import sys
@@ -29,7 +30,7 @@ CC = 'qcc_zh_v2.exe'
 if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
 EXPECT_BUG = '--expect-bug' in sys.argv
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_check_a9006')
+TMP = os.path.join(tmp_root(), '_check_a9006')
 PRE = os.path.join(REPO, 'compat_prelude.h')
 
 CASES = {

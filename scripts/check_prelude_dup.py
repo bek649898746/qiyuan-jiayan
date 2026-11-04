@@ -11,6 +11,7 @@
 
 用法: python scripts/check_prelude_dup.py [--cc <exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -27,7 +28,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_seed.exe')
     a = ap.parse_args()
-    d = tempfile.mkdtemp(prefix='predup_')
+    d = tmp_dir('predup')
     src = os.path.join(d, 'min.c')
     open(src, 'w', encoding='utf-8-sig').write(SRC)
     ok = True

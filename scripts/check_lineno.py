@@ -23,6 +23,7 @@
 ⚠️ `check_dwarf289.py` **忽略 argv**，走 find_qcc()（`QCC_TEST_BIN` → v7..v1）⟹ 本判据器以 **环境变量** 传引擎。
 退出码: 0 = 全过；1 = 有违例
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import re
@@ -88,9 +89,9 @@ def 括号配对矩阵(cc):
         行 = []
         for n in (0, 1, 2, 3, 5):
             L = n + 1
-            p = os.path.join(tempfile.gettempdir(), 'chk_ln_%s_%d.c' % (name, L))
+            p = os.path.join(tmp_root(), 'chk_ln_%s_%d.c' % (name, L))
             open(p, 'w', encoding='utf-8', newline='\n').write(fn(n) + '整 a = 1);\n')
-            r = subprocess.run([cc, p, '-o', os.path.join(tempfile.gettempdir(), 'chk_ln.exe')],
+            r = subprocess.run([cc, p, '-o', os.path.join(tmp_root(), 'chk_ln.exe')],
                                capture_output=True, timeout=180, cwd=ROOT)
             o = ((r.stdout or b'') + (r.stderr or b'')).decode('utf-8', 'replace')
             m = re.search(r'行 (\d+)', o)

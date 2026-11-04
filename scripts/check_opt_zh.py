@@ -11,6 +11,7 @@
 用法: python scripts/check_opt_zh.py [编译器]
 退出码: 0 = 四条全过
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -19,7 +20,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(QJ)
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_opt_zh')
+TMP = os.path.join(tmp_root(), '_opt_zh')
 os.makedirs(TMP, exist_ok=True)
 
 

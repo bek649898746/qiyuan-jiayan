@@ -183,7 +183,11 @@ def check(p, tag):
     lines = [l.strip(' \t\r') for l in io.open(p, encoding='utf-8', errors='replace').read().split('\n')]
     lines = [l for l in lines if not l.startswith('; @')]   # 元数据 附录 行 不参与 镜像（工具 会 剥离）
     mir = mirror(lines)
-    nums, o = tool_counts(p)
+    # 工具也跑**去附录**的同一份文本：镜像不建模 LSP/块级 pass，带元数据时 ⑦ 会被行动区挡掉
+    # （2026-11-04 D6D5 实测 443 vs 441）⟹ 两边同口径。
+    p2 = p + '.nometa.asm'
+    io.open(p2, 'w', encoding='utf-8', newline='\n').write('\n'.join(lines) + '\n')
+    nums, o = tool_counts(p2)
     if nums is None:
         print('  [FAIL] %s: 未取到出厂工具分类计数' % tag); return ['工具计数缺失']
     fails = []

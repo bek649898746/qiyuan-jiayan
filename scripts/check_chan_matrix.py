@@ -14,6 +14,7 @@
   python scripts/check_chan_matrix.py --print                        # 只打印实测（供更新基线）
 退出码: 0 = 8/8 与基线一致；1 = 有漂移（打印 diff）
 """
+from qcc_tmp import tmp_dir
 import argparse
 import io
 import os
@@ -22,7 +23,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_chanmtx')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('chanmtx')
 
 # ---- 8 个用例（施工单 §5.1 逐条）: (id, 说明, 甲言源码, 期望观测) ----
 CASES = [

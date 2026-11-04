@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""check_snprintf —— 内部缺陷追踪：snprintf 族 size 语义（C99）判据。
+"""check_snprintf —— ORD-20261102-94：snprintf 族 size 语义（C99）判据。
 
 判据（驱动真实发布编译器 + gcc oracle）：
   1. 甲言编译 `_audit_probe/snprintf_family.c` 的 stdout/rc 与 `gcc -O0 -w` oracle **逐行一致**；

@@ -19,6 +19,7 @@
 用法: python scripts/check_serve.py [--cc <编译器 exe>]
 默认: 环境变量 QCC_TEST_BIN，否则 qcc_zh_seed.exe → qcc_zh_v1.exe 依次探测。
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import json
 import os
@@ -56,7 +57,7 @@ def main():
         print('[FAIL] 编译器不存在: %s' % cc)
         return 1
 
-    tmp = tempfile.mkdtemp(prefix='qcc_serve_')
+    tmp = tmp_dir('qcc_serve')
     out_exe = os.path.join(tmp, 'serve_out.exe')
     p = subprocess.Popen([cc, '--serve'], cwd=REPO, stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,

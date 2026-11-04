@@ -17,10 +17,13 @@ import os
 import re
 import subprocess
 import sys
+import sys as _sys_tmp
+_sys_tmp.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK = os.path.join(REPO, 'scratch_profile_v3')
+WORK = tmp_dir('scratch_profile_v3')
 
 SRC = '''# 包含 <stdio.h>
 构 点 { 整 x; 整 y; };

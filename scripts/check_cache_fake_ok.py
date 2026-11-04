@@ -12,6 +12,7 @@
 
 用法: python scripts/check_cache_fake_ok.py [--cc qcc_zh_v1.exe]
 """
+from qcc_tmp import tmp_dir
 import argparse
 import io
 import os
@@ -21,7 +22,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_cachefake')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('cachefake')
 
 SRC = '''#包含 <stdio.h>
 函数 整 主(空){

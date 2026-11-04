@@ -24,6 +24,7 @@
 用法: python scripts/check_opt_lsp.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 全过；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -205,7 +206,7 @@ def classes(out):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_v1.exe')
-    ap.add_argument('--work', default=os.path.join(os.environ.get('TEMP', '.'), 'qcc_opt_lsp'))
+    ap.add_argument('--work', default=os.path.join(tmp_root(), 'qcc_opt_lsp'))
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(ROOT, a.cc)
     opt_src = os.path.join(ROOT, 'srclib', 'opt_zh.jy')
@@ -229,7 +230,7 @@ def main():
         return p
 
     def opt_run(src, dst):
-        r = run([opt, src, '-o', dst])
+        r = run([opt, src, '-o', dst, '--no-16'])
         txt = (r.stdout + r.stderr).decode('utf-8', 'replace')
         return r.returncode, txt
 

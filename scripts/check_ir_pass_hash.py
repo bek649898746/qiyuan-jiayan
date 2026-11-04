@@ -19,6 +19,7 @@ plan 原文: 「跑一次 pass 后，逐遍快照哈希能在 dump 通道 **被�
 用法: python scripts/check_ir_pass_hash.py [编译器]
 退出码: 0 = 四条 判据 全过; 1 = 有判据 不成立
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -27,7 +28,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(QJ)
-TMP = os.path.join(os.environ.get('TEMP', '.'), '_ir_pass_hash')
+TMP = os.path.join(tmp_root(), '_ir_pass_hash')
 os.makedirs(TMP, exist_ok=True)
 
 

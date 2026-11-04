@@ -14,6 +14,7 @@
 用法: python scripts/check_stderr575.py [--cc qcc_zh_v1.exe]
 退出码: 0 = PASS；1 = RED
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -50,7 +51,7 @@ def main():
     a = ap.parse_args()
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(repo)
-    tmp = tempfile.mkdtemp(prefix='stderr575_')
+    tmp = tmp_dir('stderr575')
     src = os.path.join(tmp, 'probe.c')
     exe = os.path.join(tmp, 'probe.exe')
     with open(src, 'w', encoding='utf-8', newline='\n') as f:

@@ -13,6 +13,7 @@
   python scripts/check_image_volume.py [--cc qcc_zh_v1.exe] [--stage floor|dce]
 退出码: 0 = 该档达标；1 = 未达标；2 = 环境未就绪（编译器不存在，不当绿）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -26,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 STAGES = {
     # 档位: (.data VSize 上限, SizeOfImage 上限, .text RawSize 上限)
-    'floor': (10 * 1048576, 11 * 1048576, 372 * 1024),   # 撤 96MB 地板后实测 9.0 / 9.28 / 280KB；2026-11-01 L1/L2：通道运行期常驻（L2 句柄）⟹ 348KB；2026-11-02 ORD-84：代际校验/resolve/guard/泄漏 +16KB ⟹ 实测 364KB，上限 356→372（+8KB 余量，仍为紧预算）；.data/Image 地板不变
+    'floor': (10 * 1048576, 11 * 1048576, 380 * 1024),   # 撤 96MB 地板后实测 9.0 / 9.28 / 280KB；2026-11-01 L1/L2：通道运行期常驻（L2 句柄）⟹ 348KB；2026-11-02 ORD-84：代际校验/resolve/guard/泄漏 +16KB ⟹ 364KB；2026-11-02 B1：_scanf_rt 宽度/%f/%n 语义补全 +4KB ⟹ 376KB，上限 372→380（+4KB 实测 +4KB 余量）；.data/Image 地板不变
     'static': (2 * 1048576, 3 * 1048576, 1 << 30),        # 撤 8MB 静态区地板后 .data/SizeOfImage 达标（.text 不限）
     'dce': (2 * 1048576, 3 * 1048576, 8 * 1024),          # 施工单 §四 1–3 条原文（含 .text ≤8KB）
 }
@@ -67,7 +68,7 @@ def main():
         return 2
 
     cap_data, cap_img, cap_text = STAGES[a.stage]
-    w = tempfile.mkdtemp(prefix='qcc_vol_')
+    w = tmp_dir('qcc_vol')
     src = os.path.join(w, 'hello.c')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(
         '#include <stdio.h>\nint main(void){ printf("VOL-OK\\n"); return 0; }\n')

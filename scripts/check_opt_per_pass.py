@@ -9,6 +9,7 @@
 
 用法: python scripts/check_opt_per_pass.py        退出码 0 = 逐条全过
 """
+from qcc_tmp import tmp_dir, tmp_root
 import io, os, re, struct, subprocess, sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -19,7 +20,7 @@ OPT, ASM = 'opt_zh.exe', 'asm_zh.exe'
 if '--opt' in sys.argv: OPT = sys.argv[sys.argv.index('--opt') + 1]
 if '--asm' in sys.argv: ASM = sys.argv[sys.argv.index('--asm') + 1]
 # 工作目录按**进程**隔离：并发跑两个本判据（或本判据 + run_criteria）时不许互相踩同名造件。
-W = os.path.join(os.environ.get('TEMP', '.'), 'qcc_per_pass_%d' % os.getpid())
+W = os.path.join(tmp_root(), 'qcc_per_pass_%d' % os.getpid())
 os.makedirs(W, exist_ok=True)
 
 CLS = ['栈spill', '栈合并', '抵消对', '不可达', '复制传播', '跳落到下一行', '帧栈存取同址', '死值写覆盖']
@@ -79,7 +80,7 @@ CLASS_KEYS = [
     ('零栈调整', r'零栈调整 (\d+)'), ('G-DCE', r'G-DCE (\d+)'),
     ('比较分支融合', r'比较分支融合 (\d+)'), ('算术立即融合', r'算术立即融合 (\d+)'),
     ('循环槽提升', r'LSP 槽=(\d+)'), ('跨块转发', r'跨块转发 (\d+)'),
-    ('压栈回读', r'压栈回读 (\d+)'),
+    ('压栈回读', r'压栈回读 (\d+)'), ('立即缩短', r'立即缩短 (\d+)'),
 ]
 
 def sh(a, t=600):
@@ -391,7 +392,7 @@ for name, body, meta, target, *rest in CASES:
     txt = with_meta('_入口:\n' + body) if meta == '@AUTO' else '_入口:\n' + body + (meta or '')
     io.open(p, 'w', encoding='utf-8', newline='\n').write(txt)
     po = os.path.join(W, 'c_o.asm')
-    rc1, o1 = sh([OPT, p, '-o', po])
+    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross'])
     rc2, o2 = sh([ASM, p, '-o', os.path.join(W, 'c_n.exe')])       # 不加优化链
     rc3, o3 = sh([ASM, po, '-o', os.path.join(W, 'c_o.exe')])      # 优化链
     if rc1 or rc2 or rc3:
@@ -468,7 +469,7 @@ for idx, (name, code, pat, want) in enumerate(matrix_cells()):
     p = os.path.join(W, 'x_%d.asm' % idx)
     po = os.path.join(W, 'x_%d_o.asm' % idx)
     io.open(p, 'w', encoding='utf-8', newline='\n').write(code)
-    rc1, o1 = sh([OPT, p, '-o', po])
+    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross'])
     rc2, o2 = sh([ASM, p, '-o', os.path.join(W, 'x_%d_n.exe' % idx)])
     rc3, o3 = sh([ASM, po, '-o', os.path.join(W, 'x_%d_o.exe' % idx)])
     if rc1 or rc2 or rc3:
@@ -556,7 +557,7 @@ _ax_bad = 0
 for _i, (_op, _b, _sg, _d) in enumerate(_axis_cases()):
     _p = os.path.join(W, 'ax_%03d.asm' % _i)
     io.open(_p, 'w', encoding='utf-8', newline='\n').write(_axis_frame(_op))
-    _rc1, _o1 = sh([OPT, _p, '-o', _p + '.o.asm'])
+    _rc1, _o1 = sh([OPT, _p, '-o', _p + '.o.asm', '--cross', '--no-16'])
     _rc2, _o2 = sh([ASM, _p, '-o', _p + '.n.exe'])
     _rc3, _o3 = sh([ASM, _p + '.o.asm', '-o', _p + '.o.exe'])
     if _rc1 or _rc2 or _rc3:
@@ -587,7 +588,7 @@ for _i, (_op, _b, _sg, _d) in enumerate(_axis_cases()):
 for _i, (_nm, _pu, _de, _rd, _rs, _want) in enumerate(AX_COMMA):
     _p = os.path.join(W, 'cm_%02d.asm' % _i)
     io.open(_p, 'w', encoding='utf-8', newline='\n').write(_qframe(_pu, _de, _rd, _rs))
-    _rc, _o = sh([OPT, _p, '-o', _p + '.o.asm'])
+    _rc, _o = sh([OPT, _p, '-o', _p + '.o.asm', '--cross', '--no-16'])
     _rc2, _ = sh([ASM, _p, '-o', _p + '.n.exe'])
     _rc3, _ = sh([ASM, _p + '.o.asm', '-o', _p + '.o.exe'])
     _m = re.search(FOLDPAT, _o)
@@ -643,7 +644,7 @@ print()
 print('  == 结构终止闸（块终止子认全 + 野控流不许跨块转发）==')
 _p0 = os.path.join(W, 'g_base.asm')
 io.open(_p0, 'w', encoding='utf-8', newline='\n').write(_gate_cell(''))
-_rc0, _o0 = sh([OPT, _p0, '-o', _p0 + '.o.asm'])
+_rc0, _o0 = sh([OPT, _p0, '-o', _p0 + '.o.asm', '--cross', '--no-16'])
 _b0 = _blocks(_o0)
 _m0 = re.search(XBLKPAT, _o0)
 _f0 = int(_m0.group(1)) if _m0 else 0
@@ -652,7 +653,7 @@ _gbad = 0
 for _i, _mn in enumerate(['无操作'] + CTRL_MNS + CALLMNS):
     _p = os.path.join(W, 'g_%d.asm' % _i)
     io.open(_p, 'w', encoding='utf-8', newline='\n').write(_gate_cell(_mn))
-    _rc, _out = sh([OPT, _p, '-o', _p + '.o.asm'])
+    _rc, _out = sh([OPT, _p, '-o', _p + '.o.asm', '--cross', '--no-16'])
     _bl = _blocks(_out)
     _m = re.search(XBLKPAT, _out)
     _fw = int(_m.group(1)) if _m else 0

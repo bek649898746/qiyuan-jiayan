@@ -16,6 +16,7 @@
 用法: python scripts/check_ast_dump.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 全过；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -57,7 +58,7 @@ def main():
         print('[FAIL] 环境未就绪: 找不到 %s（本判据未执行，不判绿）' % cc)
         return 2
 
-    w = tempfile.mkdtemp(prefix='qcc_ast_')
+    w = tmp_dir('qcc_ast')
     src = os.path.join(w, 'ast.c')
     io.open(src, 'w', encoding='utf-8', newline='\n').write(SRC)
 

@@ -8,6 +8,7 @@
 `指针元素` 对 `long long` 仍算 4 ⟹ `p[i]` 步长 4、`*p` 读 4 字节。
 判据：与 gcc 逐值一致；不一致 ⟹ 复现（rc=1）。
 """
+from qcc_tmp import tmp_dir
 import argparse
 import io
 import os
@@ -16,7 +17,7 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.environ.get('QCC_TMPDIR') or os.path.join(REPO, 'scratch_longlongptr')
+TMP = os.environ.get('QCC_TMPDIR') or tmp_dir('longlongptr')
 
 SRC = """#include <stdio.h>
 int main (void) {

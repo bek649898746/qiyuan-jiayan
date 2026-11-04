@@ -19,6 +19,7 @@
 用法: python scripts/check_sqlite_corpus.py [--cc qcc_zh_seed.exe]
 退出: 0 = 已解除（能编译）；1 = 仍 blocked（附现场）；2 = 环境缺件
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -43,7 +44,7 @@ def main():
     if not os.path.exists(SRC):
         print('[SKIP] 语料不存在: %s' % SRC); return 2
 
-    tmp = tempfile.mkdtemp(prefix='sqlite_')
+    tmp = tmp_dir('sqlite')
     obj = os.path.join(tmp, 'sqlite3.o')
     prelude = os.path.join(REPO, 'compat_prelude.h')
     cmd = [cc, '-c', SRC, '-o', obj, '-I', prelude, '-I', CORPUS,

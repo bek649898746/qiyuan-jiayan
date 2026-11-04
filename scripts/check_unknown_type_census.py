@@ -18,6 +18,7 @@
 用法: python scripts/check_unknown_type_census.py [--corpus DIR] [--limit N] [--out LOG]
 退出: 0 = 普查完成（不判红绿）；2 = 语料/编译器缺失
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import glob
 import io
@@ -148,7 +149,7 @@ def main():
             counted[t] += 1
             where[t].add(os.path.basename(p))
 
-    workdir = tempfile.mkdtemp(prefix='qcc_utype_')
+    workdir = tmp_dir('qcc_utype')
     accepted, rejected = {}, {}
     for name in counted:
         rc = probe_type(cc, name, workdir)

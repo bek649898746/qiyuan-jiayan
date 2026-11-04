@@ -15,6 +15,7 @@
   文件 | 大小 | 中位总耗时 | 词法+宏展开 | 解析 | 码生成 | 对象写 | 阶段和/总
 退出码: 0 = 全部跑通；1 = 有文件编译失败（rc != 0）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import json
 import os
@@ -67,7 +68,7 @@ def main():
         print('用法: measure_speed.py --cc <exe> [--runs N] <源文件...> [--self 相对路径]')
         return 2
 
-    tmp = tempfile.mkdtemp(prefix='speed_')
+    tmp = tmp_dir('speed')
     rows, bad = [], 0
     print('%-28s %9s %10s %10s %10s %10s %10s %8s' %
           ('文件', '字节', '中位总ms', '词法+宏', '解析', '码生成', '对象写', '阶段/总'))

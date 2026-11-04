@@ -15,6 +15,7 @@
 用法: python scripts/check_array_dim_undef.py [--cc <exe>]
 退出: 0 PASS / 1 FAIL
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -44,7 +45,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_seed.exe')
     a = ap.parse_args()
-    d = tempfile.mkdtemp(prefix='adim_')
+    d = tmp_dir('adim')
     ok = True
 
     # ① 负锚：必须 响亮

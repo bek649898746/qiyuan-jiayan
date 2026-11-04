@@ -14,6 +14,7 @@
 用法: python scripts/check_objmode_self.py [--cc qcc_zh_v2.exe] [--update-golden]
 退出码: 0 = 全过；1 = 有 RED
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import atexit
 import hashlib
@@ -56,7 +57,7 @@ def main():
     ap.add_argument('--update-golden', action='store_true')
     a = ap.parse_args()
 
-    tmp = tempfile.mkdtemp(prefix='objmode_')
+    tmp = tmp_dir('objmode')
     # 2026-10-20: 每次跑都在 %TEMP% 留一个约 550MB 的目录（self.exe 534MB + self.o 21MB）且从不清理 ——
     # 实测 20 次残留 14.8GB，把 C 盘灌到只剩 10GB。这里登记退出清理（正常退出/测试失败都会删）。
     atexit.register(lambda: shutil.rmtree(tmp, ignore_errors=True))

@@ -20,6 +20,7 @@
 用法: python scripts/check_ptrarr_double2d.py [--cc qcc_zh_seed.exe]
 退出码: 0 = 6 格全绿；1 = 有格写丢失/错值（缺陷仍在）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -55,7 +56,7 @@ def main():
         # 2026-10-24（判据方打回）: 缺主体不得当绿 —— rc=2 = 环境未就绪，不是 PASS
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    w = tempfile.mkdtemp(prefix='qcc_p2d_')
+    w = tmp_dir('qcc_p2d')
     bad = []
     for name, decl, assign, rp, rm, want in CASES:
         text = ('#包含 <stdio.h>\n整 主() {\n  %s\n  %s\n  %s\n  %s\n  返 0;\n}\n'

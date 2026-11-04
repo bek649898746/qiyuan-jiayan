@@ -13,6 +13,7 @@
 用法: python scripts/check_generic_warn.py [--cc <exe>]
 退出: 0 PASS / 1 FAIL
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import subprocess
@@ -35,7 +36,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default='qcc_zh_seed.exe')
     a = ap.parse_args()
-    d = tempfile.mkdtemp(prefix='gwarn_')
+    d = tmp_dir('gwarn')
     ok = True
 
     r = run(a.cc, OLD, os.path.join(d, 'old.exe'))

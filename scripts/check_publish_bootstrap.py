@@ -13,6 +13,7 @@
 用法: python scripts/check_publish_bootstrap.py [--ref origin/publish]
 退出: 0 = 三项全过；1 = 有红（当前 origin/publish 未修时即 1）
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import re
@@ -35,7 +36,7 @@ def main():
         print('[FAIL] 取不到 %s:scripts/build_zh.ps1' % a.ref)
         return 1
     data = r.stdout
-    w = tempfile.mkdtemp(prefix='qcc_pub_boot_')
+    w = tmp_dir('qcc_pub_boot')
     p = os.path.join(w, 'build_zh.ps1')
     open(p, 'wb').write(data)
 

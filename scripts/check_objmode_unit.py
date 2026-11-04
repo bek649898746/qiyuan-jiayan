@@ -15,6 +15,7 @@
 
 用法: python scripts/check_objmode_unit.py [--cc <exe>] <mode>
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import os
 import struct
@@ -105,7 +106,7 @@ def main():
     modes = [m for m in ('basic', 'reloc', 'runs', 'symbols', 'symbols-big', 'addr', 'repeat',
                          'reloc-big', 'runs-big', 'sparse') if getattr(a, m.replace('-', '_'))]
     mode = modes[0] if modes else 'basic'
-    d = tempfile.mkdtemp(prefix='objunit_')
+    d = tmp_dir('objunit')
 
     if mode == 'addr':
         src, exe = os.path.join(d, 'a.jy'), os.path.join(d, 'a.exe')

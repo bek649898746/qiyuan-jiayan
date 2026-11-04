@@ -18,6 +18,7 @@
 用法: python scripts/check_gate_env.py
 退出码: 0 = 全过 / 1 = 有用例未过
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import shutil
 import subprocess
@@ -26,7 +27,7 @@ import tempfile
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TMP = os.path.join(tempfile.gettempdir(), '_gate_env_chk')
+TMP = os.path.join(tmp_root(), '_gate_env_chk')
 SK = '[SKIP]'
 
 CHECKERS = [
@@ -70,6 +71,7 @@ d1 = os.path.join(TMP, 'empty_tree', 'scripts')
 shutil.rmtree(os.path.join(TMP, 'empty_tree'), ignore_errors=True)
 os.makedirs(d1)
 shutil.copy2(os.path.join(ROOT, 'scripts', 'run_tests_zh.py'), d1)
+shutil.copy2(os.path.join(ROOT, 'scripts', 'qcc_tmp.py'), d1)  # A1: 入口依赖
 r = run([sys.executable, os.path.join(d1, 'run_tests_zh.py'), '--only', 'scripts/feat_zh_2phase30_ok.c'],
         cwd=os.path.join(TMP, 'empty_tree'), env=clean_env(), timeout=120)
 o = out_of(r)
@@ -85,6 +87,9 @@ d2 = os.path.join(d2root, 'scripts')
 shutil.rmtree(d2root, ignore_errors=True)
 os.makedirs(d2)
 MUST_RC2 = {'check_jyld_link_smoke.py'}   # 2026-10-24: 已迁移到 rc=2 口径（环境未就绪 ≠ 绿）
+# ORD-90（2026-11-02）：检查器现在统一从 qcc_tmp 取临时根；复制到隔离目录时必须一并复制入口，
+# 否则 ModuleNotFoundError 会被误判成「闸红」。
+shutil.copy2(os.path.join(ROOT, 'scripts', 'qcc_tmp.py'), d2)
 for c in CHECKERS:
     shutil.copy2(os.path.join(ROOT, 'scripts', c), d2)
     r = run([sys.executable, os.path.join(d2, c)], cwd=d2root, env=clean_env(), timeout=180)

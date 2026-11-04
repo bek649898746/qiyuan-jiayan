@@ -16,6 +16,7 @@
 用法:
   python scripts/check_inline280.py [--cc <编译器 exe>]
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os
 import re
 import subprocess
@@ -28,7 +29,7 @@ CC = 'qcc_zh_v2.exe'
 if '--cc' in sys.argv:
     CC = sys.argv[sys.argv.index('--cc') + 1]
 ANCHOR = os.path.join('scripts', 'feat_zh_inline280_ok.c')
-BASE = os.path.join(os.environ.get('TEMP', '.'), '_check_inline280')
+BASE = os.path.join(tmp_root(), '_check_inline280')
 
 
 def run(args, timeout=180):

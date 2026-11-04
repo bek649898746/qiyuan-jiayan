@@ -21,11 +21,14 @@ import io
 import os
 import subprocess
 import sys
+import sys as _sys_tmp
+_sys_tmp.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qcc_tmp import tmp_dir  # noqa: E402  A1
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK = os.path.join(REPO, 'scratch_array_addr_cast')
+WORK = tmp_dir('scratch_array_addr_cast')
 
 SRC = '''# 包含 <stdio.h>
 typedef 构 { 整 a; 整 b; } AS;

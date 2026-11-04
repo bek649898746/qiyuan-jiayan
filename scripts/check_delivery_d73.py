@@ -20,6 +20,7 @@
 用法: python scripts/check_delivery_d73.py [--cc qcc_zh_v1.exe]
 退出码: 0 = 全绿；1 = 有红；2 = 环境未就绪
 """
+from qcc_tmp import tmp_dir, tmp_root
 import argparse
 import io
 import os
@@ -66,7 +67,7 @@ def main():
     if not os.path.exists(cc):
         print('[FAIL] 环境未就绪: 找不到编译器 %s（本判据未执行，不判绿）' % cc)
         return 2
-    W = tempfile.mkdtemp(prefix='qcc_d73_')
+    W = tmp_dir('qcc_d73')
     bad = []
 
     # ---------- D70 变量/声明符 名字位 撞保留类型词（六位） ----------

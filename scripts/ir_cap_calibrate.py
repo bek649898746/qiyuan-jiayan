@@ -9,6 +9,7 @@
   python scripts/ir_cap_calibrate.py [引擎.exe] [git语料根目录] [文件1.c 文件2.c ...]
   默认引擎 = qcc_zh_v2.exe · 默认语料 = C:\\Users\\Administrator\\Desktop\\git-2.45.2
 """
+from qcc_tmp import tmp_dir, tmp_root
 import os, re, subprocess, sys, time
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -18,7 +19,7 @@ if not os.path.isabs(CC):
     CC = os.path.join(QJ, CC)          # Windows: 相对名 按 父进程 cwd 解析 ⟹ 显式 拼 工作区
 GIT = sys.argv[2] if len(sys.argv) > 2 else r'C:\Users\Administrator\Desktop\git-2.45.2'
 PRE = os.path.join(QJ, 'compat_prelude.h')
-OUT = os.path.join(os.environ.get('TEMP', '.'), 'qiyuan-ir-knives', 'cap')
+OUT = os.path.join(tmp_root(), 'qiyuan-ir-knives', 'cap')
 os.makedirs(OUT, exist_ok=True)
 
 DEFAULT = ['convert.c', 'patch-delta.c', 'sequencer.c', 'builtin/stash.c',
