@@ -3,6 +3,11 @@
 > English overview. The project's primary documentation is in Chinese (`README.md`).
 > This page exists so that non-Chinese readers and AI agents can judge the project quickly.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15888/badge)](https://www.bestpractices.dev/projects/15888)
+[![ScienceDB DOI](https://img.shields.io/badge/DOI-10.57760%2Fsciencedb.0186j-1f6feb)](https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
+
 ## What it is
 
 **Jiayan is a programming language whose keywords and identifiers are Chinese, and whose compiler is written in itself.**
@@ -77,6 +82,17 @@ These are stated plainly rather than hidden:
 | `manual/作品介绍.md` | Project narrative / competition submission |
 | `llms.txt`, `llms-full.txt` | Full fact sheet for AI consumption (Chinese) |
 | `AGENTS.md` | Hard constraints for AI agents working on this repo |
+
+## Citation
+
+Archived dataset (permanent, citable):
+
+> Qiyuan Jiayan — A Self-Hosting Chinese-Native Compiler: Source Code and Chinese Identifier Corpus.
+> Science Data Bank (ScienceDB, CNIC, Chinese Academy of Sciences), V1, 2026.
+> **DOI** `10.57760/sciencedb.0186j` · **CSTR** `31253.11.sciencedb.0186j`
+
+Machine-readable metadata lives in `CITATION.cff`. Release binaries are signed with Sigstore —
+verification steps are in [`SECURITY.md`](SECURITY.md).
 
 ## License
 
