@@ -77,7 +77,29 @@
 
 ⟹ 请按「**功能换评分**」理解这两项，而不是「不会配最小权限」。
 
-## 七、相关文档
+## 七、如何验证你下载的二进制
+
+从 `v2.1.0` 起，Release 资产附带 **Sigstore 签名**（keyless：用 GitHub OIDC 换取短时证书，项目**不保存任何私钥**）。
+
+下载 `qcc_zh_seed.exe`、`qcc_zh_seed.exe.sig`、`qcc_zh_seed.exe.pem` 三个文件后，安装 [cosign](https://docs.sigstore.dev/cosign/installation/) 并执行：
+
+```bash
+cosign verify-blob \
+  --signature qcc_zh_seed.exe.sig \
+  --certificate qcc_zh_seed.exe.pem \
+  --certificate-identity-regexp 'https://github.com/bek649898746/qiyuan-jiayan/.github/workflows/release-sign\.yml@.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  qcc_zh_seed.exe
+```
+
+看到 `Verified OK` 说明两件事：
+
+1. 这个字节串**确实由本仓库的签名工作流产出**（证书身份来自 GitHub OIDC，不可能伪造）；
+2. 该记录已写入 **Rekor 公开透明日志**，事后无法抵赖。
+
+> ⚠️ **只用 sha256 不够**：哈希只能证明「两份文件内容一致」，不能证明「它来自本项目」—— 任何人都能给出与你下载文件相同的哈希。签名证明的是**出处**。
+
+## 八、相关文档
 
 - 编码/确定性铁律：`.gitattributes` 末尾说明 + [`scripts/verify_all.ps1`](scripts/verify_all.ps1)（编码闸 + 自举收敛）
 - 已知问题：[`KNOWN_ISSUES_v1.0.md`](KNOWN_ISSUES_v1.0.md)
