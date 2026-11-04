@@ -17,7 +17,12 @@ updates:
       day: "monday"
       time: "02:00"
       timezone: "Asia/Shanghai"
-    open-pull-requests-limit: 5
+    # 2026-11-04：**本仓库主动把所有 action 钉在 commit SHA 上**（防上游 tag 移动改变构建行为，
+    # 见 .github/workflows/*.yml 的 `uses: ...@<40位 SHA>`）。dependabot 的版本建议基于 tag，
+    # 与这种策略天然冲突 —— 它提出的升级（例如 checkout 5→7）无法安全自动应用，
+    # 会长期积压成一堆未处理 PR，反而给外部读者"项目不处理输入"的错觉。
+    # ⟹ 关掉版本更新 PR，只保留安全公告通道；升级仍以人工按 SHA 更新为准。
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "ci"
     labels:

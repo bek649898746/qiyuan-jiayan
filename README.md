@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 <div align="center">
   <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
@@ -538,6 +538,21 @@ cd qi-yuan--jia-yan
 **想跑完整自举验证（进阶）** —— 见下方「自举验证（一条命令）」段：命令是 `scripts/build_zh.ps1`，起点就是上面这个 `qcc_zh_seed.exe`，同样不碰 gcc。
 
 **新手不必跑它。**
+
+**附：想跑真项目验收 —— 需要先建链接器 `jyld`**
+
+自举不需要 gcc，但**把编译出的 `.o` 链接成可执行文件**需要链接器 `srclib/jyld.c`。
+`jyld.exe` 是**构建产物、不随仓库分发** —— 缺它时 `check_corpus_*` 这类真项目判据会报
+`[RED] jyld 缺失`。用一条 gcc 命令建出来即可（这是全仓库唯一需要 gcc 的地方）：
+
+```bash
+gcc -O2 -Wall -Werror srclib/jyld.c -o jyld.exe
+# 判据脚本按 srclib/jyld.exe 查找，两个位置都放一份最省事：
+copy jyld.exe srclib\jyld.exe
+```
+
+> 只跑自举验证（`scripts/build_zh.ps1`）和直接编译程序（`qcc_zh_seed.exe x.jy -o x.exe`）**都不需要它**。
+> 只有「编译成 `.o` 再用 `jyld` 链接」和「真项目语料验收」这两条路径需要。
 
 **步骤 3：用甲言编译运行第一个程序**
 
