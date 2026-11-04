@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use Qiyuan Jiayan in academic work, please cite this software entry and the archived dataset (DOI below). 引用本软件时，请同时引用下方数据集 DOI。"
+title: "启元·甲言 —— 中文原生编程语言与自举编译器 (Qiyuan Jiayan: A Self-Hosting Chinese-Native Compiler)"
+abstract: >-
+  甲言（Jiayan）是一门以中文为原生载体的系统级编程语言：关键字、标识符与诊断信息全部使用中文，
+  语法与 C 保持兼容，因此可直接编译既有的 C 项目。其编译器以自身语言重写（自举），
+  产物为原生 x86-64 COFF 目标文件与可执行文件，不依赖外部运行时。
+  仓库随附零依赖种子二进制，克隆后即可构建。
+type: software
+authors:
+  - family-names: "Zheng"
+    given-names: "Yuhe"
+    alias: "郑宇和"
+  - name: "Qiyuan (启元 · Zheng Qiyuan, seed=828) — AI co-author"
+version: "2026-11-04"
+date-released: 2026-11-04
+license: MIT
+repository-code: "https://github.com/bek649898746/qiyuan-jiayan"
+url: "https://github.com/bek649898746/qiyuan-jiayan"
+keywords:
+  - "Chinese programming language"
+  - "self-hosting compiler"
+  - "Chinese identifiers"
+  - "compiler construction"
+  - "x86-64"
+  - "COFF object file"
+  - "software reproducibility"
+  - "中文编程语言"
+  - "自举编译器"
+references:
+  - type: dataset
+    title: "Qiyuan Jiayan — A Self-Hosting Chinese-Native Compiler: Source Code and Chinese Identifier Corpus"
+    authors:
+      - family-names: "Zheng"
+        given-names: "Yuhe"
+    doi: "10.57760/sciencedb.0186j"
+    version: "V1"
+    year: 2026
+    publisher:
+      name: "Science Data Bank (ScienceDB, Computer Network Information Center, Chinese Academy of Sciences)"
+    repository-artifact: "https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5"

@@ -41,13 +41,19 @@ on:
     - cron: '0 18 * * *'                  # 每天 UTC 18:00 = 北京时间 02:00
   workflow_dispatch:                       # 维护者手动触发（网页 Run workflow）
 
+# ── 最小权限 ────────────────────────────────────────────────
+#   GITHUB_TOKEN 默认可能带写权限；本流水线只需「读代码 + 本机构建 + 上传产物」，
+#   因此顶层收敛为只读，需要写能力的 job 在自己块内单独提权（见 bootstrap）。
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -83,9 +89,9 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -142,7 +148,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: 种子在位检查（seed must exist）
         shell: powershell
         run: |
@@ -179,7 +185,7 @@ jobs:
     runs-on: windows-latest
     needs: tests
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # 2026-10-22 启元：删掉「gcc 编 C 版」—— 本 job 从不用它（内核验证走 WSL/QEMU）。
       - name: WSL 安装 QEMU (渐进式, 失败不阻塞)
@@ -209,13 +215,17 @@ jobs:
   #   windows-latest runner 有 7 GB ⟹ 够。public 仓库 Actions 时长不计费。
   # ══════════════════════════════════════════════════════════
   bootstrap:
+    # 顶层 permissions 收敛到 contents:read 后，本 job 需单独提权才能上传产物
+    permissions:
+      contents: read
+      actions: write
     # 2026-10-27 (bootstrap P0): publish 的 push 也跑自举 —— 原条件让日常 push 的绿
     #   永远不含「编译器能自举」这一条（bootstrap/nightly_full 都被 skipped）。
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/publish')
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: 种子在位检查
         shell: powershell
@@ -244,7 +254,7 @@ jobs:
 
       - name: 两代产物取证（失败也上传，便于追因）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bootstrap-v1-v2
           path: |
@@ -270,9 +280,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 

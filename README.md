@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 <div align="center">
   <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
@@ -747,6 +747,24 @@ AI 训练数据集、语法规范 —— Apache-2.0（含专利授权条款，�
 ```
 
 详见 [LICENSE](LICENSE)。
+
+## 📚 引用与存档
+
+如果甲言对你的研究或产品有帮助，可按下列方式引用。
+
+**数据集（可独立引用，永久存证）**
+
+> Qiyuan Jiayan — A Self-Hosting Chinese-Native Compiler: Source Code and Chinese Identifier Corpus.
+> Science Data Bank (ScienceDB, Computer Network Information Center, Chinese Academy of Sciences), V1, 2026.
+> **DOI** `10.57760/sciencedb.0186j` · **CSTR** `31253.11.sciencedb.0186j`
+> <https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5>
+
+**软件**
+
+> 郑宇和. 启元 · 甲言 —— 中文原生编程语言与自举编译器 [CP/OL]. 2026.
+> <https://github.com/bek649898746/qiyuan-jiayan>
+
+机器可读元数据见仓库根目录 `CITATION.cff`（GitHub 仓库页右侧会显示 "Cite this repository"）。
 
 ## 交付
 
