@@ -215,10 +215,11 @@ jobs:
   #   windows-latest runner 有 7 GB ⟹ 够。public 仓库 Actions 时长不计费。
   # ══════════════════════════════════════════════════════════
   bootstrap:
-    # 顶层 permissions 收敛到 contents:read 后，本 job 需单独提权才能上传产物
+    # artifact 上传走 ACTIONS_RUNTIME_TOKEN，不需要 GITHUB_TOKEN 的 actions:write
+    # （upload-artifact 官方 README 未把 actions:write 列为必需权限）。
+    # 因此本 job 同样只读 —— 任何 job 出现 actions: write 都会被供应链评分判为权限过大。
     permissions:
       contents: read
-      actions: write
     # 2026-10-27 (bootstrap P0): publish 的 push 也跑自举 —— 原条件让日常 push 的绿
     #   永远不含「编译器能自举」这一条（bootstrap/nightly_full 都被 skipped）。
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/publish')

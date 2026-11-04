@@ -11,8 +11,8 @@
 
 | 渠道 | 用法 |
 |:--|:--|
-| **GitHub Security Advisory**（推荐） | 仓库 → `Security` 标签页 → `Report a vulnerability`（私密、可协作、可发 CVE） |
-| **Gitee 私信** | 私信 `@zheng-yuhe-from-guangdong`，标题注明 `[SECURITY]` |
+| **GitHub Security Advisory**（推荐） | 直接打开 <https://github.com/bek649898746/qiyuan-jiayan/security/advisories/new> 提交（私密、可协作、可发 CVE） |
+| **Gitee 私信** | 私信 <https://gitee.com/zheng-yuhe-from-guangdong>（`@zheng-yuhe-from-guangdong`），标题注明 `[SECURITY]` |
 
 ### 我们会做什么
 
