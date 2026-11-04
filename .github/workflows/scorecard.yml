@@ -15,6 +15,15 @@
 #    这是「零依赖自举」的设计前提（clone 即用，不需 gcc、不需先编一个编译器）。
 #    该扣分是设计取舍，不是疏漏。
 #
+# ⚠️ 本项目在 Token-Permissions 一项上**有意扣分**：`status-sync.yml` 需要
+#    `permissions: contents: write`，才能把重新生成的 README 状态块自动提交回仓库。
+#    这条链路是「对外数字必须跟着 HEAD 走」的唯一保障 —— 主线约 1.5 提交/小时，
+#    任何依赖人手的更新必然脱节（此前正是因此出现过「同一指标多套并行值」）。
+#    ⟹ 有意用「可写令牌」换取状态块的持续准确；
+#      不采用「换用一个 GitHub App 令牌来绕开该项检查」的做法 —— 那只是把写权限藏起来，
+#      并没有让它更安全，反而少了一处公开可见的约束。
+#    该扣分是设计取舍，不是疏漏。
+#
 # 徽章：https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge
 
 name: Scorecard supply-chain security
