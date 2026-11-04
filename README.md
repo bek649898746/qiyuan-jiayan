@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 <div align="center">
   <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
@@ -17,6 +17,8 @@
 ![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-%E5%85%A8%E4%B8%AD%E6%96%87%E6%A0%87%E8%AF%86%E7%AC%A6-blue)
 ![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64-lightgrey)
 [![OpenSSF Best Practices: passing](https://www.bestpractices.dev/projects/15888/badge)](https://www.bestpractices.dev/projects/15888)
+[![ScienceDB DOI](https://img.shields.io/badge/DOI-10.57760%2Fsciencedb.0186j-1f6feb)](https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5)
+[![CSTR](https://img.shields.io/badge/CSTR-31253.11.sciencedb.0186j-8b949e)](https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/bek649898746/qiyuan-jiayan/badge)](https://securityscorecards.dev/viewer/?uri=github.com/bek649898746/qiyuan-jiayan)
 
 ---
