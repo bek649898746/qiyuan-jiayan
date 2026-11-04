@@ -31,7 +31,8 @@
 不需要装任何东西，不需要联网：
 
 ```powershell
-powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
+powershell -File scripts/verify_90s.ps1      # 8 项自检，实测约 4 秒
+powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数字都附复算方式）
 ```
 
 | 你可能想知道 | 答案 |
@@ -79,7 +80,7 @@ powershell -File scripts/verify_90s.ps1      # 8 项自检，约 9 秒
 
 > | # | 我想… | 命令 | 实测 |
 > |:--|:--|:--|:--|
-> | ① | **30 秒验真伪**（最推荐） | `powershell -File scripts/verify_90s.ps1` | **9.2 s** · 8 项全绿 |
+> | ① | **30 秒验真伪**（最推荐） | `powershell -File scripts/verify_90s.ps1` | **约 4 s**（2026-11-04 实测 3.7 s）· 8 项全绿 |
 > | ② | **验「九条语言线」**（甲言写别的语言） | `powershell -File scripts/verify_multilang.ps1` | **31.6 s** · 9/9 通过 |
 > | ③ | **验自举收敛**（完整链） | `powershell -File scripts/build_zh.ps1 -NoSeed` | **≈88 s（8 核 · 2026-11-01 实测 87.5 s）** · `v1==v2==$expected` |
 > | ④ | **审计者：一键导事实基线** | `powershell -File scripts/audit_facts.ps1` | **1 秒** · 含 6 个常见误判提示 |
