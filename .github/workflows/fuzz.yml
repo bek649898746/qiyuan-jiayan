@@ -1,0 +1,93 @@
+# 变异测试（fuzzing）—— 真跑编译器，捕捉崩溃与挂起
+#
+# 为什么要有这个文件：
+#   编译器生成的产物会进入每个使用者的程序，因此编译期缺陷的影响面远大于一般工具。
+#   人工设计探针只能覆盖「想到的」边界；变异测试能持续撞「没想到的」边界。
+#
+# 判据（详见 fuzz/README.md）：
+#   编译器报诊断并返回非零 = 正确行为，不是缺陷；
+#   只有「异常退出码（崩溃）」与「超时（疑似死循环）」才算缺陷。
+#
+# 触发条件：
+#   - 改动 fuzz/ 或编译器主源 → 立即跑一轮（短）
+#   - 每天定时跑一轮（长）—— 变异测试的价值在于持续，不在于单次
+
+name: fuzz
+
+on:
+  push:
+    branches: [ publish ]
+    paths:
+      - 'fuzz/**'
+      - 'srclib_jiayan/**'
+      - '.github/workflows/fuzz.yml'
+  pull_request:
+    branches: [ publish ]
+    paths:
+      - 'fuzz/**'
+  schedule:
+    - cron: '0 20 * * *'          # 每天 UTC 20:00 = 北京时间 04:00
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: '变异轮数'
+        required: false
+        default: '200'
+
+# 顶层最小权限：本工作流只读代码、编译 harness、跑变异，不写仓库
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    name: 变异 fuzz（真调编译器）
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: 准备编译器（minimal gcc，用于构建 harness）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gcc = Get-Command gcc.exe -ErrorAction SilentlyContinue
+          if (-not $gcc) {
+            Write-Host '未找到 gcc，安装 MinGW'
+            choco install mingw -y --no-progress | Out-String | Write-Host
+            $env:Path += ';C:\Program Files\mingw64\bin;C:\mingw64\bin;C:\ProgramData\mingw64\mingw64\bin'
+            $gcc = Get-Command gcc.exe -ErrorAction SilentlyContinue
+          }
+          if (-not $gcc) { throw 'gcc 不可用，无法构建 fuzz harness' }
+          Write-Host ("gcc: " + $gcc.Source)
+
+      - name: 确认种子编译器在位
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'qcc_zh_seed.exe')) { throw '缺少 qcc_zh_seed.exe（零依赖自举种子）' }
+          $env:QCC_FUZZ_COMPILER = (Resolve-Path 'qcc_zh_seed.exe').Path
+          $sha = (Get-FileHash $env:QCC_FUZZ_COMPILER -Algorithm SHA256).Hash.Substring(0, 16)
+          Write-Host ("被测编译器: " + $env:QCC_FUZZ_COMPILER + "  sha256=" + $sha + "…")
+          "QCC_FUZZ_COMPILER=$env:QCC_FUZZ_COMPILER" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 变异 fuzz（Rounds 轮）
+        shell: pwsh
+        run: |
+          $rounds = '${{ github.event.inputs.rounds }}'
+          if (-not $rounds) { $rounds = '200' }
+          Write-Host "轮数: $rounds"
+          powershell -NoProfile -ExecutionPolicy Bypass -File fuzz/mutate_fuzz.ps1 -Rounds $rounds
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::变异 fuzz 捕获到缺陷（退出码 $LASTEXITCODE）—— 样本见 artifact fuzz-crashes"
+            exit 1
+          }
+
+      - name: 收集崩溃样本
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/crashes/
+          retention-days: 30
+          if-no-files-found: warn
