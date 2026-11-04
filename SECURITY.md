@@ -86,7 +86,7 @@
 
 从 `v2.1.0` 起，Release 资产附带 **Sigstore 签名**（keyless：用 GitHub OIDC 换取短时证书，项目**不保存任何私钥**）。
 
-下载 `qcc_zh_seed.exe`、`qcc_zh_seed.exe.sig`、`qcc_zh_seed.exe.pem` 三个文件后，安装 [cosign](https://docs.sigstore.dev/cosign/installation/) 并执行：
+下载 `qcc_zh_seed.exe`、`qcc_zh_seed.exe.sig`、`qcc_zh_seed.exe.pem` 三个文件后，安装 [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 并执行：
 
 ```bash
 cosign verify-blob \
