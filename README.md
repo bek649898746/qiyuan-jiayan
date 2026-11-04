@@ -55,8 +55,8 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-04 13:52** |
-> | HEAD | `64f37ff9`（分支 `publish`） |
+> | 生成时间 | **2026-11-04 14:02** |
+> | HEAD | `a1b6830c`（分支 `publish`） |
 > | 自举不动点 | **`4CB91371`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
 > | 主源 | **38228 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1725 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1471 文件** |
