@@ -104,7 +104,21 @@ cosign verify-blob \
 
 > ⚠️ **只用 sha256 不够**：哈希只能证明「两份文件内容一致」，不能证明「它来自本项目」—— 任何人都能给出与你下载文件相同的哈希。签名证明的是**出处**。
 
-## 八、相关文档
+## 八、Security 页上的告警分别是什么
+
+本仓库把 **OpenSSF Scorecard** 的结果也上传到「Security → Code scanning」（便于逐条追踪供应链实践），
+因此那一页的告警**不是代码缺陷**，而是供应链评分里的扣分项。逐条说明：
+
+| 告警规则 | 数量 | 是什么 | 为什么这样处置 |
+|:--|--:|:--|:--|
+| `Binary-Artifacts` | 7 | 自举种子 `qcc_zh_seed.exe`、血缘第一环 `v14_self/cpu64_v14_self.exe`、IR 对拍基线 `scripts/ir_stage1_baseline/*.exe` ×5 | 全部是**承重件**（没有种子就无法自举；基线现场生成则对拍失效）。已标记 `won't fix`，理由见上一节 |
+| `Token-Permissions` | 2 | `status-sync`（状态块自动提交）与 `release-sign`（Sigstore 签名）需要写权限 | **功能换评分**的主动取舍，见上一节 |
+| `Code-Review` | **1** | 本仓库**目前没有第二个评审者** | **保留未关闭。** 这不是误报，也不是取舍 —— 它是真的。只有出现外部评审之后，这条才该消失 |
+
+**⟹ CodeQL 自身的代码缺陷告警：0 条。** 上面 10 条中，9 条是已记录的设计取舍（已 dismiss 并附理由），
+剩下的 1 条 `Code-Review` 我们**故意留着** —— 关闭它等于假装有人评审过。
+
+## 九、相关文档
 
 - 编码/确定性铁律：`.gitattributes` 末尾说明 + [`scripts/verify_all.ps1`](scripts/verify_all.ps1)（编码闸 + 自举收敛）
 - 已知问题：[`KNOWN_ISSUES_v1.0.md`](KNOWN_ISSUES_v1.0.md)
