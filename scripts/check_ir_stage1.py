@@ -64,6 +64,8 @@ def pe_text_raw(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default=os.environ.get('QCC_TEST_BIN') or 'qcc_zh_v1.exe')
+    ap.add_argument('--update-baseline', action='store_true',
+                    help='有意变更后重钉基线：把当前产物写回 scripts/ir_stage1_baseline/*.exe')
     ap.add_argument('--baseline', default=os.path.join(REPO, 'scripts', 'ir_stage1_baseline'),
                     help='修前基线产物目录（D90C36B4；5 类代表输入）')
     a = ap.parse_args()
@@ -213,7 +215,12 @@ def main():
         else:
             hb = hashlib.sha256(open(bpath, 'rb').read()).hexdigest()
             if h1 != hb:
-                bad.append('%s 发布产物 与修前基线不同 %s != %s' % (name, h1[:12], hb[:12]))
+                if a.update_baseline:
+                    import shutil
+                    shutil.copyfile(e_all, bpath)
+                    print('[基线] %s 已重钉 = %s（原 %s）' % (name, h1[:12], hb[:12]))
+                else:
+                    bad.append('%s 发布产物 与修前基线不同 %s != %s' % (name, h1[:12], hb[:12]))
         q = subprocess.run([e_all], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
         if q.returncode != 0 or want not in (q.stdout or ''):
             bad.append('%s 运行不符 rc=%d out=%r' % (name, q.returncode, (q.stdout or '').strip()[:60]))

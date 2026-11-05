@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """check_corpus_lua —— D6 真实语料 lua 5.4.7 编译档判据（核心库 33/33）。
 
@@ -17,8 +17,9 @@
 断言：
   1. 核心库 33 个 .c（排除 `onelua.c` 聚合文件与 `luac.c` 工具）逐文件 `-I src -c` 全绿；
   2. `ldo.c` 在名单内且 rc=0（修前红，防回归）；
-  3. `luac.c` 是**既有**工具缺陷（A9001 `Proto.p`，旧编译器同样报），显式挂账：
-     若它变绿，本判据会打印「可更新名单」并判红，强制诚实收口。
+  3. `luac.c` 曾是**既有**工具缺陷（A9001 `Proto.p`，旧编译器同样报）。2026-11-05 第八轮
+     「typedef 内联结构体字段 `struct T **p` 指针层级丢失」（刀十九）根治后它已能编过，
+     故 2026-11-05 起从 KNOWN_RED 移除；本判据仍保留「已知红变绿」的自检机制以防回退。
 
 用法: python scripts/check_corpus_lua.py [--cc qcc_zh_seed.exe] [--lua <src dir>]
 退出码: 0 = PASS / 1 = RED / 2 = 语料未就绪（SKIP，显式打印）
@@ -37,13 +38,20 @@ DEFAULT_LUA = os.environ.get('QCC_LUA_DIR', r'D:\qcc_corpus\lua-5.4.7\src')
 # 聚合文件 onelua.c 会把全部 .c 再包一层（甲言合并 TU 语义不同），单列。
 SKIP = {'onelua.c'}
 # 既有工具缺陷（非本轮修复面）；变绿时强制更新名单。
-KNOWN_RED = {'luac.c': 'A9001'}
+# 2026-11-05 第八轮：`luac.c` 的 A9001 `Proto.p` 已随「typedef 内联结构体字段 `struct T **p`
+# 指针层级丢失」根治（刀十九）而变绿 ⟹ 名单清空。机制保留：再有『已知红变绿』会判红。
+KNOWN_RED = {}
+# 链接档单列：`luac.c` 是**独立可执行工具**（自带 `main`），编译档要过，
+# 但不能并入解释器链接行（否则与 `lua.c` 的 `main` 重复符号）。
+LINK_SKIP = {'luac.c'}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cc', default=os.path.join(REPO, 'qcc_zh_seed.exe'))
     ap.add_argument('--lua', default=DEFAULT_LUA)
+    ap.add_argument('--no-run', action='store_true',
+                    help='只跑编译档（默认 编译 + 真跑）')
     a = ap.parse_args()
     cc = a.cc if os.path.isabs(a.cc) else os.path.join(REPO, a.cc)
     if not os.path.exists(cc):
@@ -57,8 +65,10 @@ def main():
     srcs = sorted(f for f in os.listdir(a.lua) if f.endswith('.c') and f not in SKIP)
     bad = []
     ok = 0
+    objs = []
     for src in srcs:
-        r = subprocess.run([cc, '-I', a.lua, '-c', src, '-o', os.path.join(w, src + '.o')],
+        obj = os.path.join(w, src + '.o')
+        r = subprocess.run([cc, '-I', a.lua, '-c', src, '-o', obj],
                            cwd=a.lua, capture_output=True, text=True,
                            encoding='utf-8', errors='replace')
         out = (r.stdout or '') + (r.stderr or '')
@@ -76,6 +86,7 @@ def main():
             bad.append('%s rc=%d %s' % (src, r.returncode, out.strip().replace('\n', ' ')[:160]))
         else:
             ok += 1
+            objs.append(obj)
 
     core = [s for s in srcs if s not in KNOWN_RED]
     print('lua 5.4.7 核心库编译: %d/%d（跳过 %s；已知红 %s）'
@@ -84,8 +95,47 @@ def main():
         print('\n'.join('[RED] ' + x for x in bad))
         print('== lua 编译档判据: RED（%d 项）==' % len(bad))
         return 1
-    print('== lua 编译档判据: PASS（核心 33/33 + 1 条既有工具挂账）==')
+    if not a.no_run:
+        red = run_stage(a, cc, w, objs)
+        if red:
+            print('\n'.join('[RED] ' + x for x in red))
+            print('== lua 运行档判据: RED（%d 项）==' % len(red))
+            return 1
+        print('== lua 运行档判据: PASS（连续两次 -v / -e 均 rc=0，-e 输出 2）==')
+    print('== lua 判据: PASS（编译 %d/%d%s）=='
+          % (ok, len(core), '' if a.no_run else ' + 运行档 真跑'))
     return 0
+
+
+def run_stage(a, cc, w, objs):
+    """ORD-114: 真跑 —— 全量 -c 编对象 → jyld 链接 → 连续两次 -v / -e 断言。"""
+    link_objs = [o for o in objs
+                 if os.path.basename(o)[:-2] not in LINK_SKIP]  # 去掉尾部 '.o'
+    if not link_objs:
+        return ['没有可用于链接的目标文件（编译阶段全红）']
+    jyld = os.path.join(REPO, 'srclib', 'jyld.exe')
+    if not os.path.exists(jyld):
+        return ['jyld 缺失: %s' % jyld]
+    exe = os.path.join(w, 'lua_run.exe')
+    r = subprocess.run([jyld] + link_objs + ['-o', exe], cwd=w, capture_output=True,
+                       text=True, encoding='utf-8', errors='replace')
+    if r.returncode != 0 or not os.path.exists(exe):
+        return ['jyld 链接失败 rc=%d: %s' % (r.returncode,
+                ((r.stdout or '') + (r.stderr or '')).strip().replace('\n', ' ')[:200])]
+    print('  [run] 链接 ok: %d 字节' % os.path.getsize(exe))
+    red = []
+    for i in (1, 2):
+        v = subprocess.run([exe, '-v'], cwd=w, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace')
+        if v.returncode != 0 or 'Lua 5.4' not in ((v.stdout or '') + (v.stderr or '')):
+            red.append('第%d次 -v rc=%d out=%r' % (i, v.returncode,
+                       ((v.stdout or '') + (v.stderr or '')).strip()[:120]))
+        e = subprocess.run([exe, '-e', 'print(1+1)'], cwd=w, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace')
+        eo = ((e.stdout or '') + (e.stderr or '')).strip()
+        if e.returncode != 0 or eo != '2':
+            red.append('第%d次 -e print(1+1) rc=%d out=%r' % (i, e.returncode, eo[:120]))
+    return red
 
 
 if __name__ == '__main__':

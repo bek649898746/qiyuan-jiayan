@@ -108,7 +108,8 @@ def run_one(name, cc):
         pass
     try:
         env = os.environ.copy()
-        env['QCC_SMALL_HEAP'] = '1'  # 2026-10-19: 锚编译 64MiB 堆备留 ⟹ 8 路并行不打穿 commit
+        # R896 (2026-11-04 虾米): 不再设 QCC_SMALL_HEAP —— 自 R896 起它是 no-op
+        #   （`堆块取` 恒定 768MiB，构建期不读环境）。锚产物竞技场 = 768MiB。
         r = subprocess.run([cc] + d['args'] + [os.path.join('scripts', name), '-o', exe],
                            capture_output=True, encoding='utf-8', errors='replace', timeout=120, env=env)
     except subprocess.TimeoutExpired:

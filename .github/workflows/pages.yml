@@ -1,0 +1,72 @@
+name: pages
+
+# 文档站：把 manual/ 与顶层文档渲染成 GitHub Pages
+# 触发：publish 分支文档变更时自动；也支持手动
+# 不碰产品代码，只读 .md 与 assets/
+
+on:
+  push:
+    branches: [publish]
+    paths:
+      - 'manual/**'
+      - 'SITE_HOME.md'
+      - 'README_WHY.md'
+      - 'SUPPORT_MATRIX.md'
+      - 'KNOWN_ISSUES_v1.0.md'
+      - 'SECURITY.md'
+      - 'CONTRIBUTING.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CHANGELOG.md'
+      - 'assets/**'
+      - 'mkdocs.yml'
+      - 'scripts/gen_site_docs.ps1'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: 安装 MkDocs Material
+        run: pip install --disable-pip-version-check mkdocs-material
+
+      - name: 汇集文档（只取 .md 与 assets）
+        shell: pwsh
+        run: ./scripts/gen_site_docs.ps1
+
+      - name: 构建站点
+        run: mkdocs build
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site_build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

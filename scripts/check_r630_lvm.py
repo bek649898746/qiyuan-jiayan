@@ -43,7 +43,29 @@ for _stream_utf8w in (getattr(_sys_utf8w, 'stdout', None), getattr(_sys_utf8w, '
 import os, subprocess, sys
 
 JY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(JY, 'qcc_zh_v1.exe')
+
+
+def _pick_cc(argv):
+    """`--cc <path>`（统一口径，供 run_criteria --product 改写修前腿）或 位置参数 选编译器。
+
+    2026-11-05（虾米 · 第七轮）：同 check_assert_semantics.py —— 原只认位置参数，而修前腿
+    只改写 `--cc` ⟹ `--product` 对本行静默失效（before 腿假绿）。两种写法都接受。
+    """
+    cc, rest, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a == '--cc' and i + 1 < len(argv):
+            cc = argv[i + 1]; i += 2; continue
+        if a.startswith('--cc='):
+            cc = a.split('=', 1)[1]; i += 1; continue
+        rest.append(a); i += 1
+    if cc is None and rest:
+        cc = rest[0]
+    return cc
+
+
+_picked = _pick_cc(sys.argv[1:])
+CC = _picked if _picked else os.path.join(JY, 'qcc_zh_v1.exe')
 if not os.path.exists(CC):
     # AUDIT-P2-4 (2026-10-21): **环境前置** —— 缺编译器 ⟹ SKIP（rc=0 + `[SKIP]` 标记），
     # 不再让 subprocess 抛 FileNotFoundError（那是「假红」：把「没装环境」误判成「代码坏了」）。
@@ -52,6 +74,12 @@ TMP = os.path.join(tmp_root(), '_r630_lvm')
 os.makedirs(TMP, exist_ok=True)
 LUA = r'D:\qiyuan_home\corpus\lua-5.4.7'
 BASELINE_BEFORE = 344          # R629 实测（前值）
+# ORD-20261104-116 (闸⑦ 体积红线 · 2026-11-04): 本闸原先只「打印 obj 字节」，不设上界 ⟹
+#   优化器/码生成若**悄悄膨胀**（重复发射、死代码堆积），闸⑦ 照样绿 —— 那是**只观测不判决**。
+#   现补 fail-closed 上界：obj > 基线 × (1 + VOLUME_HEADROOM) ⟹ 红。
+#   基线取 2026-11-04 实测（不动点 53FD7AF8, lvm.c, rc=0）。上界只在**同一编译器/同一语料**下有意义。
+VOLUME_BASELINE = 4124656      # 2026-11-04 实测 (qcc_zh_v1.exe, lvm.c, rc=0)
+VOLUME_HEADROOM = 0.02         # +2% 余量（正常抖动 ≪ 1%；超 2% 视为结构性膨胀）
 env = dict(os.environ, QCC_DBG_SILENT='1')
 
 
@@ -79,6 +107,17 @@ def main():
         print('  ❌ 槽3 残留 %d 次（本刀前值 %d ⟹ 修复未生效或未落地）' % (n3, BASELINE_BEFORE))
         return 1
     print('  ✅ 槽3 == 0（本刀前值 %d）' % BASELINE_BEFORE)
+    # ---- ORD-20261104-116: 体积红线（fail-closed）----
+    if sz <= 0:
+        print('  ❌ 体积红线: obj 缺失/为空 (sz=%d)' % sz)
+        return 1
+    limit = int(VOLUME_BASELINE * (1.0 + VOLUME_HEADROOM))
+    if sz > limit:
+        print('  ❌ 体积红线: obj=%d 字节 > 上限 %d（基线 %d +%.0f%%）⟹ 码生成/优化器结构性膨胀'
+              % (sz, limit, VOLUME_BASELINE, VOLUME_HEADROOM * 100))
+        return 1
+    print('  ✓ 体积红线: obj=%d ≤ %d（基线 %d +%.0f%%）'
+          % (sz, limit, VOLUME_BASELINE, VOLUME_HEADROOM * 100))
     return 0
 
 

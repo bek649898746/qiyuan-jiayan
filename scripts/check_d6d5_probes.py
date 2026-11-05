@@ -212,7 +212,7 @@ def main():
 
     # 7) declorder —— 声明顺序作用域（C11 6.2.1p7：作用域自声明符之后开始）
     #    旧: 同块内后声明的同名变量遮蔽此前引用（global=0 / param=0）；新: 7 42。
-    OLD_CC_SRC_D7 = 'HEAD:srclib_jiayan/qcc_zh.jy'
+    OLD_CC_SRC_D7 = '19185f13:srclib_jiayan/qcc_zh.jy'  # 修复前 主源 (固定 提交, 不随 HEAD 漂移)
     decl_c = os.path.join(W, 'decl_order_probe.c')
     io.open(decl_c, 'w', encoding='utf-8', newline='\n').write(
         'int printf(const char *fmt, ...);\n'

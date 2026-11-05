@@ -1,0 +1,93 @@
+# 甲言 Jiayan — 文档站配置
+# 目的：把 manual/ 的 21 份文档 + 顶层关键文档渲染成可浏览的网站
+# 零产品代码改动：只加配置，不动 qcc_zh.jy / scripts / srclib
+
+site_name: 甲言 Jiayan
+site_description: 中文关键字 + 兼容 C 的自举编译器 · 零外部依赖 · 直出 PE/ELF
+site_url: https://bek649898746.github.io/qiyuan-jiayan/
+repo_url: https://github.com/bek649898746/qiyuan-jiayan
+repo_name: bek649898746/qiyuan-jiayan
+
+# 只含文档的构建目录（由 scripts/gen_site_docs.ps1 生成）：
+# 不设 docs_dir: . —— 那会把 15MB 的 seed exe、fuzz 语料、.git 全卷进构建
+docs_dir: site_docs
+site_dir: site_build
+
+theme:
+  name: material
+  language: zh
+  custom_dir: overrides
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    # 跟随系统深浅色 —— 不用自己调配色
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: 切到深色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: 切到浅色
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+# 导航：按"读者来的顺序"排，不是按文件名排
+nav:
+  - 首页: index.md
+  - 开始使用:
+      - 快速上手: manual/快速上手.md
+      - 给 AI 的接口: manual/AI快速上手.md
+      - 中文关键字表: manual/中文关键字表.md
+  - 甲言是什么:
+      - 作品介绍: manual/作品介绍.md
+      - 工程优势清单: manual/工程优势清单.md
+      - 为什么会有甲言: README_WHY.md
+      - 兼容性四层证据: manual/兼容性四层证据.md
+  - 语言与机制:
+      - 语言特性全表: manual/语言特性全表.md
+      - 机制特性实现表: manual/机制特性实现表.md
+      - 特性清单: manual/特性清单.md
+      - 泛型单态化: manual/泛型单态化.md
+      - 编译期检查清单: manual/编译期检查清单.md
+      - 保留名清单: manual/保留名清单.md
+  - 深入:
+      - 源码导航: manual/源码导航.md
+      - 仓库导航: manual/仓库导航.md
+      - 混合编程: manual/混合编程.md
+      - 多语言实现: manual/多语言实现.md
+      - 多语言实现方法: manual/多语言实现方法.md
+  - 核验与证据:
+      - 数据口径与核验方法: manual/数据口径与核验方法.md
+      - 支持矩阵: SUPPORT_MATRIX.md
+      - 已知问题: KNOWN_ISSUES_v1.0.md
+      - 安全策略: SECURITY.md
+  - 贡献与规范:
+      - 参与贡献: CONTRIBUTING.md
+      - 行为准则: CODE_OF_CONDUCT.md
+      - 变更记录: CHANGELOG.md

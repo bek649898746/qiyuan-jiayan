@@ -91,6 +91,14 @@ MACRO_GUARD = [
 CORE_FEAT = [
     'scripts/feat_zh_block_shadow_ok.c',  # D6D5b/c (2026-11-04 虾米 · skeptic-0): 块内同名声明遮蔽形参后, 块外读形参必须命中形参; 返回类型非浮点而表达式浮点必须隐式截断 (int/char/short/long/float/double/指针 七形态 + 局部遮蔽 + 双精度返回截断)
     'scripts/feat_zh_decl_order_ok.c',  # D6D5-DECL-ORDER (2026-11-04 虾米 · skeptic-0 gap ①): 声明顺序作用域 (C11 6.2.1p7) —— 同一块内后声明不得遮蔽此前同名声明的引用 (全局/形参/局部 + 七类型); 修前 global=0/param=0, 修后 7/42
+    'scripts/feat_zh_fwd_typedef_member_ok.c',  # ORD-115/98/107 (2026-11-04): 前向 typedef 指针成员 —— typedef 当时目标结构体未完整 ⟹ 别名丢指针身份/标签 ⟹ `i.m->a` 取 &i.m、字段偏移全 0; 修后 A 7 8 / P3 0 / 对照组不回归
+    'scripts/feat_zh_typedef_cast_ok.c',  # ORD-20261104-103 (2026-11-04): typedef 名 被 隐式全局 预登记 污染 ⟹ 型定判断 遮蔽判据 使 (size_t) 强转 退化 (A1004); 修后 七种强转形态 全对
+    'scripts/feat_zh_cond_selfdef_macro_ok.c',  # ORD-20261104-104 (2026-11-04): 第二遍 行申 清 函数宏数 却继承 全文扫完的对象宏表 ⟹ `#if !defined(X)` 把后文定义算「已定义」⟹ #ifdef 块内函数宏全丢 (zlib deflate.c zmemzero A1001); 修后 判据 1/4/5/6 全绿
+    'scripts/feat_zh_label_type_conflict_ok.c',  # ORD-20261104-106 (2026-11-04): 块内 `标识:` 被「类型名→声明」快路径吞掉 (struct tag/typedef 同名) ⟹ 假 A9001/A1004 (≈561 文件); 修后 标签名空间 独立
+    'scripts/feat_zh_ptr_comma_decl_ok.c',  # D6-PTRDIFF (2026-11-04): 逗号续声明符 指针元素尺寸 硬编 4 (typedef 结构体 应 16 / double 应 8) ⟹ `d - arr` 被当「指针−整数」乘 4 ⟹ 静默垃圾差值; 修后 七类型 全对
+    'scripts/feat_zh_assert_ok.c',  # ORD-20261104-110 (2026-11-04): <assert.h> 只跳过不提供宏 ⟹ assert A1001; 块作用域 _Static_assert 落 A1001; 修后 正向面 全绿
+    'scripts/feat_zh_static_assert_neg.c',  # ORD-20261104-110 负锚: 块作用域 _Static_assert(0) ⟹ A6017 (修前 A1001 误导)
+    'scripts/feat_zh_builtin_whitelist_ok.c',  # ORD-20261104-111 (2026-11-04): *_C 宏 6/6 缺 + 16 errno 缺 + struct _stat 字段读垃圾; 修后 三缺口 值与偏移 全对
     'scripts/feat_zh_dangling_array_neg.c',  # R905h (2026-10-29 虾米 · 审计 ORD-36): 返回局部数组名 必须 A3105（修前放行）
     'scripts/feat_zh_dangling_allow_ok.c',  # R905h: 合法对照（形参 / static 局部）不得误报
     'scripts/feat_zh_blockproto_ok.c',      # ORD-52 (2026-10-30 虾米): 块内函数原型 (C99 6.7.5.3) 真跑 BPROTO 42 65（修前 A1004 缺分号）
@@ -1287,6 +1295,7 @@ CORE_FEAT += [
 #   判据: 26 例 与 gcc 逐值一致; 本锚 不 具「旧编译器 必红」区分度 (是 覆盖补充 而非 缺陷修复),
 #     判据 口径 = 锚自身正确 + 全闸零回归 (同 第 133 站).
 'scripts/feat_zh_compound_assign_ok.c',
+    'scripts/feat_zh_postinc_compound_ok.c',
 # ===== 第 141 站 (C141): 转义序列补齐 + 零覆盖形态锚 (725 → 727) =====
 #   由来: 第 141 站 扩展覆盖统计 (九 维度, 767 个 锚): `\xNN` / `\0` / `\a\b\f\v` 零覆盖;
 #     `do { } while` / `void **` / `void *arr[]` / `register` 零覆盖。
@@ -3921,7 +3930,11 @@ def run_one_test(name):
     except OSError:
         pass
     try:
-        _env = dict(os.environ, QCC_SMALL_HEAP='1', QCC_TMP_ROOT=str(_tmp_root()))  # A1: 锚可用 QCC_TMP_ROOT 定位临时文件；2026-10-19: 锚编译 256MiB 堆备留 ⟹ 8 路并行不打穿 commit
+        # R896 (2026-11-04 虾米): 去掉 QCC_SMALL_HEAP —— 该旋钮 自 R896 起是 **no-op**
+        #   （`堆块取` 恒定 768MiB，构建期不再读环境；锚编译产物 竞技场 = 768MiB）。
+        #   保留它只会让后来者以为「并行闸跑在 256MiB」——实测 `--fast --parallel 4` 全绿，
+        #   脚本内存预检 4×1.5GB=6.0GB 通过。
+        _env = dict(os.environ, QCC_TMP_ROOT=str(_tmp_root()))  # A1: 锚可用 QCC_TMP_ROOT 定位临时文件
         if expected_silent is not None:
             _env['QCC_DBG_SILENT'] = '1'
         r = subprocess.run([qcc] + arg_extra + [src, '-o', h1], capture_output=True, text=True,
@@ -4252,10 +4265,13 @@ def main():
             #   = **1.28GB**（8 路 并行 合计 9.98GB，全部 rc 符合预期，见 _evidence 的 PERF-PAR 现场）。
             #   ⟹ 改用 1.5GB/进程（实测 + 17% 余量）。**这不是放宽判据**：判据（拒绝超预留即退 2）不变，
             #   只是把过时的 估算常数 校正到实测值。
-            _need = args.parallel * 1.5
+            # R896 轮（2026-11-05）: 预检必须按**实际并发**算 —— --only 1 只起 1 个进程，
+            #   按 args.parallel 估 6 路会在一台还够用的机器上把单测判成 exit 2（7 条 fixed 条目被误红）。
+            _eff = max(1, min(args.parallel, len(tests)))
+            _need = _eff * 1.5
             _reserve = 6.0
-            print('[MEM] 并行 %d 路 · 预计 %.1fGB · 可用物理 %.1fGB · 系统预留 %.0fGB'
-                  % (args.parallel, _need, _avail, _reserve), flush=True)
+            print('[MEM] 并行 %d 路（实际 %d 路 · %d 个测试）· 预计 %.1fGB · 可用物理 %.1fGB · 系统预留 %.0fGB'
+                  % (args.parallel, _eff, len(tests), _need, _avail, _reserve), flush=True)
             if _need > _avail - _reserve:
                 print('[MEM] 拒绝执行: %.1fGB > 可用 %.1fGB - 预留 %.0fGB' % (_need, _avail, _reserve), flush=True)
                 print('[MEM] 请先关闭重负载（安卓模拟器/游戏/其它编译），或用 --parallel 降低并发；'

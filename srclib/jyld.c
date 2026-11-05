@@ -769,6 +769,7 @@ static const char *msvcrt_names[] = {
     "_stat","_fstat",
     "_errno",
     "strerror","_strerror","_strdup",
+    "localeconv","setlocale", /* ORD-20261105-SYSV: lua lua_getlocaledecpoint() ?? localeconv()?ELF ??? <locale.h> ? PE ??????? */
     "_umask","_getcwd","_chdir",
     "bsearch","abs","labs","time","_time64","clock","remove","rename","system","getenv",
     "_findfirst","_findnext","_findclose", /* dirent 兼容: prelude_dirent.c (fix 2026-08-19) */

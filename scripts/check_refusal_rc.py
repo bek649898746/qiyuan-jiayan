@@ -6,7 +6,11 @@
 （与 D32「零锚假绿」同族）。
 
 判据：
- ① 用不可能满足的并发（`--parallel 99`）跑一个锚 ⟹ **rc == 2** 且 stderr 含「拒绝执行」
+ ① 用不可能满足的并发（`--parallel 99` + `--fast` 36 锚 ⟹ 实际并发 36 × 1.5GB = 54GB）
+    ⟹ **rc == 2** 且 stderr 含「拒绝执行」
+    （2026-11-05：原用 `--only 1 --parallel 99`；MEM 预检改为按**实际并发**
+     `min(parallel, 测试数)` 估算后，1 个测试永远不可能超预算 ⟹ 该负例失去意义，
+     且会真的去 Pool(99) 卡死。改用 --fast 才能构造真实超预算。）
  ② 正常并发（`--parallel 1`）跑同一锚 ⟹ **rc == 0** 且含 `PASS=1`（证明只在拒绝时非零）
 
 用法: python scripts/check_refusal_rc.py
@@ -27,8 +31,15 @@ def run(par):
                           encoding='utf-8', errors='replace', timeout=600)
 
 
+def run_fast(par):
+    """真实超预算：--fast 的 36 个锚 × 1.5GB ≫ 本机可用 - 预留。"""
+    return subprocess.run([sys.executable, 'scripts/run_tests_zh.py', '--fast',
+                           '--parallel', str(par)], capture_output=True, text=True,
+                          encoding='utf-8', errors='replace', timeout=600)
+
+
 def main():
-    r = run(99)
+    r = run_fast(99)
     out = (r.stdout or '') + (r.stderr or '')
     ok1 = (r.returncode == 2 and '拒绝执行' in out)
     print('① 拒绝执行: rc=%d 含拒绝=%s -> %s' % (r.returncode, '拒绝执行' in out, 'PASS' if ok1 else 'FAIL'))
