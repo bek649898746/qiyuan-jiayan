@@ -57,12 +57,12 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-04 15:13** |
-> | HEAD | `4a7d25b3`（分支 `publish`） |
-> | 自举不动点 | **`4CB91371`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **38228 行**（`srclib_jiayan/qcc_zh.jy`） |
-> | 特性锚 | **1725 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1471 文件** |
-> | 种子指纹 | `4CB91371`（`qcc_zh_seed.exe` SHA256 前 8 位） |
+> | 生成时间 | **2026-11-05 23:04** |
+> | HEAD | `5378120c`（分支 `publish`） |
+> | 自举不动点 | **`CB83122D`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **38921 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 特性锚 | **1734 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1480 文件** |
+> | 种子指纹 | `CB83122D`（`qcc_zh_seed.exe` SHA256 前 8 位） |
 >
 > **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
 > 想知道**现在**的准确值，跑：
