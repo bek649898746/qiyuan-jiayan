@@ -1,4 +1,6 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
+
+> **English?** → [`README.en.md`](README.en.md) — 99% English, written for non-Chinese readers and AI agents.
 
 <div align="center">
   <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
