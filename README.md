@@ -1,4 +1,4 @@
-# 启元 · 甲言
+﻿# 启元 · 甲言
 
 > **English?** → [`README.en.md`](README.en.md) — 99% English, written for non-Chinese readers and AI agents.
 
@@ -60,8 +60,8 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-06 15:50** |
-> | HEAD | `fd755395`（分支 `publish`） |
+> | 生成时间 | **2026-11-06 21:17** |
+> | HEAD | `7dbeb67a`（分支 `publish`） |
 > | 自举不动点 | **`F78A560B`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
 > | 主源 | **39063 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1736 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1482 文件** |
