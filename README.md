@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 <div align="center">
   <p><strong>一门用中文书写的编程语言，编译器也是用它自己写的。</strong></p>
@@ -9,13 +9,14 @@
 > **下面每一张图都是现役编译器跑出来的实测**，不是宣称、不是示意 —— 每张都配可运行源码。
 
 `整 甲 = 1;` 和 `int 甲 = 1;` 是同一件事 —— 两种写法可以混在同一个文件里。
-整个编译器**约 3.8 万行**全部用甲言自己写；**它编译自己两次，两次哈希必须相同。**
+整个编译器**约 3.9 万行**全部用甲言自己写；**它编译自己两次，两次哈希必须相同。**
+**Windows 与 Linux 都能自举** —— 同一份源码，两个平台各自收敛到自己的不动点（两者不同是正常的：目标格式与 ABI 不同）。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![自举](https://img.shields.io/badge/%E8%87%AA%E4%B8%BE-v1%3D%3Dv2%3D%3D%24expected-brightgreen)
 ![零依赖](https://img.shields.io/badge/%E9%9B%B6%E4%BE%9D%E8%B5%96-%E4%B8%8D%E9%9C%80%20gcc%20%2F%20Python-brightgreen)
 ![中文主源](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E4%B8%BB%E6%BA%90-%E5%85%A8%E4%B8%AD%E6%96%87%E6%A0%87%E8%AF%86%E7%AC%A6-blue)
-![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64-lightgrey)
+![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20x64%20%7C%20Linux%20ELF-lightgrey)
 [![OpenSSF Best Practices: passing](https://www.bestpractices.dev/projects/15888/badge)](https://www.bestpractices.dev/projects/15888)
 [![ScienceDB DOI](https://img.shields.io/badge/DOI-10.57760%2Fsciencedb.0186j-1f6feb)](https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5)
 [![CSTR](https://img.shields.io/badge/CSTR-31253.11.sciencedb.0186j-8b949e)](https://www.scidb.cn/detail?dataSetId=84765dbfd10040359fecba17dd1ff3c5)
@@ -104,7 +105,8 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 > | **了解设计动机与架构** | 本页下方 |
 >
 > ⚠️ **环境提醒（请先确认）**：
-> - **编译甲言程序** → **Windows x64 + 零依赖**（clone 自带 `qcc_zh_seed.exe`，**不需要 gcc、不需要 Python**）
+> - **编译甲言程序（Windows）** → **Windows x64 + 零依赖**（clone 自带 qcc_zh_seed.exe，**不需要 gcc、不需要 Python**）
+- **编译甲言程序（Linux）** → qcc_zh_v2.exe --target=elf 交叉产出 ELF 目标；ELF 版编译器还能在 Linux 上编译自己（1 == v2 == v3 收敛）。判据：`python scripts/check_elf_selfhost.py`（需 WSL）
 > - **跑完整自举验证** → 另需 PowerShell（`scripts/build_zh.ps1`，**仍不需要 gcc**）
 > - **跑测试套件** → 才需 Python 3.x；**重建 C 版历史信任根** → 才需 gcc
 >
@@ -191,6 +193,7 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 | 中文关键字 | **38 个**（15 语句 + 23 类型修饰） | `manual/中文关键字表.md` |
 | **AI 适配接口** | `--help` **27 项** · `-graph` **真行号** · 中文开关**中英等价** · `--repeat` 可重入 | `python scripts/check_ai_interface.py` |
 | 验收闸 | ①预置头上限 ②`-c` 冒烟 ③负锚有效性 ④DWARF ⑤jyld 链接 ⑥drectve ⑦lvm链基 ⑧IR容量 | `run_tests_zh.py` 自动跑，**闸红不再早退（锚照跑）** |
+| **平台 / 目标格式** | **Windows x64（PE，主链）+ Linux x86-64（ELF）** —— 两条链各自自举收敛，不动点互不相同（正常） | `python scripts/check_elf_selfhost.py`（需 WSL） |
 
 **给 AI / 爬虫**：优先读 [`llms.txt`](llms.txt) 与 [`llms-full.txt`](llms-full.txt)，两者口径与本表一致；若与 README 冲突，**以 `llms-full.txt` + 仓内脚本实测为准**。
 
@@ -516,7 +519,7 @@ releases/
 
 ### 安装部署（三分钟上手）
 
-**环境要求**：**Windows x64 · 零依赖** —— clone 下来用自带的 `qcc_zh_seed.exe` 就能编译程序，**不需要 gcc，也不需要 Python**。只有「跑完整测试套件」才需 Python 3.x，「重建 C 版历史信任根」才需 gcc。
+**环境要求**：**Windows x64 · 零依赖** —— clone 下来用自带的 `qcc_zh_seed.exe` 就能编译程序，**不需要 gcc，也不需要 Python**。**Linux（ELF）** 走 `--target=elf` 交叉 + 本机自举两步，需 WSL 跑判据 `scripts/check_elf_selfhost.py`。只有「跑完整测试套件」才需 Python 3.x，「重建 C 版历史信任根」才需 gcc。
 
 **步骤 1：克隆**
 
@@ -599,7 +602,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1 -NoSeed
 
 > ⏱️ **完整自举耗时依机器而定 —— 别信本文的数字，用上面那条命令自己测**（脚本会打印 `链耗时 Xs`）。
 >
-> **历史参考**（同一台 8 核本机，同一份约 3.8 万行源码，两代合计）：
+> **历史参考**（同一台 8 核本机，同一份约 3.9 万行源码，两代合计）：
 >
 > | 日期 | 两代合计 | 每代 | 说明 |
 > |:--|--:|--:|:--|
@@ -831,7 +834,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_zh.ps1
 > - **自举不动点**：`650993A2`（**封存当时** v1==v2==v3==v4==v5 五代 SHA256 全等、含 v1；主线迭代后 v1 不再与 v2 全等，现行判据见「当前状态」段；封存时刻 3B4002D2 → Phase2 优化1 B44E2DF8 → Phase3 IR 上主线 650993A2）
 > - **落地运行 Git**：原版 git-2.45.2（36.4 万行）→ 数百个 .o 链接为可执行文件 → `git version 2.45.2`
 > - **验证**：325/325 回归 + behavior 20/20 + git 对等回归 24/24 + H1==H2 双链合一（⚠️ H1==H2 是**当时的**记录；主线分叉后该判据已停用，见下方「双链口径」段）
-> - **安装部署**：见上方 [快速开始](#快速开始)（Windows x64 · **零依赖** · clone 即用）
+> - **安装部署**：见上方 [快速开始](#快速开始)（Windows x64 · **零依赖** · clone 即用；Linux 走 `--target=elf` 交叉 + 本机自举）
 
 > **v1.0 的意义**：它证明的是「手搓自举中文编译器**能编译并落地运行真实的 36.4 万行 C 项目**（git-2.45.2）」，这是当时的核心交付。此后的主线不再追求 feat 数量，而是补机制深度与 AI 适配。
 

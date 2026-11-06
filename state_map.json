@@ -1,20 +1,20 @@
 {
-  "generated_at": "2026-11-05 22:50:54",
+  "generated_at": "2026-11-06 06:22:42",
   "source": "srclib_jiayan/qcc_zh.jy",
-  "source_sha256": "29e9aab3bb250b1ae0ef62b1610b351a79de16310ea7499a25537c251e847505",
-  "source_lines": 38921,
+  "source_sha256": "ef75b45a9c0a1a549fa6fa9fc8b5f618205771b820a3b2a0d48231d868184332",
+  "source_lines": 38925,
   "scope": "文件级/函数级 static 声明；结构体字段与其内部声明不单独计数；非 static 局部变量不计",
   "excluded": {
     "struct_fields": true,
     "local_vars": true
   },
-  "total": 2596,
-  "assigned": 2596,
+  "total": 2597,
+  "assigned": 2597,
   "unassigned": 0,
   "unparsed": 0,
   "default_m1": 104,
   "by_kind": {
-    "static-function": 992,
+    "static-function": 993,
     "static-proto": 118,
     "struct": 42,
     "variable": 1444
@@ -26,9 +26,9 @@
     "M3": 102,
     "M4": 619,
     "M5": 426,
-    "M6": 310,
+    "M6": 309,
     "M7": 611,
-    "M8": 72,
+    "M8": 74,
     "M9": 297
   },
   "items": [
@@ -19423,47 +19423,27 @@
       "enclosing": ""
     },
     {
-      "name": "乘法",
+      "name": "备槽扫",
       "line": 13455,
       "indent": 0,
       "array": false,
-      "module": "M6",
-      "rule": "折叠",
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "乘法",
+      "line": 13461,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
       "kind": "static-function",
       "enclosing": ""
     },
     {
       "name": "加法",
-      "line": 13481,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "移位",
-      "line": 13485,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "宽捌",
-      "line": 13486,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "深序",
       "line": 13487,
       "indent": 0,
       "array": false,
@@ -19473,37 +19453,7 @@
       "enclosing": ""
     },
     {
-      "name": "余巳",
-      "line": 13488,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "比较步",
-      "line": 13489,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "关系",
-      "line": 13490,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "测试",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "相等",
+      "name": "移位",
       "line": 13491,
       "indent": 0,
       "array": false,
@@ -19513,7 +19463,7 @@
       "enclosing": ""
     },
     {
-      "name": "逻辑与链",
+      "name": "宽捌",
       "line": 13492,
       "indent": 0,
       "array": false,
@@ -19523,7 +19473,7 @@
       "enclosing": ""
     },
     {
-      "name": "逻辑或链",
+      "name": "深序",
       "line": 13493,
       "indent": 0,
       "array": false,
@@ -19533,7 +19483,7 @@
       "enclosing": ""
     },
     {
-      "name": "三元",
+      "name": "余巳",
       "line": 13494,
       "indent": 0,
       "array": false,
@@ -19543,7 +19493,7 @@
       "enclosing": ""
     },
     {
-      "name": "可空复制探",
+      "name": "比较步",
       "line": 13495,
       "indent": 0,
       "array": false,
@@ -19553,17 +19503,17 @@
       "enclosing": ""
     },
     {
-      "name": "管道链",
+      "name": "关系",
       "line": 13496,
       "indent": 0,
       "array": false,
       "module": "M9",
       "rule": "测试",
-      "kind": "static-proto",
+      "kind": "static-function",
       "enclosing": ""
     },
     {
-      "name": "数据流写拦",
+      "name": "相等",
       "line": 13497,
       "indent": 0,
       "array": false,
@@ -19573,8 +19523,68 @@
       "enclosing": ""
     },
     {
+      "name": "逻辑与链",
+      "line": 13498,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "逻辑或链",
+      "line": 13499,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "三元",
+      "line": 13500,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "可空复制探",
+      "line": 13501,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "管道链",
+      "line": 13502,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-proto",
+      "enclosing": ""
+    },
+    {
+      "name": "数据流写拦",
+      "line": 13503,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "测试",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
       "name": "纯写拦",
-      "line": 13507,
+      "line": 13513,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19584,7 +19594,7 @@
     },
     {
       "name": "指只读写拦",
-      "line": 13520,
+      "line": 13526,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19594,7 +19604,7 @@
     },
     {
       "name": "赋值",
-      "line": 13538,
+      "line": 13544,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19604,7 +19614,7 @@
     },
     {
       "name": "管道字段维数",
-      "line": 13652,
+      "line": 13650,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -19614,7 +19624,7 @@
     },
     {
       "name": "管道变量层级",
-      "line": 13671,
+      "line": 13669,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19624,7 +19634,7 @@
     },
     {
       "name": "管道变量可调",
-      "line": 13686,
+      "line": 13684,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19634,7 +19644,7 @@
     },
     {
       "name": "管道层级0",
-      "line": 13691,
+      "line": 13689,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19644,7 +19654,7 @@
     },
     {
       "name": "强制解引宽8",
-      "line": 13703,
+      "line": 13701,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19654,7 +19664,7 @@
     },
     {
       "name": "表达式层级",
-      "line": 13704,
+      "line": 13702,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19664,7 +19674,7 @@
     },
     {
       "name": "管道可调用",
-      "line": 13753,
+      "line": 13751,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19674,7 +19684,7 @@
     },
     {
       "name": "管道链",
-      "line": 13825,
+      "line": 13823,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -19684,7 +19694,7 @@
     },
     {
       "name": "赋值级",
-      "line": 13826,
+      "line": 13824,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -19694,7 +19704,7 @@
     },
     {
       "name": "表达式",
-      "line": 13841,
+      "line": 13839,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -19704,7 +19714,7 @@
     },
     {
       "name": "现双",
-      "line": 13852,
+      "line": 13850,
       "indent": 0,
       "array": true,
       "module": "M1",
@@ -19714,7 +19724,7 @@
     },
     {
       "name": "串行",
-      "line": 13853,
+      "line": 13851,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19724,7 +19734,7 @@
     },
     {
       "name": "满联",
-      "line": 13855,
+      "line": 13853,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19734,7 +19744,7 @@
     },
     {
       "name": "栈肆",
-      "line": 13855,
+      "line": 13853,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19744,7 +19754,7 @@
     },
     {
       "name": "缺丙",
-      "line": 13855,
+      "line": 13853,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19754,7 +19764,7 @@
     },
     {
       "name": "序寅",
-      "line": 13856,
+      "line": 13854,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19764,7 +19774,7 @@
     },
     {
       "name": "左升",
-      "line": 13862,
+      "line": 13860,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -19774,7 +19784,7 @@
     },
     {
       "name": "新集一",
-      "line": 14030,
+      "line": 14028,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -19784,7 +19794,7 @@
     },
     {
       "name": "余陆",
-      "line": 14031,
+      "line": 14029,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -19794,7 +19804,7 @@
     },
     {
       "name": "存伍",
-      "line": 14033,
+      "line": 14031,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -19804,7 +19814,7 @@
     },
     {
       "name": "常量表达式求值",
-      "line": 14084,
+      "line": 14082,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19814,7 +19824,7 @@
     },
     {
       "name": "常量项优先级",
-      "line": 14085,
+      "line": 14083,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19824,7 +19834,7 @@
     },
     {
       "name": "常量项续",
-      "line": 14086,
+      "line": 14084,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19834,7 +19844,7 @@
     },
     {
       "name": "未注册特性词",
-      "line": 14087,
+      "line": 14085,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19844,7 +19854,7 @@
     },
     {
       "name": "终符必收",
-      "line": 14120,
+      "line": 14118,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -19854,7 +19864,7 @@
     },
     {
       "name": "语句必收",
-      "line": 14130,
+      "line": 14128,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -19864,7 +19874,7 @@
     },
     {
       "name": "声明收口",
-      "line": 14144,
+      "line": 14142,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19874,7 +19884,7 @@
     },
     {
       "name": "块",
-      "line": 14157,
+      "line": 14155,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19884,7 +19894,7 @@
     },
     {
       "name": "中柒",
-      "line": 15912,
+      "line": 15910,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19894,7 +19904,7 @@
     },
     {
       "name": "总六一",
-      "line": 15914,
+      "line": 15912,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19904,7 +19914,7 @@
     },
     {
       "name": "深散",
-      "line": 15915,
+      "line": 15913,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19914,7 +19924,7 @@
     },
     {
       "name": "现再",
-      "line": 15929,
+      "line": 15927,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19924,7 +19934,7 @@
     },
     {
       "name": "目弊",
-      "line": 15941,
+      "line": 15939,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -19934,7 +19944,7 @@
     },
     {
       "name": "反双一",
-      "line": 15962,
+      "line": 15960,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -19944,7 +19954,7 @@
     },
     {
       "name": "判别解析",
-      "line": 15994,
+      "line": 15992,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19954,7 +19964,7 @@
     },
     {
       "name": "糖后标",
-      "line": 16180,
+      "line": 16178,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19964,7 +19974,7 @@
     },
     {
       "name": "闭包捕获表",
-      "line": 16199,
+      "line": 16197,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -19974,7 +19984,7 @@
     },
     {
       "name": "内建参逗",
-      "line": 16262,
+      "line": 16260,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19984,7 +19994,7 @@
     },
     {
       "name": "内建参尾",
-      "line": 16266,
+      "line": 16264,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -19994,7 +20004,7 @@
     },
     {
       "name": "无参调用尾",
-      "line": 16270,
+      "line": 16268,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -20004,7 +20014,7 @@
     },
     {
       "name": "糖目标放行",
-      "line": 16274,
+      "line": 16272,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -20014,7 +20024,7 @@
     },
     {
       "name": "包细化检查",
-      "line": 16275,
+      "line": 16273,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -20024,7 +20034,7 @@
     },
     {
       "name": "语句",
-      "line": 16301,
+      "line": 16299,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -20034,6 +20044,26 @@
     },
     {
       "name": "名四",
+      "line": 16501,
+      "indent": 8,
+      "array": false,
+      "module": "M4",
+      "rule": "类型",
+      "kind": "variable",
+      "enclosing": "语句"
+    },
+    {
+      "name": "半辛",
+      "line": 16502,
+      "indent": 8,
+      "array": false,
+      "module": "M4",
+      "rule": "类型",
+      "kind": "variable",
+      "enclosing": "语句"
+    },
+    {
+      "name": "左陆二",
       "line": 16503,
       "indent": 8,
       "array": false,
@@ -20043,28 +20073,8 @@
       "enclosing": "语句"
     },
     {
-      "name": "半辛",
-      "line": 16504,
-      "indent": 8,
-      "array": false,
-      "module": "M4",
-      "rule": "类型",
-      "kind": "variable",
-      "enclosing": "语句"
-    },
-    {
-      "name": "左陆二",
-      "line": 16505,
-      "indent": 8,
-      "array": false,
-      "module": "M4",
-      "rule": "类型",
-      "kind": "variable",
-      "enclosing": "语句"
-    },
-    {
       "name": "源丑",
-      "line": 18818,
+      "line": 18816,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20074,7 +20084,7 @@
     },
     {
       "name": "空贰一",
-      "line": 18850,
+      "line": 18848,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20084,7 +20094,7 @@
     },
     {
       "name": "长癸",
-      "line": 18851,
+      "line": 18849,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20094,7 +20104,7 @@
     },
     {
       "name": "邻丁",
-      "line": 18852,
+      "line": 18850,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20104,7 +20114,7 @@
     },
     {
       "name": "单甲",
-      "line": 18853,
+      "line": 18851,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20114,7 +20124,7 @@
     },
     {
       "name": "半己",
-      "line": 18913,
+      "line": 18911,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20124,7 +20134,7 @@
     },
     {
       "name": "值双",
-      "line": 18963,
+      "line": 18961,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20134,7 +20144,7 @@
     },
     {
       "name": "当繁一",
-      "line": 18964,
+      "line": 18962,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20144,7 +20154,7 @@
     },
     {
       "name": "名四",
-      "line": 19001,
+      "line": 18999,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20154,7 +20164,7 @@
     },
     {
       "name": "半辛",
-      "line": 19002,
+      "line": 19000,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20164,7 +20174,7 @@
     },
     {
       "name": "左陆二",
-      "line": 19003,
+      "line": 19001,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20174,7 +20184,7 @@
     },
     {
       "name": "双失",
-      "line": 19004,
+      "line": 19002,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20184,7 +20194,7 @@
     },
     {
       "name": "首壬",
-      "line": 19005,
+      "line": 19003,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20194,7 +20204,7 @@
     },
     {
       "name": "空回",
-      "line": 19006,
+      "line": 19004,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20204,7 +20214,7 @@
     },
     {
       "name": "终汇",
-      "line": 19151,
+      "line": 19149,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20214,7 +20224,7 @@
     },
     {
       "name": "终寅",
-      "line": 19190,
+      "line": 19188,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20224,7 +20234,7 @@
     },
     {
       "name": "尾繁",
-      "line": 19191,
+      "line": 19189,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20234,7 +20244,7 @@
     },
     {
       "name": "末重一",
-      "line": 19228,
+      "line": 19226,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20244,7 +20254,7 @@
     },
     {
       "name": "双七",
-      "line": 19229,
+      "line": 19227,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20254,7 +20264,7 @@
     },
     {
       "name": "单属",
-      "line": 19230,
+      "line": 19228,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20264,7 +20274,7 @@
     },
     {
       "name": "宽组一",
-      "line": 19279,
+      "line": 19277,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20274,7 +20284,7 @@
     },
     {
       "name": "名凶",
-      "line": 19323,
+      "line": 19321,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20284,7 +20294,7 @@
     },
     {
       "name": "主辰",
-      "line": 19324,
+      "line": 19322,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20294,7 +20304,7 @@
     },
     {
       "name": "素凶一",
-      "line": 19325,
+      "line": 19323,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20304,7 +20314,7 @@
     },
     {
       "name": "高巳二",
-      "line": 19326,
+      "line": 19324,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20314,7 +20324,7 @@
     },
     {
       "name": "计细一",
-      "line": 19394,
+      "line": 19392,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20324,7 +20334,7 @@
     },
     {
       "name": "副聚",
-      "line": 19395,
+      "line": 19393,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20334,7 +20344,7 @@
     },
     {
       "name": "序拆",
-      "line": 19396,
+      "line": 19394,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20344,7 +20354,7 @@
     },
     {
       "name": "毛优",
-      "line": 19397,
+      "line": 19395,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20354,7 +20364,7 @@
     },
     {
       "name": "末次",
-      "line": 19455,
+      "line": 19453,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20364,7 +20374,7 @@
     },
     {
       "name": "缺进",
-      "line": 19456,
+      "line": 19454,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20374,7 +20384,7 @@
     },
     {
       "name": "总高",
-      "line": 19457,
+      "line": 19455,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20384,7 +20394,7 @@
     },
     {
       "name": "净布",
-      "line": 19458,
+      "line": 19456,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20394,7 +20404,7 @@
     },
     {
       "name": "首凶",
-      "line": 19519,
+      "line": 19517,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20404,7 +20414,7 @@
     },
     {
       "name": "池甲",
-      "line": 19520,
+      "line": 19518,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20414,7 +20424,7 @@
     },
     {
       "name": "终拾",
-      "line": 19521,
+      "line": 19519,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20424,7 +20434,7 @@
     },
     {
       "name": "容劣一",
-      "line": 19522,
+      "line": 19520,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20434,7 +20444,7 @@
     },
     {
       "name": "邻优一",
-      "line": 19629,
+      "line": 19627,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20444,7 +20454,7 @@
     },
     {
       "name": "副卯一",
-      "line": 19630,
+      "line": 19628,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20454,7 +20464,7 @@
     },
     {
       "name": "首进二",
-      "line": 19631,
+      "line": 19629,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20464,7 +20474,7 @@
     },
     {
       "name": "域优",
-      "line": 19685,
+      "line": 19683,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20474,7 +20484,7 @@
     },
     {
       "name": "宽复二",
-      "line": 19721,
+      "line": 19719,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20484,7 +20494,7 @@
     },
     {
       "name": "顺繁",
-      "line": 19754,
+      "line": 19752,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20494,7 +20504,7 @@
     },
     {
       "name": "当低",
-      "line": 19755,
+      "line": 19753,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20504,6 +20514,26 @@
     },
     {
       "name": "号薄一",
+      "line": 19799,
+      "indent": 8,
+      "array": false,
+      "module": "M4",
+      "rule": "类型",
+      "kind": "variable",
+      "enclosing": "语句"
+    },
+    {
+      "name": "逆捌",
+      "line": 19800,
+      "indent": 8,
+      "array": false,
+      "module": "M4",
+      "rule": "类型",
+      "kind": "variable",
+      "enclosing": "语句"
+    },
+    {
+      "name": "尾深一",
       "line": 19801,
       "indent": 8,
       "array": false,
@@ -20513,7 +20543,7 @@
       "enclosing": "语句"
     },
     {
-      "name": "逆捌",
+      "name": "缺厚一",
       "line": 19802,
       "indent": 8,
       "array": false,
@@ -20523,7 +20553,7 @@
       "enclosing": "语句"
     },
     {
-      "name": "尾深一",
+      "name": "内一",
       "line": 19803,
       "indent": 8,
       "array": false,
@@ -20533,7 +20563,7 @@
       "enclosing": "语句"
     },
     {
-      "name": "缺厚一",
+      "name": "现回",
       "line": 19804,
       "indent": 8,
       "array": false,
@@ -20543,28 +20573,8 @@
       "enclosing": "语句"
     },
     {
-      "name": "内一",
-      "line": 19805,
-      "indent": 8,
-      "array": false,
-      "module": "M4",
-      "rule": "类型",
-      "kind": "variable",
-      "enclosing": "语句"
-    },
-    {
-      "name": "现回",
-      "line": 19806,
-      "indent": 8,
-      "array": false,
-      "module": "M4",
-      "rule": "类型",
-      "kind": "variable",
-      "enclosing": "语句"
-    },
-    {
       "name": "内二R",
-      "line": 19815,
+      "line": 19813,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20574,7 +20584,7 @@
     },
     {
       "name": "现回R",
-      "line": 19816,
+      "line": 19814,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20584,7 +20594,7 @@
     },
     {
       "name": "旧五一",
-      "line": 19939,
+      "line": 19937,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20594,7 +20604,7 @@
     },
     {
       "name": "下低一",
-      "line": 19940,
+      "line": 19938,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20604,7 +20614,7 @@
     },
     {
       "name": "上得",
-      "line": 19941,
+      "line": 19939,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20614,7 +20624,7 @@
     },
     {
       "name": "满卯一",
-      "line": 19942,
+      "line": 19940,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20624,7 +20634,7 @@
     },
     {
       "name": "容柒",
-      "line": 20022,
+      "line": 20020,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20634,7 +20644,7 @@
     },
     {
       "name": "余布一",
-      "line": 20023,
+      "line": 20021,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20644,7 +20654,7 @@
     },
     {
       "name": "串一二",
-      "line": 20086,
+      "line": 20084,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20654,7 +20664,7 @@
     },
     {
       "name": "首深一",
-      "line": 20087,
+      "line": 20085,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20664,7 +20674,7 @@
     },
     {
       "name": "空附",
-      "line": 20088,
+      "line": 20086,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20674,7 +20684,7 @@
     },
     {
       "name": "列联一",
-      "line": 20089,
+      "line": 20087,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20684,7 +20694,7 @@
     },
     {
       "name": "满九一",
-      "line": 20090,
+      "line": 20088,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20694,7 +20704,7 @@
     },
     {
       "name": "串劣",
-      "line": 20091,
+      "line": 20089,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20704,7 +20714,7 @@
     },
     {
       "name": "前附",
-      "line": 20092,
+      "line": 20090,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20714,7 +20724,7 @@
     },
     {
       "name": "副未一",
-      "line": 20175,
+      "line": 20173,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20724,7 +20734,7 @@
     },
     {
       "name": "现乙",
-      "line": 20176,
+      "line": 20174,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20734,7 +20744,7 @@
     },
     {
       "name": "堆卯",
-      "line": 20177,
+      "line": 20175,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20744,7 +20754,7 @@
     },
     {
       "name": "副降三",
-      "line": 20178,
+      "line": 20176,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20754,7 +20764,7 @@
     },
     {
       "name": "反弊一",
-      "line": 20179,
+      "line": 20177,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20764,7 +20774,7 @@
     },
     {
       "name": "副次一",
-      "line": 20180,
+      "line": 20178,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20774,7 +20784,7 @@
     },
     {
       "name": "池丙",
-      "line": 20289,
+      "line": 20287,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20784,7 +20794,7 @@
     },
     {
       "name": "深陆",
-      "line": 20290,
+      "line": 20288,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20794,7 +20804,7 @@
     },
     {
       "name": "反败",
-      "line": 20512,
+      "line": 20510,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20804,7 +20814,7 @@
     },
     {
       "name": "正戊",
-      "line": 20631,
+      "line": 20629,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20814,7 +20824,7 @@
     },
     {
       "name": "现细",
-      "line": 20632,
+      "line": 20630,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20824,7 +20834,7 @@
     },
     {
       "name": "主凶",
-      "line": 20633,
+      "line": 20631,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20834,7 +20844,7 @@
     },
     {
       "name": "串转",
-      "line": 20634,
+      "line": 20632,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20844,7 +20854,7 @@
     },
     {
       "name": "源丑",
-      "line": 20693,
+      "line": 20691,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20854,7 +20864,7 @@
     },
     {
       "name": "顺繁",
-      "line": 20705,
+      "line": 20703,
       "indent": 12,
       "array": false,
       "module": "M4",
@@ -20864,7 +20874,7 @@
     },
     {
       "name": "首伍一",
-      "line": 20748,
+      "line": 20746,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20874,7 +20884,7 @@
     },
     {
       "name": "初又",
-      "line": 20784,
+      "line": 20782,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20884,7 +20894,7 @@
     },
     {
       "name": "全布",
-      "line": 20785,
+      "line": 20783,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20894,7 +20904,7 @@
     },
     {
       "name": "顺挂一",
-      "line": 20786,
+      "line": 20784,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20904,7 +20914,7 @@
     },
     {
       "name": "半乙",
-      "line": 20830,
+      "line": 20828,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20914,7 +20924,7 @@
     },
     {
       "name": "逆粗",
-      "line": 20831,
+      "line": 20829,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20924,7 +20934,7 @@
     },
     {
       "name": "行复",
-      "line": 20832,
+      "line": 20830,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20934,7 +20944,7 @@
     },
     {
       "name": "度伴",
-      "line": 20878,
+      "line": 20876,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20944,7 +20954,7 @@
     },
     {
       "name": "邻陆一",
-      "line": 20879,
+      "line": 20877,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20954,7 +20964,7 @@
     },
     {
       "name": "满亥",
-      "line": 20880,
+      "line": 20878,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20964,7 +20974,7 @@
     },
     {
       "name": "旁乙",
-      "line": 20881,
+      "line": 20879,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20974,7 +20984,7 @@
     },
     {
       "name": "旁六一",
-      "line": 20932,
+      "line": 20930,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20984,7 +20994,7 @@
     },
     {
       "name": "值弊",
-      "line": 20933,
+      "line": 20931,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -20994,7 +21004,7 @@
     },
     {
       "name": "余附",
-      "line": 20934,
+      "line": 20932,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21004,7 +21014,7 @@
     },
     {
       "name": "后细一",
-      "line": 20935,
+      "line": 20933,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21014,7 +21024,7 @@
     },
     {
       "name": "总丙二",
-      "line": 21011,
+      "line": 21009,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21024,7 +21034,7 @@
     },
     {
       "name": "上子一",
-      "line": 21012,
+      "line": 21010,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21034,7 +21044,7 @@
     },
     {
       "name": "号薄一",
-      "line": 21057,
+      "line": 21055,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21044,7 +21054,7 @@
     },
     {
       "name": "逆捌",
-      "line": 21058,
+      "line": 21056,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21054,7 +21064,7 @@
     },
     {
       "name": "尾深一",
-      "line": 21059,
+      "line": 21057,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21064,7 +21074,7 @@
     },
     {
       "name": "缺低",
-      "line": 21099,
+      "line": 21097,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21074,7 +21084,7 @@
     },
     {
       "name": "短环",
-      "line": 21100,
+      "line": 21098,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21084,7 +21094,7 @@
     },
     {
       "name": "间简",
-      "line": 21101,
+      "line": 21099,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21094,7 +21104,7 @@
     },
     {
       "name": "旧失",
-      "line": 21102,
+      "line": 21100,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21104,7 +21114,7 @@
     },
     {
       "name": "外捌一",
-      "line": 21103,
+      "line": 21101,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21114,7 +21124,7 @@
     },
     {
       "name": "半升",
-      "line": 21104,
+      "line": 21102,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21124,7 +21134,7 @@
     },
     {
       "name": "序未",
-      "line": 21174,
+      "line": 21172,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21134,7 +21144,7 @@
     },
     {
       "name": "原优",
-      "line": 21213,
+      "line": 21211,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21144,7 +21154,7 @@
     },
     {
       "name": "域优",
-      "line": 21253,
+      "line": 21251,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21154,7 +21164,7 @@
     },
     {
       "name": "正戊",
-      "line": 21289,
+      "line": 21287,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21164,7 +21174,7 @@
     },
     {
       "name": "域从",
-      "line": 21322,
+      "line": 21320,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21174,7 +21184,7 @@
     },
     {
       "name": "左复",
-      "line": 21323,
+      "line": 21321,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21184,7 +21194,7 @@
     },
     {
       "name": "净六",
-      "line": 21324,
+      "line": 21322,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21194,7 +21204,7 @@
     },
     {
       "name": "栈一",
-      "line": 21444,
+      "line": 21442,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21204,7 +21214,7 @@
     },
     {
       "name": "正庚一",
-      "line": 21445,
+      "line": 21443,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21214,7 +21224,7 @@
     },
     {
       "name": "标五一",
-      "line": 21513,
+      "line": 21511,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21224,7 +21234,7 @@
     },
     {
       "name": "段辛",
-      "line": 21553,
+      "line": 21551,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21234,7 +21244,7 @@
     },
     {
       "name": "下平一",
-      "line": 21591,
+      "line": 21589,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21244,7 +21254,7 @@
     },
     {
       "name": "容重二",
-      "line": 21625,
+      "line": 21623,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21254,7 +21264,7 @@
     },
     {
       "name": "净捌",
-      "line": 21626,
+      "line": 21624,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21264,7 +21274,7 @@
     },
     {
       "name": "满己一",
-      "line": 21627,
+      "line": 21625,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21274,7 +21284,7 @@
     },
     {
       "name": "原子二",
-      "line": 21628,
+      "line": 21626,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21284,7 +21294,7 @@
     },
     {
       "name": "下十",
-      "line": 21688,
+      "line": 21686,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21294,7 +21304,7 @@
     },
     {
       "name": "深陆",
-      "line": 21689,
+      "line": 21687,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21304,7 +21314,7 @@
     },
     {
       "name": "半乙",
-      "line": 21726,
+      "line": 21724,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21314,7 +21324,7 @@
     },
     {
       "name": "池丙",
-      "line": 21753,
+      "line": 21751,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21324,7 +21334,7 @@
     },
     {
       "name": "号环一",
-      "line": 21773,
+      "line": 21771,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21334,7 +21344,7 @@
     },
     {
       "name": "正戊",
-      "line": 21803,
+      "line": 21801,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21344,7 +21354,7 @@
     },
     {
       "name": "现细",
-      "line": 21804,
+      "line": 21802,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21354,7 +21364,7 @@
     },
     {
       "name": "缓二",
-      "line": 21842,
+      "line": 21840,
       "indent": 8,
       "array": false,
       "module": "M4",
@@ -21364,7 +21374,7 @@
     },
     {
       "name": "常量表达式求值",
-      "line": 22278,
+      "line": 22276,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -21374,7 +21384,7 @@
     },
     {
       "name": "常无符号",
-      "line": 22279,
+      "line": 22277,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -21384,7 +21394,7 @@
     },
     {
       "name": "末列",
-      "line": 22280,
+      "line": 22278,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -21394,7 +21404,7 @@
     },
     {
       "name": "常量优先级",
-      "line": 22427,
+      "line": 22425,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -21404,7 +21414,7 @@
     },
     {
       "name": "常量二项",
-      "line": 22440,
+      "line": 22438,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21414,7 +21424,7 @@
     },
     {
       "name": "常量表达式求值",
-      "line": 22472,
+      "line": 22470,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21424,7 +21434,7 @@
     },
     {
       "name": "常量项优先级",
-      "line": 22514,
+      "line": 22512,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21434,7 +21444,7 @@
     },
     {
       "name": "常量项续",
-      "line": 22518,
+      "line": 22516,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21444,7 +21454,7 @@
     },
     {
       "name": "外七",
-      "line": 22539,
+      "line": 22537,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21454,7 +21464,7 @@
     },
     {
       "name": "压帧",
-      "line": 22543,
+      "line": 22541,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21464,7 +21474,7 @@
     },
     {
       "name": "栈吉一",
-      "line": 22546,
+      "line": 22544,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21474,7 +21484,7 @@
     },
     {
       "name": "初进",
-      "line": 22550,
+      "line": 22548,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21484,7 +21494,7 @@
     },
     {
       "name": "首进",
-      "line": 22554,
+      "line": 22552,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21494,7 +21504,7 @@
     },
     {
       "name": "序置",
-      "line": 22558,
+      "line": 22556,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21504,7 +21514,7 @@
     },
     {
       "name": "后戊",
-      "line": 22587,
+      "line": 22585,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -21514,7 +21524,7 @@
     },
     {
       "name": "现利",
-      "line": 22588,
+      "line": 22586,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -21524,7 +21534,7 @@
     },
     {
       "name": "当丙一",
-      "line": 22593,
+      "line": 22591,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21534,7 +21544,7 @@
     },
     {
       "name": "链聚",
-      "line": 22598,
+      "line": 22596,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21544,7 +21554,7 @@
     },
     {
       "name": "内申",
-      "line": 22599,
+      "line": 22597,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21554,7 +21564,7 @@
     },
     {
       "name": "池分",
-      "line": 22609,
+      "line": 22607,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21564,7 +21574,7 @@
     },
     {
       "name": "链聚",
-      "line": 22712,
+      "line": 22710,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21574,7 +21584,7 @@
     },
     {
       "name": "中属",
-      "line": 22722,
+      "line": 22720,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21584,7 +21594,7 @@
     },
     {
       "name": "毛重",
-      "line": 22762,
+      "line": 22760,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21594,7 +21604,7 @@
     },
     {
       "name": "标降",
-      "line": 22808,
+      "line": 22806,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -21604,7 +21614,7 @@
     },
     {
       "name": "隔升",
-      "line": 22824,
+      "line": 22822,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21614,7 +21624,7 @@
     },
     {
       "name": "首布",
-      "line": 22825,
+      "line": 22823,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21624,7 +21634,7 @@
     },
     {
       "name": "尾叁",
-      "line": 22826,
+      "line": 22824,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21634,7 +21644,7 @@
     },
     {
       "name": "首降一",
-      "line": 22826,
+      "line": 22824,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21644,7 +21654,7 @@
     },
     {
       "name": "短丁一",
-      "line": 22827,
+      "line": 22825,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21654,7 +21664,7 @@
     },
     {
       "name": "段粗",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21664,7 +21674,7 @@
     },
     {
       "name": "段汇",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21674,7 +21684,7 @@
     },
     {
       "name": "正低",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21684,7 +21694,7 @@
     },
     {
       "name": "正低列",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21694,7 +21704,7 @@
     },
     {
       "name": "源厚一",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21704,7 +21714,7 @@
     },
     {
       "name": "前乙",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21714,7 +21724,7 @@
     },
     {
       "name": "栈挂",
-      "line": 22829,
+      "line": 22827,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21724,7 +21734,7 @@
     },
     {
       "name": "字",
-      "line": 22830,
+      "line": 22828,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21734,7 +21744,7 @@
     },
     {
       "name": "空八",
-      "line": 22831,
+      "line": 22829,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21744,7 +21754,7 @@
     },
     {
       "name": "半吉",
-      "line": 22831,
+      "line": 22829,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21754,7 +21764,7 @@
     },
     {
       "name": "净列",
-      "line": 22833,
+      "line": 22831,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21764,7 +21774,7 @@
     },
     {
       "name": "短捌",
-      "line": 22833,
+      "line": 22831,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21774,7 +21784,7 @@
     },
     {
       "name": "旁六",
-      "line": 22833,
+      "line": 22831,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21784,7 +21794,7 @@
     },
     {
       "name": "卫栈原",
-      "line": 22837,
+      "line": 22835,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21794,7 +21804,7 @@
     },
     {
       "name": "卫栈新",
-      "line": 22837,
+      "line": 22835,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21804,7 +21814,7 @@
     },
     {
       "name": "卫栈数",
-      "line": 22837,
+      "line": 22835,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21814,7 +21824,7 @@
     },
     {
       "name": "卫深",
-      "line": 22837,
+      "line": 22835,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21824,7 +21834,7 @@
     },
     {
       "name": "卫序",
-      "line": 22837,
+      "line": 22835,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21834,7 +21844,7 @@
     },
     {
       "name": "卫原暂存",
-      "line": 22838,
+      "line": 22836,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -21844,7 +21854,7 @@
     },
     {
       "name": "打包标",
-      "line": 22840,
+      "line": 22838,
       "indent": 0,
       "array": true,
       "module": "M3",
@@ -21854,7 +21864,7 @@
     },
     {
       "name": "查卫生",
-      "line": 22842,
+      "line": 22840,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21864,7 +21874,7 @@
     },
     {
       "name": "卫生识别",
-      "line": 22850,
+      "line": 22848,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -21874,7 +21884,7 @@
     },
     {
       "name": "序申卫生",
-      "line": 22881,
+      "line": 22879,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21884,7 +21894,7 @@
     },
     {
       "name": "计排二",
-      "line": 22890,
+      "line": 22888,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21894,7 +21904,7 @@
     },
     {
       "name": "序申",
-      "line": 22892,
+      "line": 22890,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21904,7 +21914,7 @@
     },
     {
       "name": "源肆",
-      "line": 22899,
+      "line": 22897,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21914,7 +21924,7 @@
     },
     {
       "name": "直陆",
-      "line": 22906,
+      "line": 22904,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21924,7 +21934,7 @@
     },
     {
       "name": "首布一",
-      "line": 22916,
+      "line": 22914,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21934,7 +21944,7 @@
     },
     {
       "name": "深薄一",
-      "line": 22918,
+      "line": 22916,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21944,7 +21954,7 @@
     },
     {
       "name": "首布一",
-      "line": 22934,
+      "line": 22932,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21954,7 +21964,7 @@
     },
     {
       "name": "删词元区",
-      "line": 22985,
+      "line": 22983,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21964,7 +21974,7 @@
     },
     {
       "name": "删词元区段",
-      "line": 22997,
+      "line": 22995,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -21974,7 +21984,7 @@
     },
     {
       "name": "全局通道扫",
-      "line": 23013,
+      "line": 23011,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21984,7 +21994,7 @@
     },
     {
       "name": "名称空间块",
-      "line": 23042,
+      "line": 23040,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -21994,7 +22004,7 @@
     },
     {
       "name": "名称空间展开",
-      "line": 23123,
+      "line": 23121,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22004,7 +22014,7 @@
     },
     {
       "name": "容癸一",
-      "line": 23154,
+      "line": 23152,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -22014,7 +22024,7 @@
     },
     {
       "name": "用户行",
-      "line": 23212,
+      "line": 23210,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22024,7 +22034,7 @@
     },
     {
       "name": "主置",
-      "line": 23215,
+      "line": 23213,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22034,7 +22044,7 @@
     },
     {
       "name": "字段常标查",
-      "line": 23259,
+      "line": 23257,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22044,7 +22054,7 @@
     },
     {
       "name": "字段名撞型词查",
-      "line": 23272,
+      "line": 23270,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22054,7 +22064,7 @@
     },
     {
       "name": "未返星数",
-      "line": 23292,
+      "line": 23290,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22064,7 +22074,7 @@
     },
     {
       "name": "未返型名跳",
-      "line": 23293,
+      "line": 23291,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22074,7 +22084,7 @@
     },
     {
       "name": "计时开",
-      "line": 23310,
+      "line": 23308,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22084,7 +22094,7 @@
     },
     {
       "name": "段累",
-      "line": 23311,
+      "line": 23309,
       "indent": 0,
       "array": true,
       "module": "M7",
@@ -22094,7 +22104,7 @@
     },
     {
       "name": "段标",
-      "line": 23312,
+      "line": 23310,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22104,7 +22114,7 @@
     },
     {
       "name": "段总起",
-      "line": 23313,
+      "line": 23311,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22114,7 +22124,7 @@
     },
     {
       "name": "段总起测",
-      "line": 23314,
+      "line": 23312,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22124,7 +22134,7 @@
     },
     {
       "name": "段新",
-      "line": 23319,
+      "line": 23317,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22134,7 +22144,7 @@
     },
     {
       "name": "段切",
-      "line": 23320,
+      "line": 23318,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22144,7 +22154,7 @@
     },
     {
       "name": "段报",
-      "line": 23326,
+      "line": 23324,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22154,7 +22164,7 @@
     },
     {
       "name": "剖报",
-      "line": 23336,
+      "line": 23334,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22164,7 +22174,7 @@
     },
     {
       "name": "撞词位普查",
-      "line": 23375,
+      "line": 23373,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22174,7 +22184,7 @@
     },
     {
       "name": "抽象位",
-      "line": 23395,
+      "line": 23393,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22184,7 +22194,7 @@
     },
     {
       "name": "撞词位普查",
-      "line": 23440,
+      "line": 23438,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22194,7 +22204,7 @@
     },
     {
       "name": "解析",
-      "line": 23550,
+      "line": 23548,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22204,7 +22214,7 @@
     },
     {
       "name": "系型名R627",
-      "line": 23573,
+      "line": 23571,
       "indent": 8,
       "array": true,
       "module": "M4",
@@ -22214,7 +22224,7 @@
     },
     {
       "name": "副进二",
-      "line": 23967,
+      "line": 23965,
       "indent": 12,
       "array": false,
       "module": "M4",
@@ -22224,7 +22234,7 @@
     },
     {
       "name": "号零",
-      "line": 26496,
+      "line": 26494,
       "indent": 16,
       "array": false,
       "module": "M4",
@@ -22234,7 +22244,7 @@
     },
     {
       "name": "空成",
-      "line": 26497,
+      "line": 26495,
       "indent": 16,
       "array": false,
       "module": "M4",
@@ -22244,7 +22254,7 @@
     },
     {
       "name": "臂绑号",
-      "line": 26518,
+      "line": 26516,
       "indent": 32,
       "array": false,
       "module": "M4",
@@ -22254,7 +22264,7 @@
     },
     {
       "name": "码生成",
-      "line": 26655,
+      "line": 26653,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22264,7 +22274,7 @@
     },
     {
       "name": "码生成浮",
-      "line": 26656,
+      "line": 26654,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22274,7 +22284,7 @@
     },
     {
       "name": "标字段无符号",
-      "line": 26663,
+      "line": 26661,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22284,7 +22294,7 @@
     },
     {
       "name": "标变量无符号",
-      "line": 26666,
+      "line": 26664,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22294,7 +22304,7 @@
     },
     {
       "name": "节点长性",
-      "line": 26676,
+      "line": 26674,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22304,7 +22314,7 @@
     },
     {
       "name": "是32位无",
-      "line": 26688,
+      "line": 26686,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22314,7 +22324,7 @@
     },
     {
       "name": "是64位有",
-      "line": 26691,
+      "line": 26689,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22324,7 +22334,7 @@
     },
     {
       "name": "节点类型码",
-      "line": 26701,
+      "line": 26699,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22334,7 +22344,7 @@
     },
     {
       "name": "发浮读字段",
-      "line": 26715,
+      "line": 26713,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22344,7 +22354,7 @@
     },
     {
       "name": "标清除",
-      "line": 26732,
+      "line": 26730,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22354,7 +22364,7 @@
     },
     {
       "name": "传浮长",
-      "line": 26740,
+      "line": 26738,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22364,7 +22374,7 @@
     },
     {
       "name": "长名",
-      "line": 26750,
+      "line": 26748,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -22374,7 +22384,7 @@
     },
     {
       "name": "长指",
-      "line": 26754,
+      "line": 26752,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22384,7 +22394,7 @@
     },
     {
       "name": "指浮双",
-      "line": 26765,
+      "line": 26763,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22394,7 +22404,7 @@
     },
     {
       "name": "浮或指浮",
-      "line": 26768,
+      "line": 26766,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22404,7 +22414,7 @@
     },
     {
       "name": "指浮单双",
-      "line": 26772,
+      "line": 26770,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22414,7 +22424,7 @@
     },
     {
       "name": "成员字段函浮",
-      "line": 26776,
+      "line": 26774,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22424,7 +22434,7 @@
     },
     {
       "name": "节点浮性",
-      "line": 26793,
+      "line": 26791,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22434,7 +22444,7 @@
     },
     {
       "name": "节点浮性",
-      "line": 26794,
+      "line": 26792,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22444,7 +22454,7 @@
     },
     {
       "name": "标指浮",
-      "line": 26884,
+      "line": 26882,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22454,7 +22464,7 @@
     },
     {
       "name": "发浮取",
-      "line": 26905,
+      "line": 26903,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22464,7 +22474,7 @@
     },
     {
       "name": "旧挂节",
-      "line": 26911,
+      "line": 26909,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -22474,7 +22484,7 @@
     },
     {
       "name": "码生成浮",
-      "line": 26919,
+      "line": 26917,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -22484,7 +22494,7 @@
     },
     {
       "name": "外陆一",
-      "line": 27036,
+      "line": 27034,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22494,7 +22504,7 @@
     },
     {
       "name": "标劣",
-      "line": 27037,
+      "line": 27035,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22504,7 +22514,7 @@
     },
     {
       "name": "度壬",
-      "line": 27043,
+      "line": 27041,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22514,7 +22524,7 @@
     },
     {
       "name": "正败",
-      "line": 27046,
+      "line": 27044,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22524,7 +22534,7 @@
     },
     {
       "name": "短组",
-      "line": 27047,
+      "line": 27045,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22534,7 +22544,7 @@
     },
     {
       "name": "素组",
-      "line": 27050,
+      "line": 27048,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22544,7 +22554,7 @@
     },
     {
       "name": "移即扩",
-      "line": 27051,
+      "line": 27049,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22554,7 +22564,7 @@
     },
     {
       "name": "中升",
-      "line": 27055,
+      "line": 27053,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22564,7 +22574,7 @@
     },
     {
       "name": "副降",
-      "line": 27062,
+      "line": 27060,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22574,7 +22584,7 @@
     },
     {
       "name": "存壬",
-      "line": 27089,
+      "line": 27087,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22584,7 +22594,7 @@
     },
     {
       "name": "流哨兵判",
-      "line": 27109,
+      "line": 27107,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22594,7 +22604,7 @@
     },
     {
       "name": "缺对",
-      "line": 27115,
+      "line": 27113,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22604,7 +22614,7 @@
     },
     {
       "name": "标得",
-      "line": 27245,
+      "line": 27243,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22614,7 +22624,7 @@
     },
     {
       "name": "前子",
-      "line": 27330,
+      "line": 27328,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22624,7 +22634,7 @@
     },
     {
       "name": "右轮",
-      "line": 27372,
+      "line": 27370,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22634,7 +22644,7 @@
     },
     {
       "name": "域七",
-      "line": 27409,
+      "line": 27407,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22644,7 +22654,7 @@
     },
     {
       "name": "域重一",
-      "line": 27471,
+      "line": 27469,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22654,7 +22664,7 @@
     },
     {
       "name": "缓序",
-      "line": 27507,
+      "line": 27505,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22664,7 +22674,7 @@
     },
     {
       "name": "堆轮",
-      "line": 27543,
+      "line": 27541,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22674,7 +22684,7 @@
     },
     {
       "name": "宽七",
-      "line": 27567,
+      "line": 27565,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22684,7 +22694,7 @@
     },
     {
       "name": "池组",
-      "line": 27591,
+      "line": 27589,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22694,7 +22704,7 @@
     },
     {
       "name": "容属",
-      "line": 27635,
+      "line": 27633,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -22704,7 +22714,7 @@
     },
     {
       "name": "首升",
-      "line": 27667,
+      "line": 27665,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22714,7 +22724,7 @@
     },
     {
       "name": "实厚",
-      "line": 27715,
+      "line": 27713,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22724,7 +22734,7 @@
     },
     {
       "name": "度壬",
-      "line": 27745,
+      "line": 27743,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22734,7 +22744,7 @@
     },
     {
       "name": "正败",
-      "line": 28472,
+      "line": 28470,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22744,7 +22754,7 @@
     },
     {
       "name": "短组",
-      "line": 28770,
+      "line": 28768,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -22754,7 +22764,7 @@
     },
     {
       "name": "源回",
-      "line": 28799,
+      "line": 28797,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22764,7 +22774,7 @@
     },
     {
       "name": "满六",
-      "line": 28816,
+      "line": 28814,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -22774,7 +22784,7 @@
     },
     {
       "name": "直丁一",
-      "line": 28829,
+      "line": 28827,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -22784,7 +22794,7 @@
     },
     {
       "name": "缺排",
-      "line": 28840,
+      "line": 28838,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -22794,7 +22804,7 @@
     },
     {
       "name": "现戊",
-      "line": 28852,
+      "line": 28850,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -22804,7 +22814,7 @@
     },
     {
       "name": "发原子码",
-      "line": 28879,
+      "line": 28877,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -22814,7 +22824,7 @@
     },
     {
       "name": "堆吉",
-      "line": 28909,
+      "line": 28907,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -22824,7 +22834,7 @@
     },
     {
       "name": "构值源可址",
-      "line": 29354,
+      "line": 29352,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22834,7 +22844,7 @@
     },
     {
       "name": "深利",
-      "line": 29355,
+      "line": 29353,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22844,7 +22854,7 @@
     },
     {
       "name": "扩32",
-      "line": 29379,
+      "line": 29377,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22854,7 +22864,7 @@
     },
     {
       "name": "栈八",
-      "line": 29402,
+      "line": 29400,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22864,7 +22874,7 @@
     },
     {
       "name": "值壹",
-      "line": 29413,
+      "line": 29411,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22874,7 +22884,7 @@
     },
     {
       "name": "源辰一",
-      "line": 29525,
+      "line": 29523,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -22884,7 +22894,7 @@
     },
     {
       "name": "节点指元素",
-      "line": 29549,
+      "line": 29547,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23184,7 +23194,7 @@
     },
     {
       "name": "全伴",
-      "line": 33900,
+      "line": 33904,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23194,7 +23204,7 @@
     },
     {
       "name": "反高",
-      "line": 33900,
+      "line": 33904,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23204,7 +23214,7 @@
     },
     {
       "name": "下退",
-      "line": 33900,
+      "line": 33904,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23214,7 +23224,7 @@
     },
     {
       "name": "目甲",
-      "line": 33902,
+      "line": 33906,
       "indent": 0,
       "array": true,
       "module": "M7",
@@ -23224,7 +23234,7 @@
     },
     {
       "name": "全伴留",
-      "line": 33913,
+      "line": 33917,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23234,7 +23244,7 @@
     },
     {
       "name": "标劣",
-      "line": 33924,
+      "line": 33928,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23244,7 +23254,7 @@
     },
     {
       "name": "外陆一",
-      "line": 33934,
+      "line": 33938,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23254,7 +23264,7 @@
     },
     {
       "name": "写四",
-      "line": 33947,
+      "line": 33951,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23264,26 +23274,6 @@
     },
     {
       "name": "串丙",
-      "line": 33948,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "下布",
-      "line": 33949,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "写八",
       "line": 33952,
       "indent": 0,
       "array": false,
@@ -23293,7 +23283,7 @@
       "enclosing": ""
     },
     {
-      "name": "容吉",
+      "name": "下布",
       "line": 33953,
       "indent": 0,
       "array": false,
@@ -23303,7 +23293,17 @@
       "enclosing": ""
     },
     {
-      "name": "净系",
+      "name": "写八",
+      "line": 33956,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
+      "name": "容吉",
       "line": 33957,
       "indent": 0,
       "array": false,
@@ -23313,8 +23313,18 @@
       "enclosing": ""
     },
     {
+      "name": "净系",
+      "line": 33961,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
       "name": "堆块取",
-      "line": 33973,
+      "line": 33977,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23324,7 +23334,7 @@
     },
     {
       "name": "上利",
-      "line": 34001,
+      "line": 34005,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23334,7 +23344,7 @@
     },
     {
       "name": "调试生成",
-      "line": 34033,
+      "line": 34037,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23344,7 +23354,7 @@
     },
     {
       "name": "写数据体",
-      "line": 34037,
+      "line": 34041,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23354,7 +23364,7 @@
     },
     {
       "name": "主亥",
-      "line": 34043,
+      "line": 34047,
       "indent": 8,
       "array": true,
       "module": "M1",
@@ -23364,7 +23374,7 @@
     },
     {
       "name": "栈降",
-      "line": 34115,
+      "line": 34119,
       "indent": 4,
       "array": true,
       "module": "M1",
@@ -23374,7 +23384,7 @@
     },
     {
       "name": "实三",
-      "line": 34162,
+      "line": 34166,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23384,16 +23394,6 @@
     },
     {
       "name": "移即扩",
-      "line": 34343,
-      "indent": 0,
-      "array": false,
-      "module": "M5",
-      "rule": "回填",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "竞技场顶入",
       "line": 34347,
       "indent": 0,
       "array": false,
@@ -23403,8 +23403,18 @@
       "enclosing": ""
     },
     {
+      "name": "竞技场顶入",
+      "line": 34351,
+      "indent": 0,
+      "array": false,
+      "module": "M5",
+      "rule": "回填",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
       "name": "ELF布",
-      "line": 34377,
+      "line": 34381,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23414,7 +23424,7 @@
     },
     {
       "name": "布长",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23424,7 +23434,7 @@
     },
     {
       "name": "布_读",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23434,7 +23444,7 @@
     },
     {
       "name": "布_写",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23444,7 +23454,7 @@
     },
     {
       "name": "布_分配",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23454,7 +23464,7 @@
     },
     {
       "name": "布_退",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23464,7 +23474,7 @@
     },
     {
       "name": "布_命令行",
-      "line": 34378,
+      "line": 34382,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23474,66 +23484,6 @@
     },
     {
       "name": "布_开",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_读文",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_定位",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_关句",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_库",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_取址",
-      "line": 34383,
-      "indent": 0,
-      "array": false,
-      "module": "M8",
-      "rule": "ELF",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "布_陷阱",
       "line": 34387,
       "indent": 0,
       "array": false,
@@ -23543,8 +23493,68 @@
       "enclosing": ""
     },
     {
+      "name": "布_读文",
+      "line": 34387,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "布_定位",
+      "line": 34387,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "布_关句",
+      "line": 34387,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "布_库",
+      "line": 34387,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "布_取址",
+      "line": 34387,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "布_陷阱",
+      "line": 34391,
+      "indent": 0,
+      "array": false,
+      "module": "M8",
+      "rule": "ELF",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
       "name": "ELF未报槽",
-      "line": 34388,
+      "line": 34392,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23554,7 +23564,7 @@
     },
     {
       "name": "ELF未报数",
-      "line": 34388,
+      "line": 34392,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23564,7 +23574,7 @@
     },
     {
       "name": "ELF未报过",
-      "line": 34389,
+      "line": 34393,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23574,7 +23584,7 @@
     },
     {
       "name": "布一",
-      "line": 34394,
+      "line": 34398,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23584,7 +23594,7 @@
     },
     {
       "name": "布四",
-      "line": 34395,
+      "line": 34399,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23594,7 +23604,7 @@
     },
     {
       "name": "函数起查",
-      "line": 34396,
+      "line": 34400,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23604,7 +23614,7 @@
     },
     {
       "name": "ELF布备",
-      "line": 34409,
+      "line": 34413,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23614,7 +23624,7 @@
     },
     {
       "name": "实四",
-      "line": 34532,
+      "line": 34536,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23624,7 +23634,7 @@
     },
     {
       "name": "序置二",
-      "line": 34675,
+      "line": 34679,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -23634,7 +23644,7 @@
     },
     {
       "name": "单简",
-      "line": 34817,
+      "line": 34821,
       "indent": 8,
       "array": false,
       "module": "M7",
@@ -23644,7 +23654,7 @@
     },
     {
       "name": "逆平一",
-      "line": 35196,
+      "line": 35200,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -23654,7 +23664,7 @@
     },
     {
       "name": "主二一",
-      "line": 35235,
+      "line": 35239,
       "indent": 0,
       "array": true,
       "module": "M7",
@@ -23664,7 +23674,7 @@
     },
     {
       "name": "逆辰一",
-      "line": 35238,
+      "line": 35242,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23674,7 +23684,7 @@
     },
     {
       "name": "值庚",
-      "line": 35239,
+      "line": 35243,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23684,7 +23694,7 @@
     },
     {
       "name": "旧劣",
-      "line": 35244,
+      "line": 35248,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23694,7 +23704,7 @@
     },
     {
       "name": "段陆",
-      "line": 35249,
+      "line": 35253,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23704,7 +23714,7 @@
     },
     {
       "name": "隔拆",
-      "line": 35257,
+      "line": 35261,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -23714,7 +23724,7 @@
     },
     {
       "name": "帧汇",
-      "line": 35316,
+      "line": 35320,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23724,7 +23734,7 @@
     },
     {
       "name": "数据写偏",
-      "line": 35366,
+      "line": 35370,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23734,7 +23744,7 @@
     },
     {
       "name": "数据写量",
-      "line": 35367,
+      "line": 35371,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23744,7 +23754,7 @@
     },
     {
       "name": "数据写值",
-      "line": 35368,
+      "line": 35372,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23754,7 +23764,7 @@
     },
     {
       "name": "数据写数",
-      "line": 35369,
+      "line": 35373,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -23764,7 +23774,7 @@
     },
     {
       "name": "数段起",
-      "line": 35377,
+      "line": 35381,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23774,7 +23784,7 @@
     },
     {
       "name": "数段止",
-      "line": 35377,
+      "line": 35381,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23784,7 +23794,7 @@
     },
     {
       "name": "数段数",
-      "line": 35377,
+      "line": 35381,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -23794,7 +23804,7 @@
     },
     {
       "name": "数块标",
-      "line": 35378,
+      "line": 35382,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -23804,16 +23814,6 @@
     },
     {
       "name": "数段号",
-      "line": 35379,
-      "indent": 0,
-      "array": false,
-      "module": "M7",
-      "rule": "目标文件",
-      "kind": "static-function",
-      "enclosing": ""
-    },
-    {
-      "name": "记数据写",
       "line": 35383,
       "indent": 0,
       "array": false,
@@ -23823,8 +23823,18 @@
       "enclosing": ""
     },
     {
+      "name": "记数据写",
+      "line": 35387,
+      "indent": 0,
+      "array": false,
+      "module": "M7",
+      "rule": "目标文件",
+      "kind": "static-function",
+      "enclosing": ""
+    },
+    {
       "name": "写数据段",
-      "line": 35399,
+      "line": 35403,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -23834,7 +23844,7 @@
     },
     {
       "name": "缺组一",
-      "line": 35420,
+      "line": 35424,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23844,7 +23854,7 @@
     },
     {
       "name": "名十一",
-      "line": 35472,
+      "line": 35476,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23854,7 +23864,7 @@
     },
     {
       "name": "调写字节",
-      "line": 35497,
+      "line": 35501,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23864,7 +23874,7 @@
     },
     {
       "name": "调写四",
-      "line": 35498,
+      "line": 35502,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23874,7 +23884,7 @@
     },
     {
       "name": "调写ULEB",
-      "line": 35499,
+      "line": 35503,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -23884,7 +23894,7 @@
     },
     {
       "name": "调写SLEB",
-      "line": 35500,
+      "line": 35504,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -23894,7 +23904,7 @@
     },
     {
       "name": "调发行",
-      "line": 35505,
+      "line": 35509,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -23904,7 +23914,7 @@
     },
     {
       "name": "调写串",
-      "line": 35513,
+      "line": 35517,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -23914,7 +23924,7 @@
     },
     {
       "name": "调试生成",
-      "line": 35515,
+      "line": 35519,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -23924,7 +23934,7 @@
     },
     {
       "name": "标准长度",
-      "line": 35602,
+      "line": 35606,
       "indent": 4,
       "array": true,
       "module": "M1",
@@ -23934,7 +23944,7 @@
     },
     {
       "name": "ELF串表",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23944,7 +23954,7 @@
     },
     {
       "name": "ELF名偏",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23954,7 +23964,7 @@
     },
     {
       "name": "ELF符映",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23964,7 +23974,7 @@
     },
     {
       "name": "ELF节名",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": true,
       "module": "M8",
@@ -23974,7 +23984,7 @@
     },
     {
       "name": "ELF实符数",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23984,7 +23994,7 @@
     },
     {
       "name": "ELF实写",
-      "line": 35656,
+      "line": 35660,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -23994,7 +24004,7 @@
     },
     {
       "name": "写ELF目标",
-      "line": 35657,
+      "line": 35661,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -24004,7 +24014,7 @@
     },
     {
       "name": "空伴",
-      "line": 35849,
+      "line": 35853,
       "indent": 0,
       "array": false,
       "module": "M8",
@@ -24014,7 +24024,7 @@
     },
     {
       "name": "隔系一",
-      "line": 36230,
+      "line": 36234,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24024,7 +24034,7 @@
     },
     {
       "name": "暂组",
-      "line": 36230,
+      "line": 36234,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24034,7 +24044,7 @@
     },
     {
       "name": "左癸",
-      "line": 36231,
+      "line": 36235,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24044,26 +24054,6 @@
     },
     {
       "name": "隔系上限",
-      "line": 36244,
-      "indent": 0,
-      "array": false,
-      "module": "M5",
-      "rule": "IR",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "换代",
-      "line": 36247,
-      "indent": 0,
-      "array": false,
-      "module": "M5",
-      "rule": "IR",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "隔系数",
       "line": 36248,
       "indent": 0,
       "array": false,
@@ -24073,8 +24063,28 @@
       "enclosing": ""
     },
     {
+      "name": "换代",
+      "line": 36251,
+      "indent": 0,
+      "array": false,
+      "module": "M5",
+      "rule": "IR",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "隔系数",
+      "line": 36252,
+      "indent": 0,
+      "array": false,
+      "module": "M5",
+      "rule": "IR",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
       "name": "分析注册",
-      "line": 36249,
+      "line": 36253,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24084,7 +24094,7 @@
     },
     {
       "name": "分析查询",
-      "line": 36258,
+      "line": 36262,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24094,7 +24104,7 @@
     },
     {
       "name": "变换后",
-      "line": 36263,
+      "line": 36267,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24104,7 +24114,7 @@
     },
     {
       "name": "折叠生效",
-      "line": 36273,
+      "line": 36277,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24114,7 +24124,7 @@
     },
     {
       "name": "折记录",
-      "line": 36273,
+      "line": 36277,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -24124,7 +24134,7 @@
     },
     {
       "name": "浮折拒绝",
-      "line": 36274,
+      "line": 36278,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24134,7 +24144,7 @@
     },
     {
       "name": "照散甲值",
-      "line": 36275,
+      "line": 36279,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24144,7 +24154,7 @@
     },
     {
       "name": "照散乙值",
-      "line": 36275,
+      "line": 36279,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24154,7 +24164,7 @@
     },
     {
       "name": "照散整",
-      "line": 36276,
+      "line": 36280,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -24164,7 +24174,7 @@
     },
     {
       "name": "照散遍数",
-      "line": 36276,
+      "line": 36280,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24174,116 +24184,6 @@
     },
     {
       "name": "照散零值",
-      "line": 36279,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散一值",
-      "line": 36279,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64甲",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64乙",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "IR哈希64低出",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "IR哈希64高出",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64低甲",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64高甲",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64低乙",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "照散64高乙",
-      "line": 36280,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "不变违",
-      "line": 36282,
-      "indent": 0,
-      "array": false,
-      "module": "M9",
-      "rule": "转储",
-      "kind": "variable",
-      "enclosing": ""
-    },
-    {
-      "name": "不变破",
       "line": 36283,
       "indent": 0,
       "array": false,
@@ -24293,8 +24193,118 @@
       "enclosing": ""
     },
     {
-      "name": "不变构跑",
+      "name": "照散一值",
+      "line": 36283,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64甲",
       "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64乙",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "IR哈希64低出",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "IR哈希64高出",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64低甲",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64高甲",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64低乙",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "照散64高乙",
+      "line": 36284,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "不变违",
+      "line": 36286,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "不变破",
+      "line": 36287,
+      "indent": 0,
+      "array": false,
+      "module": "M9",
+      "rule": "转储",
+      "kind": "variable",
+      "enclosing": ""
+    },
+    {
+      "name": "不变构跑",
+      "line": 36288,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24304,7 +24314,7 @@
     },
     {
       "name": "IR哈希丙",
-      "line": 36299,
+      "line": 36303,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24314,7 +24324,7 @@
     },
     {
       "name": "IR哈希64丙",
-      "line": 36309,
+      "line": 36313,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24324,7 +24334,7 @@
     },
     {
       "name": "折可折",
-      "line": 36321,
+      "line": 36325,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24334,7 +24344,7 @@
     },
     {
       "name": "折整数",
-      "line": 36322,
+      "line": 36326,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24344,7 +24354,7 @@
     },
     {
       "name": "常量折叠pass",
-      "line": 36337,
+      "line": 36341,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24354,7 +24364,7 @@
     },
     {
       "name": "等目",
-      "line": 36372,
+      "line": 36376,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24364,7 +24374,7 @@
     },
     {
       "name": "等点",
-      "line": 36373,
+      "line": 36377,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24374,7 +24384,7 @@
     },
     {
       "name": "方层",
-      "line": 36378,
+      "line": 36382,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24384,7 +24394,7 @@
     },
     {
       "name": "照散",
-      "line": 36391,
+      "line": 36395,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24394,7 +24404,7 @@
     },
     {
       "name": "不变表",
-      "line": 36397,
+      "line": 36401,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24404,7 +24414,7 @@
     },
     {
       "name": "不变数",
-      "line": 36397,
+      "line": 36401,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24414,7 +24424,7 @@
     },
     {
       "name": "导表",
-      "line": 36403,
+      "line": 36407,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24424,7 +24434,7 @@
     },
     {
       "name": "导数",
-      "line": 36403,
+      "line": 36407,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24434,7 +24444,7 @@
     },
     {
       "name": "等表",
-      "line": 36409,
+      "line": 36413,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24444,7 +24454,7 @@
     },
     {
       "name": "等价数",
-      "line": 36409,
+      "line": 36413,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24454,7 +24464,7 @@
     },
     {
       "name": "错表",
-      "line": 36415,
+      "line": 36419,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24464,7 +24474,7 @@
     },
     {
       "name": "错数",
-      "line": 36415,
+      "line": 36419,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24474,7 +24484,7 @@
     },
     {
       "name": "记错构",
-      "line": 36420,
+      "line": 36424,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24484,7 +24494,7 @@
     },
     {
       "name": "双表",
-      "line": 36443,
+      "line": 36447,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24494,7 +24504,7 @@
     },
     {
       "name": "双录",
-      "line": 36443,
+      "line": 36447,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24504,7 +24514,7 @@
     },
     {
       "name": "卸台",
-      "line": 36459,
+      "line": 36463,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24514,7 +24524,7 @@
     },
     {
       "name": "卸台数",
-      "line": 36459,
+      "line": 36463,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24524,7 +24534,7 @@
     },
     {
       "name": "待列",
-      "line": 36465,
+      "line": 36469,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24534,7 +24544,7 @@
     },
     {
       "name": "待列头",
-      "line": 36465,
+      "line": 36469,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24544,7 +24554,7 @@
     },
     {
       "name": "待列尾",
-      "line": 36465,
+      "line": 36469,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24554,7 +24564,7 @@
     },
     {
       "name": "待列数",
-      "line": 36465,
+      "line": 36469,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24564,7 +24574,7 @@
     },
     {
       "name": "支父",
-      "line": 36487,
+      "line": 36491,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24574,7 +24584,7 @@
     },
     {
       "name": "支深",
-      "line": 36488,
+      "line": 36492,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24584,7 +24594,7 @@
     },
     {
       "name": "前表",
-      "line": 36491,
+      "line": 36495,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -24594,7 +24604,7 @@
     },
     {
       "name": "前数",
-      "line": 36491,
+      "line": 36495,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -24604,7 +24614,7 @@
     },
     {
       "name": "抽象码表",
-      "line": 36503,
+      "line": 36507,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -24614,7 +24624,7 @@
     },
     {
       "name": "双码",
-      "line": 36570,
+      "line": 36574,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24624,7 +24634,7 @@
     },
     {
       "name": "抽象字典注册",
-      "line": 36571,
+      "line": 36575,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24634,7 +24644,7 @@
     },
     {
       "name": "旧又二",
-      "line": 36581,
+      "line": 36585,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24644,7 +24654,7 @@
     },
     {
       "name": "末高",
-      "line": 36581,
+      "line": 36585,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24654,7 +24664,7 @@
     },
     {
       "name": "副薄",
-      "line": 36583,
+      "line": 36587,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24664,7 +24674,7 @@
     },
     {
       "name": "中二",
-      "line": 36583,
+      "line": 36587,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24674,7 +24684,7 @@
     },
     {
       "name": "外平",
-      "line": 36583,
+      "line": 36587,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24684,7 +24694,7 @@
     },
     {
       "name": "原肆",
-      "line": 36584,
+      "line": 36588,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24694,7 +24704,7 @@
     },
     {
       "name": "径段",
-      "line": 36598,
+      "line": 36602,
       "indent": 0,
       "array": true,
       "module": "M6",
@@ -24704,7 +24714,7 @@
     },
     {
       "name": "径规",
-      "line": 36599,
+      "line": 36603,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -24714,7 +24724,7 @@
     },
     {
       "name": "径宽",
-      "line": 36636,
+      "line": 36640,
       "indent": 0,
       "array": true,
       "module": "M6",
@@ -24724,7 +24734,7 @@
     },
     {
       "name": "径宽二",
-      "line": 36637,
+      "line": 36641,
       "indent": 0,
       "array": true,
       "module": "M6",
@@ -24734,7 +24744,7 @@
     },
     {
       "name": "径宽源",
-      "line": 36638,
+      "line": 36642,
       "indent": 0,
       "array": true,
       "module": "M6",
@@ -24744,7 +24754,7 @@
     },
     {
       "name": "径全W",
-      "line": 36639,
+      "line": 36643,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -24754,7 +24764,7 @@
     },
     {
       "name": "宽同",
-      "line": 36647,
+      "line": 36651,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -24764,7 +24774,7 @@
     },
     {
       "name": "径同",
-      "line": 36658,
+      "line": 36662,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -24774,7 +24784,7 @@
     },
     {
       "name": "副寅一",
-      "line": 36665,
+      "line": 36669,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -24784,7 +24794,7 @@
     },
     {
       "name": "计零",
-      "line": 36703,
+      "line": 36707,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24794,7 +24804,7 @@
     },
     {
       "name": "顺又",
-      "line": 36704,
+      "line": 36708,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24804,7 +24814,7 @@
     },
     {
       "name": "右序",
-      "line": 36705,
+      "line": 36709,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -24814,7 +24824,7 @@
     },
     {
       "name": "链伍",
-      "line": 36717,
+      "line": 36721,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -24824,7 +24834,7 @@
     },
     {
       "name": "深伴",
-      "line": 36738,
+      "line": 36742,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -24834,7 +24844,7 @@
     },
     {
       "name": "池薄一",
-      "line": 36754,
+      "line": 36758,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -24844,7 +24854,7 @@
     },
     {
       "name": "短浅",
-      "line": 36755,
+      "line": 36759,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -24854,7 +24864,7 @@
     },
     {
       "name": "旧三",
-      "line": 36756,
+      "line": 36760,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -24864,7 +24874,7 @@
     },
     {
       "name": "满贰一",
-      "line": 36764,
+      "line": 36768,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -24874,7 +24884,7 @@
     },
     {
       "name": "长叁",
-      "line": 36767,
+      "line": 36771,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -24884,7 +24894,7 @@
     },
     {
       "name": "初汇",
-      "line": 36770,
+      "line": 36774,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -24894,7 +24904,7 @@
     },
     {
       "name": "内巳",
-      "line": 36772,
+      "line": 36776,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24904,7 +24914,7 @@
     },
     {
       "name": "暂卯",
-      "line": 36773,
+      "line": 36777,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24914,7 +24924,7 @@
     },
     {
       "name": "暂厚",
-      "line": 36782,
+      "line": 36786,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24924,7 +24934,7 @@
     },
     {
       "name": "帧得",
-      "line": 36783,
+      "line": 36787,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24934,7 +24944,7 @@
     },
     {
       "name": "现序",
-      "line": 36784,
+      "line": 36788,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24944,7 +24954,7 @@
     },
     {
       "name": "总五",
-      "line": 36784,
+      "line": 36788,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -24954,7 +24964,7 @@
     },
     {
       "name": "容一",
-      "line": 36785,
+      "line": 36789,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -24964,7 +24974,7 @@
     },
     {
       "name": "双贰",
-      "line": 36827,
+      "line": 36831,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24974,7 +24984,7 @@
     },
     {
       "name": "refs",
-      "line": 36827,
+      "line": 36831,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -24984,7 +24994,7 @@
     },
     {
       "name": "标进",
-      "line": 36828,
+      "line": 36832,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -24994,7 +25004,7 @@
     },
     {
       "name": "引文",
-      "line": 36842,
+      "line": 36846,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25004,7 +25014,7 @@
     },
     {
       "name": "引写串",
-      "line": 36843,
+      "line": 36847,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25014,7 +25024,7 @@
     },
     {
       "name": "总升一",
-      "line": 36844,
+      "line": 36848,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25024,7 +25034,7 @@
     },
     {
       "name": "段弊",
-      "line": 36856,
+      "line": 36860,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25034,7 +25044,7 @@
     },
     {
       "name": "存重",
-      "line": 36857,
+      "line": 36861,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25044,7 +25054,7 @@
     },
     {
       "name": "存八",
-      "line": 36869,
+      "line": 36873,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -25054,7 +25064,7 @@
     },
     {
       "name": "裁运库",
-      "line": 36896,
+      "line": 36900,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -25064,7 +25074,7 @@
     },
     {
       "name": "找运库",
-      "line": 37003,
+      "line": 37007,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -25074,7 +25084,7 @@
     },
     {
       "name": "堆辛限",
-      "line": 37017,
+      "line": 37021,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -25084,7 +25094,7 @@
     },
     {
       "name": "终子",
-      "line": 37058,
+      "line": 37062,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -25094,7 +25104,7 @@
     },
     {
       "name": "IR导出",
-      "line": 37120,
+      "line": 37124,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25104,7 +25114,7 @@
     },
     {
       "name": "转储含",
-      "line": 37121,
+      "line": 37125,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25114,7 +25124,7 @@
     },
     {
       "name": "转储词元",
-      "line": 37128,
+      "line": 37132,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25124,7 +25134,7 @@
     },
     {
       "name": "转储AST节",
-      "line": 37135,
+      "line": 37139,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25134,7 +25144,7 @@
     },
     {
       "name": "转储可达数",
-      "line": 37147,
+      "line": 37151,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25144,7 +25154,7 @@
     },
     {
       "name": "转储AST",
-      "line": 37153,
+      "line": 37157,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25154,7 +25164,7 @@
     },
     {
       "name": "转储型",
-      "line": 37169,
+      "line": 37173,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25164,7 +25174,7 @@
     },
     {
       "name": "转储变量",
-      "line": 37176,
+      "line": 37180,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25174,7 +25184,7 @@
     },
     {
       "name": "转储函数",
-      "line": 37182,
+      "line": 37186,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25184,7 +25194,7 @@
     },
     {
       "name": "转储",
-      "line": 37187,
+      "line": 37191,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25194,7 +25204,7 @@
     },
     {
       "name": "加边",
-      "line": 37258,
+      "line": 37262,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25204,7 +25214,7 @@
     },
     {
       "name": "除边",
-      "line": 37264,
+      "line": 37268,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25214,7 +25224,7 @@
     },
     {
       "name": "构CFG",
-      "line": 37272,
+      "line": 37276,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25224,7 +25234,7 @@
     },
     {
       "name": "支配父",
-      "line": 37430,
+      "line": 37434,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25234,7 +25244,7 @@
     },
     {
       "name": "支配深",
-      "line": 37431,
+      "line": 37435,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25244,7 +25254,7 @@
     },
     {
       "name": "DF头",
-      "line": 37436,
+      "line": 37440,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25254,7 +25264,7 @@
     },
     {
       "name": "DF目",
-      "line": 37437,
+      "line": 37441,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25264,7 +25274,7 @@
     },
     {
       "name": "DF后",
-      "line": 37438,
+      "line": 37442,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25274,7 +25284,7 @@
     },
     {
       "name": "DF数",
-      "line": 37439,
+      "line": 37443,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25284,7 +25294,7 @@
     },
     {
       "name": "DF溢",
-      "line": 37439,
+      "line": 37443,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25294,7 +25304,7 @@
     },
     {
       "name": "复位DF",
-      "line": 37440,
+      "line": 37444,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25304,7 +25314,7 @@
     },
     {
       "name": "加DF",
-      "line": 37444,
+      "line": 37448,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25314,7 +25324,7 @@
     },
     {
       "name": "构边界",
-      "line": 37451,
+      "line": 37455,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25324,7 +25334,7 @@
     },
     {
       "name": "支交",
-      "line": 37477,
+      "line": 37481,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25334,7 +25344,7 @@
     },
     {
       "name": "构支配",
-      "line": 37492,
+      "line": 37496,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25344,7 +25354,7 @@
     },
     {
       "name": "SSA函",
-      "line": 37538,
+      "line": 37542,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25354,7 +25364,7 @@
     },
     {
       "name": "SSA基",
-      "line": 37538,
+      "line": 37542,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25364,7 +25374,7 @@
     },
     {
       "name": "SSA偏",
-      "line": 37538,
+      "line": 37542,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25374,7 +25384,7 @@
     },
     {
       "name": "SSA宽",
-      "line": 37538,
+      "line": 37542,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25384,7 +25394,7 @@
     },
     {
       "name": "SSA取址",
-      "line": 37539,
+      "line": 37543,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25394,7 +25404,7 @@
     },
     {
       "name": "SSA键数",
-      "line": 37539,
+      "line": 37543,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25404,7 +25414,7 @@
     },
     {
       "name": "SSA参",
-      "line": 37539,
+      "line": 37543,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25414,7 +25424,7 @@
     },
     {
       "name": "SSA定头",
-      "line": 37540,
+      "line": 37544,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25424,7 +25434,7 @@
     },
     {
       "name": "SSA定块",
-      "line": 37540,
+      "line": 37544,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25434,7 +25444,7 @@
     },
     {
       "name": "SSA定后",
-      "line": 37540,
+      "line": 37544,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25444,7 +25454,7 @@
     },
     {
       "name": "SSA定数",
-      "line": 37540,
+      "line": 37544,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25454,7 +25464,7 @@
     },
     {
       "name": "SSA用头",
-      "line": 37541,
+      "line": 37545,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25464,7 +25474,7 @@
     },
     {
       "name": "SSA用块",
-      "line": 37541,
+      "line": 37545,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25474,7 +25484,7 @@
     },
     {
       "name": "SSA用后",
-      "line": 37541,
+      "line": 37545,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25484,7 +25494,7 @@
     },
     {
       "name": "SSA用数",
-      "line": 37541,
+      "line": 37545,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25494,7 +25504,7 @@
     },
     {
       "name": "SSA法头",
-      "line": 37542,
+      "line": 37546,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25504,7 +25514,7 @@
     },
     {
       "name": "SSA法块",
-      "line": 37542,
+      "line": 37546,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25514,7 +25524,7 @@
     },
     {
       "name": "SSA法后",
-      "line": 37542,
+      "line": 37546,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25524,7 +25534,7 @@
     },
     {
       "name": "SSA法数",
-      "line": 37542,
+      "line": 37546,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25534,7 +25544,7 @@
     },
     {
       "name": "SSA溢",
-      "line": 37543,
+      "line": 37547,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25544,7 +25554,7 @@
     },
     {
       "name": "SSA缺",
-      "line": 37543,
+      "line": 37547,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25554,7 +25564,7 @@
     },
     {
       "name": "SSA取数",
-      "line": 37543,
+      "line": 37547,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25564,7 +25574,7 @@
     },
     {
       "name": "SSA无定",
-      "line": 37543,
+      "line": 37547,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25574,7 +25584,7 @@
     },
     {
       "name": "SSA工",
-      "line": 37543,
+      "line": 37547,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25584,7 +25594,7 @@
     },
     {
       "name": "SSA缺键",
-      "line": 37544,
+      "line": 37548,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25594,7 +25604,7 @@
     },
     {
       "name": "SSA缺块",
-      "line": 37544,
+      "line": 37548,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25604,7 +25614,7 @@
     },
     {
       "name": "SSA缺计",
-      "line": 37544,
+      "line": 37548,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25614,7 +25624,7 @@
     },
     {
       "name": "节块号",
-      "line": 37545,
+      "line": 37549,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25624,7 +25634,7 @@
     },
     {
       "name": "函首块",
-      "line": 37545,
+      "line": 37549,
       "indent": 0,
       "array": true,
       "module": "M9",
@@ -25634,7 +25644,7 @@
     },
     {
       "name": "SSA前数",
-      "line": 37546,
+      "line": 37550,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25644,7 +25654,7 @@
     },
     {
       "name": "SSA查键",
-      "line": 37555,
+      "line": 37559,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25654,7 +25664,7 @@
     },
     {
       "name": "SSA找键",
-      "line": 37560,
+      "line": 37564,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25664,7 +25674,7 @@
     },
     {
       "name": "SSA有定",
-      "line": 37570,
+      "line": 37574,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25674,7 +25684,7 @@
     },
     {
       "name": "SSA有用",
-      "line": 37575,
+      "line": 37579,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25684,7 +25694,7 @@
     },
     {
       "name": "SSA有法",
-      "line": 37580,
+      "line": 37584,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25694,7 +25704,7 @@
     },
     {
       "name": "SSA加定",
-      "line": 37585,
+      "line": 37589,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25704,7 +25714,7 @@
     },
     {
       "name": "SSA加用",
-      "line": 37590,
+      "line": 37594,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25714,7 +25724,7 @@
     },
     {
       "name": "SSA加法",
-      "line": 37595,
+      "line": 37599,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25724,7 +25734,7 @@
     },
     {
       "name": "SSA构",
-      "line": 37600,
+      "line": 37604,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25734,7 +25744,7 @@
     },
     {
       "name": "SSA布法",
-      "line": 37653,
+      "line": 37657,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25744,7 +25754,7 @@
     },
     {
       "name": "SSA验",
-      "line": 37678,
+      "line": 37682,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25754,7 +25764,7 @@
     },
     {
       "name": "SSA印",
-      "line": 37700,
+      "line": 37704,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25764,7 +25774,7 @@
     },
     {
       "name": "子树规模深",
-      "line": 37726,
+      "line": 37730,
       "indent": 0,
       "array": false,
       "module": "M5",
@@ -25774,7 +25784,7 @@
     },
     {
       "name": "转储L1",
-      "line": 37733,
+      "line": 37737,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25784,7 +25794,7 @@
     },
     {
       "name": "表序R797",
-      "line": 38029,
+      "line": 38033,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25794,7 +25804,7 @@
     },
     {
       "name": "表名缓存",
-      "line": 38040,
+      "line": 38044,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -25804,7 +25814,7 @@
     },
     {
       "name": "表址缓存",
-      "line": 38041,
+      "line": 38045,
       "indent": 0,
       "array": true,
       "module": "M5",
@@ -25814,7 +25824,7 @@
     },
     {
       "name": "表尺缓存",
-      "line": 38042,
+      "line": 38046,
       "indent": 0,
       "array": true,
       "module": "M4",
@@ -25824,7 +25834,7 @@
     },
     {
       "name": "表缓存数",
-      "line": 38043,
+      "line": 38047,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -25834,7 +25844,7 @@
     },
     {
       "name": "表首编数",
-      "line": 38044,
+      "line": 38048,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -25844,7 +25854,7 @@
     },
     {
       "name": "表复用数",
-      "line": 38045,
+      "line": 38049,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -25854,7 +25864,7 @@
     },
     {
       "name": "表缓存校",
-      "line": 38046,
+      "line": 38050,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -25864,7 +25874,7 @@
     },
     {
       "name": "表分",
-      "line": 38055,
+      "line": 38059,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -25874,7 +25884,7 @@
     },
     {
       "name": "表清分",
-      "line": 38077,
+      "line": 38081,
       "indent": 0,
       "array": false,
       "module": "M4",
@@ -25884,7 +25894,7 @@
     },
     {
       "name": "展用户段",
-      "line": 38087,
+      "line": 38091,
       "indent": 0,
       "array": false,
       "module": "M2",
@@ -25894,7 +25904,7 @@
     },
     {
       "name": "浮标预热",
-      "line": 38115,
+      "line": 38119,
       "indent": 0,
       "array": false,
       "module": "M6",
@@ -25904,7 +25914,7 @@
     },
     {
       "name": "号进",
-      "line": 38397,
+      "line": 38401,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -25914,7 +25924,7 @@
     },
     {
       "name": "净浅",
-      "line": 38425,
+      "line": 38429,
       "indent": 0,
       "array": false,
       "module": "M9",
@@ -25924,7 +25934,7 @@
     },
     {
       "name": "上分",
-      "line": 38460,
+      "line": 38464,
       "indent": 0,
       "array": false,
       "module": "M1",
@@ -25934,7 +25944,7 @@
     },
     {
       "name": "半利一",
-      "line": 38475,
+      "line": 38479,
       "indent": 0,
       "array": false,
       "module": "M0",
@@ -25944,7 +25954,7 @@
     },
     {
       "name": "是中文开关",
-      "line": 38530,
+      "line": 38534,
       "indent": 0,
       "array": false,
       "module": "M3",
@@ -25954,7 +25964,7 @@
     },
     {
       "name": "源简",
-      "line": 38728,
+      "line": 38732,
       "indent": 8,
       "array": true,
       "module": "M7",
@@ -25964,7 +25974,7 @@
     },
     {
       "name": "码生成值",
-      "line": 38826,
+      "line": 38830,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -25974,7 +25984,7 @@
     },
     {
       "name": "串宏体收",
-      "line": 38850,
+      "line": 38854,
       "indent": 0,
       "array": false,
       "module": "M7",
@@ -25984,7 +25994,7 @@
     },
     {
       "name": "探针_R896_无用",
-      "line": 38921,
+      "line": 38925,
       "indent": 0,
       "array": false,
       "module": "M1",

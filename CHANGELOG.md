@@ -1,3 +1,55 @@
+## 2026-11-06 — 双平台自举达成（Linux x86-64 / ELF）
+
+**本项目第一次在 Windows 之外完成自举。**
+
+### 一、路线
+**B · 交叉 + 本机自举**（GCC/Clang/Rust 的标准做法）：Windows 侧 `qcc_zh_v2.exe --target=elf`
+交叉产出 ELF 版编译器 `qcc_zh_elf`，拿到 Linux 上用它编译自己（stage2 → stage3）。
+
+> 注意：这不是「Linux 上本来就有甲言编译器」。ELF 版是**交叉编译出来的**，靠一组 POSIX shim 让它在 Linux 运行。
+
+### 二、达成判据（可复跑）
+
+```powershell
+python scripts/check_elf_selfhost.py       # 需 WSL
+```
+
+五项：① 交叉产出真 ELF（魔数校验）② `--help` 可启动 ③ 编 `tiny.c` 输出与 gcc 一致
+④ 能编自己（v1）⑤ **`v1 == v2 == v3` 收敛**。
+
+独立复验（审计侧，非执行方自述）：五次独立编译产物 sha256 全等；四个产物
+（ELF 版编译器本身 + v1/v2/v3）**逐字节相同**。
+
+### 三、沿途修掉的跨平台缺陷
+
+Windows 上「一直正常」、到 Linux 才暴露的一类问题：
+
+| 症状 | 根因 |
+|:--|:--|
+| 一启动就 SIGTRAP | 导入槽未实现 → 统一 `int3`；`GetModuleFileNameA` 需映射到 `readlink("/proc/self/exe")` |
+| `exit(121)` | msvcrt `strncpy` 未实现 |
+| `exit(123)` | `getenv` 未实现 |
+| 一申请内存就越界 | 编译器自身 bump 分配器直接写在 `.data` 之后，而 ELF 段 `p_memsz` 只留 1MB |
+| 野指针 | vararg 遍历用 **32 位** `sub r13d,8` —— PE 栈在低 4GB 无损，Linux 栈在 `0x7fff…` 被截断 |
+| `R822` 全局表地址越出 32 位 | 全局表指针是 32 位整，Linux `mmap` 返回高地址 |
+| **产物不确定（差 4096 字节）** | `fwrite`/`fputs` 内联用 **32 位**原语把指针存进帧槽 —— PE 栈低地址无损，Linux 截断 |
+
+**共同点：Windows 的地址空间布局把这些缺陷全掩盖了。** 它们在 PE 上一声不响地"正常工作"。
+
+### 四、不动点：两个平台各一个，互不相同
+
+- **Windows / PE 链**：以 `scripts/build_zh.ps1` 的 `$expected` 为准
+- **Linux / ELF 链**：`v1 == v2 == v3`，以 `scripts/check_elf_selfhost.py` 输出为准
+
+**两者不同是正常的** —— 目标格式与 ABI 不同，二进制必然不同。（本文件不写死具体哈希：主线每推进一步就会变。）
+
+### 五、新增的判据与语料
+
+- `scripts/check_elf_selfhost.py` —— ELF 侧自举五项判据（含 gcc 对照）
+- `scripts/check_elf_lua_run.py` —— Lua 5.4.7 全部 33 个 `.c` 在 ELF 上编译 → gcc 链接 → 运行 → 与 gcc 逐字节对照
+- `tests/corpus/lua-5.4.7/` —— 第三方测试语料（MIT，归属与来源见该目录 `README.md` 与 `NOTICE` 第五节）
+
+---
 ## aad800a9 (2026-10-20) — 对外线整改 + 外部审计响应
 
 **为什么补记**：CHANGELOG 此前停在 2026-08-27（近 2 个月未更新），
