@@ -304,7 +304,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_multilang_full.ps1   # 6
 |:--|:--|
 | **不是 C++ 编译器** | 只兼容 C（含部分 C11）。**真正的 C++ 源文件编不了** —— 实测 9 项 C++ 独有语法，**8 项直接报错**（`class` / `namespace` / `template` / `std::cout` / `new`·`delete` / `bool`·`true` / 构造函数 / 按类型重载），仅 `int&` 引用能编过但运行结果不对。<br>⚠️ **别与下面这件事混淆**：仓库 `examples/multilang/cpp/` 里的「C++ 12/12 · 100%」，指的是**用甲言写的 12 个 C++ 风格程序全部编译通过**，**不是「支持 C++ 语言」**。 |
 | **暂无优化器** | 直译式码生成 ⟹ 产物体积与运行性能**不及 GCC**；编译速度见下方数据。 |
-| **目前主要面向 Windows x64** | 产物为标准 PE；其它平台尚在规划。 |
+| **平台：Windows 主链，Linux 已可自举** | Windows x64 产标准 PE（主链）。**Linux x86-64（ELF）已打通**：`--target=elf` 交叉产出 ELF 版编译器，再在 Linux 上用它编译自己（`v1 == v2 == v3` 收敛）。两个平台各有自己的不动点，**互不相同是正常的**（目标格式与 ABI 不同）。判据 `scripts/check_elf_selfhost.py`（需 WSL）。 |
 | **项目处于快速迭代期** | 仍在日更，API 与行为可能调整。**已知问题见 [KNOWN_ISSUES_v1.0.md](KNOWN_ISSUES_v1.0.md)**（持续公开登记）。 |
 | **第三方包生态尚在早期** | 已有**自建包管理器 `jypkg`**（版本约束求解 / SHA-256 完整性 / 拓扑序 / 环检测）与 **VSCode 扩展 + LSP 语言服务器**；但**公共包仓库尚在少量试水**，绝大多数第三方 C 库仍走标准 C 库。 |
 

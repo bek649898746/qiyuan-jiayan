@@ -16,7 +16,8 @@ Your source can use Chinese keywords (`整 甲 = 1;`), English C keywords (`int 
 
 The compiler:
 - **compiles itself** (self-hosting, reproducible byte-for-byte)
-- **emits Windows x86-64 PE/COFF directly** — no LLVM, no Clang, no linker
+- **emits x86-64 PE/COFF (Windows) and ELF (Linux) directly** — no LLVM, no Clang, no linker
+- **bootstraps on both platforms** — Windows/PE and Linux/ELF each converge to its own fixpoint (they differ, as expected: different object format and ABI). Check: `python scripts/check_elf_selfhost.py` (WSL required)
 - **has zero external dependencies** (no gcc, no Python needed to use it)
 - produces **COFF objects that g++ can link directly** (Win64 ABI compatible)
 
