@@ -217,13 +217,65 @@ def write_text(name, txt, block):
     return txt.rstrip() + '\n\n' + block + '\n', '追加'
 
 
+def self_test():
+    """证明比对器**真会咬人**：4 组合成输入，坏输入必须全部判红。
+
+    这是判据非空转的自证 —— `check_failopen_negatives.py` 的 G 组每次都会调它。
+    不依赖任何历史分支，干净 clone 上也能跑。
+    """
+    bad = []
+    facts = {'src_lines': 12345, 'fixed_point': 'DEADBEEF',
+             'multilang_files': 7, 'multilang_lines': 6789}
+    good = render_block(facts)
+    txt = '# 标题\n\n' + good + '\n\n正文提到 `qcc_zh.jy`。\n'
+
+    p = []
+    check_text('ok', txt, good, facts, p)
+    if p:
+        bad.append('正常输入被判红: %r' % (p[:2],))
+
+    p = []
+    check_text('stale', txt.replace(good, good.replace('12,345', '11,111')), good, facts, p)
+    if not p:
+        bad.append('块内数字被改却仍报绿')
+
+    p = []
+    check_text('noblock', '# 标题\n\n没有事实块。\n', good, facts, p)
+    if not p:
+        bad.append('缺事实块却仍报绿')
+
+    p = []
+    check_text('dup', txt + '\n主源 12,345 行。\n', good, facts, p)
+    if not p:
+        bad.append('块外重复同一数字却仍报绿')
+
+    p = []
+    check_text('dupml', txt + '\n源码在 `examples/multilang/`（7 文件 / 6,789 行）。\n', good, facts, p)
+    if not p:
+        bad.append('块外重复多语言规模却仍报绿')
+
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser(description='llms.txt / llms-full.txt 机器事实块生成与校验')
     ap.add_argument('--write', action='store_true', help='就地刷新（默认只检查）')
     ap.add_argument('--check', action='store_true', help='只校验（默认行为）')
+    ap.add_argument('--self-test', action='store_true', help='用合成输入自证比对器非空转')
     ap.add_argument('--ref', default=None, help='从 git ref 取树（如 publish）；缺省用工作区')
     ap.add_argument('--json', action='store_true', help='输出机器可读结果')
     a = ap.parse_args()
+
+    if a.self_test:
+        bad = self_test()
+        if bad:
+            for b in bad:
+                print('[FAIL] 自检: %s' % b)
+            print('=== gen_llms_status 自检: FAIL ===')
+            return 1
+        print('=== gen_llms_status 自检: PASS（正常绿 / 块内改数红 / 缺块红 / '
+              '块外重复行数红 / 块外重复多语言规模红 —— 5/5）===')
+        return 0
 
     tree = Tree(a.ref)
     facts = collect(tree)
