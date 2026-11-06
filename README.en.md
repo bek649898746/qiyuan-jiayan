@@ -58,7 +58,8 @@ It checks: compiler selftest → compile & run the bundled example → Chinese k
   - `-graph` — call graph + layout-risk ranking as JSON.
   - `--refs` — "who references X" as JSON.
   - `--dj / --diagnostics=json` — structured errors with `code`, `location`, `fixes[]`, and the offending `codeLine`.
-- **Real-world scale**: the v1.0 milestone compiled and ran **git-2.45.2** (≈364k lines of C) with this self-hosted chain. That source is not redistributed (third-party license), so it is documented rather than reproducible in-repo — see `GIT_RUN_ADAPTATIONS.md`.
+- **Real-world scale**: the v1.0 milestone compiled and ran **git-2.45.2** with this self-hosted chain. That source is not redistributed (third-party license), so it is documented rather than reproducible in-repo — see `GIT_RUN_ADAPTATIONS.md`.
+  *Scale:* the official tarball measures **581 `.c` files / 352,215 lines** in full (416 `.c` / 315,863 lines excluding `t/ contrib/ oss-fuzz/ compat/`). An earlier doc said "≈364k lines of C"; **its counting basis was not recorded**, so treat that figure as approximate — the two sources above are the reproducible ones.
 - **Zero TODO markers in 39,063 lines**, ~29% comment density (by character count; 9% by line count), 1,469 feature anchors.
 
 ## Honest limitations

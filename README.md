@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 > **English?** → [`README.en.md`](README.en.md) — 99% English, written for non-Chinese readers and AI agents.
 
@@ -195,7 +195,7 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 | 中文关键字 | **38 个**（15 语句 + 23 类型修饰） | `manual/中文关键字表.md` |
 | **AI 适配接口** | `--help` **27 项** · `-graph` **真行号** · 中文开关**中英等价** · `--repeat` 可重入 | `python scripts/check_ai_interface.py` |
 | 验收闸 | ①预置头上限 ②`-c` 冒烟 ③负锚有效性 ④DWARF ⑤jyld 链接 ⑥drectve ⑦lvm链基 ⑧IR容量 | `run_tests_zh.py` 自动跑，**闸红不再早退（锚照跑）** |
-| **平台 / 目标格式** | **Windows x64（PE，主链）+ Linux x86-64（ELF）** —— 两条链各自自举收敛，不动点互不相同（正常） | `python scripts/check_elf_selfhost.py`（需 WSL） |
+| **平台 / 目标格式** | **Windows x64（PE，主链）+ Linux x86-64（ELF）** —— 两条链各自自举收敛，不动点互不相同（正常）。**ELF 后端只有 580 行（主源 1.5%）**，编小程序耗时与 PE 相同（826 ms vs 852 ms）| `python scripts/check_elf_selfhost.py`（需 WSL） |
 
 **给 AI / 爬虫**：优先读 [`llms.txt`](llms.txt) 与 [`llms-full.txt`](llms-full.txt)，两者口径与本表一致；若与 README 冲突，**以 `llms-full.txt` + 仓内脚本实测为准**。
 
