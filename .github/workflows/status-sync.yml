@@ -48,8 +48,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not (Test-Path 'scripts/gen_readme_status.ps1')) {
-            Write-Host '未找到 scripts/gen_readme_status.ps1，跳过（不判失败）'
-            exit 0
+            Write-Host '[FAIL] 未找到 scripts/gen_readme_status.ps1 —— 状态块无法现算；按 fail-closed 判失败'
+            exit 1
           }
           powershell -ExecutionPolicy Bypass -File scripts/gen_readme_status.ps1
           if ($LASTEXITCODE -ne 0) {
@@ -57,18 +57,40 @@ jobs:
             exit 1
           }
 
+      # 126③④（2026-11-07）：llms.txt / llms-full.txt 的「主源行数 / 不动点 / 多语言规模」
+      # 过去靠人肉抄写 ⟹ 必然过期。现由 gen_llms_status.py 从当前树现算并写进 GEN:LLMS:FACTS 块，
+      # 写完立刻 --check 自证；脚本缺失或自检失败都判红（不跳过）。
+      - name: 重新生成 llms 事实块
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'scripts/gen_llms_status.py')) {
+            Write-Host '[FAIL] 未找到 scripts/gen_llms_status.py —— llms 数字将退回人肉抄写；按 fail-closed 判失败'
+            exit 1
+          }
+          python scripts/gen_llms_status.py --write
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "llms 事实块生成失败（exit=$LASTEXITCODE）"
+            exit 1
+          }
+          python scripts/gen_llms_status.py --check
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'llms 事实块自检失败（生成后仍不一致）'
+            exit 1
+          }
+
       - name: 有变化则提交回 publish
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git diff --quiet -- README.md
+          git diff --quiet -- README.md llms.txt llms-full.txt
           if ($LASTEXITCODE -eq 0) {
-            Write-Host '状态块已是最新，无需提交'
+            Write-Host '状态块与 llms 事实块都最新，无需提交'
             exit 0
           }
-          Write-Host '状态块有变化，提交并推送'
+          Write-Host '文档有变化，提交并推送'
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add README.md
+          git add README.md llms.txt llms-full.txt
           git commit -m 'docs(状态块): 自动同步到当前 HEAD [skip ci]'
           git push
