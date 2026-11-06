@@ -93,12 +93,17 @@ class Tree(object):
 
     def text(self, rel):
         b = self.read(rel)
-        return None if b is None else b.decode('utf-8', 'surrogateescape')
+        return None if b is None else _decode(b)
+
+
+def _decode(b):
+    """统一成 LF 再比对 —— Windows 检出把 LF 换成 CRLF 时，块比对不能因此假红。"""
+    return b.decode('utf-8', 'surrogateescape').replace('\r\n', '\n').replace('\r', '\n')
 
 
 def _lines(b):
-    """字节级行数（与编辑器「行」口径一致：结尾无换行的最后一行也算一行）。"""
-    return len(b.decode('utf-8', 'surrogateescape').splitlines())
+    """行数（与编辑器「行」口径一致：结尾无换行的最后一行也算一行）。"""
+    return len(_decode(b).splitlines())
 
 
 def collect(tree):
@@ -228,7 +233,7 @@ def main():
     for name in TARGETS:
         b = tree.read(name)
         if b is not None:
-            present.append((name, b.decode('utf-8', 'surrogateescape')))
+            present.append((name, _decode(b)))
 
     if not present:
         out = {'ref': a.ref or '(worktree)', 'objects': [], 'status': 'absent',
