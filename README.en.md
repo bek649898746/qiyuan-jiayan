@@ -54,7 +54,7 @@ It checks: compiler selftest → compile & run the bundled example → Chinese k
 
 - **Determinism**: no timestamps, no ASLR leakage, no environment dependence in output. Same source ⇒ same SHA256, always. This is what makes `v1 == v2` meaningful.
 - **AI-oriented interfaces built into the compiler** (not bolted on):
-  - `--interface` — dumps function signatures + struct layouts (fields, offsets, sizes) as JSON. On the 39,063-line self-source: **1,100+ functions / 85 structs / 46 typedefs / 126 enums, ~104 s**.
+  - `--interface` — dumps function signatures + struct layouts (fields, offsets, sizes) as JSON. On the 39,063-line self-source: **1,175 functions / 85 structs / 48 typedefs / 1,450 globals / 126 enums, ~7 s**.
   - `-graph` — call graph + layout-risk ranking as JSON.
   - `--refs` — "who references X" as JSON.
   - `--dj / --diagnostics=json` — structured errors with `code`, `location`, `fixes[]`, and the offending `codeLine`.
