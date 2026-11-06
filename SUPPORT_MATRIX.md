@@ -72,8 +72,8 @@
 | `enum`/`typedef` | ✅ | |
 | `_Bool`/`bool` | ✅ | |
 | `size_t`/`uint64_t` 等 typedef | ✅ | compat_prelude.h 补齐 |
-| `volatile` | ⚠️ | 语法接受；qcc 无优化器，访问必然真实发生（单线程下行为正确），但无内存屏障/无原子语义（多线程 MMIO 场景需自行处理）|
-| `restrict` | ✅ | 语法接受，按普通指针处理（qcc 无优化器，restrict 别名提示无观测影响，语义正确）|
+| `volatile` | ⚠️ | 语法接受；qcc 的优化在**汇编层**（`opt_zh`，16 类 pass，不做 volatile 语义建模）⟹ 访问必然真实发生（单线程下行为正确），但无内存屏障/无原子语义（多线程 MMIO 场景需自行处理）|
+| `restrict` | ✅ | 语法接受，按普通指针处理（汇编层优化器不做别名分析，restrict 提示无观测影响，语义正确）|
 | `_Atomic` | ⚠️ | 语法接受，按普通类型处理（单线程下语义正确；无原子操作/无同步语义）|
 | `_Static_assert`/`static_assert` | ✅ | 编译期断言，表达式为假报错（含比较运算符求值）|
 | `_Alignof` | ✅ | C11 对齐查询（基本类型/指针=8/数组=元素对齐/struct=最大成员对齐 stypes.algn/typedef；常量求值可用，如 `_Static_assert(_Alignof(double)==8)`）|

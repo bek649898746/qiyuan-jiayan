@@ -60,6 +60,7 @@ It checks: compiler selftest → compile & run the bundled example → Chinese k
   - `--dj / --diagnostics=json` — structured errors with `code`, `location`, `fixes[]`, and the offending `codeLine`.
 - **Real-world scale**: the v1.0 milestone compiled and ran **git-2.45.2** with this self-hosted chain. That source is not redistributed (third-party license), so it is documented rather than reproducible in-repo — see `GIT_RUN_ADAPTATIONS.md`.
   *Scale:* the official tarball measures **581 `.c` files / 352,215 lines** in full (416 `.c` / 315,863 lines excluding `t/ contrib/ oss-fuzz/ compat/`). An earlier doc said "≈364k lines of C"; **its counting basis was not recorded**, so treat that figure as approximate — the two sources above are the reproducible ones.
+- **A real optimizer — at the assembly layer**: `opt_zh` (`srclib/opt_zh.jy`, **2,203 lines of Jiayan**) runs **16 pass classes**: stack spill / stack merge / cancel-pairs / unreachable jumps / unreachable returns / copy propagation / jump-to-next-line / frame-slot same-address / dead-store overwrite / zero-stack-adjust / G-DCE / compare-branch fusion / arithmetic immediate fusion / cross-block forwarding / push-readback / immediate shortening — plus compile-time constant folding and DCE. Verified by `scripts/check_opt_census.py` through **two independent paths**: the shipped tool's per-class counts must equal the checker's own recount on the input.
 - **Zero TODO markers in 39,063 lines**, ~29% comment density (by character count; 9% by line count), 1,469 feature anchors.
 
 ## Honest limitations
