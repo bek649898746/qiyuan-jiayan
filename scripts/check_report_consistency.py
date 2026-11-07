@@ -77,6 +77,15 @@ def whitelist(f):
                 s.add(h[:8].lower())
         except Exception:
             pass
+        # 全 ref 的近期提交（`--all`）也算：证据里引用的常是「某条线的历史提交」，
+        # 只收 tip 会把 `316db71d`（origin/publish 的父提交）误判成未登记。
+        try:
+            out = subprocess.run(['git', 'log', '--all', '-80', '--format=%h'], cwd=repo,
+                                 capture_output=True, text=True).stdout
+            for h in out.split():
+                s.add(h)
+        except Exception:
+            pass
     return s
 
 

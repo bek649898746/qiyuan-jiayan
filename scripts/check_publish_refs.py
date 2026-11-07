@@ -73,7 +73,13 @@ def problems(ref):
 
 
 def main():
-    refs = mirror_refs()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--ref', default='',
+                    help='只检查指定 ref（修前腿用：如 `--ref b2b04f19` 复现「部署前」）')
+    a = ap.parse_args()
+
+    refs = [a.ref] if a.ref else mirror_refs()
     if not refs:
         print('[SKIP] 无发布镜像（远端跟踪分支里没有带 llms.txt 的 main/publish/master）')
         return 0
