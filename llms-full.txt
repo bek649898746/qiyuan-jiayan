@@ -6,8 +6,8 @@
 > **⚠️ 时效声明**：本文件随仓库提交更新。本仓库已可被搜索引擎检索（国际搜索实测可命中），但**抓取快照可能滞后数天**；若副本与仓库最新提交冲突，**以仓库最新提交为准**；本副本时点锚 = **2026-10-17**。
 
 <!-- GEN:LLMS:FACTS:BEGIN · 由 scripts/gen_llms_status.py 从本 ref 的树现算 · 请勿手改 -->
-- 主源 `srclib_jiayan/qcc_zh.jy` · **39,109 行**（全中文标识符）
-- 自举不动点 · **525B6E68**（权威源 = `scripts/build_zh.ps1` 的 `$expected`）
+- 主源 `srclib_jiayan/qcc_zh.jy` · **39,116 行**（全中文标识符）
+- 自举不动点 · **8600A238**（权威源 = `scripts/build_zh.ps1` 的 `$expected`）
 - 多语言源码 · `examples/multilang/` · **85 文件 / 50,692 行**
 <!-- GEN:LLMS:FACTS:END -->
 
