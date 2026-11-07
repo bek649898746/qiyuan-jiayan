@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """跑矩阵: 每格 比较 直接调用 与 管道 的 判定。用法: python run_matrix.py <compiler.exe>"""
 import io, sys, os, subprocess
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 QCC = sys.argv[1]
 D = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'matrix2')

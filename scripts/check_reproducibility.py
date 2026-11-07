@@ -16,6 +16,7 @@
 退出码: 0 = PASS / 1 = RED
 """
 import os, re, subprocess, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

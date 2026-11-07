@@ -10,6 +10,7 @@
           「读到的 字符串」必须 是 各 生成器 自己 写下的。
 """
 import io, os, re, subprocess, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 SCRIPTS = os.path.join(QJ, 'scripts')

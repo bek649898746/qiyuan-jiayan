@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

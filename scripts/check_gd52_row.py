@@ -37,6 +37,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, 'scripts'))
 from check_gd52_margin import MONITOR_MARGIN_PCT, LIMIT_C  # 阈值单一来源
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 
 def read_text(path):

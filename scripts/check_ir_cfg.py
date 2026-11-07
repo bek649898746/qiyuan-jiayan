@@ -7,6 +7,7 @@
    附: 报告 非落空边数 (goto 真边) 与 首控式 分布。"""
 import os, re, subprocess, sys
 from collections import Counter
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'

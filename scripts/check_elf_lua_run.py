@@ -380,9 +380,44 @@ def main():
                 red.append('postinc_compound 甲言 rc=%d（值不符 gcc 期望）out=%r' % (a1.returncode, o1[:300]))
             elif 'POSTINC COMPOUND OK' not in o1:
                 red.append('postinc_compound 无 OK 行: %r' % o1[:300])
-            print('postinc_compound: *(p++)/b[i++]/(p++)->f 复合赋值 ELF 逐值 == gcc（rc=%d）'
+            print('postinc_compound: 直接形 *(p++)/b[i++]/(p++)->f **+ 嵌套形 f11/f12/f13 + 深链 f14/f15（16/40 项）+ 22 实参调用 f16** 复合赋值 ELF 逐值 == gcc（rc=%d）'
                   % a1.returncode)
 
+
+    # ---- 复合赋值 双编译器同源对照（甲言 ELF vs gcc，逐字节）----
+    # 审计点名：POSTINC-ADDR 的判据只有「简单赋值 + lua 错误路径」，没有
+    # `*(p++) += k` / `b[i++] += k` / `(p++)->f += k` 与 gcc 的对照。
+    # 探针覆盖：直接链 `*(p++)` / `b[i++]` / `(p++)->f` / 前置 `*++q` / 带副作用 RHS，
+    # **以及嵌套形** `a[i++ + 1]` / `*(b + j++)` / `a[(i++) + 1]`（第 ⑩⑪⑫ 段）——
+    # 后三种是「左值子树里 ++/-- 不在直接链上」的形态，必须先递归扫左值子树才分配 __pinc_ 槽。
+    # 这里用**同一份 C 源**（scripts/probe_postinc_compound.c）分别走
+    #   ① 甲言 `-c --target=elf` + gcc 链接；② gcc 直接编译；
+    # 两边 stdout 必须逐字节相同 —— 当场用 gcc 当 oracle，不写死期望值。
+    pp_src = os.path.join(REPO, 'scripts', 'probe_postinc_compound.c')
+    pp_obj = os.path.join(w, 'probe_postinc.o')
+    r = subprocess.run([cc, '-c', '--target=elf', pp_src, '-o', pp_obj], cwd=REPO,
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    if r.returncode != 0:
+        red.append('probe_postinc_compound.c 编译 rc=%d %s' % (r.returncode,
+                   ((r.stdout or '') + (r.stderr or '')).strip()[:160]))
+    else:
+        jl = wsl('gcc -no-pie probe_postinc.o %s -lm -o probe_postinc_jy' % wsl_path(RT), cwd=w)
+        gl = wsl('gcc -w -no-pie %s -o probe_postinc_gcc' % wsl_path(pp_src), cwd=w)
+        if jl.returncode != 0 or gl.returncode != 0:
+            red.append('probe_postinc 链接失败 jy=%d gcc=%d' % (jl.returncode, gl.returncode))
+        else:
+            a1 = wsl('./probe_postinc_jy', cwd=w)
+            b1 = wsl('./probe_postinc_gcc', cwd=w)
+            o1 = ((a1.stdout or '') + (a1.stderr or '')).strip()
+            ob = ((b1.stdout or '') + (b1.stderr or '')).strip()
+            if a1.returncode != 0:
+                red.append('probe_postinc 甲言 rc=%d out=%r' % (a1.returncode, o1[:300]))
+            if b1.returncode != 0:
+                red.append('probe_postinc gcc rc=%d out=%r' % (b1.returncode, ob[:300]))
+            if o1 != ob:
+                red.append('probe_postinc 甲言 != gcc:\n  甲言=%r\n  gcc =%r' % (o1[:400], ob[:400]))
+            nline = len(o1.split(chr(10))) if o1 else 0
+            print('probe_postinc: 直接形 *(p++)/b[i++]/(p++)->f/前置/带副作用 RHS **+ 嵌套形 a[i++ + 1] / *(b + j++) / a[(i++)+1] + 深链 16/40 项 + 22 实参调用** — 甲言 == gcc 逐字节（%d 行）' % nline)
 
     # ---- 错误路径（rc 必须为 1 且带正确消息；两遍一致）----
     errs = []

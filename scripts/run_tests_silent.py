@@ -11,6 +11,7 @@
       python scripts/run_tests_silent.py            (en 全量)
 """
 import ctypes, subprocess, sys, os
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 # 0. 正确声明 Win32 API (64 位下 HANDLE 必须 c_void_p, 否则截断静默失败)
 k32 = ctypes.windll.kernel32

@@ -9,6 +9,7 @@
   只查 UTF-8 可解码会放过「无 BOM + 中文变量名」这种真实 P0 输入（PS5.1 按 ANSI 读 ⟹ 112 错）。
 """
 import os, sys, subprocess
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 sys.stdout.reconfigure(encoding='utf-8')  # CI windows-latest locale=cp1252, 中文输出否则 UnicodeEncodeError (fix 2026-08-07)
 

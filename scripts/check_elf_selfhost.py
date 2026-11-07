@@ -65,7 +65,7 @@ def main():
         print('[SKIP] 环境未就绪：WSL 不可用 (%s)' % e)
         return 2
 
-    work = a.keep or os.path.join(os.environ.get('TEMP', '.'), 'qcc_selfhost')
+    work = a.keep or __import__('qcc_tmp').tmp_dir('qcc_selfhost')
     os.makedirs(work, exist_ok=True)
     tiny = os.path.join(work, 'tiny.c')
     io.open(tiny, 'w', encoding='utf-8', newline='\n').write(TINY)

@@ -13,7 +13,7 @@
 整 exp_data_vsize; /* from qcc .段 — 非static (qcc 静态变量跨函数读写地址错位, 同 stc_n) (fix 2026-08-12 H2 对等) */
 整 exp_data_raw;   /* from qcc .段 */
 整 stc_n = 0; /* from qcc .堆计；非static实验：qcc 静态变量读写地址错位 */
-静 常 字 *gp; 静 整 mem_result;
+静 常 字 *gp; 静 整 mem_result; 静 整 mem_base = 4; /* ORD-20261102-85: MEM 解析到的基址寄存器（4=rsp 为缺省，保旧行为）*/
 静 整 缩移 = 0; /* R599c-T10b: 优化链累积位移（文报通道 + 实测通道 之和）; 每遍汇编重置 */
 静 整 缩总 = 0; /* R599c-T10b: 优化器在 .缩总 里报的「文报通道总量」— 仅作交叉校验（不等即响亮失败） */
 静 整 缩移文 = 0; /* 文报通道: Σ opt_zh 的 `.缩 N` 标记 */
@@ -61,6 +61,7 @@
 静 空 mov_r12_al(空) { rex(0, 0, 0, 1); b(0x88); modrm(0, 0, 4); b(0x24); }
 静 空 movzx_eax_al(空) { b(0x0F); b(0xB6); modrm(3, 0, 0); }
 静 空 lea_r_mrsp(整 r, 整 d) { rex(1, r & 8, 0, 0); b(0x8D); 若 (d < 128 && d >= -128) { modrm(1, r & 7, 4); b(0x24); b(d); } 否 { modrm(2, r & 7, 4); b(0x24); b4(d); } }
+静 空 lea_r_mr(整 r, 整 基, 整 d) { rex(1, r & 8, 0, 基 & 8); b(0x8D); 整 sib = ((基 & 7) == 4); 若 (d < 128 && d >= -128) { modrm(1, r & 7, 基 & 7); 若 (sib) b(0x24); b(d); } 否 { modrm(2, r & 7, 基 & 7); 若 (sib) b(0x24); b4(d); } } /* ORD-20261102-85: lea r,[基±d] 通用基址 */
 静 空 lea_r_mbrp(整 r, 整 d) { rex(1, r & 8, 0, 0); b(0x8D); 若 (d < 128 && d >= -128) { modrm(1, r & 7, 5); b(d); } 否 { modrm(2, r & 7, 5); b4(d); } }
 静 空 lea_rax_rip(整 d) { rex(1, 0, 0, 0); b(0x8D); b(0x05); b4r(d, 0); }
 静 空 alu_rr(整 op, 整 d, 整 s) {
@@ -180,7 +181,7 @@
 静 整 RG8(空) { SK(); 若 (strncmp(gp, "al", 2) == 0) { gp = gp + 2; 返 0; } 若 (strncmp(gp, "cl", 2) == 0) { gp = gp + 2; 返 1; } 若 (strncmp(gp, "dl", 2) == 0) { gp = gp + 2; 返 2; } 若 (strncmp(gp, "bl", 2) == 0) { gp = gp + 2; 返 3; } 返 -1; } /* R599b: 8 位 寄存器 名 (qcc 文本 用 al/cl) — 未命中 不 消费 */
 静 整 RG16(空) { SK(); 若 (strncmp(gp, "ax", 2) == 0) { gp = gp + 2; 返 0; } 若 (strncmp(gp, "cx", 2) == 0) { gp = gp + 2; 返 1; } 若 (strncmp(gp, "dx", 2) == 0) { gp = gp + 2; 返 2; } 若 (strncmp(gp, "bx", 2) == 0) { gp = gp + 2; 返 3; } 若 (strncmp(gp, "sp", 2) == 0) { gp = gp + 2; 返 4; } 若 (strncmp(gp, "bp", 2) == 0) { gp = gp + 2; 返 5; } 若 (strncmp(gp, "si", 2) == 0) { gp = gp + 2; 返 6; } 若 (strncmp(gp, "di", 2) == 0) { gp = gp + 2; 返 7; } 返 -1; } /* R599c: 16 位 寄存器 名 */
 静 整 RG(空) { 整 r = -1; SK(); 若 (gp[0] == '[') gp = gp + 1; 若 (gp[0] == 'r' && gp[1] >= '0' && gp[1] <= '9') { gp = gp + 1; r = 0; 循环 (gp[0] >= '0' && gp[0] <= '9') { r = r * 10 + (gp[0] - '0'); gp = gp + 1; } } 否 若 (strncmp(gp, "eax", 3) == 0) { r = 0; gp = gp + 3; } 否 若 (strncmp(gp, "ecx", 3) == 0) { r = 1; gp = gp + 3; } 否 若 (strncmp(gp, "edx", 3) == 0) { r = 2; gp = gp + 3; } 否 若 (strncmp(gp, "ebx", 3) == 0) { r = 3; gp = gp + 3; } 否 若 (strncmp(gp, "esp", 3) == 0) { r = 4; gp = gp + 3; } 否 若 (strncmp(gp, "ebp", 3) == 0) { r = 5; gp = gp + 3; } 否 若 (strncmp(gp, "esi", 3) == 0) { r = 6; gp = gp + 3; } 否 若 (strncmp(gp, "edi", 3) == 0) { r = 7; gp = gp + 3; } 否 若 (strncmp(gp, "rax", 3) == 0) { r = 0; gp = gp + 3; } 否 若 (strncmp(gp, "rcx", 3) == 0) { r = 1; gp = gp + 3; } 否 若 (strncmp(gp, "rdx", 3) == 0) { r = 2; gp = gp + 3; } 否 若 (strncmp(gp, "rbx", 3) == 0) { r = 3; gp = gp + 3; } 否 若 (strncmp(gp, "rsp", 3) == 0) { r = 4; gp = gp + 3; } 否 若 (strncmp(gp, "rbp", 3) == 0) { r = 5; gp = gp + 3; } 否 若 (strncmp(gp, "rsi", 3) == 0) { r = 6; gp = gp + 3; } 否 若 (strncmp(gp, "rdi", 3) == 0) { r = 7; gp = gp + 3; } 否 若 (strncmp(gp, "r8", 2) == 0) { r = 8; gp = gp + 2; } 否 若 (strncmp(gp, "r9", 2) == 0) { r = 9; gp = gp + 2; } 否 若 (strncmp(gp, "r10", 3) == 0) { r = 10; gp = gp + 3; } 否 若 (strncmp(gp, "r11", 3) == 0) { r = 11; gp = gp + 3; } 否 若 (strncmp(gp, "r12", 3) == 0) { r = 12; gp = gp + 3; } 否 若 (strncmp(gp, "r13", 3) == 0) { r = 13; gp = gp + 3; } 否 若 (strncmp(gp, "r14", 3) == 0) { r = 14; gp = gp + 3; } 否 若 (strncmp(gp, "r15", 3) == 0) { r = 15; gp = gp + 3; } 否 若 (strncmp(gp, "al", 2) == 0) { r = 0; gp = gp + 2; } 否 若 (strncmp(gp, "cl", 2) == 0) { r = 1; gp = gp + 2; } 否 若 (strncmp(gp, "dl", 2) == 0) { r = 2; gp = gp + 2; } 否 若 (strncmp(gp, "bl", 2) == 0) { r = 3; gp = gp + 2; } 返 r; } /* R599b: 补 8 位 寄存器 名 (al/cl) — 原 静默 返 -1 ⟹ 整条 指令 被 丢弃 */
-静 空 MEM(空) { 整 d = 0; SK(); 若 (gp[0] == '[') { gp = gp + 1; SK(); RG(); SK(); 整 sign = 1; 若 (gp[0] == '+') gp = gp + 1; 否 若 (gp[0] == '-') { sign = -1; gp = gp + 1; } d = NUM() * sign; SK(); 若 (gp[0] == ']') gp = gp + 1; } mem_result = d; }
+静 空 MEM(空) { 整 d = 0; SK(); 若 (gp[0] == '[') { gp = gp + 1; SK(); mem_base = RG(); SK(); 整 sign = 1; 若 (gp[0] == '+') gp = gp + 1; 否 若 (gp[0] == '-') { sign = -1; gp = gp + 1; } d = NUM() * sign; SK(); 若 (gp[0] == ']') gp = gp + 1; } mem_result = d; }
 静 整 缩移 = 0; /* R599c-T10b: 优化链累积位移 — opt_zh 缩短代码后, qcc 写死的 [rip+N] 需整体平移 */
 静 空 RIPS(空) { 整 d = 0; SK(); 若 (gp[0] == '[') { gp = gp + 1; SK(); 若 (strncmp(gp, "rip", 3) == 0) gp = gp + 3; SK(); 整 sign = 1; 若 (gp[0] == '+') gp = gp + 1; 否 若 (gp[0] == '-') { sign = -1; gp = gp + 1; } d = NUM() * sign; SK(); 若 (gp[0] == ']') gp = gp + 1; } mem_result = d; } /* R599c-T10b: 返回 qcc 写的**原始**位移 N; 由 b4r 登记后统一回填 */
 静 整 LR(空) { 字 lnm[32]; 整 li = 0; SK(); 循环 (gp[0] != 0 && gp[0] != ' ' && gp[0] != '\t' && gp[0] != '\r' && gp[0] != '\n' && gp[0] != ',' && li < 31) { lnm[li] = gp[0]; li = li + 1; gp = gp + 1; } lnm[li] = 0; 整 li2 = LF(lnm); 若 (li2 < 0 && lnm[0] != 0 && ln < 600000) { strcpy(labels[ln].name, lnm); labels[ln].pos = 0; labels[ln].defined = 0; labels[ln].line = line_no; lhins(ln); li2 = ln; ln = ln + 1; } 返 li2; }
@@ -456,7 +457,7 @@
 
 /* ---- 分派函数 3：寻址/内存 ---- */
 静 整 dispatch3(字 *mn) {
-    若 (strcmp(mn, "取址") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (gp[0] == ',' || gp[0] == '[') gp = gp + 1; MEM(); 整 v = mem_result; lea_r_mrsp(r, v); } 返 1; }
+    若 (strcmp(mn, "取址") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (gp[0] == ',' || gp[0] == '[') gp = gp + 1; MEM(); 整 v = mem_result; 若 (mem_base == 4) lea_r_mrsp(r, v); 否 lea_r_mr(r, mem_base, v); } 返 1; }
     若 (strcmp(mn, "取帧址") == 0) { SK(); 整 r = RG(); 若 (r >= 0) { 若 (gp[0] == ',' || gp[0] == '[') gp = gp + 1; MEM(); 整 v = mem_result; lea_r_mbrp(r, v); } 返 1; }
     若 (strcmp(mn, "取静址") == 0) { SK(); 若 (gp[0] == 'r') gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; RIPS(); 整 v = mem_result; lea_rax_rip(v); 返 1; }
     若 (strcmp(mn, "取静32") == 0) { SK(); 若 (strncmp(gp, "eax", 3) == 0) gp = gp + 3; SK(); 若 (gp[0] == ',') gp = gp + 1; RIPS(); 整 v = mem_result; mov_eax_rip(v); 返 1; }

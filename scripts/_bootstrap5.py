@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """自举五代 + SHA 校验"""
 import subprocess, hashlib, os, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 os.chdir(r'C:\Users\Administrator\Desktop\qiyuan-jiayan')
 for i in range(1, 6):

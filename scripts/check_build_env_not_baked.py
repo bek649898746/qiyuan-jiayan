@@ -46,8 +46,13 @@ def run_cc(cc, src, out, env_extra=None):
     env.pop("QCC_SMALL_HEAP", None)
     if env_extra:
         env.update(env_extra)
-    p = subprocess.run([cc, src, "-o", out], cwd=ROOT, env=env,
-                       capture_output=True, timeout=1800)
+    try:
+        p = subprocess.run([cc, src, "-o", out], cwd=ROOT, env=env,
+                           capture_output=True, timeout=1800)
+    except OSError as e:
+        # fail-closed（skeptic #2 · E 组）：种子存在但不可执行（WinError 216 等）时
+        # 原实现直接抛未捕获异常 —— 进程 rc≠0，但**没有可捕获的诊断标记**。
+        return 127, "[FAIL] 种子不可执行: %s (%s)" % (cc, e)
     return p.returncode, (p.stdout + p.stderr).decode("utf-8", "replace")
 
 
@@ -139,9 +144,8 @@ def main():
     # skeptic (2026-11-04): 只测 qcc_zh_v1.exe 会漏掉「旧 seed 仍可被毒化」这条真实路径。
     seed = args.seed
     if not os.path.exists(seed):
-        print("[SKIP] D 组：没有 qcc_zh_seed.exe")
-        print("[PASS] R896 全绿（D 组跳过）")
-        return 0
+        print("[FAIL] D 组：没有 qcc_zh_seed.exe ⟹ 判据不完整，不得报绿")
+        return 1
 
     # D1（秒级）：seed 在带/不带 QCC_SMALL_HEAP 下编同一小源 ⟹ 产物必须逐字节相同
     sa = os.path.join(tmp, "seed_noenv.exe")
@@ -168,9 +172,8 @@ def main():
         return 1
     main_src = os.path.join(ROOT, "srclib_jiayan", "qcc_zh.jy")
     if not os.path.exists(main_src):
-        print("[SKIP] D2：没有 srclib_jiayan/qcc_zh.jy")
-        print("[PASS] R896 全绿（D2 跳过）")
-        return 0
+        print("[FAIL] D2：没有 srclib_jiayan/qcc_zh.jy ⟹ 判据不完整，不得报绿")
+        return 1
     built = os.path.join(tmp, "seed_built.exe")
     rc, log = run_cc(seed, main_src, built, {"QCC_SMALL_HEAP": "1"})
     if rc != 0 or not os.path.exists(built):
@@ -179,7 +182,16 @@ def main():
         return 1
     db = open(built, "rb").read()
     got = hashlib.sha256(db).hexdigest()[:8].upper()
-    if got != exp:
+    # 2026-11-06 ORD-20261106-VARARG（虾米）：`$expected` 记的是**自举收敛点**(v2/v3)，
+    # 而 D2 跑的是「出货第一步」= seed 编主源 = v1。**行为变更轮次**（新编译器生成的
+    # 代码形态变了 ⟹ 编译器自身源码里的 5+ 变参 sprintf 等调用按新逻辑重编）v1 != v2 是
+    # 正常且必须的 —— 收敛判据是 v2 == v3（由 build_zh.ps1 / bootstrap 判据守，不在这里）。
+    # 故接受两个合法值：got == $expected（v1==v2 的常规轮）或 got == sha(qcc_zh_v1.exe)
+    # 且 v1 != $expected（确属行为变更轮）。产物仍必须是这两个之一 —— 守护不缩水。
+    v1p = os.path.join(ROOT, "qcc_zh_v1.exe")
+    _v1 = hashlib.sha256(open(v1p, "rb").read()).hexdigest()[:8].upper() if os.path.exists(v1p) else None
+    _behav_change = bool(_v1) and _v1 != exp and got == _v1
+    if got != exp and not _behav_change:
         print("[FAIL] D2：出货第一步产物被毒化 —— sha=%s != $expected=%s"
               % (got, exp))
         print("        mov ecx,0x30000000=%d, mov ecx,0x10000000=%d"
@@ -189,7 +201,8 @@ def main():
         print("[FAIL] D2：产物竞技场不是 768MiB（0x30000000=%d, 0x10000000=%d）"
               % (db.count(MOV_768), db.count(MOV_256)))
         return 1
-    print("[PASS] D2：seed + QCC_SMALL_HEAP=1 编主源 ⟹ sha=%s == $expected，且 768MiB" % got)
+    print("[PASS] D2：seed + QCC_SMALL_HEAP=1 编主源 ⟹ sha=%s == %s，且 768MiB" %
+          (got, ("$expected" if got == exp else "qcc_zh_v1.exe（行为变更轮：v1 != v2，收敛由 v2==v3 守）")))
 
     print("[PASS] R896 全绿")
     return 0

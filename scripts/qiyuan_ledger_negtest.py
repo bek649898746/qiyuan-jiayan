@@ -15,6 +15,7 @@
   ③ terminal 的「在仓」判据 只覆盖 未解决/部分行 ⟹ 已解决行 的 复算列 指向不在仓脚本 无人管。
 """
 import io, os, re, shutil, subprocess, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 GB = r'C:\Users\Administrator\Desktop\grok-build'

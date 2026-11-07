@@ -11,6 +11,7 @@
 观察（plan 要求 出现 三项）: `待核=0` · `无证据条目=0` · `未在仓最小复现=0`
 """
 import io, os, re, subprocess, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 P = os.path.join(QJ, 'scripts', 'qiyuan_ledger_facts.tsv')

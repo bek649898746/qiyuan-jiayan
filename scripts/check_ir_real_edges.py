@@ -16,6 +16,7 @@
   python scripts\\check_ir_real_edges.py --selftest        # 内置 **负向测试**（判据 能失败）
 """
 import io, os, re, subprocess, sys
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'

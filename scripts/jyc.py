@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import subprocess
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 QCC = os.path.join(ROOT, 'qcc_x86.exe')

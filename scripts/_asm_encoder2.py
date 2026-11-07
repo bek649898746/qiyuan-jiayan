@@ -12,6 +12,7 @@ encoder = exec_src[start+12:end]
 
 # 但脚本已运行一次 (插入到错误位置). 先回滚: git checkout
 import subprocess, os
+import qcc_tmp  # noqa: F401  —— 引入子进程超时护栏（ORD-122）
 os.chdir(r'C:\Users\Administrator\Desktop\qiyuan-jiayan')
 subprocess.run(['git','checkout','--','srclib/qcc_x86.c'])
 

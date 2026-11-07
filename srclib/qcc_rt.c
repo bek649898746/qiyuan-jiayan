@@ -1789,3 +1789,53 @@ int throw_ex(int gen, int code, const char *msg) {
     (void)msg;
     return code;
 }
+
+
+/* ============================================================
+   ORD-20261104-105 ②（大哥 2026-11-06 裁定）：结构化并发两态运行期。
+
+   为什么放在运行期而不是编译器里：
+     「失败 = 子线程返回非 0」原本要 `GetExitCodeThread`（不在导入表，加它要动
+     四张名字表的槽号）。这里改用**线程包装器**：子线程的返回值在包装器里当场拿到，
+     零导入改动、语义不变。
+
+   三个对外符号（编译器的糖层只换名字，不加代码生成分支）：
+     __qcc_sc_begin(模式)      0=失败各自 / 1=失败即停
+     __qcc_sc_create(&t, f, a) 已取消 ⟹ 不建线程（t 置 0）
+     __qcc_sc_join(&t)         join；失败码进 __sc_fail，失败即停时置取消
+     __qcc_sc_cancelled()      `检查取消()` 的落点
+   ============================================================ */
+static volatile int __sc_cancel = 0;
+static volatile int __sc_fail = 0;
+static volatile int __sc_mode = 0;
+
+typedef struct { void *fn; void *arg; } __sc_box;
+
+static unsigned long __stdcall __sc_thread(void *p) {
+    __sc_box *b = (__sc_box *)p;
+    int r = ((int(__stdcall *)(void *))b->fn)(b->arg);
+    if (r && !__sc_fail) { __sc_fail = r; if (__sc_mode == 1) __sc_cancel = 1;   /* 1=失败即停 才 取消；2=失败各自 只记账 */ }
+    free(b);
+    return (unsigned long)r;
+}
+
+void __qcc_sc_begin(int mode) { __sc_mode = mode; __sc_cancel = 0; __sc_fail = 0; }
+int  __qcc_sc_cancelled(void) { return __sc_cancel; }
+int  __qcc_sc_failed(void) { return __sc_fail; }
+
+void __qcc_sc_create(void **t, void *fn, void *arg) {
+    __sc_box *b;
+    if (!t) return;
+    if (__sc_cancel) { *t = 0; return; }
+    b = (__sc_box *)malloc(sizeof(__sc_box));
+    if (!b) { *t = 0; return; }
+    b->fn = fn; b->arg = arg;
+    *t = (void *)CreateThread(0, 0, (unsigned long(__stdcall *)(void *))__sc_thread, b, 0, 0);
+}
+
+void __qcc_sc_join(void **t) {
+    if (!t || !*t) return;
+    WaitForSingleObject(*t, 0xFFFFFFFF);
+    CloseHandle(*t);
+    *t = 0;
+}

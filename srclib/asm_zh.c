@@ -46,6 +46,7 @@ static void mov_r12_cl(void) { rex(0,0,0,1);b(0x88);modrm(0,1,4);b(0x24); }
 static void mov_r12_al(void) { rex(0,0,0,1);b(0x88);modrm(0,0,4);b(0x24); }
 static void movzx_eax_al(void) { b(0x0F);b(0xB6);modrm(3,0,0); }
 static void lea_r_mrsp(int r, int d) { rex(1,r&8,0,0);b(0x8D);if(d<128&&d>=-128){modrm(1,r&7,4);b(0x24);b(d);}else{modrm(2,r&7,4);b(0x24);b4(d);} }
+static void lea_r_mr(int r, int base, int d) { int sib=((base&7)==4); rex(1,r&8,0,base&8);b(0x8D);if(d<128&&d>=-128){modrm(1,r&7,base&7);if(sib)b(0x24);b(d);}else{modrm(2,r&7,base&7);if(sib)b(0x24);b4(d);} } /* ORD-20261102-85 */
 static void lea_r_mbrp(int r, int d) { rex(1,r&8,0,0);b(0x8D);if(d<128&&d>=-128){modrm(1,r&7,5);b(d);}else{modrm(2,r&7,5);b4(d);} }
 static void lea_rax_rip(int d) { rex(1,0,0,0);b(0x8D);b(0x05);b4(d); }
 static void alu_rr(int op, int d, int s) {
@@ -161,6 +162,7 @@ static void write_pe(FILE *f, int entry_rva) {
 }
 
 /* ---- Assembler state ---- */
+static int mem_base = 4; /* ORD-20261102-85: MEM 解析到的基址寄存器 */
 
 static int asm_assemble(const char *src, int base, int emit_data) {
     #define LF(n) ({ int li=-1;for(int i=0;i<ln;i++)if(!strcmp(labels[i].name,n)){li=i;break;}li;})
@@ -175,7 +177,7 @@ static int asm_assemble(const char *src, int base, int emit_data) {
     #define SK while(*p==' '||*p=='\t'||*p=='\r')p++
     #define NUM ({int s=1,v=0;SK;if(*p=='-'){s=-1;p++;}if(*p=='0'&&p[1]=='x'){p+=2;while((*p>='0'&&*p<='9')||(*p>='a'&&*p<='f')){v=v*16+(*p<='9'?*p-'0':*p-'a'+10);p++;}}else while(*p>='0'&&*p<='9'){v=v*10+(*p-'0');p++;}s*v;})
     #define RG ({int r=-1;SK;if(*p=='r'&&p[1]>='0'&&p[1]<='9'){p++;r=0;while(*p>='0'&&*p<='9'){r=r*10+(*p-'0');p++;}}else if(!strncmp(p,"eax",3)){r=0;p+=3;}else if(!strncmp(p,"ecx",3)){r=1;p+=3;}else if(!strncmp(p,"edx",3)){r=2;p+=3;}else if(!strncmp(p,"ebx",3)){r=3;p+=3;}else if(!strncmp(p,"esp",3)){r=4;p+=3;}else if(!strncmp(p,"ebp",3)){r=5;p+=3;}else if(!strncmp(p,"esi",3)){r=6;p+=3;}else if(!strncmp(p,"edi",3)){r=7;p+=3;}else if(!strncmp(p,"rax",3)){r=0;p+=3;}else if(!strncmp(p,"rcx",3)){r=1;p+=3;}else if(!strncmp(p,"rdx",3)){r=2;p+=3;}else if(!strncmp(p,"rbx",3)){r=3;p+=3;}else if(!strncmp(p,"rsp",3)){r=4;p+=3;}else if(!strncmp(p,"rbp",3)){r=5;p+=3;}else if(!strncmp(p,"rsi",3)){r=6;p+=3;}else if(!strncmp(p,"rdi",3)){r=7;p+=3;}else if(!strncmp(p,"r8",2)){r=8;p+=2;}else if(!strncmp(p,"r9",2)){r=9;p+=2;}else if(!strncmp(p,"r10",3)){r=10;p+=3;}else if(!strncmp(p,"r11",3)){r=11;p+=3;}else if(!strncmp(p,"r12",3)){r=12;p+=3;}else if(!strncmp(p,"r13",3)){r=13;p+=3;}else if(!strncmp(p,"r14",3)){r=14;p+=3;}else if(!strncmp(p,"r15",3)){r=15;p+=3;} r;})
-    #define MEM ({int d=0;SK;if(*p=='['){p++;SK;int br=RG;(void)br;SK;int sign=1;if(*p=='+')p++;else if(*p=='-'){sign=-1;p++;}d=NUM*sign;SK;if(*p==']')p++;} d;})
+    #define MEM ({int d=0;SK;if(*p=='['){p++;SK;mem_base=RG;SK;int sign=1;if(*p=='+')p++;else if(*p=='-'){sign=-1;p++;}d=NUM*sign;SK;if(*p==']')p++;} d;})
     /* RIP-relative: parse "[rip+N]" bare displacement (fix 2026-08-03:
        qcc -S emits 取静32/存静64/取静址 as "[rip+N]"; MEM's RG failed on
        "rip" so disp was always 0 -> H1!=H2). */
@@ -427,7 +429,7 @@ else if(!strcmp(mn,"存32")){SK;if(*p=='[')p++;int m=RG;SK;if(*p==']')p++;SK;if(
         else if(!strcmp(mn,"比较字节")){b(0x38);modrm(3,2,0);}
         else if(!strcmp(mn,"自减")){int r=RG;if(r>=8)b(0x41);if(r>=0){b(0xFF);modrm(3,1,r&7);}}
         else if(!strcmp(mn,"写字符")){mov_r12_al();}
-        else if(!strcmp(mn,"取址")){SK;int r=RG;if(r>=0){if(*p==','||*p=='[')p++;int v=MEM;lea_r_mrsp(r,v);}}
+        else if(!strcmp(mn,"取址")){SK;int r=RG;if(r>=0){if(*p==','||*p=='[')p++;int v=MEM;if(mem_base==4)lea_r_mrsp(r,v);else lea_r_mr(r,mem_base,v);}}
         else if(!strcmp(mn,"取帧址")){SK;int r=RG;if(r>=0){if(*p==','||*p=='[')p++;int v=MEM;lea_r_mbrp(r,v);}}
         else if(!strcmp(mn,"取静址")){SK;if(*p=='r')p+=3;SK;if(*p==',')p++;int v=RIPS;lea_rax_rip(v);}
         else if(!strcmp(mn,"取静32")){SK;if(!strncmp(p,"eax",3))p+=3;SK;if(*p==',')p++;int v=RIPS;mov_eax_rip(v);}
