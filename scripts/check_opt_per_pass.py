@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """逐条 pass 精确对账判据器（plan Verification 1）
 
 对**每一类** pass 造一个最小触发输入（`.asm`），走真实链路
@@ -79,8 +79,9 @@ CLASS_KEYS = [
     ('帧栈存取同址', r'帧栈存取同址 (\d+)'), ('死值写覆盖', r'死值写覆盖 (\d+)'),
     ('零栈调整', r'零栈调整 (\d+)'), ('G-DCE', r'G-DCE (\d+)'),
     ('比较分支融合', r'比较分支融合 (\d+)'), ('算术立即融合', r'算术立即融合 (\d+)'),
+    ('算术立即寄存器形态', r'算术立即寄存器形态 (\d+)'),   # ORD-156 ⑫乙 拆分后新增计数
     ('循环槽提升', r'LSP 槽=(\d+)'), ('跨块转发', r'跨块转发 (\d+)'),
-    ('压栈回读', r'压栈回读 (\d+)'), ('立即缩短', r'立即缩短 (\d+)'),
+    ('压栈回读', r'压栈回读 (\d+)'), ('立即缩短', r'立即缩短 (\d+)'), ('立即直存', r'立即直存 (\d+)'),
 ]
 
 def sh(a, t=600):
@@ -392,7 +393,7 @@ for name, body, meta, target, *rest in CASES:
     txt = with_meta('_入口:\n' + body) if meta == '@AUTO' else '_入口:\n' + body + (meta or '')
     io.open(p, 'w', encoding='utf-8', newline='\n').write(txt)
     po = os.path.join(W, 'c_o.asm')
-    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross'])
+    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross', '--no-4b'])
     rc2, o2 = sh([ASM, p, '-o', os.path.join(W, 'c_n.exe')])       # 不加优化链
     rc3, o3 = sh([ASM, po, '-o', os.path.join(W, 'c_o.exe')])      # 优化链
     if rc1 or rc2 or rc3:
@@ -469,7 +470,7 @@ for idx, (name, code, pat, want) in enumerate(matrix_cells()):
     p = os.path.join(W, 'x_%d.asm' % idx)
     po = os.path.join(W, 'x_%d_o.asm' % idx)
     io.open(p, 'w', encoding='utf-8', newline='\n').write(code)
-    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross'])
+    rc1, o1 = sh([OPT, p, '-o', po, '--no-16', '--cross', '--no-4b'])
     rc2, o2 = sh([ASM, p, '-o', os.path.join(W, 'x_%d_n.exe' % idx)])
     rc3, o3 = sh([ASM, po, '-o', os.path.join(W, 'x_%d_o.exe' % idx)])
     if rc1 or rc2 or rc3:

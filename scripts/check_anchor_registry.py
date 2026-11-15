@@ -54,6 +54,11 @@ EXCLUDED = {
     'feat_typedef.c': 'typedef 调研探针（非回归锚）',
     'feat_jyc_lib.c': '标准库吃狗粮程序（需链接 jylib，非单文件锚）',
     'feat_overload2.c': '运算符重载调研探针（C++ 语义模拟，非回归锚）',
+    # ORD-20261108-151 blocked（A6112 未实现）：冒号吞条件修好后移入 CORE_FEAT —— 现在它们 rc=0（吞掉冒号），不能当负锚跑
+    'feat_zh_colon_if_neg.c': 'ORD-20261108-151 blocked: 若(假): 静默吞条件，修后（A6112）移入 CORE_FEAT（由 check_colon_silent.py 驱动）',
+    'feat_zh_colon_else_neg.c': 'ORD-20261108-151 blocked: 否: 两分支都跑，修后移入 CORE_FEAT',
+    'feat_zh_colon_while_neg.c': 'ORD-20261108-151 blocked: 循环(真): 死循环，修后移入 CORE_FEAT',
+    'feat_zh_colon_for_neg.c': 'ORD-20261108-151 blocked: 遍(…): 体只跑一次，修后移入 CORE_FEAT',
 }
 
 STATUS_RE = re.compile(r'(?s)<!-- GEN:STATUS:BEGIN.*?GEN:STATUS:END -->')

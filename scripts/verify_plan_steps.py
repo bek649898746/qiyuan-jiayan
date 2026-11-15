@@ -51,7 +51,10 @@ def _norm_cc(cmd):
     """把 `--cc <产物>` 归一化 —— 修前腿**本来**就是「同一支判据换一个被测产物」，
     因此 `--cc` 的值允许不同（其余参数必须逐字相同）。2026-10-31（skeptic）：修前回执
     的 `$` 行改为记录**真实**的修前产物路径后，原「前缀逐字匹配」会把它误判为非同源。"""
-    return re.sub(r'--cc\s+\S+', '--cc <CC>', (cmd or '').strip())
+    s = (cmd or '').strip()
+    s = re.sub(r'--cc\s+\S+', '--cc <CC>', s)
+    s = re.sub(r'--opt\s+\S+', '--opt <OPT>', s)
+    return s
 
 def need(fails, tag, ok, extra=''):
     print('[%-18s] %s%s' % (tag, 'PASS' if ok else 'FAIL', ('（%s）' % extra) if extra else ''))

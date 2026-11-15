@@ -1,4 +1,4 @@
-﻿# 启元 · 甲言
+# 启元 · 甲言
 
 > **English?** → [`README.en.md`](README.en.md) — 99% English, written for non-Chinese readers and AI agents.
 
@@ -99,6 +99,8 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 > | **快速上手 + 怎么算跑对了** | [`manual/快速上手.md`](manual/快速上手.md) |
 > | **源码怎么读** | [`manual/源码导航.md`](manual/源码导航.md) |
 > | **中文关键字（38 个）** | [`manual/中文关键字表.md`](manual/中文关键字表.md) |
+> | **所有「开关」—— 命令行参数 + 环境变量（75 个）** | [`manual/甲言开关手册.md`](manual/甲言开关手册.md) —— 27 个参数 + 48 个环境变量，分「改产物 / 只观测 / 诊断 / 内部 / **已失效**」五档 |
+> | **编译报错 / 产物不对 / 想追内部状态** | [`manual/白盒调试指南.md`](manual/白盒调试指南.md) —— 按症状查 + 每个开关实测输出行数 |
 > | **真泛型单态化**（`泛型函数`+`实例`，与宏展开的区别） | [`manual/泛型单态化.md`](manual/泛型单态化.md) —— 含副作用铁证（实参求值一次 vs 多次） |
 > | **编译期比 C 多拦什么**（可空/越界/未初始化/单赋值） | [`manual/编译期检查清单.md`](manual/编译期检查清单.md) —— 每条附实测报错原文 + gcc 对比 |
 > | **工程优势（可量化的）** | [`manual/工程优势清单.md`](manual/工程优势清单.md) —— 14.54MB vs rustc 1292MB · 接口摘要省 93.3% · 确定性构建 · fail-closed 自证 |

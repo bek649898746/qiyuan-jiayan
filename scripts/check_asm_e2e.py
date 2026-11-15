@@ -19,6 +19,41 @@ if '--cc' in sys.argv:
 WORK = os.path.join('build', 'asm_e2e')
 os.makedirs(WORK, exist_ok=True)
 
+# 中文汇编器：不再假定它已在 cwd/PATH（原写法 `asm_zh.exe` 裸名 ⟹ 环境里没有就 WinError 2，
+# 判据恒 FAIL 但原因与代码无关）。按仓库内的既有构建产物顺序解析。
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASM = None
+
+
+def _ensure_asm():
+    """取一个**与当前编译器 -S 输出兼容**的 asm_zh：
+    仓库里现成的两个构建（probes/S_text 10-16、build/asm_zh_c_build 11-06）都落后于
+    编译器新加的指令（`存8` / `符号扩展64`）⟹ 以 `srclib/asm_zh.jy` 的新鲜度为准则，
+    过期就用 `CC` 重建到 `build/asm_zh.exe`（构建产物，不入库）。"""
+    src = os.path.join(_REPO, 'srclib', 'asm_zh.jy')
+    out = os.path.join(_REPO, 'build', 'asm_zh.exe')
+    try:
+        fresh = os.path.exists(out) and os.path.exists(src) and os.path.getmtime(out) >= os.path.getmtime(src)
+    except OSError:
+        fresh = False
+    if not fresh and os.path.exists(src):
+        try:
+            r = subprocess.run([CC, src, '-o', out], capture_output=True, timeout=1800)
+            if r.returncode == 0 and os.path.exists(out):
+                return out
+        except Exception:
+            pass
+    for c in (out,
+              os.path.join(_REPO, 'asm_zh.exe'),
+              os.path.join(_REPO, 'build', 'asm_zh_c_build_20261106.exe'),
+              os.path.join(_REPO, 'probes', 'S_text', 'asm_zh.exe')):
+        if os.path.exists(c):
+            return c
+    return None
+
+
+ASM = _ensure_asm()
+
 CASES = [
     ('t_min.c', '        int main(void){return 42;}\n', 42, ''),
     ('t_prt.c', '        #include <stdio.h>\n        int main(void){ printf("CNE2E 42\\n"); return 0; }\n', 0, 'CNE2E 42'),
@@ -62,7 +97,11 @@ for name, src, erc, eout in CASES:
         fails.append('%s: 编译器 -S 失败 rc=%d' % (name, r.returncode))
         print('  [FAIL] %s 编译器 -S rc=%d' % (name, r.returncode))
         continue
-    ra = subprocess.run(['asm_zh.exe', base + '.exe.asm', '-o', base + '_a.exe'], capture_output=True, timeout=900)
+    if ASM is None:
+        fails.append('asm_zh 未找到（仓库内 asm_zh.exe / build\\ / probes\\S_text\\ 均无）')
+        print('  [FAIL] asm_zh 未找到')
+        break
+    ra = subprocess.run([ASM, base + '.exe.asm', '-o', base + '_a.exe'], capture_output=True, timeout=900)
     if ra.returncode != 0 or not os.path.exists(base + '_a.exe'):
         fails.append('%s: asm_zh 汇编失败 rc=%d' % (name, ra.returncode))
         print('  [FAIL] %s asm_zh rc=%d' % (name, ra.returncode))

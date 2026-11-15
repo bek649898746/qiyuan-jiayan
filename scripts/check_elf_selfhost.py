@@ -103,9 +103,13 @@ def main():
         red.append('3 tiny 闭环')
 
     # 4) 自编译一次
+    #    ORD-20261108-143：elf 产物写 **WSL 原生 /tmp**，不写 /mnt/c。
+    #    实测同一编译器同一源：-o /tmp 36.3 s ｜ -o /mnt/c 232.9 s（9p 写 19 MB，6.4×）。
+    wtmp = '/tmp/qcc_selfhost_%d' % os.getpid()
     v1 = os.path.join(work, 'v1')
-    rc, out, err = wsl('rm -f %s/v1; "%s" %s -o %s/v1 > /dev/null 2>&1; echo "E=$?"; "%s/v1" --help > /dev/null 2>&1; echo "H=$?"'
-                       % (W, wsl_path(elfcc), MAIN_SRC, W, W))
+    rc, out, err = wsl('mkdir -p {t}; rm -f {t}/v1; "{cc}" {src} -o {t}/v1 > /dev/null 2>&1; echo "E=$?"; '
+                       '"{t}/v1" --help > /dev/null 2>&1; echo "H=$?"; cp {t}/v1 {w}/v1 2>/dev/null; echo "C=$?"'
+                       .format(t=wtmp, cc=wsl_path(elfcc), src=MAIN_SRC, w=W))
     v1_is_elf = os.path.exists(v1) and io.open(v1, 'rb').read(4) == b'\x7fELF'
     ok4 = ('E=0' in out) and ('H=0' in out) and v1_is_elf
     print('[%s] 4 自编译 v1：%s' % ('PASS' if ok4 else 'FAIL', out.strip().replace('\n', ' ')))
@@ -114,9 +118,11 @@ def main():
 
     # 5) 固定点 v1 → v2 → v3
     if ok4:
-        rc, out, err = wsl('rm -f %s/v2 %s/v3; "%s/v1" %s -o %s/v2 > /dev/null 2>&1; "%s/v2" %s -o %s/v3 > /dev/null 2>&1; '
-                           'sha256sum %s/v1 %s/v2 %s/v3 2>/dev/null | cut -d" " -f1'
-                           % (W, W, W, MAIN_SRC, W, W, MAIN_SRC, W, W, W, W))
+        rc, out, err = wsl('mkdir -p {t}; rm -f {t}/v2 {t}/v3; "{t}/v1" {src} -o {t}/v2 > /dev/null 2>&1; '
+                           '"{t}/v2" {src} -o {t}/v3 > /dev/null 2>&1; '
+                           'sha256sum {t}/v1 {t}/v2 {t}/v3 2>/dev/null | cut -d" " -f1; '
+                           'cp {t}/v2 {w}/v2 2>/dev/null; cp {t}/v3 {w}/v3 2>/dev/null; true'
+                           .format(t=wtmp, src=MAIN_SRC, w=W))
         shas = [l.strip() for l in out.splitlines() if len(l.strip()) == 64]
         ok5 = len(shas) == 3 and len(set(shas)) == 1
         print('[%s] 5 固定点：%s' % ('PASS' if ok5 else 'FAIL', ['%s…' % s[:16] for s in shas]))

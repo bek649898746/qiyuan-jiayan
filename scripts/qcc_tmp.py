@@ -47,7 +47,10 @@ def tmp_dir(prefix):
 # 判据：超时抛 `subprocess.TimeoutExpired` ⟹ 脚本红，**不静默、不永久挂**。
 import subprocess as _subprocess
 
-_DEFAULT_TIMEOUT = float(os.environ.get('QCC_SUBPROC_TIMEOUT') or 60.0)
+_DEFAULT_TIMEOUT = float(os.environ.get('QCC_SUBPROC_TIMEOUT') or 240.0)
+# 2026-11-08（ORD-20261108-143 同源）：60 s 对「编 4.6 MB 主源」太紧 —— 空载 35–40 s，
+# 4 路并行时实测 60.2 / 66.8 s（check_ord70_ab 自己的注释已记）⟹ ord70 假红。
+# 这是**护栏**不是性能判据：护栏要比被测任务宽，性能判据另有专门的计时脚本。
 _BUILD_TIMEOUT = float(os.environ.get('QCC_SUBPROC_BUILD_TIMEOUT') or 600.0)
 _BUILD_HINTS = ('build_zh', 'gcc', 'g++', 'cc1', 'ld.exe', 'make', 'cmake',
                 'qcc_x86', 'asm_zh', 'msbuild', 'cl.exe')

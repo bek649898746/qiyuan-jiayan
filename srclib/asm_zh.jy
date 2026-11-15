@@ -45,6 +45,8 @@
 静 空 mov_mbrp_reg(整 disp, 整 reg) { rex(0, reg & 8, 0, 0); b(0x89); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); } 否 { modrm(2, reg & 7, 5); b4(disp); } }
 静 空 mov_reg_mbrp(整 reg, 整 disp) { rex(0, reg & 8, 0, 0); b(0x8B); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); } 否 { modrm(2, reg & 7, 5); b4(disp); } }
 静 空 mov_mbrp_reg64(整 disp, 整 reg) { rex(1, reg & 8, 0, 0); b(0x89); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); } 否 { modrm(2, reg & 7, 5); b4(disp); } }
+/* P2（ORD-20261108-146）：mov dword [rbp+disp], imm32（C7 /0；disp8 7B / disp32 10B）。 */
+静 空 mov_mbrp_imm(整 disp, 整 imm) { b(0xC7); 若 (disp < 128 && disp >= -128) { modrm(1, 0, 5); b(disp); } 否 { modrm(2, 0, 5); b4(disp); } b4(imm); }
 静 空 mov_reg_mbrp64(整 reg, 整 disp) { rex(1, reg & 8, 0, 0); b(0x8B); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 5); b(disp); } 否 { modrm(2, reg & 7, 5); b4(disp); } }
 静 空 mov_mrsp_reg64(整 disp, 整 reg) { rex(1, reg & 8, 0, 0); b(0x89); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); } 否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); } }
 静 空 mov_reg_mrsp64(整 reg, 整 disp) { rex(1, reg & 8, 0, 0); b(0x8B); 若 (disp < 128 && disp >= -128) { modrm(1, reg & 7, 4); b(0x24); b(disp); } 否 { modrm(2, reg & 7, 4); b(0x24); b4(disp); } }
@@ -472,6 +474,7 @@
     若 (strcmp(mn, "存帧64") == 0) { MEM(); 整 v = mem_result; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 r = RG(); mov_mbrp_reg64(v, r); 返 1; }
     若 (strcmp(mn, "取帧64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; MEM(); 整 v = mem_result; 若 (r >= 0) mov_reg_mbrp64(r, v); 返 1; }
     若 (strcmp(mn, "存帧32") == 0) { MEM(); 整 v = mem_result; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 r = RG(); mov_mbrp_reg(v, r); 返 1; }
+    若 (strcmp(mn, "存帧立32") == 0) { MEM(); 整 v = mem_result; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 im = NUM(); mov_mbrp_imm(v, im); 返 1; }
     若 (strcmp(mn, "取帧32") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; MEM(); 整 v = mem_result; 若 (r >= 0) mov_reg_mbrp(r, v); 返 1; }
     若 (strcmp(mn, "存栈64") == 0) { MEM(); 整 v = mem_result; SK(); 若 (gp[0] == ',') gp = gp + 1; 整 r = RG(); mov_mrsp_reg64(v, r); 返 1; }
     若 (strcmp(mn, "取栈64") == 0) { SK(); 整 r = RG(); SK(); 若 (gp[0] == ',') gp = gp + 1; MEM(); 整 v = mem_result; 若 (r >= 0) mov_reg_mrsp64(r, v); 返 1; }

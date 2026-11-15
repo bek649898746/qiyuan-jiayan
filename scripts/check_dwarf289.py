@@ -299,8 +299,15 @@ def main():
     exe = os.path.join(outdir, 'dwarf289_check.exe')
     if os.path.exists(exe):
         os.remove(exe)
+    # ORD-138/89（2026-11-08 虾米）：本闸的**被测对象是 DWARF 的行/文件归属**，不是裁入。
+    # 运行库链接期裁入会把未被用户代码触达的运行库函数整段移出产物 ⟹ 本闸原来的前提
+    # 「锚里必有一个 decl_file=2 的运行库函数（realloc）」不再成立（锚只调 printf 内建）。
+    # 故本闸固定用全量发射（QCC_NO_DCE=1）取样本；「裁入后调试表不得留僵尸区间」由
+    # `scripts/check_addr2func.py` 的①（单调/不重叠）在 DCE 打开的产物上单独守。
+    _env = dict(os.environ)
+    _env['QCC_NO_DCE'] = '1'
     r = subprocess.run([qcc, '-g', ANCHOR, '-o', exe], capture_output=True, text=True,
-                       encoding='utf-8', errors='replace')
+                       encoding='utf-8', errors='replace', env=_env)
     if r.returncode != 0 or not os.path.exists(exe):
         print('[闸④ #289 DWARF] ❌ 编译失败 rc=%d 编译器=%s\n%s'
               % (r.returncode, qcc, (r.stdout or '') + (r.stderr or '')))

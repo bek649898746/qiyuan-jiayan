@@ -38,9 +38,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A2F = os.path.join(ROOT, 'scripts', 'addr2func.py')
 
 SRC = '''#包含 <stdio.h>
+#包含 <string.h>
 静 整 助手甲(整 x) { 返 x * 3 + 1; }
 整 助手乙(整 x) { 返 助手甲(x) + 7; }
-整 主(空) { printf("%d\\n", 助手乙(5)); 返 0; }
+整 主(空) { 字 *p = strdup("ab"); printf("%d\\n", 助手乙(5) + (整)strlen(p)); free(p); 返 0; }
 '''
 
 

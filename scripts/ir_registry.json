@@ -1,0 +1,288 @@
+{
+  "_meta": {
+    "判据": "scripts/check_ir_registry.py",
+    "说明": "implemented=已有发射路径 / refused=有意拒收(须理由) / pending=未打通"
+  },
+  "形态": {
+    "二元:位": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:余": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:双表达式": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:右常量": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:浮点": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:浮点提升": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "二元:除": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "值引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "其它": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "函数地址:序越界": {
+      "evidence": "源码断言分支（不可达即通过）",
+      "reason": "内部不变量破坏：函数序号越界。同上，属断言而非可拒收形态。",
+      "status": "refused"
+    },
+    "分支:if": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "取址:非局部": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存:值引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存:其它目标": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存:无源子链": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存:无源子链(静态": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存:表达式目标": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "存储形态未支持": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "常量:浮": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=二元:浮点": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=二元:浮点提升": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=函数地址:序越界": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=存:无源子链": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=存:无源子链(静态": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=调:函数指针": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=载:下标基态": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "形态=载:自引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "截断": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "指针加": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "整转浮": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "条件跳": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "浮比": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "浮转整": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "浮转浮": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "短路": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "符扩": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "节点": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "节点:无L1算子": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "节点:越界": {
+      "evidence": "源码断言分支（不可达即通过）",
+      "reason": "内部不变量破坏：槽号越界。正常编译不应触发，触发即为编译器缺陷，不作为可降级形态。",
+      "status": "refused"
+    },
+    "调:函数指针": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "调:多实参": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "调:无实参": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "调用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "调用实参": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "调用实参个数不符": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "跳转": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "转直": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:下标": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:下标基态": {
+      "evidence": "2026-11-12 实测 lua 34 + 自编未触发（11-10 曾触发，已由后续刀修复）",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:值引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:其它": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:成员": {
+      "evidence": "2026-11-12 实测：UNIMPL 清零 —— lua 34（SAME 15 / DIFF 19，全部可编）+ IR 模式自编主编译器 qcc_zh.jy 成功（两次 SHA256 一致），该形态不再触发 IR-BACKEND-UNIMPL。打通路径：刀 534 字节跨度捕获 / 刀 535 载体补齐 / 刀 539 通用兜底（重跑 legacy 码生成）/ 刀 556 等。",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:自引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "载:解引用": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    },
+    "零扩": {
+      "evidence": "2026-11-12 实测：lua 34 + 自编主编译器未触发此形态",
+      "reason": "",
+      "status": "implemented"
+    }
+  }
+}

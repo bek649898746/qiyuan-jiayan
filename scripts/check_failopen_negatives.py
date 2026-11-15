@@ -94,6 +94,16 @@ def _remote_llms_refs():
     return got
 
 
+def _pmap(fn, items, workers=6):
+    """按输入顺序返回结果；子进程型任务（每次都要跑生成器）并发。"""
+    items = list(items)
+    if len(items) <= 1 or workers <= 1:
+        return [fn(x) for x in items]
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as ex:
+        return list(ex.map(fn, items))
+
+
 def _short(ref):
     rc, out = _git('rev-parse', '--short', ref)
     return out.decode('utf-8', 'surrogateescape').strip() if rc == 0 else '?'
@@ -122,7 +132,9 @@ def _mirror_blocked_row():
 
 def _mirror_cases(tag, mirrors, is_bad):
     """把远端镜像逐条落成机器状态行：PASS / EXTERNAL-BLOCKED row=<ID> / FAIL。"""
-    behind = [r for r in mirrors if is_bad(r)]
+    mirrors = list(mirrors)
+    flags = _pmap(is_bad, mirrors)   # ORD-20261108-143 同源：镜像逐条独立 ⟹ 并发
+    behind = [r for r, bad in zip(mirrors, flags) if bad]
     if not behind:
         return ['[CASE %s ref=%s sha=%s] PASS' % (tag, r, _short(r)) for r in mirrors], None
     row = _mirror_blocked_row()
@@ -141,8 +153,8 @@ def _check_llms_numbers():
         return ('[SKIP] G llms 数字（无发布线：没有任何本地分支同时带 llms.txt 与 status-sync.yml'
                 ' —— 126③ 对象确实不存在）', 'skip')
     bad = []
-    for r in refs:
-        rc, out = _gen_llms_check(r)
+    # ORD-20261108-143 同源：逐 ref 的生成器调用彼此独立 ⟹ 并发（顺序不变）
+    for r, (rc, out) in zip(refs, _pmap(_gen_llms_check, refs)):
         if rc != 0:
             bad.append('%s rc=%d\n%s' % (r, rc, out.strip()))
     if bad:
@@ -287,8 +299,12 @@ def _tamper_and_expect_red(fname, mutate, label):
 
 
 def run(cmd, cwd, timeout=1800):
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                       encoding='utf-8', errors='replace', timeout=timeout)
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # 2026-11-09：超时必须**响亮**（rc=-99 + 标记），不许把「挂起」误记成普通失败。
+        return -99, '[HANG] reason=timeout elapsed=%ss cmd=%s' % (timeout, cmd)
     return r.returncode, (r.stdout or '') + (r.stderr or '')
 
 
@@ -391,11 +407,25 @@ def main():
             d = os.path.join(tmp, 'b')
             os.makedirs(d)
             src = os.path.join(d, 'big.jy')
-            parts = ['整 主(空) {', '  整 a = 0;', '  整 b = 1;']
-            parts += ['  a = b + 1;'] * a.dang_lines
-            parts += ['  返 a;', '}', '']
+            # 2026-11-09（ORD-20261105-126/129 重跑）：**把语句摊到多个函数**。
+            # 旧实现把 15 万行全塞进 `主` 一个函数 ⟹ 编译器在该规模上是 O(n²)
+            # （实测 20k 语句 13.4s，150k 单函数 >900s 直接挂死 ⟹ 判据红成 HANG，
+            #  测的不再是 fail-open 而是编译器的二次方）。
+            # `档容=262144` 是**翻译单元级全局**容量，按函数摊开同样能撑爆；
+            # 实测 1500 函数 × 100 语句 = 15 万语句，22.3s 即触发 IR-DANG-FULL。
+            # 判据对象不变：档满必须 rc≠0 + 打印标记，不许静默丢。
+            nf = 1500
+            per = max(1, a.dang_lines // nf)
+            parts = []
+            for k in range(nf):
+                parts.append('整 f%d(整 seed) { 整 a = seed; 整 b = seed + 1;' % k)
+                parts += ['  a = b + 1;'] * per
+                parts.append('  返 a; }')
+            parts += ['整 主(空) {', '  整 s = 0;']
+            parts += ['  s = s + f%d(s);' % k for k in range(nf)]
+            parts += ['  返 s;', '}', '']
             open(src, 'w', encoding='utf-8').write('\n'.join(parts))
-            rc, txt = run([cc, src, '-o', os.path.join(d, 'big.exe')], ROOT)
+            rc, txt = run([cc, src, '-o', os.path.join(d, 'big.exe')], ROOT, timeout=600)
             ok = rc != 0 and 'IR-DANG-FULL' in txt
             print('[%s] B IR 档满 rc=%d marker=%s' % ('PASS' if ok else 'FAIL', rc, 'IR-DANG-FULL' in txt))
             if not ok:
@@ -440,7 +470,8 @@ def main():
 
         # F. **吞异常**：`check_ord34_scrash.py` 的清理 OSError 分支。
         #    注入：把它自己的 `os.remove` 换成抛 OSError 的桩，再调它的 main() ⟹ 必须 return 1 + [FAIL]
-        rc, txt = _inject('check_ord34_scrash.py', _patch_remove_oserror, [])
+        rc, txt = _inject('check_ord34_scrash.py', _patch_remove_oserror,
+                          ['--src', os.path.join(tmp, 'a', 't.jy')])
         ok = rc != 0 and '[FAIL] 清理临时文件失败' in txt
         print('[%s] F 注入 OSError rc=%d marker=%s' % ('PASS' if ok else 'FAIL', rc, '清理临时文件失败' in txt))
         if not ok:

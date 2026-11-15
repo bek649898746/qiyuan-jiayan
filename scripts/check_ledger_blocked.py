@@ -91,8 +91,9 @@ CHECKS = [
     ('ORD-20261103-99', '知识图谱 AI 查询接口', lambda s, d: '知识图谱查询' in s),
     ('ORD-20261103-102', 'IR 接管产物生成（S0→S4）', lambda s, d: 'IR 接管' in s),
     ('ORD-20261102-88', 'Linux x64 原生支持（RV64/后端矩阵）', lambda s, d: 'RV64' in s),
+    # ORD-20261102-88 已于 2026-11-07 收口（ELF 五段自举）：判据改为 scripts/check_elf_selfhost.py
     ('ORD-20261102-87', 'P23 平台接口预留', lambda s, d: 'P23' in s),
-    ('ORD-20261102-89', '产物体积分析 + 按需裁入', lambda s, d: '按需裁入' in s),
+    # ORD-20261102-89 已于 2026-11-07 收口（运行库链接期裁入）：判据改为 scripts/check_artifact_size.py
     ('ORD-20261102-92', 'OpenSSF 银牌可做部分', lambda s, d: 'OpenSSF' in s),
 ]
 

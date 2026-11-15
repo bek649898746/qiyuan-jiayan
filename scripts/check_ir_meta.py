@@ -31,7 +31,7 @@ os.chdir(ROOT)
 
 # 对照编译器 = **R880 改动前** 的 shipped（R879 收口 `1C153876`）。
 # 判据 **fail-closed**：文件缺失 / 哈希不符 ⟹ 判红（不许「无对照 也 PASS」）。
-CONTROL_SHA8 = '255F50CC'  # 2026-11-06 重钉（ORD-20261106 台账清零轮：通道 move / FMAP high_pc / fail-closed；对照 = 当前主源收口产物 seed==v1==v2==255F50CC）
+CONTROL_SHA8 = '3579594F'  # 2026-11-14 虾米 重钉（刀969+970 收口：34/34 逐字节等价；主源每改一刀按设计重钉）
 
 SRC = '''#include <stdio.h>
 int 算和(int n) {

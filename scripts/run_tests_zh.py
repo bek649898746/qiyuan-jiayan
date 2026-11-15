@@ -3074,6 +3074,14 @@ CORE_FEAT += [
     'scripts/feat_zh_neg_a1004_trailing_huofan.c',   # 取(0) 或返; → A1004（或返 的 advertised 形态，修前 rc=0 静默）
     'scripts/feat_zh_precedence_bitcmp_ok.c',   # ORD-28 bug2 (2026-10-28): 位运算 & ^ | 的优先级 — 修前 8 条里 6 条与 gcc 不符（2000 轮压测 B 组 2.40%）
     'scripts/feat_zh_macro_prepend_guard_ok.c',  # ORD-27 刀二 (2026-10-28): 用户宏不得替换前插受信代码里的同名 token（`#define c 42` 曾把 qcc_rt.c 的 `int c` 变 `int 42` ⟹ A1004）
+    'scripts/feat_zh_structtag_class_neg.c',   # ORD-20261108-152 P1 (2026-11-09): `构 类 {…}` 标签撞词 —— 修前 rc=0 静默读出垃圾 4209033；修后 A9001
+    'scripts/feat_zh_structtag_struct_neg.c',  # ORD-20261108-152 P1: `构 结构体 {…}` 同上（结构词 token 撞标签名）
+    'scripts/feat_zh_structtag_normal_ok.c',   # ORD-20261108-152 P1 对照: 正常标签 `构 圆` 不回归（x=1）
+    'scripts/feat_zh_structtag_anon_ok.c',     # ORD-20261108-152 P1 对照: 匿名结构体不回归（x=7）
+    'scripts/feat_zh_colon_plain_ok.c',        # ORD-20261108-151 对照: 无冒号 `若 (真) {…}` 必须正常（hit=100）
+    'scripts/feat_zh_alias_decl_ok.c',   # ORD-20261108-152 P2: 中文函数别名只在**调用位**生效 —— 变量/参数 可以叫 上限/下限/输出；调用 `上限(2.5)` 仍走 ceil（修前 声明位 被改名 ⟹ A9010）
+    'scripts/feat_zh_alias_call_ok.c',   # ORD-20261108-152 P2: 无同名声明时 上限/下限/输出 仍映射 ceil/floor/printf
+    'scripts/feat_zh_alias_use_ok.c',    # ORD-20261108-152 P2: 取值位(`p = 输出`) + 换行/注释 间隔 的调用 仍映射
 ]
 
 # R518 (2026-10-07 虾米 · 第 455 站第一百四十七轮 · B类攻坚 批L): **#46 编译器卡死 根治 (A6069)**
@@ -4003,8 +4011,33 @@ def run_one_test(name):
         if dep:
             return (name, True, 'SKIP:依赖库(@DEP 显式标注, 需配套文件/外部符号, 单文件不链)')
         if multi:
-            return (name, True, 'SKIP:无主多文件(@MULTI 显式标注, 需 -c + jyld 链接)')
-        return (name, False, '编译失败: ' + (err or '').strip()[:220])   # 其它真回归 → FAIL
+            # ORD-159 (2026-11-09 虾米): **@MULTI 真支持** —— 同组 `<stem>_?.c` 各 `-c` 编 .o，
+            #   `jyld` 链接成 h1，再落到下方 运行判定（原状: 直接 SKIP ⟹ 2 个锚「完全未判定」）。
+            import glob as _glob
+            _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            _d = os.path.dirname(src)
+            _b = os.path.basename(src)[:-2]
+            _stem = _b[:-2] if (_b.endswith('_a') or _b.endswith('_b')) else _b
+            _grp = sorted(_glob.glob(os.path.join(_d, _stem + '_?.c')))
+            _objs = []
+            for _g in _grp:
+                _o = os.path.join(os.path.dirname(h1), os.path.basename(_g)[:-2] + '.obj')
+                _rr = subprocess.run([qcc] + list(arg_extra) + [_g, '-c', '-o', _o], capture_output=True,
+                                     text=True, encoding='utf-8', errors='replace', timeout=120, env=_env)
+                if _rr.returncode != 0 or not os.path.exists(_o):
+                    return (name, False, '@MULTI 编译失败 %s rc=%d' % (os.path.basename(_g), _rr.returncode))
+                _objs.append(_o)
+            if len(_objs) < 2:
+                return (name, True, 'SKIP:无主多文件(@MULTI 但同组 <stem>_?.c 少于 2 个)')
+            _jyld = os.path.join(_root, 'jyld.exe')
+            _lr = subprocess.run([_jyld, '-o', h1] + _objs, capture_output=True, text=True,
+                                 encoding='utf-8', errors='replace', timeout=120)
+            if _lr.returncode != 0 or not os.path.exists(h1):
+                return (name, False, '@MULTI 链接失败 rc=%d: %s'
+                        % (_lr.returncode, ((_lr.stdout or '') + (_lr.stderr or ''))[:200]))
+            # 链接成功 ⟹ 不 return，落到下方 运行断言
+        else:
+            return (name, False, '编译失败: ' + (err or '').strip()[:220])   # 其它真回归 → FAIL
 
     # round 29 盲区修补: 负例锚 若【编译成功】⟹ 应拒面 根本没被测 ⟹ 必须 FAIL (除非显式 @KNOWN-GAP)
     if expect_cfail:

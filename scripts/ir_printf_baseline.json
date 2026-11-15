@@ -1,0 +1,47 @@
+{
+ "fprintf_e": {
+  "bytes": 10800,
+  "rc": 0,
+  "sha": "47e56698f8ff71a78505b6a1d3cf963d88ae4603c70cee22478d4b0486c458e4"
+ },
+ "printf_arg": {
+  "bytes": 10910,
+  "rc": 0,
+  "sha": "464e9ebbc45f9d19d32fa3e258b98ab6615e941f573b6b87b6bde66655e465a9"
+ },
+ "printf_d": {
+  "bytes": 10801,
+  "rc": 0,
+  "sha": "633c2a78d1f972225a9dc57bed8fee958d883731f308f7c765fba85eefb3e609"
+ },
+ "printf_f": {
+  "bytes": 10848,
+  "rc": 0,
+  "sha": "07e1f55119256e8f0ebe27d6cc9abb8977c938e0bb171589a4d967108c398912"
+ },
+ "printf_lit": {
+  "bytes": 10787,
+  "rc": 0,
+  "sha": "fc2194c606ce9e72921f4d6e15c6d6034265cefbc96e56ce8597f16eb5306d49"
+ },
+ "printf_mix": {
+  "bytes": 10912,
+  "rc": 0,
+  "sha": "ea9e1a44f8f635444d21a5ffe6b9482206417f7921a88a5e8be0d22af9a420e7"
+ },
+ "printf_s": {
+  "bytes": 10815,
+  "rc": 0,
+  "sha": "755a4073060058cc3ad9df45b39a6f8f1eb9eeab218407631b217063659c7a2c"
+ },
+ "snprintf": {
+  "bytes": 12307,
+  "rc": 0,
+  "sha": "b8687f995d8913ae21854eb8d89d961f526920c06295a6aa93a5baaf76edb021"
+ },
+ "sprintf": {
+  "bytes": 20656,
+  "rc": 0,
+  "sha": "cd0ca3128140f006e65d43e4fd098a8b6729a5dacac297c17744dd56df84a9ad"
+ }
+}

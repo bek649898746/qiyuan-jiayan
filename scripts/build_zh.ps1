@@ -12,8 +12,38 @@
 #
 # 英文链不动点 (build.ps1) 不受影响: qcc_x86.c 从未修改。
 
-param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed, [switch]$Fast)
+param([switch]$Regenerate, [switch]$Full, [switch]$NoSeed, [switch]$Fast, [switch]$Opt, [switch]$OptFull, [switch]$RebuildOpt)
 $ErrorActionPreference = 'Stop'
+# 2026-11-10: `-OptFull` 隐含 `-Opt` —— 否则 `编一代` 落到直编分支，开关静默失效（实测：只传 -OptFull 得到的是默认链产物）。
+if ($OptFull -and -not $Opt) { $Opt = $true }
+
+# 2026-11-10：-Opt 链要用出厂优化器 `opt_zh.exe`。缺失 / -RebuildOpt 时先用种子从源构建，
+#   避免「源码改了、链还在用旧二进制」的假证据。
+if ($Opt -and ($RebuildOpt -or -not (Test-Path opt_zh.exe))) {
+    Write-Host '  [opt_zh] 从 srclib\opt_zh.jy 构建出厂优化器 (seed 编译)' -ForegroundColor Cyan
+    & .\qcc_zh_seed.exe srclib\opt_zh.jy -o opt_zh.exe
+    if ($LASTEXITCODE -ne 0) { throw 'opt_zh.exe 构建失败' }
+}
+# P0：每代编译。$Opt 时走三段链（产物 = 优化后 exe），否则直编（开发链）。
+function 编一代([string]$prev, [string]$out) {
+    if ($Opt) {
+        if ($OptFull) { & ".\$prev" srclib_jiayan\qcc_zh.jy -S }
+        else { & ".\$prev" srclib_jiayan\qcc_zh.jy -S --no-meta }
+        if ($LASTEXITCODE -ne 0) { return $false }
+        # 2026-11-10（本轮）：发布链默认走「窥孔-only」—— 元数据通道实测占 98.7%（534s/6.7s），
+        #   窥孔-only 每代只多 ~7s 且仍 -6.5% 体积；要全通道请显式 -OptFull。
+        if ($OptFull) { & .\opt_zh.exe a.exe.asm -o "$out.opt.asm" }
+        else { & .\opt_zh.exe a.exe.asm -o "$out.opt.asm" --peep-only }
+        if ($LASTEXITCODE -ne 0) { return $false }
+        & .\asm_zh.exe "$out.opt.asm" -o $out
+        $rc = $LASTEXITCODE
+        Remove-Item a.exe.asm, "$out.opt.asm" -ErrorAction SilentlyContinue
+        return ($rc -eq 0)
+    }
+    & ".\$prev" srclib_jiayan\qcc_zh.jy -o $out
+    return ($LASTEXITCODE -eq 0)
+}
+
 # R576 (2026-10-08 虾米 · C类攻坚 批C-AC): **族9 #203 扩展方法 真接入** (新码 A6100) + 三 条 定案 (S-37/S-38/S-39)
 #   语言级 顶层 `扩展 构 类型 { 方法 = 函数, … };` —— 类型 外部 加 方法; 调用 `x.方法(实参…)` / `p->方法(实参…)`
 #     重写 为 `函数(接收者, 实参…)`（接收者 传 地址, 与 接口方法 `调用 接口 方法(&x)` 同 约定）。
@@ -264,7 +294,27 @@ $ErrorActionPreference = 'Stop'
 # [自举历史] $expected_前 = '17268331'  # 2026-11-04 (D6D5b/c-2: 块深改用专用 块解析深 —— 语句表达式回归修复; 前值 7A02C399)
 # [自举历史] $expected_前 = 'F70C0804'  # 2026-11-04 (D6D5-DECL-ORDER 首刀: 解析期绑定 + 查变量 认全局 + 下标收口 + 绑到(); 前值 17268331)
 # [对镜历史] $expected_前 = '49864D25'  # 2026-11-05 (ORD-20261105-ELF-DATA 刀一~刀八): ① 常量折叠 帧汇 补 位/移位/比较/逻辑 + 一元 ~/!（luaP_opmodes 全零 ⟹ testTMode 恒假 ⟹ if/while 崩）② 前八 判据 + 域行数[1]（字符*数组 当 2D 行 ⟹ 不加载指针 ⟹ type() 乱码）③ switch 贯穿：空臂 不 清 回落链（luaK_posfix GT/GE 直落 LT/LE 丢失 ⟹ x>3 打印 3）④ extern 数组 typedef 元素尺寸（lu_byte 落 4 ⟹ opmodes 按 4 步长读）⑤ 多返回值 `返回(a,b)` 只在甲言模式（C 的 return (0,a) 被拆成打包 ⟹ (double) 转 0）⑥ 实参 浮点标记 跨 嵌套调用 保存/恢复（g(reg,h(x)) 参数错位）⑦ 64 位 整数→双精度 cvtsi2sd 宽度（旧挂节）+ 浮点 typedef 转型 保宽/标浮⑧ ELF/LP64：long = 8（sizeof + 声明 + 结构体字段）。v1 == v2 == 25F6870A
-$expected = '8600A238'  # S0 (ORD-102/108 第一刀): `--ir-only` 只建 IR 不写产物 —— IR 与 dump 逐行等价、负例响亮、产物 SHA 不变
+# [自举历史] $expected_前 = '4C8C9213'  # 刀四百一十四（2026-11-11）: 声明初始化路径 扩32 落 存扩 快照 → loadlib 整 .o SAME
+# [自举历史] $expected_前 = 'B33A26ED'  # 刀四百六十四（2026-11-11）: 地址口径成员载体 态25/态26
+# [自举历史] $expected_前 = '87154B7C'  # 刀四百七十二（2026-11-11）: 链回溯取址透明层 + 态14 穿透
+# [自举历史] $expected_前 = '53774FAA'  # 刀四百七十四（2026-11-11）: `&深链` 操作数置 免解
+# [自举历史] $expected_前 = 'EA4E6F85'  # 刀四百七十八（2026-11-11）: 态 27 地址口径+表达式基
+# [自举历史] $expected_前 = '61216424'  # 刀四百八十二（2026-11-11）: 态 27 基是下标就地发地址
+# [自举历史] $expected_前 = 'B85541E2'  # 刀四百八十四（2026-11-11）: 抽存态22 基是下标就地发地址
+# [自举历史] $expected_前 = '7E9378A9'  # 刀五百零六（2026-11-11）: 态33 宽度兜底加基元素尺寸
+# [自举历史] $expected_前 = 'D652C7D0'  # 刀五百零七（2026-11-11）: 态33 箭头基+指针字段补缓劣
+$expected = '3579594F'  # 2026-11-15 虾米（IR 刀 977）：`-o` 模式只对「链根是静态变量」的成员读停用字节捕获（静态 RIP disp 随数据区增长漂移）⟹ nested static struct 归位、fnptr/strx 不受影响；v2==v3；前值 18B7758C
+# [P0-Opt] 2026-11-08：发布构建 `-Opt` —— 每代走三段链（-S → opt_zh → asm_zh），开发链默认不动。
+#   实测：code 15,889,708 -> 14,460,471（-8.995%）；两代收敛 12895A81；
+#   优化产物编主源仍与未优化链逐字节一致（语义不变）。
+#   代价：每代多 opt_zh（2026-11-10 根治后 全通道 12s；原 376-534s ⟹ 块间 O(n²) 已除）+ 汇编（4.4s），发布构建用；开发保持直编。
+#   降幅：全通道 code 12,092,952 -> 10,949,850（-9.453%）；窥孔-only（-Opt 默认）仍 -8.135% 左右。
+$optExpected = '1A74BDC4'  # 刀三百六十五（三元扩32）后重钉；前值 02C8514C
+$optFullExpected = '3E174FA1'  # 刀三百六十五（三元扩32）后重钉；前值 51A18D3F
+# [自举历史] $expected_前 = '63E80D04'  # ORD-138/89 五刀（桩就地发射）
+# [自举历史] $expected_前 = '49FD9D1C'  # 2026-11-07
+# [自举历史] $expected_前 = '49FD9D1C'  # 2026-11-07
+# [自举历史] $expected_前 = '8600A238'  # 2026-11-07
 # [自举历史] $expected_前 = '525B6E68'  # 2026-11-07 (S0 前)
 # [自举历史] $expected_前 = 'B71B0530'  # 2026-11-07 (ORD-20261107-137 修复前)
 # [自举历史] $expected_前 = '1D9588B1'  # 2026-11-07 (ORD-20261106-132 修复前)
@@ -4737,7 +4787,10 @@ if ($Regenerate) {
 }
 
 Write-Host "== [2/2] 中文自举链 (早停: 连续两代全等 = 不动点; 小改通常 2 段 ~2.5min; -Full 强制 7 段) =="
-foreach ($n in 1..7) { Remove-Item "qcc_zh_v$n.exe" -ErrorAction SilentlyContinue }
+foreach ($n in 1..7) {
+    $nm = if ($Opt) { "qcc_zh_v${n}_opt.exe" } else { "qcc_zh_v$n.exe" }
+    Remove-Item $nm -ErrorAction SilentlyContinue
+}
 
 # S2b-2 (2026-09-09): seed 从 qcc_x86 切换 自举不动点编译器 — qcc_x86 (旧 frozen 英文) 已无法编译当前规模中文源 (死循环), 仅作 oracle/独立验证
 if (-not (Test-Path qcc_zh_seed.exe)) { if (Test-Path qcc_zh_v7.exe) { Copy-Item qcc_zh_v7.exe qcc_zh_seed.exe } else { throw "qcc_zh_seed.exe 缺失: 先用现有自举 vN 复制为 qcc_zh_seed.exe" } }
@@ -4749,10 +4802,9 @@ $chainT0 = Get-Date
 $prevExe = 'qcc_zh_seed.exe'; $prevName = 'seed'
 if ($Fast) {
     # 2026-10-19: 开发期单代构建 —— 只产 v1，不跑 v2/收敛；提交前必须跑完整链验 v1==v2
-    $out = 'qcc_zh_v1.exe'
+    $out = if ($Opt) { 'qcc_zh_v1_opt.exe' } else { 'qcc_zh_v1.exe' }
     $t0 = Get-Date
-    & ".\$prevExe" srclib_jiayan\qcc_zh.jy -o $out
-    if ($LASTEXITCODE -ne 0) { throw "Fast: 第 1 代 编译失败 (由 $prevName)" }
+    if (-not (编一代 $prevExe $out)) { throw "Fast: 第 1 代 编译失败 (由 $prevName)" }
     $h = (Get-FileHash $out -Algorithm SHA256).Hash.Substring(0,8)
     $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
     Write-Host "  [Fast] v1 = $h ($sec s, 由 $prevName 编译) — 单代; 未验 v1==v2; 提交前跑完整链"
@@ -4760,10 +4812,9 @@ if ($Fast) {
 }
 $hs = @(); $finalExe = ''; $convDepth = -1
 foreach ($n in 1..7) {
-    $out = "qcc_zh_v$n.exe"
+    $out = if ($Opt) { "qcc_zh_v${n}_opt.exe" } else { "qcc_zh_v$n.exe" }
     $t0 = Get-Date
-    & ".\$prevExe" srclib_jiayan\qcc_zh.jy -o $out
-    if ($LASTEXITCODE -ne 0) { throw "第 $n 代 编译失败 (上一代 = $prevName)" }
+    if (-not (编一代 $prevExe $out)) { throw "第 $n 代 编译失败 (上一代 = $prevName)" }
     $h = (Get-FileHash $out -Algorithm SHA256).Hash.Substring(0,8)
     $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
     $finalExe = $out; $hs += $h
@@ -4779,8 +4830,9 @@ $total = [math]::Round(((Get-Date) - $chainT0).TotalSeconds, 1)
 
 if ($hs.Count -eq 0) { Write-Host "[失败 FAIL] 链未产出 (第 1 代失败)" -ForegroundColor Red; exit 1 }
 $finalHash = $hs[$hs.Count - 1]
-if ($finalHash -ne $expected) {
-    Write-Host "[失败 FAIL] 不动点 $finalHash != 期望 $expected  (链耗时 ${total}s)" -ForegroundColor Red
+$expectHash = if ($OptFull) { $optFullExpected } else { if ($Opt) { $optExpected } else { $expected } }
+if ($finalHash -ne $expectHash) {
+    Write-Host "[失败 FAIL] 不动点 $finalHash != 期望 $expectHash  (链耗时 ${total}s)" -ForegroundColor Red
     exit 1
 }
 $converged = ($hs.Count -ge 2 -and $hs[$hs.Count - 1] -eq $hs[$hs.Count - 2])
@@ -4789,8 +4841,9 @@ if (-not $converged) {
     exit 1
 }
 if ($convDepth -lt 0) { $convDepth = $hs.Count }
-Write-Host "[通过 PASS] 中文自举链不动点 $expected 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
-if (-not $NoSeed) {
+Write-Host "[通过 PASS] 中文自举链不动点 $expectHash 达成 (收敛深度 $convDepth 段: v$($convDepth-1)==v$convDepth; 链耗时 ${total}s)" -ForegroundColor Green
+if ($Opt -and -not $NoSeed) { Write-Host "  [P0 -Opt] 跳过 seed 同步：优化链不动点 $optExpected 与默认链 $expected 不同，避免污染开发链" -ForegroundColor Yellow }
+if (-not $NoSeed -and -not $Opt) {
     # C136 (2026-09-17): seed 精确文件名可能被某进程独占持有 (改名允许/写删被拒);
     #   改为「先改名旧 seed 再复制」—— 语义等价, 且不受锁影响 (第 64 站诊断, 见台账 §64)
      if (Test-Path qcc_zh_seed.exe) {

@@ -1,4 +1,7 @@
-﻿# 批量验证 feat_zh_*.c 官方锚点
+﻿# ⛔ 已退役（ORD-159 · 2026-11-09 虾米）：本脚本的五处判据缺陷（@ARG 未传/只取首个、@EXPECTED in: 未喂 stdin、@MULTI 不支持、_neg 无标注即跳过）**不再修**——
+#    等价能力已在 scripts/run_tests_zh.py 真落地（@ARG 全量传参 · in: 临时文件喂 stdin · @MULTI 真编译+jyld 链接 · _neg 默认按应失败判）。
+#    新的验收一律用：python scripts/run_tests_zh.py --only <锚…>  /  --zh-feat --parallel 4。本文件仅留作历史对照。
+# 批量验证 feat_zh_*.c 官方锚点
 # 用法: .\验收_feat_zh.ps1 [-Filter <模式>] [-Max <数量>]
 # 判据来源: 每个文件头的 // @EXPECTED out:... 和 // @EXPECTED exit:...
 # 启元 · 审计岗 · 2026-10-28

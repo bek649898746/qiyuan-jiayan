@@ -23,7 +23,12 @@ QJ = r'C:\Users\Administrator\Desktop\qiyuan-jiayan'
 T = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probe')  # R821e: 探针 随仓走（原 只读 %TEMP%/qiyuan-ir-knives ⇹ 目录被清理后 假红）
 BLK = re.compile(r'块\[(\d+)\] 始=(-?\d+) 终一=(-?\d+) 后继数=(\d+) 后继0=(-?\d+) 回边=(\d+) 首控式=(\d+)'
                  r'(?: 前驱数=(\d+) 前驱0=(-?\d+))?'
-                 r'(?: 后继1=(-?\d+) 断目标=(-?\d+) 继续目标=(-?\d+))?')
+                 r'(?: 后继1=(-?\d+) 断目标=(-?\d+) 继续目标=(-?\d+))?'
+                 # R803-续 (ORD-155 刀二): **真实后继全集** —— 块行 末尾 8 槽（`列丁` 之后的全填 -1）。
+                 # 原 dump 只给 后继0/后继1，而 `断/继续` 边 会 追加 到 尾序一[2..] ⟹ 判据 误把
+                 # 「回边 目标是 第 3+ 后继」当 假边（实测 53 处，例 块[282]→块[276]，276 是 其 第 2 后继）。
+                 r'(?: 函号=(-?\d+))?'
+                 r'(?: 后继集=(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+))?')
 # ⚠️ 字段序 必须与 qcc_zh.jy 的 块行 **逐字一致**：引擎 打
 #    `后继1=%d 断目标=%d 继续目标=%d`（**无** `回边目标` —— 回边 改由 独立 `IR CFG 回边表` 段 承载）。
 #    首版 正则 误把 `回边目标` 写进 可选组 ⟹ 真实 dump 上 整组 失配 ⟹ succ1/brk/cont **全 None**
@@ -40,7 +45,9 @@ def parse(dump):
                          npred=(int(g[7]) if g[7] is not None else None),
                          succ1=(int(g[9]) if g[9] is not None else None),
                          brk=(int(g[10]) if g[10] is not None else None),
-                         cont=(int(g[11]) if g[11] is not None else None)))
+                         cont=(int(g[11]) if g[11] is not None else None),
+                         succs=(tuple(int(g[13 + k]) for k in range(8) if g[13 + k] is not None and int(g[13 + k]) >= 0)
+                                if (len(g) > 13 and g[13] is not None) else None)))
     seg = {}
     m = re.search(r'非落空边\(goto 真边\) = (\d+)', dump)
     seg['nonfall'] = int(m.group(1)) if m else None
@@ -117,11 +124,14 @@ def judge(dump):
     loop = [b for b in blks if b['ctrl'] == 1]
     succ_of = {}
     for b in blks:
-        s = []
-        if b['nsucc'] > 0 and b['succ0'] is not None and b['succ0'] >= 0:
-            s.append(b['succ0'])
-        if b['succ1'] is not None and b['succ1'] >= 0:
-            s.append(b['succ1'])
+        if b.get('succs'):            # 首选：dump 的 真实后继全集（含 `断/继续` 追加边）
+            s = [v for v in b['succs'] if 0 <= v < len(blks)]
+        else:                          # 回落：旧 dump 只有 后继0/后继1
+            s = []
+            if b['nsucc'] > 0 and b['succ0'] is not None and b['succ0'] >= 0:
+                s.append(b['succ0'])
+            if b['succ1'] is not None and b['succ1'] >= 0:
+                s.append(b['succ1'])
         if b['ctrl'] == 1:
             s.append(b['n'])            # 引擎 注入的 循环头 自环（真边 ⟹ 也进 后继集）
         succ_of[b['n']] = s
