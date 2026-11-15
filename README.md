@@ -1,4 +1,4 @@
-# 启元 · 甲言
+﻿# 启元 · 甲言
 
 > **English?** → [`README.en.md`](README.en.md) — 99% English, written for non-Chinese readers and AI agents.
 
@@ -60,11 +60,11 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-07 18:31** |
-> | HEAD | `5ad03642`（分支 `publish`） |
-> | 自举不动点 | **`8600A238`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **39116 行**（`srclib_jiayan/qcc_zh.jy`） |
-> | 特性锚 | **1736 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1482 文件** |
+> | 生成时间 | **2026-11-15 17:06** |
+> | HEAD | `62f53d6d`（分支 `publish`） |
+> | 自举不动点 | **`3579594F`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **44227 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 特性锚 | **1744 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1494 文件** |
 > | 种子指纹 | `8600A238`（`qcc_zh_seed.exe` SHA256 前 8 位） |
 >
 > **数字会过期。** 主线约 **1.5 提交/小时**：30 小时可前进 ~46 提交、~4 代不动点。
