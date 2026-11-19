@@ -60,10 +60,10 @@ powershell -File scripts/audit_facts.ps1     # 1 秒导出全基线（每个数�
 >
 > | 项 | 值 |
 > |:--|:--|
-> | 生成时间 | **2026-11-15 17:06** |
-> | HEAD | `62f53d6d`（分支 `publish`） |
-> | 自举不动点 | **`3579594F`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
-> | 主源 | **44227 行**（`srclib_jiayan/qcc_zh.jy`） |
+> | 生成时间 | **2026-11-19 12:40** |
+> | HEAD | `b3a6e48b`（分支 `publish`） |
+> | 自举不动点 | **`1EE25257`**（权威源 = `scripts/build_zh.ps1` 的 `$expected`） |
+> | 主源 | **44738 行**（`srclib_jiayan/qcc_zh.jy`） |
 > | 特性锚 | **1744 条目**（闸内 `CORE_FEAT`，实际跑的数）· `feat_zh_*.c` **1494 文件** |
 > | 种子指纹 | `8600A238`（`qcc_zh_seed.exe` SHA256 前 8 位） |
 >
