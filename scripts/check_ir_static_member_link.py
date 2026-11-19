@@ -54,6 +54,16 @@ int main(void){ t.a=4; t.b=5; t.b += 2; printf("%d\\n", (int)(t.a*10 + t.b)); re
 struct T g;
 int main(void){ g.a=10; g.b=3; g.a++; g.b--; ++g.a; printf("%d\\n", (int)(g.a*10 + g.b)); return 0; }
 ''', "122"),
+
+    # 值上下文（skeptic 2026-11-15）：自增减的结果作为**值**（不是语句），
+    # 初始化式 / 实参 / 二元操作数 三条路；`-c` 下曾是 0xC0000005（缺 REL32）。
+    ("val_postinc", open(os.path.join(ROOT, "_evidence", "20261112_ir_longmarch", "probe_cases", "valctx_postinc.c"), encoding="utf-8").read(), "7"),
+
+    ("val_preinc", open(os.path.join(ROOT, "_evidence", "20261112_ir_longmarch", "probe_cases", "valctx_preinc.c"), encoding="utf-8").read(), "8"),
+
+    ("val_assign", open(os.path.join(ROOT, "_evidence", "20261112_ir_longmarch", "probe_cases", "valctx_assign.c"), encoding="utf-8").read(), "7"),
+
+    ("val_binop", open(os.path.join(ROOT, "_evidence", "20261112_ir_longmarch", "probe_cases", "valctx_binop.c"), encoding="utf-8").read(), "8"),
 ]
 
 

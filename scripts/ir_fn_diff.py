@@ -50,9 +50,12 @@ def main():
     ap.add_argument('--max', type=int, default=4, help='每函数最多显示几个差异块')
     a = ap.parse_args()
     os.makedirs(WORK, exist_ok=True)
-    p = os.path.join(SRC, a.file)
-    lo = os.path.join(WORK, a.file + '.l.obj')
-    io_ = os.path.join(WORK, a.file + '.i.obj')
+    # 支持任意路径（主源自编普查用）；相对路径优先按仓库根解析，再回落到语料目录
+    p = a.file if os.path.isabs(a.file) and os.path.exists(a.file) else (
+        os.path.join(REPO, a.file) if os.path.exists(os.path.join(REPO, a.file)) else os.path.join(SRC, a.file))
+    tag = os.path.basename(a.file)
+    lo = os.path.join(WORK, tag + '.l.obj')
+    io_ = os.path.join(WORK, tag + '.i.obj')
     if not comp(a.cc, p, lo, False) or not comp(a.cc, p, io_, True):
         print('COMPILE-FAIL')
         return 1

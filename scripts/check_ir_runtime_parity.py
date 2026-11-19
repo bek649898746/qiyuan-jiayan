@@ -178,6 +178,12 @@ CASES['ptrptr_deref'] = open(os.path.join(REPO, '_evidence', '20261112_ir_longma
 # 与 `staticlocalptrarr` 同族；单列一条是为了让审计能按报告名逐一核对（不放大判据口径）。
 CASES['skeptic_staticlocal_ptrtoglobal'] = open(os.path.join(REPO, '_evidence', '20261112_ir_longmarch', 'probe_cases', 'skeptic_staticlocal_ptrtoglobal.c'), encoding='utf-8').read()
 
+# do-while（skeptic 2026-11-15）：`-o` 的后判位在第二相被清 ⟹ 只跑一次循环体（3→1）。
+# `-c` 单遍不受影响，故 34/34 与既有判据对它失明。三个载体：简单 3 / 嵌套 4 / 带 break 3。
+CASES['dowhile_simple'] = open(os.path.join(REPO, '_evidence', '20261112_ir_longmarch', 'probe_cases', 'dowhile_simple.c'), encoding='utf-8').read()
+CASES['dowhile_nested'] = open(os.path.join(REPO, '_evidence', '20261112_ir_longmarch', 'probe_cases', 'dowhile_nested.c'), encoding='utf-8').read()
+CASES['dowhile_break'] = open(os.path.join(REPO, '_evidence', '20261112_ir_longmarch', 'probe_cases', 'dowhile_break.c'), encoding='utf-8').read()
+
 
 # 刀987（2026-11-15 虾米）：**静态/全局结构体成员的 ++/--** —— 已知未修，显式挂账。
 # 病灶：`节点_增减` 的字节在捕获期生成，静态 disp 的基准（数据基址/码位）与回放期不同；
